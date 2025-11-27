@@ -1,0 +1,140 @@
+Guards of Atlantis II - Backend Engineering Plan
+
+1. Architectural Overview
+
+The backend is a Deterministic State Machine driven by the Command Pattern. It follows Hexagonal Architecture (Ports & Adapters), isolating the Game Domain (Rules) from the Infrastructure (API/WebSockets).
+
+Core Principles
+
+Server-Authoritative: The client is a dumb terminal. It sends Intentions (Play Card X), not Results (Move to Hex Y).
+
+Deterministic: Given Initial State $S_0$ and a sequence of Commands $C_0...C_n$, the Final State $S_n$ must always be identical.
+
+Stateless Logic: The GameEngine takes (CurrentState, Command) and returns (NewState, Events).
+
+Integer Math Only: To ensure consistency across different hardware/languages, all grid math uses integer Cube Coordinates.
+
+2. Key Technical Challenges
+
+A. The "Interrupt" Stack (Attack & Defense)
+
+Standard turn-based games follow Input -> Resolve. GoA2 follows Input -> Suspend -> Wait for Reaction -> Resolve.
+
+Problem: When Player A attacks Player B, the resolution of Player A's card pauses. Player B must be prompted to discard a card.
+
+Solution: We cannot use simple linear functions. We must implement a Sub-Phase State Machine.
+
+The Game State enters Phase.DEFENSE_RESOLUTION.
+
+The active_player switches to the Defender.
+
+All other inputs are rejected until the Defender acts or times out.
+
+B. Simultaneous Input / Sequential Resolution
+
+Problem: All players commit cards at once (hidden information), but actions happen sequentially based on Initiative (public information).
+
+Solution: A two-buffer system.
+
+pending_inputs: Stores encrypted/hidden commands during the Planning Phase.
+
+resolution_queue: A Priority Queue sorted by Initiative $(CardValue + TieBreaker)$ populated during the Resolution Phase.
+
+C. The "Sliding Window" Grid
+
+Problem: The map is large, but gameplay is constrained to a "Battle Zone" that shifts physically during "Lane Pushes."
+
+Solution:
+
+Global Grid: A static set of all valid Hexes ($q,r,s$).
+
+Active Window: A dynamic filter that rejects movements outside the current BattleZoneID.
+
+3. The Minimum Viable Board (MVB)
+
+To prove the engine works, we do not need the full "Magma & Ice" map or 10 players. We need a constrained environment to validate the physics of the game.
+
+MVB Requirements
+
+Grid: A single defined area (e.g., radius 3 hexes around 0,0,0) representing one "Zone".
+
+Entities:
+
+2 Heroes (Red vs Blue).
+
+1 Static Obstacle (to test Line of Sight/Movement blocking).
+
+Logic:
+
+Validating Hex adjacency and straight lines.
+
+Validating movement path collisions.
+
+MVB Exclusions (Out of Scope for now)
+
+Minion AI / Minion Battles.
+
+Lane Pushing / Respawning.
+
+Leveling Up / Items.
+
+Fast Travel (Zone-to-Zone movement).
+
+4. Implementation Roadmap
+
+We will build the system in 5 Distinct Phases. We are currently at Phase 1.
+
+Phase 1: Domain Primitives (Current)
+
+[x] Hex Kernel: Cube coordinates, distance, straight-line checks.
+
+[ ] Models: Define Hero, Card, Minion, Team.
+
+[ ] Board: Define Zone and Board container (static map data).
+
+Phase 2: State & Command Engine
+
+[ ] GameState: Define the Pydantic model holding the entire mutable world.
+
+[ ] Command Interface: Abstract base class for all game actions.
+
+[ ] Phase Management: Enums for SETUP, PLANNING, RESOLUTION.
+
+Phase 3: The Game Loop (MVP)
+
+[ ] PlayCardCommand: Logic to move a card from Hand to "Pending".
+
+[ ] Reveal Logic: Sorting the resolution_queue by initiative.
+
+[ ] Movement Resolution: Executing a card that simply moves a hero 2 spaces.
+
+Phase 4: Combat & Interrupts (The Hard Part)
+
+[ ] AttackCommand: Calculating range and valid targets.
+
+[ ] Defense Flow: Implementing the state transition to DEFENSE_WAIT.
+
+[ ] Damage Application: Reducing Life Counters.
+
+Phase 5: Map Complexity
+
+[ ] Zones: Connecting multiple zones.
+
+[ ] Fast Travel: Logic to jump between zones.
+
+[ ] Pushing: Logic for shifting the Battle Zone.
+
+5. Directory Structure (Reference)
+
+src/goa2/
+├── domain/                  # PURE DATA (Pydantic Models)
+│   ├── hex.py               # Coordinate Math (Done)
+│   ├── models.py            # Hero, Card, Minion definitions
+│   ├── board.py             # Map container
+│   ├── state.py             # The "Save File" structure
+│   └── commands.py          # Action definitions (Inputs)
+├── engine/                  # LOGIC (Functions)
+│   ├── rules.py             # Targeting/Movement validation
+│   ├── phases.py            # State Machine transitions
+│   └── resolver.py          # Processing the Queue
+└── main.py                  # API Entrypoint
