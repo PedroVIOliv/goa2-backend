@@ -98,9 +98,9 @@ Phase 1: Domain Primitives (Current)
 
 [x] Hex Kernel: Cube coordinates, distance, straight-line checks.
 
-[ ] Models: Define Hero, Card, Minion, Team.
+[x] Models: Define Hero, Card, Minion, Team.
 
-[ ] Board: Define Zone and Board container (static map data).
+[x] Board: Define Zone and Board container (static map data).
 
 Phase 2: State & Command Engine
 
