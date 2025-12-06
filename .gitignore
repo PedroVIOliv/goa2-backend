@@ -27,3 +27,5 @@ coverage.xml
 
 # Environment Variables (Security)
 .env
+
+extracted_assets/images

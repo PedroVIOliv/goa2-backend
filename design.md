@@ -40,7 +40,17 @@ pending_inputs: Stores encrypted/hidden commands during the Planning Phase.
 
 resolution_queue: A Priority Queue sorted by Initiative $(CardValue + TieBreaker)$ populated during the Resolution Phase.
 
-C. The "Sliding Window" Grid
+C. Same-Team Tie Resolution
+
+Problem: When two players on the same team have the same initiative, the rules require them to "decide" who goes first. The engine cannot pick entirely randomly or deteriministically without player input.
+
+Solution: Another "Interrupt" state.
+1. The Resolver detects a tie between `Hero A` and `Hero B` (Same Team).
+2. Game State transitions to `Phase.TIE_RESOLUTION`.
+3. The engine waits for a `ResolveTieCommand(hero_id=...)` from the team.
+4. Once received, that specific Hero executes; the other remains in the queue.
+
+D. The "Sliding Window" Grid
 
 Problem: The map is large, but gameplay is constrained to a "Battle Zone" that shifts physically during "Lane Pushes."
 
@@ -70,9 +80,9 @@ Validating Hex adjacency and straight lines.
 
 Validating movement path collisions.
 
-MVB Exclusions (Out of Scope for now)
+MVB Exclusions (Postponed Logic)
 
-Minion AI / Minion Battles.
+Minion Battle Resolution (End of Round Math).
 
 Lane Pushing / Respawning.
 
@@ -107,6 +117,8 @@ Phase 3: The Game Loop (MVP)
 [ ] Reveal Logic: Sorting the resolution_queue by initiative.
 
 [ ] Movement Resolution: Executing a card that simply moves a hero 2 spaces.
+
+Static Minions: Placing dumb Minions on board to act as Obstacles/Targets.
 
 Phase 4: Combat & Interrupts (The Hard Part)
 
