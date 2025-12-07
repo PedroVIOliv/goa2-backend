@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import List, Optional, TYPE_CHECKING, Dict
 from pydantic import Field
 from .enums import TeamColor, MinionType, StatType
-from .base import GameEntity
+from .base import GameEntity, BoardEntity
 from .card import Card
 
 if TYPE_CHECKING:

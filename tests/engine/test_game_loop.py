@@ -68,8 +68,26 @@ def test_full_loop(loop_state):
     from goa2.domain.state import InputRequestType
     assert s.awaiting_input_type == InputRequestType.ACTION_CHOICE
     
-    # Choose Attack (instant resolve for now)
+    # Choose Attack
     ChooseActionCommand(ActionType.ATTACK).execute(s)
+
+    # Now waiting for SELECT_ENEMY
+    assert s.awaiting_input_type == InputRequestType.SELECT_ENEMY
+
+    # Execute Attack (Select Target)
+    # Target Blue Hero
+    from goa2.engine.actions import AttackCommand, PlayDefenseCommand
+    
+    # We need to ensure Red and Blue have locations for range check
+    s.unit_locations[UnitID("h_red")] = Hex(q=1, r=0, s=-1) # Adjacent to Blue at 0,0,0
+    
+    AttackCommand(UnitID("h_blue")).execute(s)
+    
+    # Now waiting for DEFENSE_CARD (from Blue)
+    assert s.awaiting_input_type == InputRequestType.DEFENSE_CARD
+    
+    # Play Defense (Pass / Take Hit)
+    PlayDefenseCommand(card_id=None).execute(s)
     
     # Red popped, Blue is next
     assert len(s.resolution_queue) == 1
@@ -92,8 +110,8 @@ def test_full_loop(loop_state):
     assert len(s.resolution_queue) == 1 # Card not popped yet
     
     # Perform Move
-    # Target: 1 East (q=1, r=0, s=-1)
-    target = Hex(q=1, r=0, s=-1)
+    # Target: 1 West (q=-1, r=0, s=1) - Empty, away from Red.
+    target = Hex(q=-1, r=0, s=1)
     PerformMovementCommand(target).execute(s)
     
     # Assert Finished

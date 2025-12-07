@@ -39,6 +39,16 @@ class GameState(BaseModel):
     # 4. Engine pops Request.
     input_stack: List[InputRequest] = Field(default_factory=list)
     
+    @property
+    def awaiting_input_type(self) -> InputRequestType:
+        """
+        Helper to get the current expected input type from the top of the stack.
+        Returns NONE if stack is empty.
+        """
+        if not self.input_stack:
+            return InputRequestType.NONE
+        return self.input_stack[-1].request_type
+    
     # Planning Phase Buffer: HeroID -> Card
     pending_inputs: Dict[HeroID, Card] = Field(default_factory=dict)
     

@@ -34,7 +34,7 @@ def validate_movement_path(
     # Destination checks
     if not ignore_obstacles:
         # Check static obstacles
-        if board.is_obstacle(end):
+        if board.tiles.get(end) and board.tiles[end].is_static_obstacle:
             return False
             
         # Check Tile Occupancy (Preferred source of truth)
@@ -49,10 +49,9 @@ def validate_movement_path(
     # Blocked set includes static obstacles and all units
     blocked: Set[Hex] = set()
     if not ignore_obstacles:
-        blocked.update(board.obstacles)
-        # Add occupied tiles
+        # Add occupied tiles or static obstacles from Tile grid
         for h, tile in board.tiles.items():
-            if tile.is_occupied:
+            if tile.is_obstacle:
                 blocked.add(h)
         # Fallback
         if not board.tiles:
