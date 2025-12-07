@@ -11,8 +11,7 @@ from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNext
 
 from goa2.engine.phases import GamePhase
 
-from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNextCommand, SpawnMinionCommand, PerformMovementCommand, ChooseActionCommand, AttackCommand, PlayDefenseCommand
-from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNextCommand, SpawnMinionCommand, PerformMovementCommand, ChooseActionCommand, AttackCommand, PlayDefenseCommand
+
 from goa2.engine.map_logic import check_lane_push_trigger, execute_push
 from goa2.engine.map_loader import load_map
 
@@ -23,7 +22,7 @@ def main():
     print("\n[Setup]")
     try:
         board = load_map("data/maps/test_map.json")
-        print(f"Loaded Board: {len(board.zones)} zones, {len(board.obstacles)} obstacles, {len(board.spawn_points)} spawn points.")
+        print(f"Loaded Board: {len(board.zones)} zones, {len(board.spawn_points)} spawn points.")
         for z_id, z in board.zones.items():
              lbl = z.label or z.id
              n_lbls = [board.zones[nid].label or nid for nid in z.neighbors]
@@ -172,5 +171,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-if __name__ == "__main__":
-    main()
+

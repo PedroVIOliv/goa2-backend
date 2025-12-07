@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict, Optional
 from goa2.engine.command import Command
 from goa2.domain.state import GameState
 from goa2.domain.input import InputRequest, InputRequestType
-from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion
+from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team
 from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
@@ -336,10 +336,7 @@ class SpawnMinionCommand(Command):
         
         if self.team not in state.teams:
              # Create team if missing (for MVP setup/debug convenience)
-             # state.teams[self.team] = Team(color=self.team)
-             # Better: assume team exists or error? For MVP debug, raise error if missing.
-             # Actually Main script initializes teams.
-             pass
+             state.teams[self.team] = Team(color=self.team)
              
         team_obj = state.teams.get(self.team)
         if team_obj:
