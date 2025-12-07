@@ -14,6 +14,7 @@ class CardTier(str, Enum):
     II = "II"
     III = "III"
     IV = "IV"
+    UNTIERED = "UNTIERED"
 
 class CardColor(str, Enum):
     GOLD = "GOLD"     # Basic

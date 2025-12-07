@@ -34,6 +34,34 @@ class Card(GameEntity):
         frozen = True
 
     @model_validator(mode='after')
+    def validate_tier_color_match(self) -> Card:
+        """
+        Enforce strict Color <-> Tier relationship.
+        Gold/Silver -> UNTIERED
+        Red/Blue/Green -> I, II, III
+        Purple -> IV
+        """
+        color = self.color
+        tier = self.tier
+
+        # Case 1: Gold/Silver must be UNTIERED
+        if color in (CardColor.GOLD, CardColor.SILVER):
+            if tier != CardTier.UNTIERED:
+                raise ValueError(f"Card color {color.name} must be UNTIERED, got {tier.name}")
+        
+        # Case 2: Red/Blue/Green must be I, II, or III
+        elif color in (CardColor.RED, CardColor.BLUE, CardColor.GREEN):
+            if tier not in (CardTier.I, CardTier.II, CardTier.III):
+                raise ValueError(f"Card color {color.name} must be Tier I, II or III, got {tier.name}")
+
+        # Case 3: Purple must be IV
+        elif color == CardColor.PURPLE:
+            if tier != CardTier.IV:
+                raise ValueError(f"Card color {color.name} must be Tier IV, got {tier.name}")
+        
+        return self
+
+    @model_validator(mode='after')
     def ensure_hold_action(self) -> Card:
         if ActionType.HOLD not in self.secondary_actions:
             self.secondary_actions[ActionType.HOLD] = 0

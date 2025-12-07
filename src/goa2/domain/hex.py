@@ -98,7 +98,7 @@ class Hex(BaseModel):
         results = []
         current = self
         for _ in range(N):
-            current = Hex(current.q + dq, current.r + dr, current.s + ds)
+            current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
             results.append(current)
             
         return results
