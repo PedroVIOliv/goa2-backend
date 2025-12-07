@@ -13,15 +13,6 @@ pass
 
 from goa2.domain.models.base import GameEntity
 
-class BoardEntity(GameEntity):
-    """
-    Superset for anything that can occupy a Tile.
-    Examples: Unit (Hero, Minion), Token (Objective, Trap).
-    This allows us to treat Units and Tokens uniformly for occupancy.
-    """
-    id: BoardEntityID
-    pass
-
 class Tile(BaseModel):
     """
     A specific location on the board.
@@ -35,6 +26,18 @@ class Tile(BaseModel):
     # Why ID? Because storing the object makes serialization harder (circular refs)
     # and we have Entity Repositories (State.teams, State.minions) to look up the object.
     occupant_id: Optional[BoardEntityID] = None 
+    
+    # Static Terrain (Walls, Holes, etc.)
+    is_static_obstacle: bool = False
+
+    @property
+    def is_obstacle(self) -> bool:
+        """
+        Returns true if this tile is blocked by EITHER:
+        1. Static Terrain (Wall)
+        2. Dynamic Occupant (Unit/Obstacle Token)
+        """
+        return self.is_static_obstacle or self.is_occupied
     
     @property
     def is_occupied(self) -> bool:

@@ -110,12 +110,23 @@ def load_map(file_path: str) -> Board:
                     ))
 
     # 3. Create Board
+    # We remove 'obstacles' arg as it is no longer in Board model
     board = Board(
         zones=zones,
-        obstacles=obstacles,
+        # obstacles=obstacles, # REMOVED
         spawn_points=spawn_points
     )
     board.populate_tiles_from_zones()
+    
+    # 3.1 Apply Obstacles to Tiles
+    for h_obs in obstacles:
+        if h_obs in board.tiles:
+            board.tiles[h_obs].is_static_obstacle = True
+        else:
+            # If an obstacle hex was defined but wasn't in a zone, 
+            # we might need to create it or ignore it. 
+            # Usually Board only tracks tiles inside Zones.
+            pass
     
     # 3b. Calculate Zone Neighbors (Geometric Adjacency)
     # We iterate all hexes in the board (via Tiles or Zones)

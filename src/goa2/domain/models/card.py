@@ -33,9 +33,11 @@ class Card(GameEntity):
     class Config:
         frozen = True
     
+    @property
     def is_basic(self) -> bool:
         return self.tier == CardTier.UNTIERED
-
+    
+    @property
     def is_skill(self) -> bool:
         return self.primary_action == ActionType.SKILL
 

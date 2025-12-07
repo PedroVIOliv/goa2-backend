@@ -8,7 +8,7 @@ from .card import Card
 if TYPE_CHECKING:
     from .team import Team
 
-class Unit(GameEntity):
+class Unit(BoardEntity):
     """Common base for Heroes and Minions."""
     team: TeamColor
 

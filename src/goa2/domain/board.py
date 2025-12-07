@@ -64,9 +64,6 @@ class Board(BaseModel):
     
     zones: Dict[str, Zone] = Field(default_factory=dict)
     
-    # Static obstacles (Walls, Water, etc.) that permanently block movement
-    obstacles: Set[Hex] = Field(default_factory=set)
-    
     # Spawn points definitions
     spawn_points: List[SpawnPoint] = Field(default_factory=list)
 
@@ -93,9 +90,7 @@ class Board(BaseModel):
         for z_id, zone in self.zones.items():
             for h in zone.hexes:
                 self._hex_lookup[h] = z_id
-                
-    def is_obstacle(self, h: Hex) -> bool:
-        return h in self.obstacles
+        
         
     def get_zone_for_hex(self, h: Hex) -> Optional[str]:
         # Optimization: Check Tile first
