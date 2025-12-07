@@ -1,12 +1,12 @@
 from __future__ import annotations
-from enum import Enum
-from pydantic import BaseModel
+from typing import List, Optional, TYPE_CHECKING
+from pydantic import Field
 from .enums import TeamColor, MinionType
+from .base import GameEntity
+from .card import Card
 
-class GameEntity(BaseModel):
-    """Base class for anything that has a distinct identity in the game."""
-    id: str
-    name: str
+if TYPE_CHECKING:
+    from .team import Team
 
 class Unit(GameEntity):
     """Common base for Heroes and Minions."""
@@ -17,10 +17,11 @@ class Hero(Unit):
     Static definition of a Hero character.
     Dynamic state (HP, Level) will be in GameState.
     """
-    # Heroes might have specific static attributes like max_health if it varied,
-    # but in GoA2 life is a shared team resource (Life Counters).
-    # Individual hero properties (like verify specific class) can go here.
-    pass
+    deck: List[Card]
+    level: int = 1
+    gold: int = 0
+    # Circular reference to parent Team
+    team_obj: Optional['Team'] = Field(default=None, exclude=True)
 
 class Minion(Unit):
     """

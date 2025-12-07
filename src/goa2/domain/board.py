@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Set, Dict, Optional, List, Union
+from typing import Set, Dict, Optional, List, Union, Any
 from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
@@ -60,15 +60,31 @@ class Board(BaseModel):
     # Spawn points definitions
     spawn_points: List[SpawnPoint] = Field(default_factory=list)
 
+    # Private optimized lookup for O(1) zone resolution
+    # Populated by validation
+    _hex_lookup: Dict[Hex, str] = {}
+
+    def model_post_init(self, __context: Any) -> None:
+        """
+        Populate the hex lookup table after initialization.
+        Using model_post_init instead of validator to avoid ser/de issues with private fields.
+        """
+        self._rebuild_lookup()
+
+    def _rebuild_lookup(self):
+        self._hex_lookup = {}
+        for z_id, zone in self.zones.items():
+            for h in zone.hexes:
+                self._hex_lookup[h] = z_id
+
     def is_obstacle(self, h: Hex) -> bool:
         return h in self.obstacles
 
     def get_zone_for_hex(self, h: Hex) -> Optional[str]:
-        """Finds which zone ID a hex belongs to."""
-        for z_id, zone in self.zones.items():
-            if h in zone.hexes:
-                return z_id
-        return None
+        """Finds which zone ID a hex belongs to. O(1)"""
+        if not self._hex_lookup:
+            self._rebuild_lookup() # Lazy build if needed (e.g. if loaded from raw dict without init)
+        return self._hex_lookup.get(h)
     
     def get_spawn_point(self, h: Hex) -> Optional[SpawnPoint]:
         for sp in self.spawn_points:

@@ -30,3 +30,12 @@ class ActionType(str, Enum):
     DEFENSE = "DEFENSE"
     HOLD = "HOLD"  # Secondary
     CLEAR = "CLEAR" # Replaces Attack
+    FAST_TRAVEL = "FAST_TRAVEL" # Replaces Movement
+
+class StatType(str, Enum):
+    ATTACK = "ATTACK"
+    DEFENSE = "DEFENSE"
+    SPEED = "SPEED"
+    INITIATIVE = "INITIATIVE"
+    RANGE = "RANGE"
+    RADIUS = "RADIUS"
