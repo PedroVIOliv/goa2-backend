@@ -2,30 +2,59 @@ from typing import Optional, List, Dict
 from goa2.domain.models import Card, StatType, Unit, Hero
 from goa2.domain.hex import Hex
 
-def calculate_attack_power(card: Card) -> int:
+from goa2.domain.state import GameState
+from goa2.domain.models import TeamColor
+
+def calculate_attack_power(card: Card, attacker: Hero) -> int:
     """
     Calculates total attack power.
-    Base (Card) + Modifiers (Items/Auras - TODO).
+    Base (from Card?? No field yet, assume 4) + Hero Items.
     """
-    # Parse generic logic or use fixed value for MVP?
-    # Card doesn't have a 'value' field for attack power in the model yet!
-    # Design flaw? 'effect_text' implies it. 
-    # Or maybe the Card model is missing 'power'?
-    # Checking Card model... no 'power' field.
-    # We must deduce it or add it. 
-    # For MVP, let's assume 'initiative' is NOT power.
-    # We might need to add 'power' to Card or parse it.
-    # Let's add a robust fallback for now: return 4. 
-    return 4
+    base_power = 4 # Hardcoded base for MVP as Card model lacks 'power'
+    
+    # Add Item Bonuses
+    item_bonus = attacker.items.get(StatType.ATTACK, 0)
+    
+    return base_power + item_bonus
 
-def calculate_defense_power(card: Card) -> int:
+def calculate_defense_power(defender: Hero, state: GameState) -> int:
     """
     Calculates total defense power.
+    Base (3) + Hero Items + Minion Auras.
     """
-    # Similar issue.
-    # Rules say: Defense Power = Card Base + Items + Mods.
-    # We need a field 'base_value' on Card?
-    return 3
+    base_defense = 3
+    
+    # Item Bonuses
+    item_bonus = defender.items.get(StatType.DEFENSE, 0)
+    
+    # Minion Auras (Adjacent Friendly Minions)
+    aura_bonus = 0
+    defender_loc = state.unit_locations.get(defender.id)
+    
+    if defender_loc:
+        # Check all adjacent hexes
+        for neighbor in defender_loc.neighbors():
+            # Check for Minion in Board Tile
+            tile = state.board.tiles.get(neighbor)
+            if tile and tile.occupant_id:
+                # Resolve Occupant
+                # Is it a minion?
+                unit_id = str(tile.occupant_id) # BoardEntityID -> str
+                unit_id = str(tile.occupant_id)
+                # Lookup Minion in Teams
+                minion_obj = None
+                for t in state.teams.values():
+                     for m in t.minions:
+                         if m.id == unit_id:
+                             minion_obj = m
+                             break
+                     if minion_obj: break
+                
+                if minion_obj and minion_obj.team == defender.team:
+                    # Friendly Minion Aura: +1 Defense
+                    aura_bonus += 1
+                        
+    return base_defense + item_bonus + aura_bonus
 
 def resolve_combat(attack_power: int, defense_power: int) -> bool:
     """

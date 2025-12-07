@@ -10,7 +10,9 @@ def validate_movement_path(
     start: Hex, 
     end: Hex, 
     max_steps: int, 
-    ignore_obstacles: bool = False
+
+    ignore_obstacles: bool = False,
+    active_zone_id: Optional[str] = None
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -21,17 +23,26 @@ def validate_movement_path(
     """
     # 0. Trivial check
     if start == end:
-        return True # Moving 0 steps is valid? usually.
+        return False # Moving 0 steps is invalid.
         
-    # 1. Check if destination is strictly valid (on board?) 
-    # For now, if board has zones, check connectivity? 
-    # MVP: Just check if destination is blocked.
+    # 1. Check if destination is strictly valid 
     
-    # Destination cannot be occupied (in standard rules, unless displacing)
+    # Active Zone Check (REMOVED: Movement between zones is allowed) 
+    # if active_zone_id:
+    #     ...
+
+    # Destination checks
     if not ignore_obstacles:
+        # Check static obstacles
         if board.is_obstacle(end):
             return False
-        if end in unit_locations.values():
+            
+        # Check Tile Occupancy (Preferred source of truth)
+        if end in board.tiles:
+            if board.tiles[end].is_occupied:
+                return False
+        # Fallback to legacy check (if tiles not populated or for robustness)
+        elif end in unit_locations.values():
             return False
 
     # 2. Pathfinding (BFS)
@@ -39,7 +50,13 @@ def validate_movement_path(
     blocked: Set[Hex] = set()
     if not ignore_obstacles:
         blocked.update(board.obstacles)
-        blocked.update(unit_locations.values())
+        # Add occupied tiles
+        for h, tile in board.tiles.items():
+            if tile.is_occupied:
+                blocked.add(h)
+        # Fallback
+        if not board.tiles:
+             blocked.update(unit_locations.values())
         
         # We start at 'start', which is occupied by self. 
         # But we leave it, so don't treat 'start' as blocked for neighbors? 

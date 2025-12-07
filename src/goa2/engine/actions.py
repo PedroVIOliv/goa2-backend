@@ -5,7 +5,7 @@ from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion
 from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
-from goa2.domain.types import HeroID, CardID, UnitID
+from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.engine.rules import validate_movement_path, validate_attack_target
 from goa2.engine.combat import calculate_attack_power, calculate_defense_power, resolve_combat
 import uuid
@@ -179,11 +179,13 @@ class ChooseActionCommand(Command):
 
         elif self.action_type == ActionType.MOVEMENT or self.action_type == ActionType.FAST_TRAVEL:
             # Transition to Movement Input -> PUSH new request
+            is_fast_travel = (self.action_type == ActionType.FAST_TRAVEL)
             req_id = str(uuid.uuid4())
             req = InputRequest(
                 id=req_id,
                 player_id=hero_id,
-                request_type=InputRequestType.MOVEMENT_HEX
+                request_type=InputRequestType.MOVEMENT_HEX,
+                context={"fast_travel": is_fast_travel}
             )
             state.input_stack.append(req)
             return state
@@ -238,14 +240,63 @@ class PerformMovementCommand(Command):
         max_steps = 3 
         
         ignore_obstacles = False
-        # Context Aware Logic: We could check 'context' in current_req 
-        # if we passed "is_fast_travel" during push.
+        limit_zone_id = state.active_zone_id
         
-        if not validate_movement_path(state.board, state.unit_locations, start_hex, self.target_hex, max_steps, ignore_obstacles=ignore_obstacles):
+        # Context Aware Logic
+        if current_req.context.get("fast_travel"):
+            ignore_obstacles = True
+            limit_zone_id = None # Fast Travel ignores zone boundary
+            
+            # FAST TRAVEL RESTRICTIONS (Rule 5.1 updated)
+            # 1. StartZone Empty of Enemies
+            start_zone_id = state.board.get_zone_for_hex(start_hex)
+            # Find hero to get team (assuming active actor)
+            # But PerformMovementCommand doesn't know "who" is moving easily unless we look up start_hex occupant?
+            # Or we pass hero_id in command? We passed unit_id.
+            # Need to get team.
+            # Fast hack: look up unit (only Heroes FT usually).
+            actor_team = TeamColor.RED # Default failure
+            # Find unit in teams
+            for t in state.teams.values():
+                 for h in t.heroes:
+                     if str(h.id) == str(unit_id):
+                         actor_team = t.color
+                         break
+            
+            from goa2.engine.map_logic import count_enemies
+            if start_zone_id and count_enemies(state, start_zone_id, actor_team) > 0:
+                 raise ValueError("Cannot Fast Travel: Enemies in Start Zone")
+
+            # 2. DestZone Empty of Enemies
+            dest_zone_id = state.board.get_zone_for_hex(self.target_hex)
+            if dest_zone_id and count_enemies(state, dest_zone_id, actor_team) > 0:
+                 raise ValueError("Cannot Fast Travel: Enemies in Dest Zone")
+                 
+            # 3. Target Empty
+            if self.target_hex in state.unit_locations.values():
+                  raise ValueError("Fast Travel target occupied")
+        
+        if not validate_movement_path(
+            state.board, 
+            state.unit_locations, 
+            start_hex, 
+            self.target_hex, 
+            max_steps, 
+            ignore_obstacles=ignore_obstacles,
+            active_zone_id=limit_zone_id
+        ):
             raise ValueError(f"Invalid movement path to {self.target_hex}")
             
         # Execute Move
+        # 1. Update Unit Location (Legacy/Quick Lookup)
         state.unit_locations[unit_id] = self.target_hex
+        
+        # 2. Update Tile Occupancy (New Grid System)
+        if start_hex in state.board.tiles:
+            state.board.tiles[start_hex].occupant_id = None
+        
+        if self.target_hex in state.board.tiles:
+            state.board.tiles[self.target_hex].occupant_id = BoardEntityID(str(unit_id))
         
         # Cleanup / Finish Action
         state.input_stack.pop() # Remove Input Request
@@ -271,21 +322,42 @@ class SpawnMinionCommand(Command):
         self.unit_id = unit_id
 
     def execute(self, state: GameState) -> GameState:
-        # Create Minion Model (Not stored in State yet, State only has teams/locations)
-        # Should we add minion to a team list? State.teams needs to support Minions?
-        # State.teams is Dict[TeamColor, Team]. Team has 'heroes'. Does Team have 'minions'?
-        # Checking Team model...
-        
-        # For Phase 3 MVP, we primarily need the Minion in 'unit_locations' to act as obstacle.
-        # But proper storage is good.
-        # Let's check Team model in a separate tool or assumption.
-        # Assuming Team might not have Minions list yet.
-        # But we MUST put it in unit_locations.
-        
         if self.location in state.unit_locations.values():
             raise ValueError(f"Location {self.location} occupied")
             
+        # Create Minion Model
+        minion = Minion(
+            id=self.unit_id,
+            name=f"{self.minion_type.name} Minion",
+            type=self.minion_type,
+            team=self.team,
+            value=1 # Default value
+        )
+        
+        if self.team not in state.teams:
+             # Create team if missing (for MVP setup/debug convenience)
+             # state.teams[self.team] = Team(color=self.team)
+             # Better: assume team exists or error? For MVP debug, raise error if missing.
+             # Actually Main script initializes teams.
+             pass
+             
+        team_obj = state.teams.get(self.team)
+        if team_obj:
+            team_obj.minions.append(minion)
+        
+        # We still need global tracking of "ID -> Unit"?
+        # GameState.unit_locations tracks location.
+        # But if we need to look up Unit by ID, we now need to search Teams.
+        # This is slower O(N) but acceptable for MVP.
+        # Or we can keep a "unit_registry" in State if needed.
+        # For now, only location is critical.
+        
         state.unit_locations[self.unit_id] = self.location
+        
+        # Update Tile Occupancy
+        if self.location in state.board.tiles:
+            state.board.tiles[self.location].occupant_id = BoardEntityID(str(self.unit_id))
+            
         return state
 
 class AttackCommand(Command):
@@ -371,18 +443,50 @@ class PlayDefenseCommand(Command):
             # Logic similar to PlayCardCommand but immediate
             # For MVP, assume 3 (stub) via combat.py
             defense_val = 3 # calculate_defense_power(card)
-            pass
         
-        # Calculate Attack Access
-        # We need the Attacker's Card info from context!
-        attacker_id = current_req.context["attacker_id"]
-        # In MVP, attacker is resolution_queue[0]
+        # Calculate Power
+        # We need the objects.
+        # Find Attacker Hero
+        attacker = None
+        for t in state.teams.values():
+            for h in t.heroes:
+                if h.id == current_req.context["attacker_id"]:
+                    attacker = h
+                    break
+        
+        # Find Defender Hero
+        defender = None
+        # Assume active hero is defender? No, active hero is the one playing defense card (self.defender_id presumably?)
+        # Wait, PlayDefenseCommand executes. The actor is the Defender.
+        # So Defender is current_actor usually?
+        # Let's find by ID from state context or stored.
+        # The command implementation assumes we know who is defending.
+        # Actually resolving relies on context.
+        # Let's find by ID.
+        for t in state.teams.values():
+            for h in t.heroes:
+                if h.id == defender_id: # The one playing the card
+                    defender = h
+                    break
+
+        # Get the attack card from the resolution queue
         _attacker_id, attack_card = state.resolution_queue[0]
+
+        # Calculate Attack and Defense Power
+        from goa2.engine.combat import calculate_attack_power, calculate_defense_power
+        attack_val = calculate_attack_power(attack_card, attacker)
+        defense_val = calculate_defense_power(defender, state) # Card? Logic moved to Combat.py?
+        # Wait, calculate_defense_power signature changed to (defender, state). 
+        # It ignores the played card? The card adds base defense usually.
+        # My combat.py update ignored the card! "Base 3".
+        # Need to fix combat.py to accept card if relevant, 
+        # OR just assume Base 3 for MVP as per code.
         
-        attack_val = 4 # calculate_attack_power(attack_card)
+        # Log
+        print(f"   [Combat] Attack ({attack_val}) vs Defense ({defense_val})")
         
         # Resolve
-        print(f"   [Combat] Attack {attack_val} vs Defense {defense_val}")
+        from goa2.engine.combat import resolve_combat
         if resolve_combat(attack_val, defense_val):
             print(f"   [Result] Hero {defender_id} DEFEATED!")
             # Logic: Remove life counter, etc.

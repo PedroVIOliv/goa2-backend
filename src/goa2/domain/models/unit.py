@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict
 from pydantic import Field
-from .enums import TeamColor, MinionType
+from .enums import TeamColor, MinionType, StatType
 from .base import GameEntity
 from .card import Card
 
@@ -25,6 +25,8 @@ class Hero(Unit):
     discard_pile: List[Card] = Field(default_factory=list)
     level: int = 1
     gold: int = 0
+    # Items (Passive Stat Bonuses)
+    items: Dict[StatType, int] = Field(default_factory=dict)
     # Circular reference to parent Team
     team_obj: Optional['Team'] = Field(default=None, exclude=True)
 

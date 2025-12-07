@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Card
+from goa2.domain.models import Team, TeamColor, Card, Minion
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID
 from goa2.domain.input import InputRequest, InputRequestType
@@ -17,6 +17,11 @@ class GameState(BaseModel):
     """
     board: Board
     teams: Dict[TeamColor, Team]
+    
+
+
+    # Map State
+    active_zone_id: Optional[str] = None # The ID of the current Battle Zone
     
     phase: GamePhase = GamePhase.SETUP
     resolution_step: ResolutionStep = ResolutionStep.NONE
@@ -47,3 +52,5 @@ class GameState(BaseModel):
     class Config:
         # Pydantic V2 ConfigDict
         arbitrary_types_allowed = True
+        
+GameState.model_rebuild()
