@@ -13,6 +13,7 @@ class Zone(BaseModel):
     e.g. "Zone 1", "Throne Room".
     """
     id: str
+    label: Optional[str] = None
     hexes: Set[Hex]
     neighbors: List[str] = Field(default_factory=list) # IDs of connected zones
 
@@ -35,6 +36,13 @@ class SpawnPoint(BaseModel):
     # If not None, this spawn point is RESERVED for this minion type.
     # If None, it is generally considered a Hero spawn point (or undefined, but usually Hero).
     # The user requested: "spawn points should be specified in minion as one of the 3 minion types"
+    type: SpawnType = SpawnType.MINION # Default to Minion if not specified? Or Hero? Let's generic.
+    # Actually user wants "change spawn typing to include hero spawn type". 
+    # Current model relies on minion_type being None.
+    # Explicit type is better.
+    
+    # New Model:
+    type: SpawnType
     minion_type: Optional[MinionType] = None 
     
     @property

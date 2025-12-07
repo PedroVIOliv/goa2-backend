@@ -1,38 +1,72 @@
+from typing import List, Dict, Tuple, Optional
 from goa2.domain.state import GameState
 from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType, MinionType
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
+from typing import Optional
+
 from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNextCommand, SpawnMinionCommand, PerformMovementCommand, ChooseActionCommand
 
 from goa2.engine.phases import GamePhase
 
 from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNextCommand, SpawnMinionCommand, PerformMovementCommand, ChooseActionCommand, AttackCommand, PlayDefenseCommand
-
 from goa2.engine.actions import PlayCardCommand, RevealCardsCommand, ResolveNextCommand, SpawnMinionCommand, PerformMovementCommand, ChooseActionCommand, AttackCommand, PlayDefenseCommand
 from goa2.engine.map_logic import check_lane_push_trigger, execute_push
+from goa2.engine.map_loader import load_map
 
 def main():
     print("=== Guards of Atlantis II Engine (Phase 5 Map Logic) ===")
     
-    # 1. Setup Board with 2 Zones
+    # 1. Setup Board (Load from JSON)
     print("\n[Setup]")
-    board = Board() 
-    # Mocking Zones manually for this test since Board() init might be empty
-    # We need to inject zones.
-    from goa2.domain.board import Zone
-    zone_a = Zone(id="z_mid", hexes={Hex(q=0,r=0,s=0), Hex(q=1,r=-1,s=0), Hex(q=0,r=-1,s=1)})
-    zone_b = Zone(id="z_base_blue", hexes={Hex(q=2,r=0,s=-2), Hex(q=3,r=0,s=-3)}) # Far away + neighbor
-    zone_c = Zone(id="z_base_red", hexes={Hex(q=-2,r=0,s=2)}) 
-    zone_d = Zone(id="z_void", hexes={Hex(q=10,r=0,s=-10)})
-    board.zones = {"z_mid": zone_a, "z_base_blue": zone_b, "z_base_red": zone_c, "z_void": zone_d}
-    # Lane: Red -> Mid -> Blue
-    board.lane = ["z_base_red", "z_mid", "z_base_blue"] 
-    board.populate_tiles_from_zones()
+    try:
+        board = load_map("data/maps/test_map.json")
+        print(f"Loaded Board: {len(board.zones)} zones, {len(board.obstacles)} obstacles, {len(board.spawn_points)} spawn points.")
+        for z_id, z in board.zones.items():
+             lbl = z.label or z.id
+             n_lbls = [board.zones[nid].label or nid for nid in z.neighbors]
+             print(f"   - Zone {lbl} neighbors: {n_lbls}")
+    except FileNotFoundError:
+        print("[!] Map file not found. Please ensure data/maps/test_map.json exists.")
+        return
+
+    # Mocking spawn points or initial units if map doesn't define them strictly yet
+    # We will query zones by label to place units.
     
-    state = GameState(board=board, teams={}, active_zone_id="z_mid")
+    def find_zone_by_label(b: Board, lbl: str) -> Optional[str]:
+        for z in b.zones.values():
+            if z.label == lbl:
+                return z.id
+        return None
+
+    z_mid_id = find_zone_by_label(board, "Mid")
+    z_red_base_id = find_zone_by_label(board, "RedBase")
+    z_blue_base_id = find_zone_by_label(board, "BlueBase")
+
+    state = GameState(board=board, teams={}, active_zone_id=z_mid_id if z_mid_id else list(board.zones.keys())[0])
     
+    # Dynamic Placement Helper
+    def get_first_hex(b: Board, z_id: str) -> Optional[Hex]:
+        z = b.zones.get(z_id)
+        if z and z.hexes:
+            return list(z.hexes)[0]
+        return None
+
+    def get_second_hex(b: Board, z_id: str) -> Optional[Hex]:
+        z = b.zones.get(z_id)
+        if z and len(z.hexes) > 1:
+            return list(z.hexes)[1]
+        return None
+
+    # Hero in Mid
+    h_red_loc = get_first_hex(board, z_mid_id) or Hex(q=0,r=0,s=0)
+    m_red_loc = get_second_hex(board, z_mid_id) or Hex(q=1,r=-1,s=0)
+    
+    # Hero in Blue Base (Target for FT)
+    h_blue_loc = get_first_hex(board, z_blue_base_id) or Hex(q=10,r=0,s=-10)
+
     # Hero in Zone A
     card_ft = Card(
         id=CardID("c_ft"), name="Teleport", tier=CardTier.UNTIERED, color=CardColor.GOLD,
@@ -44,22 +78,22 @@ def main():
     hero_red.items[StatType.ATTACK] = 1
     
     state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[hero_red])
-    state.unit_locations[UnitID("h_red")] = Hex(q=0,r=0,s=0) # In Zone A
-    if Hex(q=0,r=0,s=0) in board.tiles:
-        board.tiles[Hex(q=0,r=0,s=0)].occupant_id = BoardEntityID("h_red")
+    state.unit_locations[UnitID("h_red")] = h_red_loc 
+    if h_red_loc in board.tiles:
+        board.tiles[h_red_loc].occupant_id = BoardEntityID("h_red")
     
     # Minion in Zone A (Red's Minion)
-    SpawnMinionCommand(Hex(q=1,r=-1,s=0), MinionType.MELEE, TeamColor.RED, UnitID("m_red_1")).execute(state)
+    SpawnMinionCommand(m_red_loc, MinionType.MELEE, TeamColor.RED, UnitID("m_red_1")).execute(state)
     
     # Blue Hero (Target) in FAR zone to allow FT from Mid
     hero_blue = Hero(id=HeroID("h_blue"), name="Rogue", team=TeamColor.BLUE, deck=[], hand=[], gold=0)
     state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[hero_blue])
-    state.unit_locations[UnitID("h_blue")] = Hex(q=10,r=0,s=-10) # In Void
-    if Hex(q=10,r=0,s=-10) in board.tiles:
-        board.tiles[Hex(q=10,r=0,s=-10)].occupant_id = BoardEntityID("h_blue")
+    state.unit_locations[UnitID("h_blue")] = h_blue_loc 
+    if h_blue_loc in board.tiles:
+        board.tiles[h_blue_loc].occupant_id = BoardEntityID("h_blue")
         
     print(f"Active Zone: {state.active_zone_id}")
-    print(f"Red Hero at {state.unit_locations[UnitID('h_red')]}")
+    print(f"Red Hero at {h_red_loc}")
     print(f"Red Minion at {state.unit_locations[UnitID('m_red_1')]}")
     # print(f"Blue Hero at {state.unit_locations[UnitID('h_blue')]}")
     
@@ -107,8 +141,15 @@ def main():
                 ChooseActionCommand(ActionType.FAST_TRAVEL).execute(state)
                 
             elif req.request_type == InputRequestType.MOVEMENT_HEX:
-                target = Hex(q=2,r=0,s=-2) # Target Zone B
-                print(f"   [Input] h_red targets {target} (In Zone B)")
+                # Target Zone Blue Base
+                # We placed h_blue at h_blue_loc (first hex).
+                # FT needs to land in Blue Base.
+                # Let's target h_blue_loc if empty? No it's occupied by h_blue.
+                # Use second hex if available?
+                # Or just try h_blue_loc and expect failure or success if FT allows replacement (unlikely).
+                # Let's find an empty hex in Blue Base.
+                target = get_second_hex(board, z_blue_base_id) or h_blue_loc
+                print(f"   [Input] h_red targets {target} (In Zone Blue Base)")
                 try:
                     PerformMovementCommand(target).execute(state)
                     print(f"   [V] Fast Travel Successful to {target}")
