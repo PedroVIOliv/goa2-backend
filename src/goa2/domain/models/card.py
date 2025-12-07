@@ -32,6 +32,12 @@ class Card(GameEntity):
 
     class Config:
         frozen = True
+    
+    def is_basic(self) -> bool:
+        return self.tier == CardTier.UNTIERED
+
+    def is_skill(self) -> bool:
+        return self.primary_action == ActionType.SKILL
 
     @model_validator(mode='after')
     def validate_tier_color_match(self) -> Card:
