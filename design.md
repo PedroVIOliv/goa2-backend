@@ -104,37 +104,37 @@ Phase 1: Domain Primitives (Current)
 
 Phase 2: State & Command Engine
 
-[ ] GameState: Define the Pydantic model holding the entire mutable world.
+[x] GameState: Define the Pydantic model holding the entire mutable world.
 
-[ ] Command Interface: Abstract base class for all game actions.
+[x] Command Interface: Abstract base class for all game actions.
 
-[ ] Phase Management: Enums for SETUP, PLANNING, RESOLUTION.
+[x] Phase Management: Enums for SETUP, PLANNING, RESOLUTION.
 
 Phase 3: The Game Loop (MVP)
 
-[ ] PlayCardCommand: Logic to move a card from Hand to "Pending".
+[x] PlayCardCommand: Logic to move a card from Hand to "Pending".
 
-[ ] Reveal Logic: Sorting the resolution_queue by initiative.
+[x] Reveal Logic: Sorting the resolution_queue by initiative.
 
-[ ] Movement Resolution: Executing a card that simply moves a hero 2 spaces.
+[x] Movement Resolution: Executing a card that simply moves a hero 2 spaces.
 
-Static Minions: Placing dumb Minions on board to act as Obstacles/Targets.
+[x] Static Minions: Placing dumb Minions on board to act as Obstacles/Targets.
 
 Phase 4: Combat & Interrupts (The Hard Part)
 
-[ ] AttackCommand: Calculating range and valid targets.
+[x] AttackCommand: Calculating range and valid targets.
 
-[ ] Defense Flow: Implementing the state transition to DEFENSE_WAIT.
+[x] Defense Flow: Implementing the state transition to DEFENSE_WAIT.
 
-[ ] Damage Application: Reducing Life Counters.
+[x] Damage Application: Reducing Life Counters.
 
 Phase 5: Map Complexity
 
-[ ] Zones: Connecting multiple zones.
+[x] Zones: Connecting multiple zones.
 
-[ ] Fast Travel: Logic to jump between zones.
+[x] Fast Travel: Logic to jump between zones.
 
-[ ] Pushing: Logic for shifting the Battle Zone.
+[x] Pushing: Logic for shifting the Battle Zone.
 
 5. Directory Structure (Reference)
 

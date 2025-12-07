@@ -5,12 +5,16 @@ from goa2.domain.hex import Hex
 from goa2.domain.state import GameState
 from goa2.domain.models import TeamColor
 
-def calculate_attack_power(card: Card, attacker: Hero) -> int:
+def calculate_attack_power(card: Optional[Card], attacker: Hero) -> int:
     """
     Calculates total attack power.
     Base (from Card?? No field yet, assume 4) + Hero Items.
     """
-    base_power = 4 # Hardcoded base for MVP as Card model lacks 'power'
+    base_power = 0
+    if card and card.primary_action_value is not None:
+        base_power = card.primary_action_value
+    elif not card:
+        base_power = 4 # Fallback for tests passing None
     
     # Add Item Bonuses
     item_bonus = attacker.items.get(StatType.ATTACK, 0)

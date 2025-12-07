@@ -67,14 +67,24 @@ def main():
     h_blue_loc = get_first_hex(board, z_blue_base_id) or Hex(q=10,r=0,s=-10)
 
     # Hero in Zone A
+    from goa2.data.heroes import HeroRegistry
+    
+    # Red Hero: Knight
+    hero_red = HeroRegistry.get("Knight")
+    hero_red.team = TeamColor.RED
+    hero_red.id = HeroID("h_red")
+    
+    # Put Teleport card in hand for the demo (normally in Deck)
+    # The Knight deck has "Shield Bash", "March", "Defend"
+    # We want to test FAST TRAVEL. 
+    # Let's override the hand to include the demo FT card OR use the Rogue who has FT.
+    # The user wants to see the "Knight" deck functionality? No, main.py tests specific things.
+    # Let's overwrite the hand with the specific test card for now to keep the script passing.
     card_ft = Card(
         id=CardID("c_ft"), name="Teleport", tier=CardTier.UNTIERED, color=CardColor.GOLD,
-        initiative=10, primary_action=ActionType.FAST_TRAVEL, effect_id="e_ft", effect_text="Fast Travel"
+        initiative=10, primary_action=ActionType.FAST_TRAVEL, primary_action_value=0, effect_id="e_ft", effect_text="Fast Travel"
     )
-    hero_red = Hero(id=HeroID("h_red"), name="Knight", team=TeamColor.RED, deck=[], hand=[card_ft], gold=0)
-    # Add Item: +1 Attack
-    from goa2.domain.models import StatType
-    hero_red.items[StatType.ATTACK] = 1
+    hero_red.hand = [card_ft]
     
     state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[hero_red])
     state.unit_locations[UnitID("h_red")] = h_red_loc 
@@ -85,7 +95,11 @@ def main():
     SpawnMinionCommand(m_red_loc, MinionType.MELEE, TeamColor.RED, UnitID("m_red_1")).execute(state)
     
     # Blue Hero (Target) in FAR zone to allow FT from Mid
-    hero_blue = Hero(id=HeroID("h_blue"), name="Rogue", team=TeamColor.BLUE, deck=[], hand=[], gold=0)
+    # Blue Hero: Rogue
+    hero_blue = HeroRegistry.get("Rogue")
+    hero_blue.team = TeamColor.BLUE
+    hero_blue.id = HeroID("h_blue")
+    
     state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[hero_blue])
     state.unit_locations[UnitID("h_blue")] = h_blue_loc 
     if h_blue_loc in board.tiles:

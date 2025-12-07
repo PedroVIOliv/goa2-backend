@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 class Unit(BoardEntity):
     """Common base for Heroes and Minions."""
-    team: TeamColor
+    team: Optional[TeamColor] = None
 
 class Hero(Unit):
     """
@@ -18,6 +18,9 @@ class Hero(Unit):
     Contains both static identity (ID, Name, Class) AND dynamic state (Level, Gold, Hand).
     This object lives inside GameState.
     """
+    name: str
+    title: Optional[str] = None
+
     deck: List[Card]
     # Card Management
     draw_pile: List[Card] = Field(default_factory=list)

@@ -12,12 +12,12 @@ def loop_state():
     b = Board()
     
     # Red Hero: Initiative 10
-    c1 = Card(id="c_red", name="Slow", tier=CardTier.UNTIERED, color=CardColor.GOLD, initiative=10, primary_action=ActionType.ATTACK, effect_id="1", effect_text="foo")
+    c1 = Card(id="c_red", name="Slow", tier=CardTier.UNTIERED, color=CardColor.GOLD, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=4, effect_id="1", effect_text="foo")
     h_red = Hero(id="h_red", name="RedHero", team=TeamColor.RED, deck=[], hand=[c1])
     t_red = Team(color=TeamColor.RED, heroes=[h_red])
     
     # Blue Hero: Initiative 2
-    c2 = Card(id="c_blue", name="Fast", tier=CardTier.UNTIERED, color=CardColor.GOLD, initiative=2, primary_action=ActionType.MOVEMENT, effect_id="2", effect_text="bar")
+    c2 = Card(id="c_blue", name="Fast", tier=CardTier.UNTIERED, color=CardColor.GOLD, initiative=2, primary_action=ActionType.MOVEMENT, primary_action_value=3, effect_id="2", effect_text="bar")
     h_blue = Hero(id="h_blue", name="BlueHero", team=TeamColor.BLUE, deck=[], hand=[c2])
     t_blue = Team(color=TeamColor.BLUE, heroes=[h_blue])
     

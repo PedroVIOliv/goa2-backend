@@ -15,6 +15,7 @@ class Card(GameEntity):
     
     # Action Classification
     primary_action: ActionType
+    primary_action_value: Optional[int] = None
     secondary_actions: Dict[ActionType, int] = Field(default_factory=dict)
     
     # Range/Targeting Logic
