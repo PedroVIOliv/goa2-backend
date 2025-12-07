@@ -56,11 +56,12 @@ def test_hero_defaults(basic_card):
         id="h1",
         name="Knight",
         team=TeamColor.RED,
-        deck=[basic_card]
+        deck=[],
+        hand=[basic_card]
     )
     assert h.level == 1
     assert h.gold == 0
-    assert h.deck == [basic_card]
+    assert h.hand == [basic_card]
     assert h.team_obj is None
 
 def test_team_hero_link(basic_card):

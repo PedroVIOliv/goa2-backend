@@ -14,10 +14,15 @@ class Unit(GameEntity):
 
 class Hero(Unit):
     """
-    Static definition of a Hero character.
-    Dynamic state (HP, Level) will be in GameState.
+    Represents a specific Hero instance in the game.
+    Contains both static identity (ID, Name, Class) AND dynamic state (Level, Gold, Hand).
+    This object lives inside GameState.
     """
     deck: List[Card]
+    # Card Management
+    draw_pile: List[Card] = Field(default_factory=list)
+    hand: List[Card] = Field(default_factory=list)
+    discard_pile: List[Card] = Field(default_factory=list)
     level: int = 1
     gold: int = 0
     # Circular reference to parent Team

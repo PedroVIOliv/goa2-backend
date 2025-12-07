@@ -1,10 +1,14 @@
 from __future__ import annotations
-from typing import Dict, List, Optional
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
 
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor
+from goa2.domain.hex import Hex
+from goa2.domain.models import Team, TeamColor, Card
 from goa2.engine.phases import GamePhase, ResolutionStep
+from goa2.domain.types import HeroID, CardID, UnitID
+from goa2.domain.input import InputRequest, InputRequestType
 
 class GameState(BaseModel):
     """
@@ -19,13 +23,26 @@ class GameState(BaseModel):
     round: int = 1
     
     # ID of the Hero currently acting (Resolution Phase)
-    current_actor_id: Optional[str] = None
+    current_actor_id: Optional[HeroID] = None
     
-    # The queue of Cards to be resolved in the current turn.
-    # We might need a stricter definition of 'ResolvedCard' wrapper
-    # that includes (Card, OwnerHeroID, Initiative).
-    # For now, placeholder.
-    # resolution_queue: List[Any] = Field(default_factory=list)
+    # Interaction Stack
+    # The top of the stack is the active request waiting for input.
+    # Logic: 
+    # 1. Action pushes Request.
+    # 2. State pauses.
+    # 3. Client responds to Request[0].
+    # 4. Engine pops Request.
+    input_stack: List[InputRequest] = Field(default_factory=list)
+    
+    # Planning Phase Buffer: HeroID -> Card
+    pending_inputs: Dict[HeroID, Card] = Field(default_factory=dict)
+    
+    # Resolution Phase Queue: List of (HeroID, Card)
+    # Ordered by Initiative
+    resolution_queue: List[Tuple[HeroID, Card]] = Field(default_factory=list)
+
+    # Dynamic State: Unit ID -> Hex Location
+    unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict)
 
     class Config:
         # Pydantic V2 ConfigDict

@@ -66,3 +66,17 @@ class Card(GameEntity):
         if ActionType.HOLD not in self.secondary_actions:
             self.secondary_actions[ActionType.HOLD] = 0
         return self
+
+    @model_validator(mode='after')
+    def ensure_fast_travel_if_applicable(self) -> Card:
+        if not ActionType.FAST_TRAVEL in self.secondary_actions:
+            if self.primary_action == ActionType.MOVEMENT or ActionType.MOVEMENT in self.secondary_actions:
+                self.secondary_actions[ActionType.FAST_TRAVEL] = 0
+        return self
+
+    @model_validator(mode='after')
+    def ensure_clear_if_applicable(self) -> Card:
+        if not ActionType.CLEAR in self.secondary_actions:
+            if self.primary_action == ActionType.ATTACK or ActionType.ATTACK in self.secondary_actions:
+                self.secondary_actions[ActionType.CLEAR] = 0
+        return self
