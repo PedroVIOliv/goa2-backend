@@ -118,10 +118,7 @@ def perform_lane_push(state: GameState):
                 to_remove.append(uid)
                 
     for uid in to_remove:
-        loc = state.unit_locations[uid]
-        del state.unit_locations[uid]
-        if loc in state.board.tiles:
-             state.board.tiles[loc].occupant_id = None
+        state.remove_unit(uid)
         # Remove from Team
         for t in state.teams.values():
             t.minions = [m for m in t.minions if m.id != uid]
@@ -176,9 +173,7 @@ def spawn_minion_wave(state: GameState, zone_id: str):
             )
             
             state.teams[team].minions.append(minion)
-            state.unit_locations[new_id] = h
-            if tile:
-                tile.occupant_id = BoardEntityID(str(new_id))
+            state.move_unit(new_id, h)
 
 # --- Out of Bounds Mechanics ---
 
@@ -286,18 +281,7 @@ def enforce_minion_bounding(state: GameState, unit_id: UnitID):
         
     # Execute Update
     if final_hex:
-        # Update Location
-        del state.unit_locations[unit_id]
-        state.unit_locations[unit_id] = final_hex
-        
-        # Update Tiles
-        # Clear old tile
-        if current_loc in state.board.tiles:
-            state.board.tiles[current_loc].occupant_id = None
-            
-        # Set new tile
-        if final_hex in state.board.tiles:
-             state.board.tiles[final_hex].occupant_id = BoardEntityID(str(unit_id))
+        state.move_unit(unit_id, final_hex)
 
 
 

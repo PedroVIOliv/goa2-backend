@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Card, Minion
+from goa2.domain.models import Team, TeamColor, Card, Minion, Hero, Unit
 from goa2.engine.phases import GamePhase, ResolutionStep
-from goa2.domain.types import HeroID, CardID, UnitID
+from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 
 class GameState(BaseModel):
@@ -61,6 +61,64 @@ class GameState(BaseModel):
 
     # Dynamic State: Unit ID -> Hex Location
     unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict)
+
+    def get_hero(self, hero_id: HeroID) -> Optional[Hero]:
+        """Finds a Hero by ID."""
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if hero.id == hero_id:
+                    return hero
+        return None
+
+    def get_unit(self, unit_id: UnitID) -> Optional[Unit]:
+        """
+        Finds a Unit (Hero or Minion) by ID.
+        O(N) search across all teams.
+        """
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if str(hero.id) == str(unit_id):
+                    return hero
+            for minion in team.minions:
+                 if str(minion.id) == str(unit_id):
+                     return minion
+        return None
+
+    def move_unit(self, unit_id: UnitID, target_hex: Hex):
+        """
+        Moves a unit to a target hex, updating both unit_locations and board tiles.
+        Clears the old tile's occupant and sets the new tile's occupant.
+        """
+        from goa2.domain.types import BoardEntityID # Import locally to avoid circular if any, or just use string cast
+        
+        # 1. Update Unit Location Mapping
+        old_hex = self.unit_locations.get(unit_id)
+        self.unit_locations[unit_id] = target_hex
+        
+        # 2. Update Board Tiles (Grid)
+        if old_hex and old_hex in self.board.tiles:
+             # Only clear if it was occupied by THIS unit
+             current_occ = self.board.tiles[old_hex].occupant_id
+             if current_occ and str(current_occ) == str(unit_id):
+                 self.board.tiles[old_hex].occupant_id = None
+                 
+        if target_hex in self.board.tiles:
+            # Overwrite? Yes. Caller should validate emptiness if needed.
+            self.board.tiles[target_hex].occupant_id = BoardEntityID(str(unit_id))
+
+    def remove_unit(self, unit_id: UnitID):
+        """
+        Removes a unit from the board (locations and tiles).
+        Does NOT remove it from the Team roster.
+        """
+        if unit_id in self.unit_locations:
+            loc = self.unit_locations[unit_id]
+            del self.unit_locations[unit_id]
+            
+            if loc in self.board.tiles:
+                current_occ = self.board.tiles[loc].occupant_id
+                if current_occ and str(current_occ) == str(unit_id):
+                    self.board.tiles[loc].occupant_id = None
 
     class Config:
         # Pydantic V2 ConfigDict

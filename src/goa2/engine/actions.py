@@ -24,12 +24,7 @@ class PlayCardCommand(Command):
             raise ValueError(f"Cannot play card in phase {state.phase.name}")
 
         # Find Hero
-        hero = None
-        for team in state.teams.values():
-            for h in team.heroes:
-                if h.id == self.hero_id:
-                    hero = h
-                    break
+        hero = state.get_hero(self.hero_id)
         if not hero:
             raise ValueError(f"Hero {self.hero_id} not found")
 
@@ -151,12 +146,7 @@ class ChooseActionCommand(Command):
         hero_id, card = state.resolution_queue[0]
         
         # Identify Hero for Item lookups
-        hero = None
-        for t in state.teams.values():
-             for h in t.heroes:
-                 if h.id == hero_id:
-                     hero = h
-                     break
+        hero = state.get_hero(hero_id)
         if not hero: raise ValueError(f"Hero {hero_id} not found")
         
         # Validation: Verify asker matches currrent request
@@ -286,15 +276,7 @@ class PerformMovementCommand(Command):
             raise ValueError(f"Invalid movement path to {self.target_hex}")
             
         # Execute Move
-        # 1. Update Unit Location (Legacy/Quick Lookup)
-        state.unit_locations[unit_id] = self.target_hex
-        
-        # 2. Update Tile Occupancy (New Grid System)
-        if start_hex in state.board.tiles:
-            state.board.tiles[start_hex].occupant_id = None
-        
-        if self.target_hex in state.board.tiles:
-            state.board.tiles[self.target_hex].occupant_id = BoardEntityID(str(unit_id))
+        state.move_unit(unit_id, self.target_hex)
         
         # Cleanup / Finish Action
         state.input_stack.pop() # Remove Input Request
@@ -336,12 +318,8 @@ class PerformFastTravelCommand(Command):
              raise ValueError(f"Hero {hero_id} is not on the board")
              
         # Find actor team
-        actor_team = TeamColor.RED # Fallback
-        for t in state.teams.values():
-             for h in t.heroes:
-                 if str(h.id) == str(unit_id):
-                     actor_team = t.color
-                     break
+        actor = state.get_unit(unit_id)
+        actor_team = actor.team if actor else TeamColor.RED
         
         # FAST TRAVEL RESTRICTIONS (Rule 5.1 updated)
         # 1. StartZone Empty of Enemies
@@ -372,13 +350,7 @@ class PerformFastTravelCommand(Command):
                  raise ValueError("Fast Travel target bocked")
                  
         # Execute Move (Teleport)
-        state.unit_locations[unit_id] = self.target_hex
-        
-        if start_hex in state.board.tiles:
-            state.board.tiles[start_hex].occupant_id = None
-        
-        if self.target_hex in state.board.tiles:
-            state.board.tiles[self.target_hex].occupant_id = BoardEntityID(str(unit_id))
+        state.move_unit(unit_id, self.target_hex)
             
         # Cleanup
         state.input_stack.pop()
@@ -434,11 +406,7 @@ class SpawnMinionCommand(Command):
         # Or we can keep a "unit_registry" in State if needed.
         # For now, only location is critical.
         
-        state.unit_locations[self.unit_id] = self.location
-        
-        # Update Tile Occupancy
-        if self.location in state.board.tiles:
-            state.board.tiles[self.location].occupant_id = BoardEntityID(str(self.unit_id))
+        state.move_unit(self.unit_id, self.location)
             
         return state
 
@@ -520,12 +488,7 @@ class PlayDefenseCommand(Command):
         
         # Power Calculation
         # Find Defender Hero
-        defender = None
-        for t in state.teams.values():
-            for h in t.heroes:
-                if h.id == defender_id:
-                    defender = h
-                    break
+        defender = state.get_hero(defender_id)
         
         defense_card: Optional[Card] = None
         if self.card_id:
@@ -550,12 +513,7 @@ class PlayDefenseCommand(Command):
         from goa2.engine.combat import calculate_attack_power, calculate_defense_power
         
         # Re-Find Attacker (needed for calculate_attack_power items)
-        attacker = None
-        for t in state.teams.values():
-            for h in t.heroes:
-                if h.id == current_req.context["attacker_id"]:
-                    attacker = h
-                    break
+        attacker = state.get_hero(current_req.context["attacker_id"])
 
         attack_val = calculate_attack_power(attack_card, attacker)
         defense_val = calculate_defense_power(defender, state, defense_card) 
@@ -629,12 +587,7 @@ class UpgradeCardCommand(Command):
         current_req = target_req
 
         # 2. Identify Hero
-        hero = None
-        for t in state.teams.values():
-             for h in t.heroes:
-                 if h.id == self.hero_id:
-                     hero = h
-                     break
+        hero = state.get_hero(self.hero_id)
         if not hero: raise ValueError("Hero not found")
         
         # 3. Find The Chosen Card
