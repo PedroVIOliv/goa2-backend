@@ -4,6 +4,7 @@ from pydantic import Field
 from .enums import TeamColor, MinionType, StatType, CardTier, CardState
 from .base import GameEntity, BoardEntity
 from .card import Card
+from .marker import Marker
 
 if TYPE_CHECKING:
     from .team import Team
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 class Unit(BoardEntity):
     """Common base for Heroes and Minions."""
     team: Optional[TeamColor] = None
+    markers: List[Marker] = Field(default_factory=list)
 
 class Hero(Unit):
     """

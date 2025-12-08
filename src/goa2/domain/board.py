@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Set, Dict, Optional, List, Union, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor, MinionType
@@ -45,13 +45,21 @@ class SpawnPoint(BaseModel):
     type: SpawnType
     minion_type: Optional[MinionType] = None 
     
+    @model_validator(mode='after')
+    def validate_spawn_type(self) -> SpawnPoint:
+        if self.type == SpawnType.MINION and self.minion_type is None:
+             raise ValueError("Minion spawn point must specify minion_type")
+        if self.type == SpawnType.HERO and self.minion_type is not None:
+             raise ValueError("Hero spawn point cannot specify minion_type")
+        return self
+
     @property
     def is_minion_spawn(self) -> bool:
-        return self.minion_type is not None
+        return self.type == SpawnType.MINION
 
     @property
     def is_hero_spawn(self) -> bool:
-        return self.minion_type is None 
+        return self.type == SpawnType.HERO 
 
 
 class Board(BaseModel):

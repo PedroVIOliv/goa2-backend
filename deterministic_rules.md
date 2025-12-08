@@ -40,7 +40,7 @@ A Turn is strictly sequential but processes simultaneous inputs:
 3.  **Resolution Phase:**
     *   Cards are evaluated in order of **Initiative** (Highest to Lowest).
     *   **Tie-Breaking Rule:**
-        *   If `Team(A) != Team(B)`: Priority given to team indicated by **Tie Breaker Coin**. After `A` resolves, flip Coin.
+        *   If `Team(A) != Team(B)`: Priority given to player of the team indicated by **Tie Breaker Coin**. After one favored player resolves, flip Coin.
         *   If `Team(A) == Team(B)`: Logic pauses for explicit choice by owning Team.
     *   **Execution Step:** Active Player performs **One Action** (Primary or Secondary).
         *   *Trigger:* If Action has "This Turn" effect, activate it now.
@@ -92,7 +92,7 @@ A Turn is strictly sequential but processes simultaneous inputs:
 *   **Auras (Passive):**
     *   `Melee/Heavy`: Adjacent Ally +1 Defense / Adjacent Enemy -1 Defense.
     *   `Ranged`: Enemies in up to Range 2 get -1 Defense.
-*   **Heavy Immunity:** Immune to *all Actions* if a Friendly Non-Heavy acts as a shield in the same Zone.
+*   **Heavy Immunity:** Immune to *all Actions* and effects, until no more friendly minions are present. When this happens, the Heavy loses its immunity.
 *   **Bounding Rule (Out of Bounds):**
     *   Minions must reside in the `BattleZone`.
     *   *Correction Trigger:* If a Minion is physically located outside the `BattleZone` (e.g., after a Push), it **immediately** moves via shortest path to the nearest Empty Space within the `BattleZone`.
@@ -153,7 +153,7 @@ Each Hero has a deck of upgradable cards.
 
 ### 5.2 Card Text Logic
 *   **Execution:** Atomic, sequential execution of sentences/clauses.
-*   **Mandatory:** Default state. If a mandatory step fails, Action halts immediately.
+*   **Mandatory:** Default state. If a mandatory step fails, Action halts immediately, as if there was no text continuation.
 *   **Optional:** Steps marked `You may`, `Up to`, `If able`. Failure does not halt action.
 
 ### 5.3 Keywords (Logic Definitions)
@@ -202,5 +202,6 @@ Atomic steps upon executing an Attack Action:
         If the defeated hero has an unresolved effect, it is resolved with no effects.
         The next turn, just before he resolves his card, the defeated hero respawns.
     *   If `AttackPower <= DefensePower`: Attack is **Blocked** (No effect).
+    *   If the target was a minion, there is no defense interruption or anything like it. Minions are always defeated when attacked.
 5.  **Aftermath:** Apply "After Attack" effects (regardless of success, unless specified "If successful").
 
