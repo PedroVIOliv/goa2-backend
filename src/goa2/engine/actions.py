@@ -8,6 +8,7 @@ from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.engine.rules import validate_movement_path, validate_attack_target
+from goa2.engine.defeat import defeat_unit
 from goa2.engine.combat import calculate_attack_power, calculate_defense_power, resolve_combat
 from goa2.engine.effects import EffectRegistry, EffectContext, Effect
 import uuid
@@ -652,8 +653,7 @@ class AttackCommand(Command):
                  print(f"   [Combat] Minion Attack ({attack_val}) vs Defense ({defense_val})")
                  if resolve_combat(attack_val, defense_val):
                       print(f"   [Result] Minion {self.target_unit_id} DEFEATED!")
-                      # Removing from locs removes from board presence.
-                      del state.unit_locations[self.target_unit_id]
+                      defeat_unit(state, self.target_unit_id, killer_id=attacker_id)
              
              # --- EFFECT HOOK: Post-Attack (Minion Path) ---
              # We reuse the 'effect' retrieved earlier in Pre-Attack

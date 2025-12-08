@@ -1,5 +1,6 @@
 from goa2.engine.effects import Effect, EffectRegistry, EffectContext
 from goa2.domain.input import InputRequest, InputRequestType
+from goa2.engine.defeat import defeat_unit
 from goa2.domain.types import UnitID, HeroID
 from goa2.domain.models import TeamColor, Marker
 from goa2.domain.hex import Hex
@@ -92,7 +93,7 @@ class DiscardBehindEffect(Effect):
              elif target_id_str:
                  target_hero = ctx.state.get_hero(HeroID(target_id_str))
                  if target_hero:
-                     self._apply_discard(target_hero, ctx.state)
+                     self._apply_discard(target_hero, ctx.state, killer_id=ctx.actor.id)
                      print(f"   [Effect] {self.id} hits chosen {target_hero.name}!")
              
              ctx.card.metadata["discard_resolved"] = True
@@ -125,7 +126,7 @@ class DiscardBehindEffect(Effect):
                   # Re-insert at head
                   ctx.state.resolution_queue.insert(0, (ctx.actor.id, ctx.card))
         
-    def _apply_discard(self, hero, state=None):
+    def _apply_discard(self, hero, state=None, killer_id=None):
         if hero.hand:
             discarded = hero.hand.pop(0)
             discarded.state = "DISCARD"
@@ -134,8 +135,8 @@ class DiscardBehindEffect(Effect):
         else:
             print(f"   {hero.name} has no cards -> Defeated!")
             # Logic: Remove from board if defeated
-            if state and hero.id in state.unit_locations:
-                del state.unit_locations[hero.id]
+            if state:
+                defeat_unit(state, hero.id, killer_id=killer_id)
 
 # Register Instances
 EffectRegistry.register_instance(DiscardBehindEffect("effect_attack_discard_behind_repeat", 5, True))
