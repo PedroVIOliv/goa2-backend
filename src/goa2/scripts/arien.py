@@ -62,44 +62,70 @@ class DiscardBehindEffect(Effect):
         if not candidates:
             return
             
-        if len(candidates) == 1:
-            # Auto-select single target (or prompt? Prompt is safer but MVP auto)
-            # Actually rules say "Up to 1", implying optionality.
-            # But let's assume auto-hit if 1 for now, or forced choice.
-            self._apply_discard(candidates[0])
-            ctx.card.metadata["discard_resolved"] = True
+        if not candidates:
+            return
             
-        else:
-            # Multiple candidates -> Request Choice
-            req_id = str(uuid.uuid4())
-            candidate_ids = [u.id for u in candidates]
-            req = InputRequest(
-                id=req_id,
-                player_id=ctx.actor.id,
-                request_type=InputRequestType.SELECT_UNIT,
-                context={
-                    "criteria": "specific_units",
-                    "unit_ids": candidate_ids,
-                    "reason": f"Select hero to discard via {ctx.card.name}"
-                }
-            )
-            ctx.state.input_stack.append(req)
-            ctx.card.metadata["waiting_for_discard_target"] = True
-            # AttackCommand will detect stack change and interrupt.
+        # Always request choice to support "Up to 1" (Optional)
+        req_id = str(uuid.uuid4())
+        candidate_ids = [u.id for u in candidates]
+        req = InputRequest(
+            id=req_id,
+            player_id=ctx.actor.id,
+            request_type=InputRequestType.SELECT_UNIT,
+            context={
+                "criteria": "specific_units",
+                "unit_ids": candidate_ids,
+                "reason": f"Select hero to discard via {ctx.card.name}",
+                "can_skip": True
+            }
+        )
+        ctx.state.input_stack.append(req)
+        ctx.card.metadata["waiting_for_discard_target"] = True
+        # AttackCommand will detect stack change and interrupt.
 
     def on_post_action(self, ctx: EffectContext) -> None:
         if ctx.card.metadata.get("waiting_for_discard_target"):
              target_id_str = ctx.data.get("input_unit_id")
-             if target_id_str:
+             
+             if target_id_str == "SKIP":
+                 print(f"   [Effect] {self.id} skipped by user.")
+             elif target_id_str:
                  target_hero = ctx.state.get_hero(HeroID(target_id_str))
                  if target_hero:
-                     self._apply_discard(target_hero)
+                     self._apply_discard(target_hero, ctx.state)
                      print(f"   [Effect] {self.id} hits chosen {target_hero.name}!")
              
              ctx.card.metadata["discard_resolved"] = True
              ctx.card.metadata["waiting_for_discard_target"] = False
+             return
+             
+        # Repetition Logic
+        if self.repeat:
+             repeat_count = ctx.card.metadata.get("repeat_count", 0)
+             if repeat_count < 1:
+                  print(f"   [Effect] {ctx.card.name} REPEATS!")
+                  
+                  # Mark metadata for next run
+                  ctx.card.metadata["repeat_count"] = repeat_count + 1
+                  
+                  # New Standardized Repeat Logic
+                  ctx.card.metadata["forced_action"] = ctx.card.primary_action
+                  
+                  # Exclude current target
+                  excluded = ctx.card.metadata.get("excluded_targets", [])
+                  target_id = ctx.card.metadata.get("target_unit_id") # Set by AttackCommand
+                  if target_id:
+                       excluded.append(target_id)
+                  ctx.card.metadata["excluded_targets"] = excluded
+
+                  # Reset state for fresh execution
+                  ctx.card.metadata["discard_resolved"] = False
+                  ctx.card.metadata["target_unit_id"] = None
+                  
+                  # Re-insert at head
+                  ctx.state.resolution_queue.insert(0, (ctx.actor.id, ctx.card))
         
-    def _apply_discard(self, hero):
+    def _apply_discard(self, hero, state=None):
         if hero.hand:
             discarded = hero.hand.pop(0)
             discarded.state = "DISCARD"
@@ -107,6 +133,9 @@ class DiscardBehindEffect(Effect):
             print(f"   {hero.name} discarded {discarded.name}")
         else:
             print(f"   {hero.name} has no cards -> Defeated!")
+            # Logic: Remove from board if defeated
+            if state and hero.id in state.unit_locations:
+                del state.unit_locations[hero.id]
 
 # Register Instances
 EffectRegistry.register_instance(DiscardBehindEffect("effect_attack_discard_behind_repeat", 5, True))

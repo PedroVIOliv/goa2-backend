@@ -422,3 +422,308 @@ def test_spell_break(arien_state):
     assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD
 
 
+
+def test_violent_torrent_repetition(arien_state):
+    state = arien_state
+    
+    arien_id = HeroID("arien")
+    minion_id = UnitID("m1")
+    hero_id = HeroID("enemy")
+    
+    # Violent Torrent Card (Tier III)
+    # Copied from arien.py but simplified for test
+    card = Card(
+        id=CardID("violent_torrent"),
+        name="Violent Torrent",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=7,
+        effect_id="effect_attack_discard_behind_repeat", # Repeat=True
+        effect_text="Repeat"
+    )
+    
+    arien = Hero(id=arien_id, name="Arien", deck=[], hand=[card], team=TeamColor.RED)
+    enemy_hero = Hero(id=hero_id, name="Enemy", deck=[], hand=[Card(id="c1", name="C", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="", effect_text="")], team=TeamColor.BLUE)
+    minion = Minion(id=minion_id, name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
+    
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[arien])
+    state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[enemy_hero], minions=[minion])
+    
+    # Locations
+    state.move_unit(arien_id, Hex(q=0,r=0,s=0))
+    state.move_unit(minion_id, Hex(q=1,r=-1,s=0)) # Adjacent
+    state.move_unit(hero_id, Hex(q=1,r=0,s=-1)) # Adjacent
+    
+    # 1. Play Card
+    state.phase = GamePhase.PLANNING
+    PlayCardCommand(arien_id, card.id).execute(state)
+    RevealCardsCommand().execute(state)
+    ResolveNextCommand().execute(state)
+    
+    # 2. First Attack (Target Minion)
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    # Check Input
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_ENEMY
+    
+    # Execute Attack on Minion
+    AttackCommand(target_unit_id=minion_id).execute(state)
+    
+    # Minion should be dead
+    assert minion_id not in state.unit_locations
+    
+    # VERIFY REPETITION
+    # Card should be back in queue at index 0
+    assert state.resolution_queue
+    assert state.resolution_queue[0][1].id == card.id
+    assert card.metadata.get("repeat_count") == 1
+    assert card.metadata.get("forced_action") == ActionType.ATTACK
+    
+    # Loop should continue: ResolveNext needed to restart the Card
+    # WITH FORCED ACTION: Should SKIP Action Choice and go straight to Select Enemy
+    ResolveNextCommand().execute(state)
+    
+    # Verify we are NOT waiting for ACTION_CHOICE, but SELECT_ENEMY
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_ENEMY
+    # Verify Exclusions in Context
+    assert str(minion_id) in state.input_stack[-1].context.get("excluded_unit_ids", [])
+    
+    # TEST RESTRICTION: Try attacking Minion again (even if dead, ID is excluded)
+    # Re-add minion to locs temporarily just to test ID check? 
+    # Or just use Hero A (if we attacked Hero A first).
+    # Since Minion is dead, AttackCommand would fail on "Not on board" before Excluded check?
+    # AttackCommand checks exclusions AFTER "Save Target" but BEFORE "Get Locations".
+    # So we can test it!
+    
+    with pytest.raises(ValueError, match="is excluded"):
+         AttackCommand(target_unit_id=minion_id).execute(state)
+         
+    # 3. Second Attack (Target Hero)
+    AttackCommand(target_unit_id=hero_id).execute(state)
+    
+    # Verify Defense Request (Attack on Hero proceeds normally)
+    assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD
+    PlayDefenseCommand(card_id=None).execute(state) # Pass Defense
+    
+    # VERIFY NO MORE REPETITION
+    # Queue should be empty or next card (none here)
+    if state.resolution_queue:
+         # Should not be this card at head
+         assert state.resolution_queue[0][1].id != card.id
+    else:
+         assert True # Queue empty is good
+         
+    # Check Phase (If queue empty, Phase -> SETUP)
+    assert state.phase == GamePhase.SETUP
+
+def test_violent_torrent_complex_flow(arien_state):
+    """
+    Test Scheme:
+    1. Arien attacks Hero A. Hero B is behind A.
+    2. Effect triggers. Arien selects Hero B.
+    3. Hero B has no cards -> Defeated.
+    4. Violent Torrent Repeats (Forced Attack).
+    5. Arien attacks Hero C. Hero D is behind C.
+    6. Effect triggers. Arien selects SKIP.
+    7. Hero D is unaffected.
+    """
+    state = arien_state
+    
+    # IDs
+    arien_id = HeroID("arien")
+    hero_a = HeroID("h_a")
+    hero_b = HeroID("h_b")
+    hero_c = HeroID("h_c")
+    hero_d = HeroID("h_d")
+    
+    # Card
+    card = Card(
+        id=CardID("violent_torrent"),
+        name="Violent Torrent",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=7,
+        effect_id="effect_attack_discard_behind_repeat", 
+        effect_text="Repeat"
+    )
+    
+    # Heroes
+    # Arien
+    arien = Hero(id=arien_id, name="Arien", deck=[], hand=[card], team=TeamColor.RED)
+    
+    # Blue Team
+    # Hero A: Target 1
+    ha = Hero(id=hero_a, name="HA", deck=[], hand=[], team=TeamColor.BLUE) # No cards / irrelevant
+    # Hero B: Behind A. Target for Discard. HAND EMPTY -> Defeated.
+    hb = Hero(id=hero_b, name="HB", deck=[], hand=[], team=TeamColor.BLUE) 
+    # Hero C: Target 2
+    hc = Hero(id=hero_c, name="HC", deck=[], hand=[], team=TeamColor.BLUE)
+    # Hero D: Behind C. Target for Discard. Hand HAS CARD -> But Skipped.
+    hd = Hero(id=hero_d, name="HD", deck=[], hand=[Card(id="cx", name="CX", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.ATTACK, effect_id="", effect_text="")], team=TeamColor.BLUE)
+    
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[arien])
+    state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[ha, hb, hc, hd])
+    
+    # Locations
+    # Arien at (0,0)
+    state.move_unit(arien_id, Hex(q=0,r=0,s=0))
+    
+    # Line 1: A -> B
+    # Direction +1,-1 (q+1, r-1, s0)?
+    # A at (1,-1,0). B at (2,-2,0)?
+    # Distance is 5? Let's check effect distance. Violent Torrent is 5.
+    state.move_unit(hero_a, Hex(q=1,r=-1,s=0))
+    state.move_unit(hero_b, Hex(q=2,r=-2,s=0))
+    
+    # Line 2: C -> D (Different direction)
+    # Direction +1, 0, -1?
+    # C at (1,0,-1). D at (2,0,-2).
+    state.move_unit(hero_c, Hex(q=1,r=0,s=-1))
+    state.move_unit(hero_d, Hex(q=2,r=0,s=-2))
+    
+    # 1. Play Card
+    state.phase = GamePhase.PLANNING
+    PlayCardCommand(arien_id, card.id).execute(state)
+    RevealCardsCommand().execute(state)
+    ResolveNextCommand().execute(state)
+    
+    # 2. Attack Hero A
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_ENEMY
+    
+    AttackCommand(target_unit_id=hero_a).execute(state)
+    
+    # 3. Effect Triggers (Discard Behind)
+    # Should see SELECT_UNIT for Discard (targeting B)
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_UNIT
+    assert "discard" in state.input_stack[-1].context["reason"]
+    assert str(hero_b) in state.input_stack[-1].context["unit_ids"]
+    
+    # Select B
+    ResolveSkillCommand(target_unit_id=hero_b).execute(state)
+    
+    # B has no cards -> Should be Defeated
+    assert hero_b not in state.unit_locations
+    print("Hero B Defeated (Confirmed)")
+    
+    # 4. Resume Attack on A (Defense)
+    # Stack: SELECT_ENEMY (Persisted) -> Need to Resume to push DEFENSE_CARD
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    
+    # Stack: DEFENSE_CARD (A)
+    assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD
+    PlayDefenseCommand(card_id=None).execute(state)
+    
+    # 5. REPEAT TRIGGERED?
+    # Queue should have forced attack card
+    assert card.metadata.get("repeat_count") == 1
+    assert card.metadata.get("forced_action") == ActionType.ATTACK
+    
+    # ResolveNext (Auto-Attack)
+    ResolveNextCommand().execute(state)
+    
+    # Verify Select Enemy
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_ENEMY
+    
+    # 6. Attack Hero C
+    AttackCommand(target_unit_id=hero_c).execute(state)
+    
+    # 7. Effect Triggers (Discard Behind C -> Target D)
+    # Should see SELECT_UNIT Request
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_UNIT
+    assert "discard" in state.input_stack[-1].context["reason"]
+    assert str(hero_d) in state.input_stack[-1].context["unit_ids"]
+    assert state.input_stack[-1].context.get("can_skip") is True
+    
+    # 8. SKIP
+    ResolveSkillCommand(target_unit_id=UnitID("SKIP")).execute(state)
+    
+    # Verify D Unaffected
+    assert len(hd.hand) == 1
+    print("Hero D Skipped (Confirmed)")
+    
+    # 9. Resume Attack on C (Defense)
+    # Stack: SELECT_ENEMY (Persisted) -> Need to Resume to push DEFENSE_CARD
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    
+    assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD
+    PlayDefenseCommand(card_id=None).execute(state)
+    
+    # 10. End
+    assert state.phase == GamePhase.SETUP
+
+
+def test_violent_torrent_range_and_forced_discard(arien_state):
+    """
+    Test Scheme:
+    1. Arien attacks Hero A.
+    2. Hero B is 3 tiles behind Hero A. Default range is 5, so B is valid.
+    3. Verify Arien can select B.
+    4. Verify B MUST discard (hand size decreases).
+    """
+    state = arien_state
+    
+    arien_id = HeroID("arien")
+    hero_a = HeroID("h_a")
+    hero_b = HeroID("h_b")
+    
+    card = Card(
+        id=CardID("violent_torrent"),
+        name="Violent Torrent",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=7,
+        effect_id="effect_attack_discard_behind_repeat",
+        effect_text="Repeat"
+    )
+    
+    # Setup
+    arien = Hero(id=arien_id, name="Arien", deck=[], hand=[card], team=TeamColor.RED)
+    ha = Hero(id=hero_a, name="HA", deck=[], hand=[], team=TeamColor.BLUE)
+    # Hero B has 2 cards.
+    hb = Hero(id=hero_b, name="HB", deck=[], hand=[
+        Card(id="d1", name="D1", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.ATTACK, effect_id="", effect_text=""),
+        Card(id="d2", name="D2", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.ATTACK, effect_id="", effect_text="")
+    ], team=TeamColor.BLUE)
+    
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[arien])
+    state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[ha, hb])
+    
+    # Locations
+    state.move_unit(arien_id, Hex(q=0,r=0,s=0))
+    state.move_unit(hero_a, Hex(q=1,r=-1,s=0))
+    # B is 3 tiles behind A.
+    # A is at distance 1 from Arien. B needs to be distance 1+3=4 from Arien in same line.
+    state.move_unit(hero_b, Hex(q=4,r=-4,s=0)) 
+    
+    # Play Card
+    state.phase = GamePhase.PLANNING
+    PlayCardCommand(arien_id, card.id).execute(state)
+    RevealCardsCommand().execute(state)
+    ResolveNextCommand().execute(state)
+    
+    # Attack A
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    AttackCommand(target_unit_id=hero_a).execute(state)
+    
+    # Verify Selection Request for B
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_UNIT
+    assert "discard" in state.input_stack[-1].context["reason"]
+    # B is valid candidate
+    assert str(hero_b) in state.input_stack[-1].context["unit_ids"]
+    
+    # Arien Chooses B
+    ResolveSkillCommand(target_unit_id=hero_b).execute(state)
+    
+    # Verify B Discarded (One card popped)
+    assert len(hb.hand) == 1
+    assert hb.discard_pile[-1].id == "d1"
+    
+    # Resume
+    ChooseActionCommand(ActionType.ATTACK).execute(state) 
+    assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD

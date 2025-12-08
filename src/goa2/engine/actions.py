@@ -134,6 +134,27 @@ class ResolveNextCommand(Command):
         hero_id, card = state.resolution_queue[0]
         state.current_actor_id = hero_id
         
+        # Check Forced Action (Repeat Logic)
+        forced_action = card.metadata.get("forced_action")
+        if forced_action:
+             print(f"   [Resolve] Forced Action: {forced_action}")
+             # Ensure we are not waiting for input (double check safety)
+             # Push dummy request? No, ChooseActionCommand expects to pop one.
+             # Wait, ChooseActionCommand pops InputRequestType.ACTION_CHOICE.
+             # If we skip pushing it, ChooseActionCommand will fail validation "Not waiting for any input".
+             # So we MUST push it, and then immediately consume it.
+             
+             req_id = str(uuid.uuid4())
+             req = InputRequest(
+                id=req_id,
+                player_id=hero_id,
+                request_type=InputRequestType.ACTION_CHOICE
+             )
+             state.input_stack.append(req)
+             
+             # Immediately Execute
+             return ChooseActionCommand(forced_action).execute(state)
+
         # ALWAYS Wait for Choice first
         req_id = str(uuid.uuid4())
         req = InputRequest(
@@ -187,10 +208,17 @@ class ChooseActionCommand(Command):
             # Push Next Request based on Type
             if self.action_type == ActionType.ATTACK:
                 req_id = str(uuid.uuid4())
+                
+                ctx_data = {}
+                excluded = card.metadata.get("excluded_targets")
+                if excluded:
+                     ctx_data["excluded_unit_ids"] = excluded
+                     
                 req = InputRequest(
                     id=req_id,
                     player_id=hero_id,
-                    request_type=InputRequestType.SELECT_ENEMY
+                    request_type=InputRequestType.SELECT_ENEMY,
+                    context=ctx_data
                 )
                 state.input_stack.append(req)
                 return state
@@ -577,6 +605,11 @@ class AttackCommand(Command):
         # Save Target to Metadata for resumption
         card.metadata["target_unit_id"] = str(self.target_unit_id)
         
+        # Validation: Is target excluded? (Repeat restriction)
+        excluded = card.metadata.get("excluded_targets", [])
+        if str(self.target_unit_id) in excluded:
+             raise ValueError(f"Target {self.target_unit_id} is excluded (already attacked)")
+        
         attacker_pos = state.unit_locations.get(attacker_unit_id)
         target_pos = state.unit_locations.get(self.target_unit_id)
         
@@ -622,8 +655,36 @@ class AttackCommand(Command):
                       # Removing from locs removes from board presence.
                       del state.unit_locations[self.target_unit_id]
              
+             # --- EFFECT HOOK: Post-Attack (Minion Path) ---
+             # We reuse the 'effect' retrieved earlier in Pre-Attack
+             if effect:
+                  # Context might need target info again if it changed or if we want to ensure consistency
+                  # For now reusing 'ctx' created in Pre-Attack if available, otherwise recreate?
+                  # Pre-Attack 'ctx' was local. We need to recreate or use if still in scope?
+                  # 'ctx' variable from line 601 is in scope.
+                  # But wait, line 601 `ctx` creation was conditional on `effect`.
+                  # And if we returned early (line 605), we wouldn't be here.
+                  # But we MIGHT have returned early if input was needed.
+                  # If input was needed (Select Enemy), we popped it (line 608).
+                  # So we are here.
+                  # We should recreate context to be safe and stateless.
+                  
+                  ctx_post = EffectContext(state=state, command=self, actor=attacker_unit, card=card, target=target_unit)
+                  effect.on_post_action(ctx_post)
+
              # Automatic Cleanup (Since we skipped Defense Phase)
+             # NOTE: If the effect re-inserted the card (Repetition), we should NOT pop the current card if it's still head of queue.
+             # Logic: If effect requested new input (for repetition), we should suspend.
+             
+             if state.input_stack:
+                 # Effect pushed input (e.g. Repetition Select Enemy).
+                 # Treat as "suspended". Do NOT pop resolution queue.
+                 return state
+
              if state.resolution_queue:
+                  # Check if we should pop.
+                  # If we repeated, the card might be at index 0 (re-inserted) or we just operate on HEAD.
+                  # Standard behavior: Pop HEAD.
                   completed_hero_id, completed_card = state.resolution_queue.pop(0)
                   completed_card.state = CardState.RESOLVED
              
@@ -717,11 +778,12 @@ class PlayDefenseCommand(Command):
              
              ctx = EffectContext(state=state, command=self, actor=attacker_unit, card=attack_card, target=defender_unit)
              
-             # Pass data? Might be lost since we re-created context.
-             # This is a limitation: Pre-Attack data (in AttackCommand) is not passed to Post-Attack (in PlayDefenseCommand).
-             # For now, simplistic stateless effects.
              attack_effect.on_post_action(ctx)
         
+        # Check if Effect requested new Input (e.g. Repetition)
+        if state.input_stack:
+             return state
+
         # Resolve Main Action (Attacker).
         # Since Attack is done, we pop the resolution queue too.
         completed_hero_id, completed_card = state.resolution_queue.pop(0)
