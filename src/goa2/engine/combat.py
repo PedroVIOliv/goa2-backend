@@ -1,5 +1,6 @@
-from typing import Optional, List, Dict
 from goa2.domain.models import Card, StatType, Unit, Hero, MinionType
+from goa2.engine.effects import EffectContext, EffectRegistry
+from typing import Optional, List, Dict
 from goa2.domain.hex import Hex
 
 from goa2.domain.state import GameState
@@ -21,7 +22,7 @@ def calculate_attack_power(card: Optional[Card], attacker: Hero) -> int:
     
     return base_power + item_bonus
 
-def calculate_defense_power(defender: Hero, state: GameState, card: Optional[Card] = None) -> int:
+def calculate_defense_power(defender: Hero, state: GameState, card: Optional[Card] = None, ctx: Optional[EffectContext] = None) -> int:
     """
     Calculates total defense power.
     Base (3 or Card Value) + Hero Items + Minion Auras.
@@ -34,7 +35,9 @@ def calculate_defense_power(defender: Hero, state: GameState, card: Optional[Car
              base_defense = card.secondary_actions[StatType.DEFENSE]
     
     # Item Bonuses
-    item_bonus = defender.items.get(StatType.DEFENSE, 0)
+    item_bonus = 0
+    if getattr(defender, 'items', None):
+         item_bonus = defender.items.get(StatType.DEFENSE, 0)
     
     # Minion Auras
     aura_bonus = 0
@@ -89,7 +92,25 @@ def calculate_defense_power(defender: Hero, state: GameState, card: Optional[Car
                        if minion_obj.type == MinionType.RANGED:
                            aura_bonus -= 1
                         
-    return base_defense + item_bonus + aura_bonus
+    
+    components = {
+        "base": base_defense,
+        "items": item_bonus,
+        "auras": aura_bonus
+    }
+    
+    # Apply Effect Hook
+    if card and card.effect_id:
+        effect = EffectRegistry.get(card.effect_id)
+        if effect and ctx:
+             effect.modify_defense_components(components, ctx)
+        elif effect and not ctx:
+             # Try to run without full context if possible? 
+             # Or construct partial context here?
+             # Better to require ctx for modifications.
+             pass
+
+    return sum(components.values())
 
 def resolve_combat(attack_power: int, defense_power: int) -> bool:
     """

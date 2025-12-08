@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from typing import ClassVar, List, Iterator
 
 class HexDirection(int, Enum):
@@ -19,13 +19,11 @@ class Hex(BaseModel):
     Cube Coordinates for a Hexagonal Grid.
     Constraint: q + r + s == 0
     """
+    model_config = ConfigDict(frozen=True)
+
     q: int
     r: int
     s: int
-
-    # Allow using Hex as hash keys in sets/dicts
-    class Config:
-        frozen = True
 
     @field_validator('s')
     @classmethod

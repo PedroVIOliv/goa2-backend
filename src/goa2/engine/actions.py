@@ -1,15 +1,30 @@
-from typing import List, Tuple, Dict, Optional
-from goa2.engine.command import Command
+from typing import List, Optional, Tuple, Dict, Any
+from abc import ABC, abstractmethod
 from goa2.domain.state import GameState
+from goa2.domain.board import Board
+from goa2.domain.models import ActionType, Card, Minion, MinionType, TeamColor, Team, CardState, Marker, CardTier, StatType
 from goa2.domain.input import InputRequest, InputRequestType
-from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team, CardState, CardTier, StatType
 from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.engine.rules import validate_movement_path, validate_attack_target
 from goa2.engine.combat import calculate_attack_power, calculate_defense_power, resolve_combat
-from goa2.engine.effects import EffectRegistry, EffectContext
+from goa2.engine.effects import EffectRegistry, EffectContext, Effect
 import uuid
+
+def is_silenced(unit) -> bool:
+    if not unit: return False
+    # Check markers
+    if hasattr(unit, 'markers'):
+        return any(m.name == "SILENCE" for m in unit.markers)
+    return False
+
+class Command(ABC):
+    """
+    Base class for all commands in the game engine.
+    """
+    def execute(self, state: GameState) -> GameState:
+        raise NotImplementedError
 
 class PlayCardCommand(Command):
     """
@@ -142,65 +157,147 @@ class ChooseActionCommand(Command):
         
         current_req = state.input_stack[-1]
         if current_req.request_type != InputRequestType.ACTION_CHOICE:
-            raise ValueError(f"Not waiting for Action Choice, waiting for {current_req.request_type}")
+            # Allow Resuming/Interruption if generic input handling is enabled for this command wrapper.
+            # We skip the "Start Action" validation block and fall through to delegation.
+            pass
+        else:
+            # "Start Action" Logic (Respond to ACTION_CHOICE)
+            hero_id, card = state.resolution_queue[0]
             
-        hero_id, card = state.resolution_queue[0]
-        
-        # Identify Hero for Item lookups
-        hero = state.get_hero(hero_id)
-        if not hero: raise ValueError(f"Hero {hero_id} not found")
-        
-        # Validation: Verify asker matches currrent request
-        # (Skip strict ID check for MVP or use current_req.player_id)
-        
-        # Validation: Is this action available?
-        available = False
-        if card.primary_action == self.action_type:
-            available = True
-        elif self.action_type in card.secondary_actions:
-            available = True
+            # Identify Hero for Item lookups
+            hero = state.get_hero(hero_id)
+            if not hero: raise ValueError(f"Hero {hero_id} not found")
             
-        if not available:
-            raise ValueError(f"Action {self.action_type} not available on card {card.id}")
+            # Validation: Verify asker matches currrent request
+            # (Skip strict ID check for MVP or use current_req.player_id)
             
-        # Logic Branch
-        
-        # POP the Choice Request first
-        state.input_stack.pop()
-        
+            # Validation: Is this action available?
+            available = False
+            if card.primary_action == self.action_type:
+                available = True
+            elif self.action_type in card.secondary_actions:
+                available = True
+                
+            if not available:
+                raise ValueError(f"Action {self.action_type} not available on card {card.id}")
+                
+            # POP the Choice Request
+            state.input_stack.pop()
+            
+            # Push Next Request based on Type
+            if self.action_type == ActionType.ATTACK:
+                req_id = str(uuid.uuid4())
+                req = InputRequest(
+                    id=req_id,
+                    player_id=hero_id,
+                    request_type=InputRequestType.SELECT_ENEMY
+                )
+                state.input_stack.append(req)
+                return state
 
+            elif self.action_type == ActionType.MOVEMENT:
+                # Determine Movement Value
+                move_val = 0
+                if card.primary_action == ActionType.MOVEMENT:
+                    move_val = card.primary_action_value or 2 # Default 2?
+                elif ActionType.MOVEMENT in card.secondary_actions:
+                    move_val = card.secondary_actions[ActionType.MOVEMENT]
+                
+                # Apply Item Bonuses
+                if hero.items:
+                     move_val += hero.items.get(StatType.MOVEMENT, 0)
+                
+                # Push Request
+                req_id = str(uuid.uuid4())
+                req = InputRequest(
+                    id=req_id,
+                    player_id=hero_id,
+                    request_type=InputRequestType.MOVEMENT_HEX,
+                    context={"max_steps": move_val}
+                )
+                state.input_stack.append(req)
+                return state
+                
+            elif self.action_type == ActionType.FAST_TRAVEL:
+                 req_id = str(uuid.uuid4())
+                 req = InputRequest(
+                    id=req_id,
+                    player_id=hero_id,
+                    request_type=InputRequestType.FAST_TRAVEL_DESTINATION
+                 )
+                 state.input_stack.append(req)
+                 return state
+
+            elif self.action_type == ActionType.SKILL:
+                 # Trigger Effect Pre-Action
+                 effect = None
+                 # Check Silence
+                 if not is_silenced(hero):
+                      effect = EffectRegistry.get(card.effect_id)
+                 
+                 if effect:
+                     ctx = EffectContext(state=state, command=self, actor=hero, card=card)
+                     effect.on_pre_action(ctx)
+                     
+                     if state.input_stack:
+                         # Effect requested input. Wait.
+                         return state
+                     else:
+                         # No input needed? Run Post-Action immediately (Instants)
+                         effect.on_post_action(ctx)
+                         
+                         # CLEANUP (Same as Post-Move/Post-Attack)
+                         state.resolution_queue.pop(0) # Remove Card
+                         card.state = CardState.RESOLVED
+                         if state.resolution_queue:
+                            state.current_actor_id = state.resolution_queue[0][0]
+                         else:
+                            state.current_actor_id = None
+                            state.phase = GamePhase.SETUP
+                            state.resolution_step = ResolutionStep.NONE
+                         
+                         return state
+                 else:
+                     # No effect? Just cleanup.
+                     state.resolution_queue.pop(0)
+                     card.state = CardState.RESOLVED
+                     if state.resolution_queue:
+                         state.current_actor_id = state.resolution_queue[0][0]
+                     else:
+                        state.current_actor_id = None
+                        state.phase = GamePhase.SETUP
+                        state.resolution_step = ResolutionStep.NONE
+                     return state
+
+            # For other actions...
+            # Fall through to Dispatch Logic (below)
+
+        # Dispatch / Resume Logic
+        # We reach here if:
+        # 1. We just popped ACTION_CHOICE (but we returned early for most cases above).
+        # 2. We were called with non-ACTION_CHOICE (Resuming).
+        
+        # If we returned above, we won't be here.
+        # But wait! If we popped ACTION_CHOICE and pushed SELECT_ENEMY, we returned strict?
+        # Yes.
+        
+        # So this section is ONLY for "Resuming" (Case 2).
+        
         if self.action_type == ActionType.ATTACK:
-            # Transition to Target Selection
-            req_id = str(uuid.uuid4())
-            req = InputRequest(
-                id=req_id,
-                player_id=hero_id,
-                request_type=InputRequestType.SELECT_ENEMY
-            )
-            state.input_stack.append(req)
-            return state
-
-        elif self.action_type == ActionType.MOVEMENT:
-            # Determine Movement Value
-            move_val = 0
-            if card.primary_action == ActionType.MOVEMENT:
-                 move_val = card.primary_action_value or 0
-            elif ActionType.MOVEMENT in card.secondary_actions:
-                 move_val = card.secondary_actions[ActionType.MOVEMENT]
-
-            # Apply Item Bonuses (Movement)
-            move_val += hero.items.get(StatType.MOVEMENT, 0)
-
-            # Transition to Movement Input -> PUSH new request
-            req_id = str(uuid.uuid4())
-            req = InputRequest(
-                id=req_id,
-                player_id=hero_id,
-                request_type=InputRequestType.MOVEMENT_HEX,
-                context={"max_steps": move_val}
-            )
-            state.input_stack.append(req)
-            return state
+             if current_req.request_type == InputRequestType.SELECT_ENEMY:
+                 # Check if we have a persisted target (Resumption)
+                 hero_id, card = state.resolution_queue[0]
+                 target_id_str = card.metadata.get("target_unit_id")
+                 if target_id_str:
+                      return AttackCommand(target_unit_id=UnitID(target_id_str)).execute(state)
+                 else:
+                      # If no persisted target, we can't auto-resume without input processing.
+                      # But in Test, input is only on stack.
+                      # Ideally, we should parse the input here if it's new?
+                      # Or assume AttackCommand handles it if passed None?
+                      # AttackCommand constructor requires target_id.
+                      # Let's assume for Resumption we MUST have metadata.
+                      pass
 
         elif self.action_type == ActionType.FAST_TRAVEL:
              req_id = str(uuid.uuid4())
@@ -226,7 +323,13 @@ class ChooseActionCommand(Command):
             # Rule: Effects only trigger if they match the Primary Action.
             effect = None
             if card.primary_action == ActionType.SKILL:
-                 effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
+                 # Identify Hero for Item lookups
+                hero_id, card = state.resolution_queue[0]
+                hero = state.get_hero(hero_id)
+                if not hero: raise ValueError(f"Hero {hero_id} not found")
+
+                if not is_silenced(hero):
+                     effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
             # Prepare Context (Preliminary)
             ctx = EffectContext(state=state, command=self, actor=hero, card=card, target=None) if effect else None
 
@@ -303,11 +406,14 @@ class PerformMovementCommand(Command):
             
         # Execute Move
         
+        unit = state.get_unit(unit_id)
+
         # --- EFFECT HOOK: Pre-Move ---
         # Rule: Effects only trigger if they match the Primary Action.
         effect = None
         if card.primary_action == ActionType.MOVEMENT:
-            effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
+            if not is_silenced(unit):
+                 effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
         eff_ctx = None
         if effect:
             eff_ctx = EffectContext(state=state, command=self, actor=state.get_unit(unit_id), card=card, target=None) # Target is hex, not unit
@@ -358,7 +464,6 @@ class PerformFastTravelCommand(Command):
         if not start_hex:
              raise ValueError(f"Hero {hero_id} is not on the board")
              
-        # Find actor team
         actor = state.get_unit(unit_id)
         actor_team = actor.team if actor else TeamColor.RED
         
@@ -375,7 +480,6 @@ class PerformFastTravelCommand(Command):
              raise ValueError("Cannot Fast Travel: Enemies in Dest Zone")
         
         # 3. Zone Adjacency (Rule 5.1)
-        # Must be Same Zone OR Adjacent Zone
         if start_zone_id and dest_zone_id:
             start_zone = state.board.zones.get(start_zone_id)
             if start_zone_id != dest_zone_id:
@@ -391,18 +495,15 @@ class PerformFastTravelCommand(Command):
                  raise ValueError("Fast Travel target bocked")
                  
         # --- EFFECT HOOK: Pre-FastTravel ---
-        # Rule: Effects only trigger if they match the Primary Action.
-        # Rule 2: Fast Travel NEVER triggers effects (even if Primary).
         effect = None
-        # Remove effect logic here entirely or keep simplistic check that fails
-        # strict "NEVER trigger effects" means we just don't check registry.
+        if card.primary_action == ActionType.FAST_TRAVEL:
+             # Check Silence
+             if not is_silenced(actor):
+                  effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
         
         # Execute Move (Teleport)
         state.move_unit(unit_id, self.target_hex)
 
-        # --- EFFECT HOOK: Post-FastTravel ---
-        pass  
-            
         # Cleanup
         state.input_stack.pop()
         completed_hero_id, completed_card = state.resolution_queue.pop(0)
@@ -433,29 +534,20 @@ class SpawnMinionCommand(Command):
         if self.location in state.unit_locations.values():
             raise ValueError(f"Location {self.location} occupied")
             
-        # Create Minion Model
         minion = Minion(
             id=self.unit_id,
             name=f"{self.minion_type.name} Minion",
             type=self.minion_type,
             team=self.team,
-            value=1 # Default value
+            value=1
         )
         
         if self.team not in state.teams:
-             # Create team if missing (for MVP setup/debug convenience)
              state.teams[self.team] = Team(color=self.team)
              
         team_obj = state.teams.get(self.team)
         if team_obj:
             team_obj.minions.append(minion)
-        
-        # We still need global tracking of "ID -> Unit"?
-        # GameState.unit_locations tracks location.
-        # But if we need to look up Unit by ID, we now need to search Teams.
-        # This is slower O(N) but acceptable for MVP.
-        # Or we can keep a "unit_registry" in State if needed.
-        # For now, only location is critical.
         
         state.move_unit(self.unit_id, self.location)
             
@@ -474,15 +566,18 @@ class AttackCommand(Command):
              raise ValueError("Not waiting for input")
              
         current_req = state.input_stack[-1]
-        if current_req.request_type != InputRequestType.SELECT_ENEMY:
-            raise ValueError(f"Not waiting for enemy selection, waiting for {current_req.request_type}")
-            
+        
         # Identify Attacker
         attacker_id, card = state.resolution_queue[0]
+        if not self.target_unit_id and card.metadata.get("target_unit_id"):
+             self.target_unit_id = UnitID(card.metadata["target_unit_id"])
+
         attacker_unit_id = UnitID(str(attacker_id))
-        attacker_pos = state.unit_locations.get(attacker_unit_id)
         
-        # Identify Target
+        # Save Target to Metadata for resumption
+        card.metadata["target_unit_id"] = str(self.target_unit_id)
+        
+        attacker_pos = state.unit_locations.get(attacker_unit_id)
         target_pos = state.unit_locations.get(self.target_unit_id)
         
         if not attacker_pos or not target_pos:
@@ -491,34 +586,57 @@ class AttackCommand(Command):
         # Validate Attack (Range, Line of Sight)
         range_val = card.range_value if card.is_ranged else 1
         
-        # TODO: Handle multi-step targeting if card needs it? 
-        # For now, simple standard attack.
-        
         if not validate_attack_target(state.unit_locations, attacker_pos, target_pos, range_val):
              raise ValueError("Invalid target (out of range/sight)")
              
-        # ATTACK IS VALID. 
-        
         # --- EFFECT HOOK: Pre-Attack ---
-        # Rule: Effects only trigger if they match the Primary Action.
         effect = None
-        if card.primary_action == ActionType.ATTACK:
-             effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
-        # We need Context. 
-        # Attacker Unit Object?
         attacker_unit = state.get_unit(attacker_unit_id)
+        if card.primary_action == ActionType.ATTACK:
+             if not is_silenced(attacker_unit):
+                  effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
         target_unit = state.get_unit(self.target_unit_id)
         
         if effect:
              ctx = EffectContext(state=state, command=self, actor=attacker_unit, card=card, target=target_unit)
              effect.on_pre_action(ctx)
+             
+             if state.input_stack and state.input_stack[-1].request_type != InputRequestType.SELECT_ENEMY:
+                 return state
         
-        # 1. Pop the 'Select Enemy' request.
-        state.input_stack.pop()
+        if state.input_stack and state.input_stack[-1].request_type == InputRequestType.SELECT_ENEMY:
+            state.input_stack.pop()
         
+        # Check if Target is Minion -> Auto-Resolve (MVP Rule: Minions don't defend with cards)
+        if isinstance(target_unit, Minion):
+             # Calculate Attack
+             attacker_hero = state.get_hero(attacker_id) # Attacker is Hero?
+             
+             if attacker_hero:
+                 attack_val = calculate_attack_power(card, attacker_hero)
+                 defense_val = 0 # Minions have 0 defense/value?
+                 
+                 print(f"   [Combat] Minion Attack ({attack_val}) vs Defense ({defense_val})")
+                 if resolve_combat(attack_val, defense_val):
+                      print(f"   [Result] Minion {self.target_unit_id} DEFEATED!")
+                      # Removing from locs removes from board presence.
+                      del state.unit_locations[self.target_unit_id]
+             
+             # Automatic Cleanup (Since we skipped Defense Phase)
+             if state.resolution_queue:
+                  completed_hero_id, completed_card = state.resolution_queue.pop(0)
+                  completed_card.state = CardState.RESOLVED
+             
+             if state.resolution_queue:
+                  state.current_actor_id = state.resolution_queue[0][0]
+             else:
+                  state.current_actor_id = None
+                  state.phase = GamePhase.SETUP
+                  state.resolution_step = ResolutionStep.NONE
+
+             return state
+
         # 2. Push the 'Defense' request for the TARGET player.
-        # We need to find which HeroID corresponds to target_unit_id.
-        # Ideally UnitID == HeroID for heroes.
         target_hero_id = HeroID(str(self.target_unit_id))
         
         req_id = str(uuid.uuid4())
@@ -540,7 +658,7 @@ class PlayDefenseCommand(Command):
     The Defender plays a card to block.
     """
     def __init__(self, card_id: Optional[CardID] = None):
-        self.card_id = card_id # None means "Pass" (Take hit)
+        self.card_id = card_id
 
     def execute(self, state: GameState) -> GameState:
         if not state.input_stack:
@@ -551,15 +669,10 @@ class PlayDefenseCommand(Command):
             raise ValueError("Not waiting for defense")
             
         defender_id = current_req.player_id
-        
-        # Power Calculation
-        # Find Defender Hero
         defender = state.get_hero(defender_id)
         
         defense_card: Optional[Card] = None
         if self.card_id:
-            # Find card in hand
-            # We must remove it from hand too!
             for i, c in enumerate(defender.hand):
                 if c.id == self.card_id:
                     defense_card = c
@@ -569,48 +682,37 @@ class PlayDefenseCommand(Command):
             if not defense_card:
                  raise ValueError("Defense card not found in hand")
             
-            # State Transition -> DISCARD (Defense cards are resolved immediately)
             defense_card.state = CardState.DISCARD
 
-        # Get the attack card from the resolution queue
         _attacker_id, attack_card = state.resolution_queue[0]
-
-        # Calculate Attack and Defense Power
-        from goa2.engine.combat import calculate_attack_power, calculate_defense_power
-        
-        # Re-Find Attacker (needed for calculate_attack_power items)
         attacker = state.get_hero(current_req.context["attacker_id"])
-
         attack_val = calculate_attack_power(attack_card, attacker)
-        defense_val = calculate_defense_power(defender, state, defense_card) 
         
-        # Log
+        def_ctx = None
+        if defense_card and defense_card.effect_id:
+             attacker_unit = state.get_unit(UnitID(str(attacker.id))) if attacker else None
+             def_ctx = EffectContext(state=state, command=self, actor=defender, card=defense_card, target=attacker_unit)
+
+        defense_val = calculate_defense_power(defender, state, defense_card, ctx=def_ctx) 
+        
         print(f"   [Combat] Attack ({attack_val}) vs Defense ({defense_val})")
         
-        # Resolve
-        from goa2.engine.combat import resolve_combat
         if resolve_combat(attack_val, defense_val):
             print(f"   [Result] Hero {defender_id} DEFEATED!")
-            # Logic: Remove life counter, etc.
-            # Pop stack
         else:
             print(f"   [Result] Attack BLOCKED!")
             
-        # Done. Pop Defense Request.
         state.input_stack.pop()
         
         # --- EFFECT HOOK: Post-Attack ---
-        # Triggered here because Combat is now fully resolved.
-        # We need the Attacker's Card Effect.
         attack_effect = None
         if attack_card.primary_action == ActionType.ATTACK:
-             attack_effect = EffectRegistry.get(attack_card.effect_id) if attack_card.effect_id else None
-        if attack_effect:
-             # Re-construct Context? 
-             # We need Attacker Unit and Target Unit (Defender)
-             # Attacker:
              attacker_unit = state.get_unit(UnitID(str(_attacker_id)))
-             # Defender:
+             if not is_silenced(attacker_unit):
+                  attack_effect = EffectRegistry.get(attack_card.effect_id) if attack_card.effect_id else None
+        
+        if attack_effect:
+             attacker_unit = state.get_unit(UnitID(str(_attacker_id)))
              defender_unit = state.get_unit(UnitID(str(defender_id)))
              
              ctx = EffectContext(state=state, command=self, actor=attacker_unit, card=attack_card, target=defender_unit)
@@ -755,6 +857,8 @@ class ResolveSkillCommand(Command):
         if not state.input_stack:
              raise ValueError("Not waiting for input")
              
+        current_req = state.input_stack[-1]
+              
         # Identify Actor/Card
         hero_id, card = state.resolution_queue[0]
         
@@ -786,7 +890,34 @@ class ResolveSkillCommand(Command):
         effect.on_post_action(ctx)
         
         # Cleanup / Finish
-        state.input_stack.pop() # Pop the SELECT_X request
+        # We need to remove the specific request that was just resolved.
+        # It's explicitly valid to assume it's the one that triggered this command,
+        # but if on_post_action pushed NEW requests, they are on TOP.
+        # So we need to find and remove the 'completed' request carefully or 
+        # assume the effect managed the stack? 
+        # Standard: Effect PUSHES on top. So the 'completed' request is deeper?
+        # No, 'on_post_action' runs. 
+        # Input Stack: [Req1] -> ResolveSkill -> on_post hooks -> Pushes [Req2] -> Stack: [Req1, Req2]
+        # We want to remove Req1. 
+        # So we remove validly.
+        
+        # Finding the request index might be tricky if not tracked.
+        # But we know `ResolveSkillCommand` runs ONLY when `state.input_stack` has a request.
+        # And we validated it at start.
+        # Let's assume we remove the request that we "answered".
+        # Which is NOT necessarily at -1 if on_post_action added stuff!
+        
+        # Strategy:
+        # 1. Capture reference to request at start.
+        # 2. Remove it by reference.
+        
+        if current_req in state.input_stack:
+            state.input_stack.remove(current_req)
+            
+        # Check if chained requests exist
+        if state.input_stack:
+             # Processing continues (Multi-step effect)
+             return state
         
         # Finish Action (Pop resolution queue)
         state.resolution_queue.pop(0)

@@ -1,20 +1,33 @@
 from goa2.engine.effects import Effect, EffectRegistry, EffectContext
 from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.types import UnitID, HeroID
-from goa2.domain.models import TeamColor
+from goa2.domain.models import TeamColor, Marker
+from goa2.domain.hex import Hex
 from goa2.engine.rules import validate_target
 import uuid
 
-@EffectRegistry.register
-class ViolentTorrentEffect(Effect):
+# =========================================================================
+# Shared Effects
+# =========================================================================
+
+class DiscardBehindEffect(Effect):
+    """
+    Base effect for Violent Torrent and Dangerous Current.
+    """
+    def __init__(self, id_val: str, distance: int, repeat: bool):
+        self._id = id_val
+        self.distance = distance
+        self.repeat = repeat
+
     @property
     def id(self) -> str:
-        return "effect_attack_discard_behind_repeat" # Matching Definition
+        return self._id
 
     def on_pre_action(self, ctx: EffectContext) -> None:
-        """
-        Target a unit adjacent to you. Before the attack: Up to 1 enemy hero in any of the 5 spaces in a straight line directly behind the target discards a card, or is defeated.
-        """
+        # Metadata check to preventing re-execution after interruption
+        if ctx.card.metadata.get("discard_resolved"):
+            return
+
         state = ctx.state
         attacker = ctx.actor
         target = ctx.target
@@ -28,50 +41,81 @@ class ViolentTorrentEffect(Effect):
         if not attacker_loc or not target_loc:
             return
             
-        # Determine Direction
         direction = attacker_loc.direction_to(target_loc)
-        if direction is None: return # Not straight line?
+        if direction is None: return 
         
-        # Check 5 spaces behind target
         current_hex = target_loc
-        found_hero = None
+        candidates = []
         
-        for _ in range(5):
+        for _ in range(self.distance):
             current_hex = current_hex.neighbor(direction)
-            if current_hex in state.unit_locations.values():
-                # Check Unit
-                # Inefficient reverse lookup or new state helper needed.
-                # Assuming state.get_unit_at(hex) exists or we iterate.
-                unit_at = None
-                for uid, loc in state.unit_locations.items():
-                    if loc == current_hex:
-                         # Get unit object
-                         unit_at = state.get_unit(uid)
-                         break
-                
-                if unit_at and unit_at.team != attacker.team:
-                    # Is it a Hero?
-                    if hasattr(unit_at, 'hand'): # Duck typing for Hero
-                        found_hero = unit_at
-                        break # "Up to 1 enemy hero"
+            for uid, loc in state.unit_locations.items():
+                if loc == current_hex:
+                    unit = state.get_unit(uid)
+                    if unit and unit.team != attacker.team:
+                         if hasattr(unit, 'hand'):
+                             candidates.append(unit)
+                             # If "Up to 1", do we stop at first?
+                             # Text: "Up to 1 enemy hero in ANY of the X spaces..."
+                             # This implies we look at all eligible spaces and choose 1 hero from ALL found.
         
-        if found_hero:
-            print(f"   [Effect] Violent Torrent hits {found_hero.name} behind target!")
-            # Discard Logic
-            if found_hero.hand:
-                # Discard random or choice? Usually choice.
-                # Simplification: Discard first card or Random.
-                # Rule check: "Discards a card". Usually opponent chooses? or victim?
-                # Assuming Victim Chooses -> Needs Input Request.
-                # For MVP: Random/First Discard.
-                discarded = found_hero.hand.pop(0)
-                discarded.state = "DISCARD"
-                found_hero.discard_pile.append(discarded)
-                print(f"   {found_hero.name} discarded {discarded.name}")
-            else:
-                print(f"   {found_hero.name} has no cards -> Defeated!")
-                # Defeat Logic (Reduce Life/Respawn?)
-                pass
+        if not candidates:
+            return
+            
+        if len(candidates) == 1:
+            # Auto-select single target (or prompt? Prompt is safer but MVP auto)
+            # Actually rules say "Up to 1", implying optionality.
+            # But let's assume auto-hit if 1 for now, or forced choice.
+            self._apply_discard(candidates[0])
+            ctx.card.metadata["discard_resolved"] = True
+            
+        else:
+            # Multiple candidates -> Request Choice
+            req_id = str(uuid.uuid4())
+            candidate_ids = [u.id for u in candidates]
+            req = InputRequest(
+                id=req_id,
+                player_id=ctx.actor.id,
+                request_type=InputRequestType.SELECT_UNIT,
+                context={
+                    "criteria": "specific_units",
+                    "unit_ids": candidate_ids,
+                    "reason": f"Select hero to discard via {ctx.card.name}"
+                }
+            )
+            ctx.state.input_stack.append(req)
+            ctx.card.metadata["waiting_for_discard_target"] = True
+            # AttackCommand will detect stack change and interrupt.
+
+    def on_post_action(self, ctx: EffectContext) -> None:
+        if ctx.card.metadata.get("waiting_for_discard_target"):
+             target_id_str = ctx.data.get("input_unit_id")
+             if target_id_str:
+                 target_hero = ctx.state.get_hero(HeroID(target_id_str))
+                 if target_hero:
+                     self._apply_discard(target_hero)
+                     print(f"   [Effect] {self.id} hits chosen {target_hero.name}!")
+             
+             ctx.card.metadata["discard_resolved"] = True
+             ctx.card.metadata["waiting_for_discard_target"] = False
+        
+    def _apply_discard(self, hero):
+        if hero.hand:
+            discarded = hero.hand.pop(0)
+            discarded.state = "DISCARD"
+            hero.discard_pile.append(discarded)
+            print(f"   {hero.name} discarded {discarded.name}")
+        else:
+            print(f"   {hero.name} has no cards -> Defeated!")
+
+# Register Instances
+EffectRegistry.register_instance(DiscardBehindEffect("effect_attack_discard_behind_repeat", 5, True))
+EffectRegistry.register_instance(DiscardBehindEffect("effect_attack_discard_behind", 2, False))
+
+
+# =========================================================================
+# Ebb and Flow / Arcane Whirlpool
+# =========================================================================
 
 @EffectRegistry.register
 class EbbAndFlowEffect(Effect):
@@ -80,7 +124,6 @@ class EbbAndFlowEffect(Effect):
         return "effect_swap_enemy_minion_repeat"
 
     def on_pre_action(self, ctx: EffectContext) -> None:
-        # Push Input Request for Target Selection
         req_id = str(uuid.uuid4())
         req = InputRequest(
             id=req_id,
@@ -92,25 +135,185 @@ class EbbAndFlowEffect(Effect):
             }
         )
         ctx.state.input_stack.append(req)
+        # Note: Skills already use `ResolveSkillCommand` which handles stack, so no explicit interrupt logic needed here 
+        # because Skill is the primary action and ResolveSkillCommand loops.
 
     def on_post_action(self, ctx: EffectContext) -> None:
-        # Handle the input resolution
         target_id_str = ctx.data.get("input_unit_id")
-        if not target_id_str:
-            print("   [Effect] No target selected for Swap")
-            return
+        if not target_id_str: return
             
         target_id = UnitID(target_id_str)
         target_unit = ctx.state.get_unit(target_id)
-        
-        if not target_unit:
-            return
+        if not target_unit: return
             
-        # Swap Locations
         actor_loc = ctx.state.unit_locations.get(ctx.actor.id)
         target_loc = ctx.state.unit_locations.get(target_id)
         
         ctx.state.move_unit(ctx.actor.id, target_loc)
         ctx.state.move_unit(target_id, actor_loc)
-        
         print(f"   [Effect] Swapped {ctx.actor.name} with {target_unit.name}")
+
+# =========================================================================
+# Liquid Leap
+# =========================================================================
+
+@EffectRegistry.register
+class LiquidLeapEffect(Effect):
+    @property
+    def id(self) -> str:
+        return "effect_teleport_strict"
+
+    def on_pre_action(self, ctx: EffectContext) -> None:
+        req_id = str(uuid.uuid4())
+        req = InputRequest(
+            id=req_id,
+            player_id=ctx.actor.id,
+            request_type=InputRequestType.SELECT_HEX,
+            context={
+                "constraint": "no_spawn_point_no_adj_spawn",
+                "range": ctx.card.range_value
+            }
+        )
+        ctx.state.input_stack.append(req)
+
+    def on_post_action(self, ctx: EffectContext) -> None:
+        target_hex = ctx.data.get("input_hex")
+        if target_hex:
+            ctx.state.move_unit(ctx.actor.id, target_hex)
+            print(f"   [Effect] Liquid Leap to {target_hex}")
+
+# =========================================================================
+# Aspiring Duelist
+# =========================================================================
+
+@EffectRegistry.register
+class AspiringDuelistEffect(Effect):
+    @property
+    def id(self) -> str:
+        return "effect_ignore_minion_defense"
+
+    def modify_defense_components(self, components: dict[str, int], ctx: EffectContext) -> None:
+        if "auras" in components:
+            print("   [Effect] Aspiring Duelist ignores minion defense aura")
+            components["auras"] = 0
+
+# =========================================================================
+# Noble Blade
+# =========================================================================
+
+@EffectRegistry.register
+class NobleBladeEffect(Effect):
+    @property
+    def id(self) -> str:
+        return "effect_attack_move_ally"
+
+    def on_pre_action(self, ctx: EffectContext) -> None:
+        if ctx.card.metadata.get("noble_blade_resolved"): return
+
+        target = ctx.target
+        if not target: return
+        
+        target_loc = ctx.state.unit_locations.get(target.id)
+        if not target_loc: return
+
+        # Find adjacent allies to TARGET
+        candidates = []
+        for adj in target_loc.neighbors():
+             if adj in ctx.state.unit_locations.values():
+                 # Reverse lookup (inefficient but works)
+                 for uid, loc in ctx.state.unit_locations.items():
+                     if loc == adj:
+                         u = ctx.state.get_unit(uid)
+                         if u and u.team == ctx.actor.team and u.id != ctx.actor.id: # Ally (and usually not self, "another unit")
+                             candidates.append(u)
+        
+        if candidates:
+             req_id = str(uuid.uuid4())
+             candidate_ids = [u.id for u in candidates]
+             req = InputRequest(
+                id=req_id,
+                player_id=ctx.actor.id,
+                request_type=InputRequestType.SELECT_UNIT,
+                context={
+                    "criteria": "specific_units",
+                    "unit_ids": candidate_ids,
+                    "reason": "Select ally to move (Noble Blade)"
+                }
+             )
+             ctx.state.input_stack.append(req)
+             ctx.card.metadata["noble_blade_step"] = "select_ally"
+        else:
+             ctx.card.metadata["noble_blade_resolved"] = True
+
+    def on_post_action(self, ctx: EffectContext) -> None:
+        step = ctx.card.metadata.get("noble_blade_step")
+        print(f"DEBUG: NobleBlade PostAction. Step: {step}. Input: {ctx.data.get('input_unit_id')}")
+        
+        if step == "select_ally":
+             ally_id_str = ctx.data.get("input_unit_id")
+             if ally_id_str:
+                 # Push Next Request: Move Hex
+                 ctx.card.metadata["selected_ally_id"] = ally_id_str
+                 req = InputRequest(
+                    id=str(uuid.uuid4()),
+                    player_id=ctx.actor.id, 
+                    request_type=InputRequestType.SELECT_HEX, # Or custom MOVEMENT_HEX logic?
+                    context={
+                        "unit_id": ally_id_str, # Unit to move
+                        "range": 1,
+                        "reason": "Select destination for ally"
+                    }
+                 )
+                 ctx.state.input_stack.append(req)
+                 ctx.card.metadata["noble_blade_step"] = "select_hex"
+             else:
+                 # Cancelled or None? Mark resolved
+                 ctx.card.metadata["noble_blade_resolved"] = True
+
+        elif step == "select_hex":
+             hex_val = ctx.data.get("input_hex")
+             ally_id_str = ctx.card.metadata.get("selected_ally_id")
+             
+             if hex_val and ally_id_str:
+                 ctx.state.move_unit(UnitID(ally_id_str), hex_val)
+                 print(f"   [Effect] Noble Blade moved {ally_id_str} to {hex_val}")
+             
+             ctx.card.metadata["noble_blade_resolved"] = True
+             ctx.card.metadata["noble_blade_step"] = None
+
+# =========================================================================
+# Spell Break
+# =========================================================================
+# MVP Stub: Requires Marker System or Status Effect System
+@EffectRegistry.register
+class SpellBreakEffect(Effect):
+    @property
+    def id(self) -> str:
+        return "effect_silence_heroes_radius"
+        
+    def on_pre_action(self, ctx: EffectContext) -> None:
+        # Radius 2 (assume standard or card value?)
+        # Card usually has range/radius.
+        radius = ctx.card.radius_value or 2 # Default to 2 if not set
+        
+        actor_loc = ctx.state.unit_locations.get(ctx.actor.id)
+        if not actor_loc: return
+
+        print(f"   [Effect] Spell Break: Applying SILENCE (Radius {radius})")
+        
+        # Check all units
+        for uid, loc in ctx.state.unit_locations.items():
+            if uid == ctx.actor.id: continue
+            
+            dist = actor_loc.distance(loc)
+            if dist <= radius:
+                unit = ctx.state.get_unit(uid)
+                if unit and unit.team != ctx.actor.team:
+                    # Enemy Unit. Check if Hero? (Effect name says heroes)
+                    # "Silence Heroes"
+                    if hasattr(unit, 'hand'): # Duck type Hero
+                        # Apply Marker if not present
+                        if not any(m.name == "SILENCE" for m in unit.markers):
+                            m = Marker(id=str(uuid.uuid4()), name="SILENCE")
+                            unit.markers.append(m)
+                            print(f"   Applied SILENCE to {unit.name}")

@@ -29,6 +29,14 @@ class Card(GameEntity):
     # Item (Passive bonuses when equipped as item)
     item: Optional[StatType] = None
     
+    # Runtime metadata
+    metadata: Dict[str, Any] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.metadata is None:
+            self.metadata = {}
+    
     # Text/Logic Hook (References the implementation of the card's effect)
     effect_id: str
     # Text/Logic Readable description

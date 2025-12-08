@@ -62,6 +62,13 @@ class Effect:
         """
         return True
 
+    def modify_defense_components(self, components: Dict[str, int], ctx: EffectContext) -> None:
+        """
+        Hook to modify defense calculation components in-place.
+        Components: 'base', 'items', 'auras', etc.
+        """
+        pass
+
 class EffectRegistry:
     _effects: Dict[str, Effect] = {}
 
@@ -73,6 +80,10 @@ class EffectRegistry:
         instance = effect_cls()
         cls._effects[instance.id] = instance
         return effect_cls
+
+    @classmethod
+    def register_instance(cls, instance: Effect):
+        cls._effects[instance.id] = instance
 
     @classmethod
     def get(cls, effect_id: str) -> Optional[Effect]:
