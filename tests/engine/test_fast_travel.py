@@ -10,6 +10,16 @@ from goa2.domain.hex import Hex
 @pytest.fixture
 def fast_travel_state():
     b = Board()
+    
+    # Define 2 Zones to allow valid Fast Travel
+    # Start: (0,0,0)
+    # Dest: (1,-1,0) (Adjacent but different zone for test purposes)
+    from goa2.domain.board import Zone
+    z1 = Zone(id="z1", hexes={Hex(q=0,r=0,s=0)}, neighbors=["z2"])
+    z2 = Zone(id="z2", hexes={Hex(q=1,r=-1,s=0)}, neighbors=["z1"])
+    b.zones = {"z1": z1, "z2": z2}
+    b.populate_tiles_from_zones()
+
     c = Card(
         id=CardID("c_move"), name="Dash", tier=CardTier.UNTIERED, color=CardColor.GOLD, 
         initiative=5, primary_action=ActionType.MOVEMENT, 
@@ -22,6 +32,9 @@ def fast_travel_state():
     
     s = GameState(board=b, teams={TeamColor.RED: t}, phase=GamePhase.PLANNING)
     s.unit_locations[UnitID("h1")] = Hex(q=0,r=0,s=0)
+    if Hex(q=0,r=0,s=0) in b.tiles:
+        b.tiles[Hex(q=0,r=0,s=0)].occupant_id = "h1"
+    
     return s
 
 def test_choose_fast_travel(fast_travel_state):
@@ -39,11 +52,12 @@ def test_choose_fast_travel(fast_travel_state):
     # Should work because of invalidator logic
     ChooseActionCommand(ActionType.FAST_TRAVEL).execute(s)
     
-    # Should now be waiting for Hex (since Fast Travel replaces Move)
-    assert s.awaiting_input_type == InputRequestType.MOVEMENT_HEX
+    # Should now be waiting for FAST_TRAVEL_DESTINATION (since Fast Travel replaces Move)
+    assert s.awaiting_input_type == InputRequestType.FAST_TRAVEL_DESTINATION
     
-    # Move
-    PerformMovementCommand(Hex(q=1, r=-1, s=0)).execute(s)
+    # Move using PerformFastTravelCommand
+    from goa2.engine.actions import PerformFastTravelCommand
+    PerformFastTravelCommand(Hex(q=1, r=-1, s=0)).execute(s)
     
     # Done
     assert s.phase == GamePhase.SETUP

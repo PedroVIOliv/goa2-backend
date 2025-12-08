@@ -36,7 +36,7 @@ class ActionType(str, Enum):
 class StatType(str, Enum):
     ATTACK = "ATTACK"
     DEFENSE = "DEFENSE"
-    SPEED = "SPEED"
+    MOVEMENT = "MOVEMENT"
     INITIATIVE = "INITIATIVE"
     RANGE = "RANGE"
     RADIUS = "RADIUS"

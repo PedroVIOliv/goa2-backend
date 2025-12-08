@@ -69,22 +69,28 @@ def main():
     # Hero in Zone A
     from goa2.data.heroes import HeroRegistry
     
-    # Red Hero: Knight
-    hero_red = HeroRegistry.get("Knight")
+    # Red Hero: Arien (Has initial cards in hand)
+    hero_red = HeroRegistry.get("Arien")
     hero_red.team = TeamColor.RED
     hero_red.id = HeroID("h_red")
     
-    # Put Teleport card in hand for the demo (normally in Deck)
-    # The Knight deck has "Shield Bash", "March", "Defend"
-    # We want to test FAST TRAVEL. 
-    # Let's override the hand to include the demo FT card OR use the Rogue who has FT.
-    # The user wants to see the "Knight" deck functionality? No, main.py tests specific things.
-    # Let's overwrite the hand with the specific test card for now to keep the script passing.
-    card_ft = Card(
-        id=CardID("c_ft"), name="Teleport", tier=CardTier.UNTIERED, color=CardColor.GOLD,
-        initiative=10, primary_action=ActionType.FAST_TRAVEL, primary_action_value=0, effect_id="e_ft", effect_text="Fast Travel"
-    )
-    hero_red.hand = [card_ft]
+    # We want to test FAST TRAVEL.
+    # Arien has "Stranger Tide" (Tier III) -> Not in default hand.
+    # She has "Liquid Leap" (Tier I) -> In default hand. 
+    # Liquid Leap is a SKILL that teleports (Effect).
+    # However, for this specific Movement test, let's artificially ensure she has a FAST_TRAVEL card 
+    # OR change the test logic to use Liquid Leap. 
+    # But main.py uses ActionType.FAST_TRAVEL explicitly in line 154.
+    # So we need a card with FAST_TRAVEL action.
+    # Rogue has "Teleport" (Untiered). 
+    # Let's switch Red Hero to ROGUE for this specific generic test, as Rogue's default hand has Teleport.
+    
+    hero_red = HeroRegistry.get("Rogue")
+    hero_red.initialize_state()  # Initialize dynamic state (hand, piles)
+    hero_red.team = TeamColor.RED
+    hero_red.id = HeroID("h_red")
+    # Rogue's 'Teleport' is Untiered, so it's in hand. It has primary_action=FAST_TRAVEL.
+    # Card ID is 'rogue_gold_2'.
     
     state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[hero_red])
     state.unit_locations[UnitID("h_red")] = h_red_loc 
@@ -97,6 +103,7 @@ def main():
     # Blue Hero (Target) in FAR zone to allow FT from Mid
     # Blue Hero: Rogue
     hero_blue = HeroRegistry.get("Rogue")
+    hero_blue.initialize_state()
     hero_blue.team = TeamColor.BLUE
     hero_blue.id = HeroID("h_blue")
     
@@ -128,7 +135,9 @@ def main():
     # Test 3: Fast Travel (Success Case)
     # 2. Planning
     state.phase = GamePhase.PLANNING
-    PlayCardCommand(HeroID("h_red"), CardID("c_ft")).execute(state)
+    state.phase = GamePhase.PLANNING
+    # Use Rogue's Teleport card ID
+    PlayCardCommand(HeroID("h_red"), CardID("rogue_gold_2")).execute(state)
     
     # 3. Revelation
     RevealCardsCommand().execute(state)

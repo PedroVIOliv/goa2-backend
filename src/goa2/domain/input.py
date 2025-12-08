@@ -10,7 +10,8 @@ class InputRequestType(str, Enum):
     DEFENSE_CARD = "DEFENSE_CARD"
     TIE_BREAKER = "TIE_BREAKER"
     # General Purpose for "Select X"
-    SELECT_ALLY = "SELECT_ALLY" 
+    SELECT_ALLY = "SELECT_ALLY"
+    FAST_TRAVEL_DESTINATION = "FAST_TRAVEL_DESTINATION"
     SELECT_ENEMY = "SELECT_ENEMY"
 
 class InputRequest(BaseModel):

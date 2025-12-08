@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional, TYPE_CHECKING, Dict
 from pydantic import Field
-from .enums import TeamColor, MinionType, StatType
+from .enums import TeamColor, MinionType, StatType, CardTier
 from .base import GameEntity, BoardEntity
 from .card import Card
 
@@ -32,6 +32,17 @@ class Hero(Unit):
     items: Dict[StatType, int] = Field(default_factory=dict)
     # Circular reference to parent Team
     team_obj: Optional['Team'] = Field(default=None, exclude=True)
+
+    def initialize_state(self):
+        """
+        Initializes the dynamic state of the hero for a new game.
+        - Populates hand with Untiered and Tier I cards from the deck.
+        - Sets up draw/discard piles if necessary.
+        """
+        self.hand = [c for c in self.deck if c.tier == CardTier.UNTIERED or c.tier == CardTier.I]
+        # In the future, we might want to separate 'deck' (all cards) from 'active_deck'
+        # For now, this satisfies the requirement to initialize the hand.
+
 
 class Minion(Unit):
     """

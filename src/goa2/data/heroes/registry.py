@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from goa2.domain.models import Hero
+from goa2.domain.models import Hero, CardTier
 
 class HeroRegistry:
     """
@@ -13,7 +13,6 @@ class HeroRegistry:
 
     @classmethod
     def get(cls, name: str) -> Optional[Hero]:
-        # Return a copy to avoid mutation of the registry
         hero = cls._heroes.get(name)
         if hero:
             return hero.model_copy(deep=True)

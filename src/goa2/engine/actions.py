@@ -177,18 +177,26 @@ class ChooseActionCommand(Command):
             state.input_stack.append(req)
             return state
 
-        elif self.action_type == ActionType.MOVEMENT or self.action_type == ActionType.FAST_TRAVEL:
+        elif self.action_type == ActionType.MOVEMENT:
             # Transition to Movement Input -> PUSH new request
-            is_fast_travel = (self.action_type == ActionType.FAST_TRAVEL)
             req_id = str(uuid.uuid4())
             req = InputRequest(
                 id=req_id,
                 player_id=hero_id,
                 request_type=InputRequestType.MOVEMENT_HEX,
-                context={"fast_travel": is_fast_travel}
             )
             state.input_stack.append(req)
             return state
+
+        elif self.action_type == ActionType.FAST_TRAVEL:
+             req_id = str(uuid.uuid4())
+             req = InputRequest(
+                 id=req_id,
+                 player_id=hero_id,
+                 request_type=InputRequestType.FAST_TRAVEL_DESTINATION
+             )
+             state.input_stack.append(req)
+             return state
             
         elif self.action_type == ActionType.HOLD:
             # Finish immediately (Pass)
@@ -239,51 +247,15 @@ class PerformMovementCommand(Command):
         # Validate Logic
         max_steps = 3 
         
-        ignore_obstacles = False
-        limit_zone_id = state.active_zone_id
-        
-        # Context Aware Logic
-        if current_req.context.get("fast_travel"):
-            ignore_obstacles = True
-            limit_zone_id = None # Fast Travel ignores zone boundary
-            
-            # FAST TRAVEL RESTRICTIONS (Rule 5.1 updated)
-            # 1. StartZone Empty of Enemies
-            start_zone_id = state.board.get_zone_for_hex(start_hex)
-            # Find hero to get team (assuming active actor)
-            # But PerformMovementCommand doesn't know "who" is moving easily unless we look up start_hex occupant?
-            # Or we pass hero_id in command? We passed unit_id.
-            # Need to get team.
-            # Fast hack: look up unit (only Heroes FT usually).
-            actor_team = TeamColor.RED # Default failure
-            # Find unit in teams
-            for t in state.teams.values():
-                 for h in t.heroes:
-                     if str(h.id) == str(unit_id):
-                         actor_team = t.color
-                         break
-            
-            from goa2.engine.map_logic import count_enemies
-            if start_zone_id and count_enemies(state, start_zone_id, actor_team) > 0:
-                 raise ValueError("Cannot Fast Travel: Enemies in Start Zone")
-
-            # 2. DestZone Empty of Enemies
-            dest_zone_id = state.board.get_zone_for_hex(self.target_hex)
-            if dest_zone_id and count_enemies(state, dest_zone_id, actor_team) > 0:
-                 raise ValueError("Cannot Fast Travel: Enemies in Dest Zone")
-                 
-            # 3. Target Empty
-            if self.target_hex in state.unit_locations.values():
-                  raise ValueError("Fast Travel target occupied")
-        
+        # Standard Movement Logic
         if not validate_movement_path(
             state.board, 
             state.unit_locations, 
             start_hex, 
             self.target_hex, 
             max_steps, 
-            ignore_obstacles=ignore_obstacles,
-            active_zone_id=limit_zone_id
+            ignore_obstacles=False,
+            active_zone_id=state.active_zone_id 
         ):
             raise ValueError(f"Invalid movement path to {self.target_hex}")
             
@@ -301,6 +273,87 @@ class PerformMovementCommand(Command):
         # Cleanup / Finish Action
         state.input_stack.pop() # Remove Input Request
         state.resolution_queue.pop(0) # Remove Card from Queue
+        
+        if state.resolution_queue:
+            state.current_actor_id = state.resolution_queue[0][0]
+        else:
+            state.current_actor_id = None
+            state.phase = GamePhase.SETUP
+            state.resolution_step = ResolutionStep.NONE
+            
+        return state
+
+class PerformFastTravelCommand(Command):
+    """
+    Executes Fast Travel (Teleport logic)
+    """
+    def __init__(self, target_hex: Hex):
+        self.target_hex = target_hex
+
+    def execute(self, state: GameState) -> GameState:
+        if not state.input_stack:
+             raise ValueError("Not waiting for input")
+             
+        current_req = state.input_stack[-1]
+        if current_req.request_type != InputRequestType.FAST_TRAVEL_DESTINATION:
+            raise ValueError(f"Not waiting for Fast Travel input, waiting for {current_req.request_type}")
+            
+        # Identify Actor
+        hero_id, card = state.resolution_queue[0]
+        unit_id = UnitID(str(hero_id))
+        
+        start_hex = state.unit_locations.get(unit_id)
+        if not start_hex:
+             raise ValueError(f"Hero {hero_id} is not on the board")
+             
+        # Find actor team
+        actor_team = TeamColor.RED # Fallback
+        for t in state.teams.values():
+             for h in t.heroes:
+                 if str(h.id) == str(unit_id):
+                     actor_team = t.color
+                     break
+        
+        # FAST TRAVEL RESTRICTIONS (Rule 5.1 updated)
+        # 1. StartZone Empty of Enemies
+        start_zone_id = state.board.get_zone_for_hex(start_hex)
+        from goa2.engine.map_logic import count_enemies
+        if start_zone_id and count_enemies(state, start_zone_id, actor_team) > 0:
+             raise ValueError("Cannot Fast Travel: Enemies in Start Zone")
+
+        # 2. DestZone Empty of Enemies
+        dest_zone_id = state.board.get_zone_for_hex(self.target_hex)
+        if dest_zone_id and count_enemies(state, dest_zone_id, actor_team) > 0:
+             raise ValueError("Cannot Fast Travel: Enemies in Dest Zone")
+        
+        # 3. Zone Adjacency (Rule 5.1)
+        # Must be Same Zone OR Adjacent Zone
+        if start_zone_id and dest_zone_id:
+            start_zone = state.board.zones.get(start_zone_id)
+            if start_zone_id != dest_zone_id:
+                if dest_zone_id not in start_zone.neighbors:
+                     raise ValueError("Cannot Fast Travel: Destination not adjacent")
+        
+        # 3. Target Empty
+        if self.target_hex in state.unit_locations.values():
+              raise ValueError("Fast Travel target occupied")
+        
+        if self.target_hex in state.board.tiles:
+            if state.board.tiles[self.target_hex].is_obstacle:
+                 raise ValueError("Fast Travel target bocked")
+                 
+        # Execute Move (Teleport)
+        state.unit_locations[unit_id] = self.target_hex
+        
+        if start_hex in state.board.tiles:
+            state.board.tiles[start_hex].occupant_id = None
+        
+        if self.target_hex in state.board.tiles:
+            state.board.tiles[self.target_hex].occupant_id = BoardEntityID(str(unit_id))
+            
+        # Cleanup
+        state.input_stack.pop()
+        state.resolution_queue.pop(0)
         
         if state.resolution_queue:
             state.current_actor_id = state.resolution_queue[0][0]
