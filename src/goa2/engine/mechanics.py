@@ -4,6 +4,9 @@ from goa2.domain.models import TeamColor, Minion, MinionType, Team
 from goa2.domain.board import SpawnType, SpawnPoint
 from goa2.domain.types import UnitID, BoardEntityID
 from goa2.engine.phases import ResolutionStep, GamePhase
+from goa2.engine.rules import validate_movement_path
+import heapq # For pathfinding
+from collections import deque
 import uuid
 
 # --- Lane Push Mechanics ---
@@ -177,7 +180,126 @@ def spawn_minion_wave(state: GameState, zone_id: str):
             if tile:
                 tile.occupant_id = BoardEntityID(str(new_id))
 
-# --- End Phase Mechanics ---
+# --- Out of Bounds Mechanics ---
+
+def enforce_minion_bounding(state: GameState, unit_id: UnitID):
+    """
+    Rule 3.2 Bounding Rule:
+    If a Minion is outside the BattleZone:
+    1. Immediately move via shortest path to nearest Empty Space in BattleZone.
+    2. If no path, Place (teleport) to nearest Empty Space.
+    3. If multiple equidistant, owner chooses (Stub: pick first).
+    """
+    if not state.active_zone_id:
+        return
+        
+    zone = state.board.zones.get(state.active_zone_id)
+    if not zone:
+        return
+
+    current_loc = state.unit_locations.get(unit_id)
+    if not current_loc:
+        return
+        
+    # Check if already inside
+    if current_loc in zone.hexes:
+        return
+
+    # Find candidate targets (Empty Hexes in BattleZone)
+    # "Empty" means no Unit and no Static Obstacle.
+    candidate_hexes = []
+    for h in zone.hexes:
+        # Check Obstacle (Static or Occupied)
+        if h in state.board.tiles and state.board.tiles[h].is_obstacle:
+             continue
+             
+        # Rule says "Empty Space". Tiles.is_obstacle covers both Static and Dynamic (Occupant).
+        # Double check fallback if needed?
+        # If tile says is_obstacle=False, it means no static and no occupant.
+        
+        is_occupied = False
+        # Fallback check unit_locations if tile not synced?
+        if h in state.unit_locations.values():
+             is_occupied = True
+             
+        if not is_occupied:
+             candidate_hexes.append(h)
+             
+    if not candidate_hexes:
+        print(f"Warning: No empty space for bounding minion {unit_id}")
+        return # Cannot move anywhere
+
+    # 1. Attempt Pathfinding (Mocking heavy BFS for nearest for simple approach)
+    # We want "Shortest Path to Nearest".
+    # BFS from current_loc until we hit ANY candidate.
+    
+    queue = deque([(current_loc, 0, [current_loc])])
+    visited = {current_loc}
+    
+    # We need a limit to prevent infinite loops? 
+    # Max distance on board is small enough.
+    
+    # We need to find the specific TARGET hex that is reachable via shortest path.
+    # While BFS, if we encounter a hex in 'candidate_hexes', that IS the nearest.
+    
+    found_path = None
+    target_hex = None
+    
+    while queue:
+        curr, dist, path = queue.popleft()
+        
+        if curr in candidate_hexes:
+            found_path = path
+            target_hex = curr
+            break
+            
+        for neighbor in curr.neighbors():
+            if neighbor not in visited:
+                 # Check if we can traverse (not blocked)
+                 # Note: Bounding rule implies "Move via shortest path".
+                 # This implies normal movement rules (blocked by obstacles).
+                 # We reuse logic or simple check.
+                 
+                 # Check Blockage:
+                 is_blocked = False
+                 if neighbor in state.board.tiles:
+                     if state.board.tiles[neighbor].is_obstacle:
+                         is_blocked = True
+                 
+                 if not is_blocked:
+                     visited.add(neighbor)
+                     queue.append((neighbor, dist+1, path + [neighbor]))
+
+    # 2. Execute Move or Place
+    final_hex = None
+    
+    if found_path and target_hex:
+        # Move via path (Teleport effective result is same: Unit ends up at target)
+        final_hex = target_hex
+        # Log path?
+    else:
+        # 3. Fallback: Placement
+        # Find nearest candidate by pure distance (ignoring obstacles)
+        # Sort candidates by distance
+        candidate_hexes.sort(key=lambda h: current_loc.distance(h))
+        final_hex = candidate_hexes[0]
+        
+    # Execute Update
+    if final_hex:
+        # Update Location
+        del state.unit_locations[unit_id]
+        state.unit_locations[unit_id] = final_hex
+        
+        # Update Tiles
+        # Clear old tile
+        if current_loc in state.board.tiles:
+            state.board.tiles[current_loc].occupant_id = None
+            
+        # Set new tile
+        if final_hex in state.board.tiles:
+             state.board.tiles[final_hex].occupant_id = BoardEntityID(str(unit_id))
+
+
 
 def run_end_phase(state: GameState):
     """

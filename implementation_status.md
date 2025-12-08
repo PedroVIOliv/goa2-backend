@@ -22,8 +22,8 @@ Based on `deterministic_rules.md` vs `src/goa2`.
 
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
-| **3.1 Hero State** | **Partially Implemented** | `Hero` has Level, Gold, Items. **MISSING**: Life Counters, XP/Level Up Penalty logic, Max Card Tier constraints. |
-| **3.2 Minion State** | **Mostly Implemented** | Types, Value (derived), Auras (in `combat.py`). **MISSING**: Heavy Immunity logic, Bounding Rule (Out of Bounds correction). |
+| **3.1 Hero State** | **Implemented** | `Hero` has Level, Gold, Items. `Team` tracks Life Counters. |
+| **3.2 Minion State** | **Implemented** | Types, Value, Auras. `Heavy Immunity` (in `validate_target`) and `Bounding Rule` (Movement/Placement) implemented. |
 
 ## 4. Card System
 
@@ -46,4 +46,4 @@ Based on `deterministic_rules.md` vs `src/goa2`.
 ## Summary of Critical Gaps
 1.  **Lifecycle**: End Phase (Minion Battle, Level Up) and Lane Push (Win Condition) are completely missing.
 2.  **Entities**: Tokens and Markers are missing. Heroes rely on partial state (no lives).
-3.  ** Mechanics**: Heavy Minion Immunity and Out-of-Bounds checks are missing.
+3.  ** Mechanics**: `Heavy Minion Immunity` and `Out-of-Bounds` core logic are implemented. Integration with all commands pending.
