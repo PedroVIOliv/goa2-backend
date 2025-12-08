@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict, Optional
 from goa2.engine.command import Command
 from goa2.domain.state import GameState
 from goa2.domain.input import InputRequest, InputRequestType
-from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team, CardState
+from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team, CardState, CardTier, StatType
 from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
@@ -150,6 +150,15 @@ class ChooseActionCommand(Command):
             
         hero_id, card = state.resolution_queue[0]
         
+        # Identify Hero for Item lookups
+        hero = None
+        for t in state.teams.values():
+             for h in t.heroes:
+                 if h.id == hero_id:
+                     hero = h
+                     break
+        if not hero: raise ValueError(f"Hero {hero_id} not found")
+        
         # Validation: Verify asker matches currrent request
         # (Skip strict ID check for MVP or use current_req.player_id)
         
@@ -187,6 +196,9 @@ class ChooseActionCommand(Command):
                  move_val = card.primary_action_value or 0
             elif ActionType.MOVEMENT in card.secondary_actions:
                  move_val = card.secondary_actions[ActionType.MOVEMENT]
+
+            # Apply Item Bonuses (Movement)
+            move_val += hero.items.get(StatType.MOVEMENT, 0)
 
             # Transition to Movement Input -> PUSH new request
             req_id = str(uuid.uuid4())
@@ -577,4 +589,115 @@ class PlayDefenseCommand(Command):
             state.phase = GamePhase.SETUP
             state.resolution_step = ResolutionStep.NONE
             
+        return state
+
+class UpgradeCardCommand(Command):
+    """
+    Executes the upgrade choice for a hero.
+    1. Finds substitute card (Old Tier).
+    2. Finds 'Other' new card (Same Tier/Color) -> ITEM.
+    3. Adds New Card to Hand.
+    """
+    def __init__(self, hero_id: HeroID, chosen_card_id: CardID):
+        self.hero_id = hero_id
+        self.chosen_card_id = chosen_card_id
+        
+    def execute(self, state: GameState) -> GameState:
+        # 1. Validation: Waiting for Input
+        if not state.input_stack:
+             raise ValueError("Not waiting for input")
+             
+        # Support Simultaneous Upgrades (Non-blocking):
+        # Search the stack for a request that matches this command.
+        target_req = None
+        target_index = -1
+        
+        for i, req in enumerate(reversed(state.input_stack)):
+            # We iterate backwards just in case, though order shouldn't matter for unique hero IDs.
+            if req.request_type == InputRequestType.UPGRADE_CHOICE and str(req.player_id) == str(self.hero_id):
+                target_req = req
+                target_index = len(state.input_stack) - 1 - i
+                break
+                
+        if not target_req:
+             # Fallback check for nice error message
+             if state.input_stack[-1].request_type == InputRequestType.UPGRADE_CHOICE:
+                  raise ValueError(f"Waiting for input from {state.input_stack[-1].player_id}, but {self.hero_id} tried to act.")
+             else:
+                  raise ValueError(f"Not waiting for Upgrade, waiting for {state.input_stack[-1].request_type}")
+
+        current_req = target_req
+
+        # 2. Identify Hero
+        hero = None
+        for t in state.teams.values():
+             for h in t.heroes:
+                 if h.id == self.hero_id:
+                     hero = h
+                     break
+        if not hero: raise ValueError("Hero not found")
+        
+        # 3. Find The Chosen Card
+        chosen_card = None
+        for c in hero.deck:
+             if str(c.id) == str(self.chosen_card_id):
+                 chosen_card = c
+                 break
+        
+        if not chosen_card:
+             raise ValueError(f"Chosen upgrade card {self.chosen_card_id} not found in deck")
+
+        # 4. Context Validation: Tier Check
+        required_tier = current_req.context.get("tier")
+        if required_tier:
+             # CardTier is str Enum, so simple comparison works if serialized to str or enum
+             if chosen_card.tier != required_tier:
+                  raise ValueError(f"Invalid Tier: Expected {required_tier}, got {chosen_card.tier}")
+             
+        # 5. Logic: Swap
+        if chosen_card.tier == CardTier.IV:
+             # Ultimate
+             chosen_card.state = CardState.PASSIVE
+             
+        else:
+             # Standard Upgrade (Tier II/III)
+             # A. Find 'Other' card of same Tier/Color (The one NOT chosen)
+             other_card = None
+             for c in hero.deck:
+                 if c.tier == chosen_card.tier and c.color == chosen_card.color and c.id != chosen_card.id:
+                     other_card = c
+                     break
+             
+             if other_card:
+                 other_card.state = CardState.ITEM
+                 # Apply Item Passive Bonus
+                 if other_card.item:
+                     current_val = hero.items.get(other_card.item, 0)
+                     hero.items[other_card.item] = current_val + 1
+             
+             # B. Find 'Old' card (Previous Tier)
+             target_prev_tier = None
+             if chosen_card.tier == CardTier.II: target_prev_tier = CardTier.I
+             elif chosen_card.tier == CardTier.III: target_prev_tier = CardTier.II
+             
+             old_card = None
+             if target_prev_tier:
+                 for c in hero.deck:
+                     if c.color == chosen_card.color and c.tier == target_prev_tier:
+                         old_card = c
+                         break
+                     
+             if old_card:
+                 old_card.state = CardState.RETIRED
+                 # Remove from Hand if there
+                 if old_card in hero.hand:
+                     hero.hand.remove(old_card)
+                     
+             # C. Add New Card to Hand
+             chosen_card.state = CardState.HAND
+             hero.hand.append(chosen_card)
+             
+        # 6. Cleanup Input (Remove the specific request we handled)
+        state.input_stack.pop(target_index)
+        
         return state

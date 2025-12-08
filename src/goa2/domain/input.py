@@ -13,6 +13,7 @@ class InputRequestType(str, Enum):
     SELECT_ALLY = "SELECT_ALLY"
     FAST_TRAVEL_DESTINATION = "FAST_TRAVEL_DESTINATION"
     SELECT_ENEMY = "SELECT_ENEMY"
+    UPGRADE_CHOICE = "UPGRADE_CHOICE"
 
 class InputRequest(BaseModel):
     id: str  # Unique ID for tracking

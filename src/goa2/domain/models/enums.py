@@ -32,6 +32,7 @@ class ActionType(str, Enum):
     HOLD = "HOLD"  # Secondary
     CLEAR = "CLEAR" # Replaces Attack
     FAST_TRAVEL = "FAST_TRAVEL" # Replaces Movement
+    UPGRADE = "UPGRADE"
 
 class StatType(str, Enum):
     ATTACK = "ATTACK"
@@ -47,3 +48,6 @@ class CardState(str, Enum):
     DISCARD = "DISCARD"
     UNRESOLVED = "UNRESOLVED"
     RESOLVED = "RESOLVED"
+    ITEM = "ITEM"
+    PASSIVE = "PASSIVE"
+    RETIRED = "RETIRED"

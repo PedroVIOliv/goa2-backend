@@ -31,7 +31,7 @@ Based on `deterministic_rules.md` vs `src/goa2`.
 | :--- | :--- | :--- |
 | **4.1 Card Anatomy** | **Implemented** | `Card` model has all fields (Tier, Color, Init, Actions, Range/Radius). Validation logic enforces Tier/Color rules. |
 | **4.2 Card States** | **Implemented** | `CardState` enum tracks Start/Hand/Played/Unresolved/Resolved/Discard. |
-| **4.3 Upgrade Mechanic** | **NOT Implemented** | No `UpgradeCardCommand` or logic to handle buying cards. |
+| **4.3 Upgrade Mechanic** | **Implemented** | `UpgradeCardCommand` implemented. Level Up, Multi-Level Logic, and Pity Coin logic in `End Phase`. |
 
 ## 5. Actions & Keywords
 

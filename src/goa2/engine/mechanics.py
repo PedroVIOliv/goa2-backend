@@ -390,7 +390,79 @@ def run_end_phase(state: GameState):
                 # Assume Token -> Clear
                 tile.occupant_id = None
 
-    # 4. Advance Time
+    # 4. Level Up and Upgrade Check
+    # Rule 1: Cost to upgrade is CURRENT Level. (Lvl 2->3 costs 2g).
+    # Rule 2: Can upgrade multiple times (Lvl 2->4).
+    # Rule 3: If NO level up, gain 1 Pity Coin.
+    
+    any_upgrade_pending = False
+    
+    from goa2.domain.input import InputRequest, InputRequestType
+    from goa2.domain.models import CardTier
+    
+    for team in state.teams.values():
+         for hero in team.heroes:
+             # Max level check
+             if hero.level >= 8:
+                 continue
+                 
+             leveled_up = False
+             
+             # Multi-Level Loop
+             while hero.level < 8 and hero.gold >= hero.level:
+                 cost = hero.level
+                 hero.gold -= cost
+                 hero.level += 1
+                 leveled_up = True
+                 print(f"Hero {hero.id} Leveled Up to {hero.level}!")
+                 
+                 # Check for Upgrades (Tier II, III, IV)
+                 pass_tier = None
+                 # User: "when upgrading to level 2-4, he chooses a Tier II card"
+                 # "from 5-7, a tier III card"
+                 # "level 8 he gets his ultimate"
+                 
+                 if 2 <= hero.level <= 4:
+                     pass_tier = CardTier.II
+                 elif 5 <= hero.level <= 7:
+                     pass_tier = CardTier.III
+                 elif hero.level == 8:
+                     pass_tier = CardTier.IV
+                     
+                 if pass_tier:
+                     if pass_tier == CardTier.IV:
+                         # Auto-grant Ultimate
+                         # Find Tier IV card in deck
+                         found_ult = False
+                         for c in hero.deck:
+                             if c.tier == CardTier.IV:
+                                 c.state = "PASSIVE" # CardState.PASSIVE
+                                 print(f"   Unlocked Ultimate: {c.name}")
+                                 found_ult = True
+                                 break
+                     else:
+                         # Tier II or III: Choice Required
+                         # We push an input request.
+                         # Note: Queueing multiple requests is valid (LIFO).
+                         req_id = str(uuid.uuid4())
+                         req = InputRequest(
+                             id=req_id,
+                             player_id=hero.id,
+                             request_type=InputRequestType.UPGRADE_CHOICE,
+                             context={"level": hero.level, "tier": pass_tier}
+                         )
+                         state.input_stack.append(req)
+                         any_upgrade_pending = True
+            
+             # Pity Coin
+             if not leveled_up:
+                 hero.gold += 1
+                 print(f"Hero {hero.id} gained Pity Coin (Gold: {hero.gold})")
+
+    # 5. Advance Time (Only if NOT waiting for inputs)
+    if any_upgrade_pending:
+        return 
+        
     state.turn = 1
     state.round += 1
     state.phase = GamePhase.PLANNING
