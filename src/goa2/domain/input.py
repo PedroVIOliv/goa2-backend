@@ -14,6 +14,8 @@ class InputRequestType(str, Enum):
     FAST_TRAVEL_DESTINATION = "FAST_TRAVEL_DESTINATION"
     SELECT_ENEMY = "SELECT_ENEMY"
     UPGRADE_CHOICE = "UPGRADE_CHOICE"
+    SELECT_UNIT = "SELECT_UNIT"
+    SELECT_HEX = "SELECT_HEX"
 
 class InputRequest(BaseModel):
     id: str  # Unique ID for tracking

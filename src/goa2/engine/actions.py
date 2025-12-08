@@ -8,6 +8,7 @@ from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.engine.rules import validate_movement_path, validate_attack_target
 from goa2.engine.combat import calculate_attack_power, calculate_defense_power, resolve_combat
+from goa2.engine.effects import EffectRegistry, EffectContext
 import uuid
 
 class PlayCardCommand(Command):
@@ -215,9 +216,34 @@ class ChooseActionCommand(Command):
             # Finish immediately (Pass, but consume card)
             pass 
         
+        elif self.action_type in [ActionType.FAST_TRAVEL, ActionType.HOLD, ActionType.CLEAR]:
+             # EXPLICIT RULE: These actions NEVER trigger effects.
+             pass 
+        
         else:
-            # For Skills (no extra input needed usually, or handled specifically)
-            pass
+             # For Skills (no extra input needed usually, or handled specifically)
+             # --- EFFECT HOOK: Instant Skill ---
+            # Rule: Effects only trigger if they match the Primary Action.
+            effect = None
+            if card.primary_action == ActionType.SKILL:
+                 effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
+            # Prepare Context (Preliminary)
+            ctx = EffectContext(state=state, command=self, actor=hero, card=card, target=None) if effect else None
+
+            if effect:
+                effect.on_pre_action(ctx)
+                
+            # CHECK if the Effect requested Input (Async Skill)
+            # We popped 'ACTION_CHOICE' earlier. If stack is not empty, it means new input is requested.
+            if len(state.input_stack) > 0:
+                # Suspend Execution. 
+                # Do NOT call on_post_action yet.
+                # Do NOT pop resolution queue.
+                return state
+            
+            # If no input requested, assume Instant Complete
+            if effect:
+                effect.on_post_action(ctx)
             
         # Finish Action (Pop and Reset)
         # Shared 'Finish' logic could be refactored, but repeating for now
@@ -276,7 +302,22 @@ class PerformMovementCommand(Command):
             raise ValueError(f"Invalid movement path to {self.target_hex}")
             
         # Execute Move
+        
+        # --- EFFECT HOOK: Pre-Move ---
+        # Rule: Effects only trigger if they match the Primary Action.
+        effect = None
+        if card.primary_action == ActionType.MOVEMENT:
+            effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
+        eff_ctx = None
+        if effect:
+            eff_ctx = EffectContext(state=state, command=self, actor=state.get_unit(unit_id), card=card, target=None) # Target is hex, not unit
+            effect.on_pre_action(eff_ctx)
+
         state.move_unit(unit_id, self.target_hex)
+        
+        # --- EFFECT HOOK: Post-Move ---
+        if effect and eff_ctx:
+            effect.on_post_action(eff_ctx)
         
         # Cleanup / Finish Action
         state.input_stack.pop() # Remove Input Request
@@ -349,8 +390,18 @@ class PerformFastTravelCommand(Command):
             if state.board.tiles[self.target_hex].is_obstacle:
                  raise ValueError("Fast Travel target bocked")
                  
+        # --- EFFECT HOOK: Pre-FastTravel ---
+        # Rule: Effects only trigger if they match the Primary Action.
+        # Rule 2: Fast Travel NEVER triggers effects (even if Primary).
+        effect = None
+        # Remove effect logic here entirely or keep simplistic check that fails
+        # strict "NEVER trigger effects" means we just don't check registry.
+        
         # Execute Move (Teleport)
         state.move_unit(unit_id, self.target_hex)
+
+        # --- EFFECT HOOK: Post-FastTravel ---
+        pass  
             
         # Cleanup
         state.input_stack.pop()
@@ -447,6 +498,21 @@ class AttackCommand(Command):
              raise ValueError("Invalid target (out of range/sight)")
              
         # ATTACK IS VALID. 
+        
+        # --- EFFECT HOOK: Pre-Attack ---
+        # Rule: Effects only trigger if they match the Primary Action.
+        effect = None
+        if card.primary_action == ActionType.ATTACK:
+             effect = EffectRegistry.get(card.effect_id) if card.effect_id else None
+        # We need Context. 
+        # Attacker Unit Object?
+        attacker_unit = state.get_unit(attacker_unit_id)
+        target_unit = state.get_unit(self.target_unit_id)
+        
+        if effect:
+             ctx = EffectContext(state=state, command=self, actor=attacker_unit, card=card, target=target_unit)
+             effect.on_pre_action(ctx)
+        
         # 1. Pop the 'Select Enemy' request.
         state.input_stack.pop()
         
@@ -532,6 +598,27 @@ class PlayDefenseCommand(Command):
             
         # Done. Pop Defense Request.
         state.input_stack.pop()
+        
+        # --- EFFECT HOOK: Post-Attack ---
+        # Triggered here because Combat is now fully resolved.
+        # We need the Attacker's Card Effect.
+        attack_effect = None
+        if attack_card.primary_action == ActionType.ATTACK:
+             attack_effect = EffectRegistry.get(attack_card.effect_id) if attack_card.effect_id else None
+        if attack_effect:
+             # Re-construct Context? 
+             # We need Attacker Unit and Target Unit (Defender)
+             # Attacker:
+             attacker_unit = state.get_unit(UnitID(str(_attacker_id)))
+             # Defender:
+             defender_unit = state.get_unit(UnitID(str(defender_id)))
+             
+             ctx = EffectContext(state=state, command=self, actor=attacker_unit, card=attack_card, target=defender_unit)
+             
+             # Pass data? Might be lost since we re-created context.
+             # This is a limitation: Pre-Attack data (in AttackCommand) is not passed to Post-Attack (in PlayDefenseCommand).
+             # For now, simplistic stateless effects.
+             attack_effect.on_post_action(ctx)
         
         # Resolve Main Action (Attacker).
         # Since Attack is done, we pop the resolution queue too.
@@ -649,8 +736,67 @@ class UpgradeCardCommand(Command):
              # C. Add New Card to Hand
              chosen_card.state = CardState.HAND
              hero.hand.append(chosen_card)
-             
-        # 6. Cleanup Input (Remove the specific request we handled)
-        state.input_stack.pop(target_index)
         
+        # 6. Consume Input Request
+        state.input_stack.pop(target_index)
+
+        return state
+
+class ResolveSkillCommand(Command):
+    """
+    Handles resolution of a Skill that requested input (e.g. SELECT_UNIT).
+    Delegates to the Card's Effect.
+    """
+    def __init__(self, target_unit_id: Optional[UnitID] = None, target_hex: Optional[Hex] = None):
+        self.target_unit_id = target_unit_id
+        self.target_hex = target_hex
+
+    def execute(self, state: GameState) -> GameState:
+        if not state.input_stack:
+             raise ValueError("Not waiting for input")
+             
+        # Identify Actor/Card
+        hero_id, card = state.resolution_queue[0]
+        
+        effect = EffectRegistry.get(card.effect_id)
+        if not effect:
+             raise ValueError(f"No effect found for skill {card.name}")
+             
+        actor = state.get_hero(hero_id)
+        
+        # Resolve Target Object
+        target_unit = None
+        if self.target_unit_id:
+             target_unit = state.get_unit(self.target_unit_id)
+             
+        # Create Context
+        ctx = EffectContext(
+             state=state,
+             command=self,
+             actor=actor,
+             card=card,
+             target=target_unit,
+             data={
+                 "input_unit_id": str(self.target_unit_id) if self.target_unit_id else None,
+                 "input_hex": self.target_hex
+             }
+        )
+        
+        # Execute Effect Logic
+        effect.on_post_action(ctx)
+        
+        # Cleanup / Finish
+        state.input_stack.pop() # Pop the SELECT_X request
+        
+        # Finish Action (Pop resolution queue)
+        state.resolution_queue.pop(0)
+        card.state = CardState.RESOLVED
+        
+        if state.resolution_queue:
+            state.current_actor_id = state.resolution_queue[0][0]
+        else:
+            state.current_actor_id = None
+            state.phase = GamePhase.SETUP
+            state.resolution_step = ResolutionStep.NONE
+            
         return state

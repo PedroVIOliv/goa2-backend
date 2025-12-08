@@ -143,6 +143,35 @@ class Hex(BaseModel):
             
         return results
 
+    def direction_to(self, other: Hex) -> Optional[int]:
+        """
+        Returns the direction index (0-5) from self to other.
+        Returns None if not in a straight line or same hex.
+        """
+        if self == other: return None
+        if not self.is_straight_line(other): return None
+        
+        diff = other - self
+        # We need to map diff vector to one of the 6 neighbor vectors.
+        # But 'other' might be far away. We need the UNIT vector.
+        # Normalize diff.
+        dist = diff.length()
+        unit_q = diff.q // dist
+        unit_r = diff.r // dist
+        unit_s = diff.s // dist
+        
+        unit_vec = Hex(q=unit_q, r=unit_r, s=unit_s)
+        
+        vectors = [
+            Hex(q=1, r=0, s=-1), Hex(q=1, r=-1, s=0), Hex(q=0, r=-1, s=1),
+            Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
+        ]
+        
+        try:
+            return vectors.index(unit_vec)
+        except ValueError:
+            return None
+
     @staticmethod
     def _round(frac_q: float, frac_r: float, frac_s: float) -> Hex:
         """Rounds floating point cube coords to the nearest integer hex."""
