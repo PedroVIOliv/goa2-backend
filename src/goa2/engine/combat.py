@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict
-from goa2.domain.models import Card, StatType, Unit, Hero
+from goa2.domain.models import Card, StatType, Unit, Hero, MinionType
 from goa2.domain.hex import Hex
 
 from goa2.domain.state import GameState
@@ -21,42 +21,73 @@ def calculate_attack_power(card: Optional[Card], attacker: Hero) -> int:
     
     return base_power + item_bonus
 
-def calculate_defense_power(defender: Hero, state: GameState) -> int:
+def calculate_defense_power(defender: Hero, state: GameState, card: Optional[Card] = None) -> int:
     """
     Calculates total defense power.
-    Base (3) + Hero Items + Minion Auras.
+    Base (3 or Card Value) + Hero Items + Minion Auras.
     """
     base_defense = 3
+    if card:
+        if card.primary_action == StatType.DEFENSE and card.primary_action_value is not None:
+             base_defense = card.primary_action_value
+        elif StatType.DEFENSE in card.secondary_actions:
+             base_defense = card.secondary_actions[StatType.DEFENSE]
     
     # Item Bonuses
     item_bonus = defender.items.get(StatType.DEFENSE, 0)
     
-    # Minion Auras (Adjacent Friendly Minions)
+    # Minion Auras
     aura_bonus = 0
     defender_loc = state.unit_locations.get(defender.id)
     
     if defender_loc:
-        # Check all adjacent hexes
-        for neighbor in defender_loc.neighbors():
-            # Check for Minion in Board Tile
-            tile = state.board.tiles.get(neighbor)
-            if tile and tile.occupant_id:
-                # Resolve Occupant
-                # Is it a minion?
-                unit_id = str(tile.occupant_id) # BoardEntityID -> str
-                unit_id = str(tile.occupant_id)
-                # Lookup Minion in Teams
-                minion_obj = None
-                for t in state.teams.values():
-                     for m in t.minions:
-                         if m.id == unit_id:
-                             minion_obj = m
-                             break
-                     if minion_obj: break
-                
-                if minion_obj and minion_obj.team == defender.team:
-                    # Friendly Minion Aura: +1 Defense
-                    aura_bonus += 1
+        # --- Ring 1 Check (Distance 1) ---
+        # Melee/Heavy Friend: +1
+        # Melee/Heavy Enemy: -1
+        # Ranged Enemy: -1
+        for hex_loc in defender_loc.ring(1):
+             tile = state.board.tiles.get(hex_loc)
+             if tile and tile.occupant_id:
+                  # Check Occupant
+                  unit_id = str(tile.occupant_id)
+                  minion_obj = None
+                  # Find minion
+                  for t in state.teams.values():
+                       for m in t.minions:
+                           if m.id == unit_id:
+                               minion_obj = m
+                               break
+                       if minion_obj: break
+                  
+                  if minion_obj:
+                       # Friend
+                       if minion_obj.team == defender.team:
+                           if not minion_obj.type == MinionType.RANGED: # Melee or Heavy
+                               aura_bonus += 1
+                       # Enemy
+                       else:
+                           if not minion_obj.type == MinionType.RANGED: # Melee or Heavy
+                               aura_bonus -= 1
+                           else: # Ranged
+                               aura_bonus -= 1
+                               
+        # --- Ring 2 Check (Distance 2) ---
+        # Ranged Enemy: -1
+        for hex_loc in defender_loc.ring(2):
+             tile = state.board.tiles.get(hex_loc)
+             if tile and tile.occupant_id:
+                  unit_id = str(tile.occupant_id)
+                  minion_obj = None
+                  for t in state.teams.values():
+                       for m in t.minions:
+                           if m.id == unit_id:
+                               minion_obj = m
+                               break
+                       if minion_obj: break
+                  
+                  if minion_obj and minion_obj.team != defender.team:
+                       if minion_obj.type == MinionType.RANGED:
+                           aura_bonus -= 1
                         
     return base_defense + item_bonus + aura_bonus
 

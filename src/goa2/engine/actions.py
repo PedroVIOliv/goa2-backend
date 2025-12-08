@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict, Optional
 from goa2.engine.command import Command
 from goa2.domain.state import GameState
 from goa2.domain.input import InputRequest, InputRequestType
-from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team
+from goa2.domain.models import Card, TeamColor, ActionType, MinionType, Minion, Team, CardState
 from goa2.domain.hex import Hex
 from goa2.engine.phases import GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
@@ -53,6 +53,9 @@ class PlayCardCommand(Command):
         # Execute: Add to Pending and Remove from Hand
         state.pending_inputs[self.hero_id] = card_to_play
         hero.hand.pop(card_index)
+        
+        # State Transition -> UNRESOLVED
+        card_to_play.state = CardState.UNRESOLVED
         
         return state
 
@@ -178,12 +181,20 @@ class ChooseActionCommand(Command):
             return state
 
         elif self.action_type == ActionType.MOVEMENT:
+            # Determine Movement Value
+            move_val = 0
+            if card.primary_action == ActionType.MOVEMENT:
+                 move_val = card.primary_action_value or 0
+            elif ActionType.MOVEMENT in card.secondary_actions:
+                 move_val = card.secondary_actions[ActionType.MOVEMENT]
+
             # Transition to Movement Input -> PUSH new request
             req_id = str(uuid.uuid4())
             req = InputRequest(
                 id=req_id,
                 player_id=hero_id,
                 request_type=InputRequestType.MOVEMENT_HEX,
+                context={"max_steps": move_val}
             )
             state.input_stack.append(req)
             return state
@@ -199,18 +210,21 @@ class ChooseActionCommand(Command):
              return state
             
         elif self.action_type == ActionType.HOLD:
-            # Finish immediately (Pass)
+            # Finish immediately (Pass, but consume card)
             pass 
         
         else:
-            # Placeholder for others
+            # For Skills (no extra input needed usually, or handled specifically)
             pass
             
         # Finish Action (Pop and Reset)
         # Shared 'Finish' logic could be refactored, but repeating for now
         # Stack is already popped. Just check if queue done.
         
-        state.resolution_queue.pop(0)
+        completed_hero_id, completed_card = state.resolution_queue.pop(0)
+        
+        # State Transition -> RESOLVED
+        completed_card.state = CardState.RESOLVED
         
         if state.resolution_queue:
             state.current_actor_id = state.resolution_queue[0][0]
@@ -245,7 +259,7 @@ class PerformMovementCommand(Command):
              raise ValueError(f"Hero {hero_id} is not on the board")
              
         # Validate Logic
-        max_steps = 3 
+        max_steps = current_req.context.get("max_steps", 0)
         
         # Standard Movement Logic
         if not validate_movement_path(
@@ -272,7 +286,10 @@ class PerformMovementCommand(Command):
         
         # Cleanup / Finish Action
         state.input_stack.pop() # Remove Input Request
-        state.resolution_queue.pop(0) # Remove Card from Queue
+        completed_hero_id, completed_card = state.resolution_queue.pop(0) # Remove Card from Queue
+        
+        # State Transition -> RESOLVED
+        completed_card.state = CardState.RESOLVED
         
         if state.resolution_queue:
             state.current_actor_id = state.resolution_queue[0][0]
@@ -353,7 +370,10 @@ class PerformFastTravelCommand(Command):
             
         # Cleanup
         state.input_stack.pop()
-        state.resolution_queue.pop(0)
+        completed_hero_id, completed_card = state.resolution_queue.pop(0)
+
+        # State Transition -> RESOLVED
+        completed_card.state = CardState.RESOLVED
         
         if state.resolution_queue:
             state.current_actor_id = state.resolution_queue[0][0]
@@ -486,51 +506,47 @@ class PlayDefenseCommand(Command):
             
         defender_id = current_req.player_id
         
-        # Calculate Defense Access
-        defense_val = 0
-        if self.card_id:
-            # Find card in hand, remove it, get value
-            # Logic similar to PlayCardCommand but immediate
-            # For MVP, assume 3 (stub) via combat.py
-            defense_val = 3 # calculate_defense_power(card)
-        
-        # Calculate Power
-        # We need the objects.
-        # Find Attacker Hero
-        attacker = None
-        for t in state.teams.values():
-            for h in t.heroes:
-                if h.id == current_req.context["attacker_id"]:
-                    attacker = h
-                    break
-        
+        # Power Calculation
         # Find Defender Hero
         defender = None
-        # Assume active hero is defender? No, active hero is the one playing defense card (self.defender_id presumably?)
-        # Wait, PlayDefenseCommand executes. The actor is the Defender.
-        # So Defender is current_actor usually?
-        # Let's find by ID from state context or stored.
-        # The command implementation assumes we know who is defending.
-        # Actually resolving relies on context.
-        # Let's find by ID.
         for t in state.teams.values():
             for h in t.heroes:
-                if h.id == defender_id: # The one playing the card
+                if h.id == defender_id:
                     defender = h
                     break
+        
+        defense_card: Optional[Card] = None
+        if self.card_id:
+            # Find card in hand
+            # We must remove it from hand too!
+            for i, c in enumerate(defender.hand):
+                if c.id == self.card_id:
+                    defense_card = c
+                    defender.hand.pop(i)
+                    break
+            
+            if not defense_card:
+                 raise ValueError("Defense card not found in hand")
+            
+            # State Transition -> DISCARD (Defense cards are resolved immediately)
+            defense_card.state = CardState.DISCARD
 
         # Get the attack card from the resolution queue
         _attacker_id, attack_card = state.resolution_queue[0]
 
         # Calculate Attack and Defense Power
         from goa2.engine.combat import calculate_attack_power, calculate_defense_power
+        
+        # Re-Find Attacker (needed for calculate_attack_power items)
+        attacker = None
+        for t in state.teams.values():
+            for h in t.heroes:
+                if h.id == current_req.context["attacker_id"]:
+                    attacker = h
+                    break
+
         attack_val = calculate_attack_power(attack_card, attacker)
-        defense_val = calculate_defense_power(defender, state) # Card? Logic moved to Combat.py?
-        # Wait, calculate_defense_power signature changed to (defender, state). 
-        # It ignores the played card? The card adds base defense usually.
-        # My combat.py update ignored the card! "Base 3".
-        # Need to fix combat.py to accept card if relevant, 
-        # OR just assume Base 3 for MVP as per code.
+        defense_val = calculate_defense_power(defender, state, defense_card) 
         
         # Log
         print(f"   [Combat] Attack ({attack_val}) vs Defense ({defense_val})")
@@ -549,7 +565,10 @@ class PlayDefenseCommand(Command):
         
         # Resolve Main Action (Attacker).
         # Since Attack is done, we pop the resolution queue too.
-        state.resolution_queue.pop(0)
+        completed_hero_id, completed_card = state.resolution_queue.pop(0)
+        
+        # State Transition -> RESOLVED (Attacker's card)
+        completed_card.state = CardState.RESOLVED
         
         if state.resolution_queue:
             state.current_actor_id = state.resolution_queue[0][0]

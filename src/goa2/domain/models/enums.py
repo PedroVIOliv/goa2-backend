@@ -40,3 +40,10 @@ class StatType(str, Enum):
     INITIATIVE = "INITIATIVE"
     RANGE = "RANGE"
     RADIUS = "RADIUS"
+
+class CardState(str, Enum):
+    HAND = "HAND"
+    DECK = "DECK"
+    DISCARD = "DISCARD"
+    UNRESOLVED = "UNRESOLVED"
+    RESOLVED = "RESOLVED"

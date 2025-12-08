@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional, TYPE_CHECKING, Dict
 from pydantic import Field
-from .enums import TeamColor, MinionType, StatType, CardTier
+from .enums import TeamColor, MinionType, StatType, CardTier, CardState
 from .base import GameEntity, BoardEntity
 from .card import Card
 
@@ -39,7 +39,14 @@ class Hero(Unit):
         - Populates hand with Untiered and Tier I cards from the deck.
         - Sets up draw/discard piles if necessary.
         """
-        self.hand = [c for c in self.deck if c.tier == CardTier.UNTIERED or c.tier == CardTier.I]
+        self.hand = []
+        for c in self.deck:
+             if c.tier == CardTier.UNTIERED or c.tier == CardTier.I:
+                 c.state = CardState.HAND
+                 self.hand.append(c)
+             else:
+                 c.state = CardState.DECK
+        
         # In the future, we might want to separate 'deck' (all cards) from 'active_deck'
         # For now, this satisfies the requirement to initialize the hand.
 

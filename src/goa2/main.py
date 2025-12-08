@@ -180,6 +180,22 @@ def main():
 
             elif req.request_type == InputRequestType.SELECT_ENEMY:
                  pass
+
+            elif req.request_type == InputRequestType.FAST_TRAVEL_DESTINATION:
+                 from goa2.engine.actions import PerformFastTravelCommand
+                 # Target: Blue Base (UnitID h_blue location or finding empty spot)
+                 target = get_second_hex(board, z_blue_base_id) or h_blue_loc
+                 # If occupied by h_blue, try neighbor? 
+                 # For now just try target (might fail if occupied).
+                 # Let's target the EMPTY hex in Blue Base.
+                 target = get_second_hex(board, z_blue_base_id) or Hex(q=11,r=0,s=-11) # Fallback
+                 
+                 print(f"   [Input] h_red Fast Travels to {target}")
+                 try:
+                     PerformFastTravelCommand(target).execute(state)
+                     print(f"   [V] Fast Travel Successful to {target}")
+                 except ValueError as e:
+                     print(f"   [X] Failed: {e}")
                  
     print("\n[End Simulation]")
     print(f"Final Hero Pos: {state.unit_locations[UnitID('h_red')]}")

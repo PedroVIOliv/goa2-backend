@@ -1,7 +1,7 @@
-from .enums import TeamColor, MinionType, CardTier, CardColor, ActionType, StatType
-from .base import GameEntity, BoardEntity
-from .card import Card
+from .enums import TeamColor, MinionType, StatType, CardTier, CardColor, ActionType, CardState
+from .base import BoardEntity, GameEntity
 from .unit import Unit, Hero, Minion
+from .card import Card
 from .team import Team
 
 # Resolve Circular References

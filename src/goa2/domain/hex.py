@@ -57,6 +57,18 @@ class Hex(BaseModel):
         """
         return (self - other).length()
 
+    def scale(self, factor: int) -> Hex:
+        """Scales the hex coordinates by a factor."""
+        return Hex(q=self.q * factor, r=self.r * factor, s=self.s * factor)
+
+    def neighbor(self, direction_index: int) -> Hex:
+        """Returns the neighbor in a specific direction index (0-5)."""
+        vectors = [
+            Hex(q=1, r=0, s=-1), Hex(q=1, r=-1, s=0), Hex(q=0, r=-1, s=1),
+            Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
+        ]
+        return self + vectors[direction_index % 6]
+
     def neighbors(self) -> List[Hex]:
         """Returns the 6 adjacent hexes."""
         vectors = [
@@ -64,6 +76,34 @@ class Hex(BaseModel):
             Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
         ]
         return [self + v for v in vectors]
+    
+    def ring(self, radius: int) -> List[Hex]:
+        """
+        Returns all hexes in the ring at exact distance 'radius'.
+        """
+        if radius <= 0:
+            return [self] if radius == 0 else []
+        
+        results = []
+        # Start at direction 4 (West) scaled by radius
+        # Note: vectors definition in neighbors/neighbor matches HexDirection:
+        # 0=NE, 1=E, 2=SE, 3=SW, 4=W, 5=NW
+        # W is index 4: Hex(q=-1, r=1, s=0)
+        
+        # Directions vectors again for reference or reuse
+        # We need a predictable starting vector. 
+        # Using the logic provided: start = center + direction(4) * radius
+        
+        # Direction 4 (W) vector: (-1, 1, 0)
+        start_dir_vec = Hex(q=-1, r=1, s=0) 
+        hex_cursor = self + start_dir_vec.scale(radius)
+        
+        for i in range(6):
+            for _ in range(radius):
+                results.append(hex_cursor)
+                hex_cursor = hex_cursor.neighbor(i)
+                
+        return results
 
     def is_straight_line(self, other: Hex) -> bool:
         """

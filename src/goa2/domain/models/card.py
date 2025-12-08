@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Dict, Any, List, Tuple
 from pydantic import BaseModel, Field, model_validator
-from .enums import CardTier, CardColor, ActionType, StatType
+from .enums import CardTier, CardColor, ActionType, StatType, CardState
 from .base import GameEntity
 
 class Card(GameEntity):
@@ -13,6 +13,9 @@ class Card(GameEntity):
     color: CardColor
     initiative: int
     
+    # State Management
+    state: CardState = CardState.DECK
+
     # Action Classification
     primary_action: ActionType
     primary_action_value: Optional[int] = None
@@ -32,7 +35,7 @@ class Card(GameEntity):
     effect_text: str
 
     class Config:
-        frozen = True
+        frozen = False
     
     @property
     def is_basic(self) -> bool:
