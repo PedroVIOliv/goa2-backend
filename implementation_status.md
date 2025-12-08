@@ -15,8 +15,8 @@ Based on `deterministic_rules.md` vs `src/goa2`.
 | :--- | :--- | :--- |
 | **2.1 Game Loop** | **Partially Implemented** | `GamePhase` enum exists. `GameState` tracks Round. Loop logic is distributed in `actions.py` state transitions. |
 | **2.2 Turn Structure** | **Implemented** | `PlayCard`, `RevealCards`, `ResolveNext` commands implement the flow. Simultaneous selection works. |
-| **2.3 Lane Push** | **NOT Implemented** | No logic for Minion count trigger or Board Shifting found in `engine`. |
-| **2.4 End Phase** | **NOT Implemented** | `GamePhase.END_PHASE` exists but no logic for Minion Battle, Token Removal, or Level Up. |
+| **2.3 Lane Push** | **Implemented** | `mechanics.check_lane_push` and `perform_lane_push` handle the logic (Zone shift, Wave decrement, Minion respawn). Tokens are preserved. |
+| **2.4 End Phase** | **Implemented** | `mechanics.run_end_phase` handles cleanup, attrition, and time tracking. |
 
 ## 3. Entity States
 

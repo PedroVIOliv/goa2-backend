@@ -24,8 +24,11 @@ class GameState(BaseModel):
     active_zone_id: Optional[str] = None # The ID of the current Battle Zone
     
     phase: GamePhase = GamePhase.SETUP
+
     resolution_step: ResolutionStep = ResolutionStep.NONE
     round: int = 1
+    turn: int = 1
+    wave_counter: int = 5
     
     # ID of the Hero currently acting (Resolution Phase)
     current_actor_id: Optional[HeroID] = None

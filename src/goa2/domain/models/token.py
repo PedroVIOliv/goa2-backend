@@ -1,12 +1,15 @@
 from __future__ import annotations
+from typing import Optional
 from pydantic import Field
 from goa2.domain.models.base import BoardEntity
+from goa2.domain.types import HeroID
 
 class Token(BoardEntity):
     """
     A BoardEntity that represents an object on the board that is NOT a Unit.
     Inherits `id` and `name` from GameEntity/BoardEntity.
     """
+    owner_id: Optional[HeroID] = None
     # Tokens are obstacles by default (as per rules: "Tokens are Obstacles")
     # This logic is handled by the fact that if a Tile has an occupant_id, it is occupied.
     pass
