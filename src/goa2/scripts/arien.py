@@ -4,7 +4,7 @@ from goa2.engine.defeat import defeat_unit
 from goa2.domain.types import UnitID, HeroID
 from goa2.domain.models import TeamColor, Marker
 from goa2.domain.hex import Hex
-from goa2.engine.rules import validate_target
+from goa2.engine.rules import validate_target, validate_movement_path
 import uuid
 
 # =========================================================================
@@ -254,7 +254,7 @@ class NobleBladeEffect(Effect):
                  for uid, loc in ctx.state.unit_locations.items():
                      if loc == adj:
                          u = ctx.state.get_unit(uid)
-                         if u and u.team == ctx.actor.team and u.id != ctx.actor.id: # Ally (and usually not self, "another unit")
+                         if u and u.id != ctx.actor.id: #another unit
                              candidates.append(u)
         
         if candidates:
@@ -267,11 +267,11 @@ class NobleBladeEffect(Effect):
                 context={
                     "criteria": "specific_units",
                     "unit_ids": candidate_ids,
-                    "reason": "Select ally to move (Noble Blade)"
+                    "reason": "Select unit to move (Noble Blade)"
                 }
              )
              ctx.state.input_stack.append(req)
-             ctx.card.metadata["noble_blade_step"] = "select_ally"
+             ctx.card.metadata["noble_blade_step"] = "select_unit"
         else:
              ctx.card.metadata["noble_blade_resolved"] = True
 
@@ -279,19 +279,19 @@ class NobleBladeEffect(Effect):
         step = ctx.card.metadata.get("noble_blade_step")
         print(f"DEBUG: NobleBlade PostAction. Step: {step}. Input: {ctx.data.get('input_unit_id')}")
         
-        if step == "select_ally":
-             ally_id_str = ctx.data.get("input_unit_id")
-             if ally_id_str:
+        if step == "select_unit":
+             unit_id_str = ctx.data.get("input_unit_id")
+             if unit_id_str:
                  # Push Next Request: Move Hex
-                 ctx.card.metadata["selected_ally_id"] = ally_id_str
+                 ctx.card.metadata["selected_unit_id"] = unit_id_str
                  req = InputRequest(
                     id=str(uuid.uuid4()),
                     player_id=ctx.actor.id, 
                     request_type=InputRequestType.SELECT_HEX, # Or custom MOVEMENT_HEX logic?
                     context={
-                        "unit_id": ally_id_str, # Unit to move
+                        "unit_id": unit_id_str, # Unit to move
                         "range": 1,
-                        "reason": "Select destination for ally"
+                        "reason": "Select destination for unit"
                     }
                  )
                  ctx.state.input_stack.append(req)
@@ -302,14 +302,21 @@ class NobleBladeEffect(Effect):
 
         elif step == "select_hex":
              hex_val = ctx.data.get("input_hex")
-             ally_id_str = ctx.card.metadata.get("selected_ally_id")
+             unit_id_str = ctx.card.metadata.get("selected_unit_id")
              
-             if hex_val and ally_id_str:
-                 ctx.state.move_unit(UnitID(ally_id_str), hex_val)
-                 print(f"   [Effect] Noble Blade moved {ally_id_str} to {hex_val}")
+             if hex_val and unit_id_str:
+                 target_uid = UnitID(unit_id_str)
+                 u_loc = ctx.state.unit_locations.get(target_uid)
+                 
+                 if u_loc and validate_movement_path(ctx.state.board, ctx.state.unit_locations, u_loc, hex_val, 1):
+                      ctx.state.move_unit(target_uid, hex_val)
+                      print(f"   [Effect] Noble Blade moved {unit_id_str} to {hex_val}")
+                 else:
+                      print(f"   [Effect] Noble Blade move INVALID/BLOCKED to {hex_val}")
              
              ctx.card.metadata["noble_blade_resolved"] = True
              ctx.card.metadata["noble_blade_step"] = None
+             ctx.card.metadata["selected_unit_id"] = None
 
 # =========================================================================
 # Spell Break

@@ -86,11 +86,21 @@ def test_violent_torrent_effect(effect_state):
     assert len(enemy.hand) == 1
     
     AttackCommand(minion_id).execute(state)
+
+    # Effect triggers: Pushes SELECT_UNIT (Discard)
+    assert state.input_stack
+    assert state.input_stack[-1].request_type == InputRequestType.SELECT_UNIT
     
-    # Effect should have triggered: Enemy Discards
-    # Arien's ViolentTorrentEffect: "Up to 1 enemy hero... discards a card"
+    # Resolve Effect (Select Enemy)
+    ResolveSkillCommand(target_unit_id=enemy_hero_id).execute(state)
+    
+    # Effect Resolved: Enemy Discards
     assert len(enemy.hand) == 0
     assert len(enemy.discard_pile) == 1
+    
+    # Resume Attack (Cleanup)
+    # Stack: SELECT_ENEMY (Persisted) -> Resume pushes DEFENSE_CARD
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
 
 
 def test_ebb_and_flow_effect(effect_state):

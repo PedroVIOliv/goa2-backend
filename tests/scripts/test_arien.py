@@ -265,7 +265,7 @@ def test_noble_blade(arien_state):
     # 1. Check Input Stack: SELECT_UNIT (Ally)
     assert state.input_stack
     assert state.input_stack[-1].request_type == InputRequestType.SELECT_UNIT
-    assert state.input_stack[-1].context["reason"] == "Select ally to move (Noble Blade)"
+    assert state.input_stack[-1].context["reason"] == "Select unit to move (Noble Blade)"
     
     # 2. Select Ally
     ResolveSkillCommand(target_unit_id=ally_id).execute(state)
@@ -727,3 +727,68 @@ def test_violent_torrent_range_and_forced_discard(arien_state):
     # Resume
     ChooseActionCommand(ActionType.ATTACK).execute(state) 
     assert state.input_stack[-1].request_type == InputRequestType.DEFENSE_CARD
+
+def test_noble_blade_movement_validation(arien_state):
+    """
+    Verify Noble Blade checks for obstacles.
+    """
+    from goa2.domain.tile import Tile
+    
+    state = arien_state
+    arien_id = HeroID("arien")
+    ally_id = UnitID("ally")
+    
+    # 1. Setup Noble Blade
+    card = Card(
+        id=CardID("noble_blade"),
+        name="Noble Blade",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        effect_id="effect_attack_move_ally",
+        effect_text="Move unit"
+    )
+    
+    arien = Hero(id=arien_id, name="Arien", deck=[], hand=[card], team=TeamColor.RED)
+    ally = Minion(id=ally_id, name="Ally", type=MinionType.MELEE, team=TeamColor.RED)
+    
+    enemy_id = HeroID("enemy")
+    enemy = Hero(id=enemy_id, name="Enemy", deck=[], hand=[], team=TeamColor.BLUE)
+    
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[arien], minions=[ally])
+    state.teams[TeamColor.BLUE] = Team(color=TeamColor.BLUE, heroes=[enemy])
+    
+    # Locations
+    state.move_unit(arien_id, Hex(q=0,r=0,s=0))
+    state.move_unit(ally_id, Hex(q=1,r=-1,s=0)) # Ally at (1,-1,0)
+    state.move_unit(enemy_id, Hex(q=1,r=0,s=-1)) # Enemy adjacent
+    
+    # Obstacle setup at destination (2,-2,0)
+    bad_hex = Hex(q=2,r=-2,s=0)
+    state.board.tiles[bad_hex] = Tile(is_static_obstacle=True, hex=bad_hex)
+    
+    # 1. Play Card
+    state.phase = GamePhase.PLANNING
+    PlayCardCommand(arien_id, card.id).execute(state)
+    RevealCardsCommand().execute(state)
+    ResolveNextCommand().execute(state)
+    
+    # 2. Choose Attack (Pushes SELECT_ENEMY)
+    ChooseActionCommand(ActionType.ATTACK).execute(state)
+    
+    # 3. Perform Attack (Triggers Pre-Action -> Select Unit)
+    AttackCommand(target_unit_id=enemy_id).execute(state)
+
+    # 4. Select Ally (Resolve Effect Step 1)
+    ResolveSkillCommand(target_unit_id=ally_id).execute(state)
+    
+    # 4. Try to move to Obstacle
+    ResolveSkillCommand(target_hex=bad_hex).execute(state)
+    
+    # 5. Verify Ally DID NOT move
+    assert state.unit_locations[ally_id] == Hex(q=1,r=-1,s=0)
+    
+    # 6. Verify Effect Finished (Resolved)
+    assert card.metadata.get("noble_blade_resolved") is True
+
