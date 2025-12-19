@@ -66,8 +66,9 @@ class PlayCardCommand(Command):
         state.pending_inputs[self.hero_id] = card_to_play
         hero.hand.pop(card_index)
         
-        # State Transition -> UNRESOLVED
-        card_to_play.state = CardState.UNRESOLVED
+        # State Transition -> PLAYED
+        card_to_play.state = CardState.PLAYED
+        card_to_play.is_facedown = True
         
         return state
 
@@ -89,6 +90,13 @@ class RevealCardsCommand(Command):
         # 1. Card Initiative (High is better/First) -> Reverse Sort
         # 2. Tie Breaker (MVP: String ID of Hero to be deterministic)
         
+        # Transition State: PLAYED -> UNRESOLVED
+        for card in state.pending_inputs.values():
+             if card.state == CardState.PLAYED:
+                 card.state = CardState.UNRESOLVED
+                 # Reveal the card
+                 card.is_facedown = False
+
         # Convert dict items to list of tuples
         items = list(state.pending_inputs.items()) # [(hero_id, card), ...]
         
@@ -744,6 +752,7 @@ class PlayDefenseCommand(Command):
                  raise ValueError("Defense card not found in hand")
             
             defense_card.state = CardState.DISCARD
+            defense_card.is_facedown = False
 
         _attacker_id, attack_card = state.resolution_queue[0]
         attacker = state.get_hero(current_req.context["attacker_id"])

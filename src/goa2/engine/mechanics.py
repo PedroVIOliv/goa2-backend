@@ -306,6 +306,7 @@ def run_end_phase(state: GameState):
             for c in hero.deck:
                 if c.state != "DECK": # If not in deck
                     c.state = "HAND"
+                    c.is_facedown = True
                     if c not in hero.hand:
                          hero.hand.append(c)
             hero.discard_pile = []

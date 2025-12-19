@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from pydantic import BaseModel, field_validator, ConfigDict
-from typing import ClassVar, List, Iterator
+from typing import ClassVar, List, Iterator, Optional
 
 class HexDirection(int, Enum):
     """
