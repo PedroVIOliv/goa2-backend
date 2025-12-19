@@ -5,8 +5,7 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Card, Minion, Hero, Unit
-from goa2.engine.phases import GamePhase, ResolutionStep
+from goa2.domain.models import Team, TeamColor, Card, Minion, Hero, Unit, GamePhase, ResolutionStep
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 

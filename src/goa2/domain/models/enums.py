@@ -52,3 +52,16 @@ class CardState(str, Enum):
     ITEM = "ITEM"
     PASSIVE = "PASSIVE"
     RETIRED = "RETIRED"
+
+class GamePhase(str, Enum):
+    SETUP = "SETUP"
+    PLANNING = "PLANNING"      # Card Selection
+    REVELATION = "REVELATION"  # Reveal cards
+    RESOLUTION = "RESOLUTION"  # Acting order
+    CLEANUP = "CLEANUP"        # Round/Turn end
+
+class ResolutionStep(str, Enum):
+    NONE = "NONE"
+    ACTING = "ACTING"
+    WAITING_FOR_INPUT = "WAITING_FOR_INPUT"
+

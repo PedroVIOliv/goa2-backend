@@ -23,9 +23,9 @@ def upgrade_state():
     h1 = Hero(id="h1", name="Hero1", team=TeamColor.RED, level=1, gold=5, deck=[], hand=[]) # Enough for Lv 2 (cost 2)
     
     # Deck population
-    c_red_1 = Card(id="r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e1", effect_text="e1")
-    c_red_2a = Card(id="r2a", name="Red II A", tier=CardTier.II, color=CardColor.RED, initiative=2, primary_action=ActionType.ATTACK, effect_id="e2", effect_text="e2")
-    c_red_2b = Card(id="r2b", name="Red II B", tier=CardTier.II, color=CardColor.RED, initiative=3, primary_action=ActionType.ATTACK, effect_id="e3", effect_text="e3")
+    c_red_1 = Card(id="r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e1", effect_text="e1", is_facedown=False)
+    c_red_2a = Card(id="r2a", name="Red II A", tier=CardTier.II, color=CardColor.RED, initiative=2, primary_action=ActionType.ATTACK, effect_id="e2", effect_text="e2", is_facedown=False)
+    c_red_2b = Card(id="r2b", name="Red II B", tier=CardTier.II, color=CardColor.RED, initiative=3, primary_action=ActionType.ATTACK, effect_id="e3", effect_text="e3", is_facedown=False)
     
     h1.deck = [c_red_1, c_red_2a, c_red_2b]
     h1.hand = [c_red_1] # Start with lvl 1 in hand
@@ -33,9 +33,9 @@ def upgrade_state():
     
     # Setup Hero 2 for Simultaneous Test
     h2 = Hero(id="h2", name="Hero2", team=TeamColor.BLUE, level=1, gold=5, deck=[], hand=[])
-    c_blue_1 = Card(id="b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, effect_id="e4", effect_text="e4")
-    c_blue_2a = Card(id="b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, effect_id="e5", effect_text="e5")
-    c_blue_2b = Card(id="b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, effect_id="e6", effect_text="e6")
+    c_blue_1 = Card(id="b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, effect_id="e4", effect_text="e4", is_facedown=False)
+    c_blue_2a = Card(id="b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, effect_id="e5", effect_text="e5", is_facedown=False)
+    c_blue_2b = Card(id="b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, effect_id="e6", effect_text="e6", is_facedown=False)
     
     h2.deck = [c_blue_1, c_blue_2a, c_blue_2b]
     h2.hand = [c_blue_1]
@@ -132,7 +132,7 @@ def test_ultimate_unlock(upgrade_state):
     h1.gold = 10 # Plenty
     
     # Add Ultimate Card
-    ult = Card(id="ult", name="Ultimate", tier=CardTier.IV, color=CardColor.PURPLE, initiative=0, primary_action=ActionType.SKILL, effect_id="u1", effect_text="u1")
+    ult = Card(id="ult", name="Ultimate", tier=CardTier.IV, color=CardColor.PURPLE, initiative=0, primary_action=ActionType.SKILL, effect_id="u1", effect_text="u1", is_facedown=False)
     h1.deck.append(ult)
     
     # Run End Phase
@@ -176,7 +176,7 @@ def test_invalid_tier_upgrade(upgrade_state):
     target_hero = h1 if target_hero_id == h1.id else upgrade_state.teams[TeamColor.BLUE].heroes[0]
     
     # Let's try to choose a card of DIFFERENT Tier.
-    c_red_3 = Card(id="r3", name="Red III", tier=CardTier.III, color=CardColor.RED, initiative=4, primary_action=ActionType.ATTACK, effect_id="e7", effect_text="e7")
+    c_red_3 = Card(id="r3", name="Red III", tier=CardTier.III, color=CardColor.RED, initiative=4, primary_action=ActionType.ATTACK, effect_id="e7", effect_text="e7", is_facedown=False)
     target_hero.deck.append(c_red_3)
     
     # Ensure current actor matches request

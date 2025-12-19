@@ -10,12 +10,13 @@ class Card(GameEntity):
     Current state (In Hand, Discarded) is managed by GameState.
     """
     # Renamed internal storage for masking logic
-    real_tier: CardTier = Field(alias="tier")
-    real_color: Optional[CardColor] = Field(alias="color")
-    real_primary_action: Optional[ActionType] = Field(alias="primary_action")
-    real_secondary_actions: Dict[ActionType, int] = Field(default_factory=dict, alias="secondary_actions")
-    real_effect_id: str = Field(alias="effect_id")
-    real_effect_text: str = Field(alias="effect_text")
+    tier: CardTier = Field(alias="tier")
+    color: Optional[CardColor] = Field(alias="color")
+    primary_action: Optional[ActionType] = Field(alias="primary_action")
+    primary_action_value: Optional[int] = Field(None, alias="primary_action_value")
+    secondary_actions: Dict[ActionType, int] = Field(default_factory=dict, alias="secondary_actions")
+    effect_id: str = Field(alias="effect_id")
+    effect_text: str = Field(alias="effect_text")
     
     initiative: int
     
@@ -43,33 +44,73 @@ class Card(GameEntity):
     
     @property
     def tier(self) -> CardTier:
-        if self.is_facedown: return CardTier.UNTIERED
-        return self.real_tier
+        return self.tier
         
     @property
     def color(self) -> Optional[CardColor]:
-        if self.is_facedown: return None
-        return self.real_color
+        return self.color
 
     @property
     def primary_action(self) -> Optional[ActionType]:
-        if self.is_facedown: return None
-        return self.real_primary_action
+        return self.primary_action
+
+    @property
+    def primary_action_value(self) -> Optional[int]:
+        return self.primary_action_value
 
     @property
     def secondary_actions(self) -> Dict[ActionType, int]:
-        if self.is_facedown: return {}
-        return self.real_secondary_actions
+        return self.secondary_actions
 
     @property
     def effect_id(self) -> Optional[str]:
-        if self.is_facedown: return None
-        return self.real_effect_id
+        return self.effect_id
 
     @property
     def effect_text(self) -> str:
+        return self.effect_text
+
+    # -- Masked Values for in-game logic --
+    
+    @property
+    def current_tier(self) -> CardTier:
+        if self.is_facedown: return CardTier.UNTIERED
+        return self.tier
+    
+    @property
+    def current_color(self) -> Optional[CardColor]:
+        if self.is_facedown: return None
+        return self.color
+    
+    @property
+    def current_primary_action(self) -> Optional[ActionType]:
+        if self.is_facedown: return None
+        return self.primary_action
+    
+    @property
+    def current_primary_action_value(self) -> Optional[int]:
+        if self.is_facedown: return None
+        return self.primary_action_value
+    
+    @property
+    def current_secondary_actions(self) -> Dict[ActionType, int]:
+        if self.is_facedown: return {}
+        return self.secondary_actions
+    
+    @property
+    def current_effect_id(self) -> Optional[str]:
+        if self.is_facedown: return None
+        return self.effect_id
+    
+    @property
+    def current_effect_text(self) -> str:
         if self.is_facedown: return ""
-        return self.real_effect_text
+        return self.effect_text
+
+    @property
+    def current_initiative(self) -> int:
+        if self.is_facedown: return 0
+        return self.initiative
 
     class Config:
         frozen = False

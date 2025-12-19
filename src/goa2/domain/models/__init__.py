@@ -1,4 +1,4 @@
-from .enums import TeamColor, MinionType, StatType, CardTier, CardColor, ActionType, CardState
+from .enums import TeamColor, MinionType, StatType, CardTier, CardColor, ActionType, CardState, GamePhase, ResolutionStep
 from .base import BoardEntity, GameEntity
 from .unit import Unit, Hero, Minion
 from .card import Card
