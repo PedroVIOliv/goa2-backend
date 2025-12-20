@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor, MinionType
+from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.tile import Tile
 
 class Zone(BaseModel):
@@ -16,50 +17,12 @@ class Zone(BaseModel):
     label: Optional[str] = None
     hexes: Set[Hex]
     neighbors: List[str] = Field(default_factory=list) # IDs of connected zones
+    
+    # Spawn Points contained in this zone
+    spawn_points: List[SpawnPoint] = Field(default_factory=list)
 
     def contains(self, h: Hex) -> bool:
         return h in self.hexes
-
-
-class SpawnType(str, Enum):
-    HERO = "HERO"
-    MINION = "MINION"
-
-
-class SpawnPoint(BaseModel):
-    """
-    A specific location reserved for spawning units.
-    """
-    location: Hex
-    team: TeamColor
-    
-    # If not None, this spawn point is RESERVED for this minion type.
-    # If None, it is generally considered a Hero spawn point (or undefined, but usually Hero).
-    # The user requested: "spawn points should be specified in minion as one of the 3 minion types"
-    type: SpawnType = SpawnType.MINION # Default to Minion if not specified? Or Hero? Let's generic.
-    # Actually user wants "change spawn typing to include hero spawn type". 
-    # Current model relies on minion_type being None.
-    # Explicit type is better.
-    
-    # New Model:
-    type: SpawnType
-    minion_type: Optional[MinionType] = None 
-    
-    @model_validator(mode='after')
-    def validate_spawn_type(self) -> SpawnPoint:
-        if self.type == SpawnType.MINION and self.minion_type is None:
-             raise ValueError("Minion spawn point must specify minion_type")
-        if self.type == SpawnType.HERO and self.minion_type is not None:
-             raise ValueError("Hero spawn point cannot specify minion_type")
-        return self
-
-    @property
-    def is_minion_spawn(self) -> bool:
-        return self.type == SpawnType.MINION
-
-    @property
-    def is_hero_spawn(self) -> bool:
-        return self.type == SpawnType.HERO 
 
 
 class Board(BaseModel):

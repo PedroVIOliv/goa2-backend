@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from pydantic import BaseModel, Field
 
 from goa2.domain.board import Board
@@ -40,6 +40,15 @@ class GameState(BaseModel):
     # 3. Client responds to Request[0].
     # 4. Engine pops Request.
     input_stack: List[InputRequest] = Field(default_factory=list)
+
+    # Execution Stack for Step-Based Engine (The "Stack & Step" Architecture)
+    # Stores instances of GameStep (from goa2.engine.steps)
+    # Typed as List[Any] to avoid circular imports with steps.py
+    execution_stack: List[Any] = Field(default_factory=list)
+    
+    # Shared Context for the current resolution chain
+    # Stores transient data like "selected_target_id" between steps
+    execution_context: Dict[str, Any] = Field(default_factory=dict)
     
     @property
     def awaiting_input_type(self) -> InputRequestType:

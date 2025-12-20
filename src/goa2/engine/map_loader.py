@@ -121,7 +121,7 @@ def load_map(file_path: str) -> Board:
     # 3.1 Apply Obstacles to Tiles
     for h_obs in obstacles:
         if h_obs in board.tiles:
-            board.tiles[h_obs].is_static_obstacle = True
+            board.tiles[h_obs].is_terrain = True
         else:
             # If an obstacle hex was defined but wasn't in a zone, 
             # we might need to create it or ignore it. 

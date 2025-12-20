@@ -3,8 +3,8 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.models import TeamColor, Team, Hero, Card, CardTier, CardColor, ActionType, CardState
 from goa2.domain.hex import Hex
-from goa2.engine.mechanics import run_end_phase
-from goa2.engine.actions import UpgradeCardCommand
+# from goa2.engine.mechanics import run_end_phase
+# from goa2.engine.actions import UpgradeCardCommand
 from goa2.engine.phases import GamePhase
 from goa2.domain.input import InputRequestType
 

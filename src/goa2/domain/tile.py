@@ -9,8 +9,7 @@ from goa2.domain.types import BoardEntityID
 # Wait, models.base was importing tile.BoardEntity. 
 # Now I want BoardEntity to inherit from GameEntity.
 # So tile.py imports models.base.
-pass
-
+from goa2.domain.models.spawn import SpawnPoint
 from goa2.domain.models.base import GameEntity
 
 class Tile(BaseModel):
@@ -21,6 +20,9 @@ class Tile(BaseModel):
     hex: Hex
     zone_id: Optional[str] = None # Which zone this tile belongs to
     
+    # Spawn Point Info (if any)
+    spawn_point: Optional[SpawnPoint] = None
+
     # Runtime State
     # We store the ID of the entity here.
     # Why ID? Because storing the object makes serialization harder (circular refs)
@@ -28,16 +30,16 @@ class Tile(BaseModel):
     occupant_id: Optional[BoardEntityID] = None 
     
     # Static Terrain (Walls, Holes, etc.)
-    is_static_obstacle: bool = False
+    is_terrain: bool = False
 
     @property
     def is_obstacle(self) -> bool:
         """
         Returns true if this tile is blocked by EITHER:
-        1. Static Terrain (Wall)
+        1. Static Terrain (Wall/Water)
         2. Dynamic Occupant (Unit/Obstacle Token)
         """
-        return self.is_static_obstacle or self.is_occupied
+        return self.is_terrain or self.is_occupied
     
     @property
     def is_occupied(self) -> bool:

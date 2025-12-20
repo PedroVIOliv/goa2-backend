@@ -40,37 +40,8 @@ class Card(GameEntity):
         if self.metadata is None:
             self.metadata = {}
     
-    # -- Property Masking --
-    
-    @property
-    def tier(self) -> CardTier:
-        return self.tier
-        
-    @property
-    def color(self) -> Optional[CardColor]:
-        return self.color
-
-    @property
-    def primary_action(self) -> Optional[ActionType]:
-        return self.primary_action
-
-    @property
-    def primary_action_value(self) -> Optional[int]:
-        return self.primary_action_value
-
-    @property
-    def secondary_actions(self) -> Dict[ActionType, int]:
-        return self.secondary_actions
-
-    @property
-    def effect_id(self) -> Optional[str]:
-        return self.effect_id
-
-    @property
-    def effect_text(self) -> str:
-        return self.effect_text
-
     # -- Masked Values for in-game logic --
+    # Use these when resolving game state where hidden info matters.
     
     @property
     def current_tier(self) -> CardTier:
@@ -128,19 +99,11 @@ class Card(GameEntity):
     def validate_tier_color_match(self) -> Card:
         """
         Enforce strict Color <-> Tier relationship.
-        Use REAL fields to validate definition.
         """
-        color = self.real_color
-        tier = self.real_tier
+        color = self.color
+        tier = self.tier
         
-        # If optional fields are None (e.g. invalid init), skip or let Pydantic handle required check?
-        # Pydantic ensures required fields are present unless Optional.
-        # CardTier is required. Color is required (in valid init).
-        # But 'real_color' is Optional in definition above to satisfy type checker if aliases return None?
-        # Actually Field(alias="color") means it expects "color" input.
-        # If input is provided, it is set.
-        
-        if color is None: return self # Allow partial init? Or crash? strict validation.
+        if color is None: return self
 
         # Case 1: Gold/Silver must be UNTIERED
         if color in (CardColor.GOLD, CardColor.SILVER):
@@ -161,20 +124,20 @@ class Card(GameEntity):
 
     @model_validator(mode='after')
     def ensure_hold_action(self) -> Card:
-        if ActionType.HOLD not in self.real_secondary_actions:
-            self.real_secondary_actions[ActionType.HOLD] = 0
+        if ActionType.HOLD not in self.secondary_actions:
+            self.secondary_actions[ActionType.HOLD] = 0
         return self
 
     @model_validator(mode='after')
     def ensure_fast_travel_if_applicable(self) -> Card:
-        if not ActionType.FAST_TRAVEL in self.real_secondary_actions:
-            if self.real_primary_action == ActionType.MOVEMENT or ActionType.MOVEMENT in self.real_secondary_actions:
-                self.real_secondary_actions[ActionType.FAST_TRAVEL] = 0
+        if not ActionType.FAST_TRAVEL in self.secondary_actions:
+            if self.primary_action == ActionType.MOVEMENT or ActionType.MOVEMENT in self.secondary_actions:
+                self.secondary_actions[ActionType.FAST_TRAVEL] = 0
         return self
 
     @model_validator(mode='after')
     def ensure_clear_if_applicable(self) -> Card:
-        if not ActionType.CLEAR in self.real_secondary_actions:
-            if self.real_primary_action == ActionType.ATTACK or ActionType.ATTACK in self.real_secondary_actions:
-                self.real_secondary_actions[ActionType.CLEAR] = 0
+        if not ActionType.CLEAR in self.secondary_actions:
+            if self.primary_action == ActionType.ATTACK or ActionType.ATTACK in self.secondary_actions:
+                self.secondary_actions[ActionType.CLEAR] = 0
         return self
