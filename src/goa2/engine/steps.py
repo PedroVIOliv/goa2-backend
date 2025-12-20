@@ -1,10 +1,10 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
-from goa2.domain.models import ActionType, Card
+from goa2.domain.models import ActionType, Card, TeamColor
 from goa2.domain.hex import Hex
 from goa2.engine import rules # For validation
 
@@ -273,6 +273,100 @@ class ResolveCombatStep(GameStep):
             # Logic: state.kill_unit(target_id)
             
         return StepResult(is_finished=True)
+
+class ResolveTieBreakerStep(GameStep):
+    """
+    Recursive handler for tied initiative players.
+    1. Determines next winner (via Coin Flip or Team Choice).
+    2. Pushes Winner's logic to stack.
+    3. Pushes remaining players back via another TieBreakerStep.
+    """
+    type: str = "resolve_tie_breaker"
+    tied_hero_ids: List[str]
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if not self.tied_hero_ids:
+            return StepResult(is_finished=True)
+
+        # 1. Group remaining tied players by Team
+        teams_represented = {}
+        for h_id in self.tied_hero_ids:
+            hero = state.get_hero(h_id)
+            if hero:
+                teams_represented.setdefault(hero.team, []).append(h_id)
+
+        winner_id = None
+        needs_input = False
+        target_team = None
+        candidates = []
+
+        # LOGIC:
+        # A. If multiple teams -> Use Tie Breaker Coin to pick the FAVORED Team.
+        if len(teams_represented) > 1:
+            favored_team = state.tie_breaker_team
+            if favored_team in teams_represented:
+                candidates = teams_represented[favored_team]
+                target_team = favored_team
+            else:
+                # Favored team not tied? Pick first available team.
+                target_team = list(teams_represented.keys())[0]
+                candidates = teams_represented[target_team]
+            
+            # If target team has multiple players -> they must choose
+            if len(candidates) > 1:
+                needs_input = True
+            else:
+                winner_id = candidates[0]
+                # FLIP COIN only if we resolved a Different-Team tie
+                state.tie_breaker_team = TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
+                print(f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. Coin flipped.")
+
+        # B. If only one team -> they must choose who goes next
+        else:
+            target_team = list(teams_represented.keys())[0]
+            candidates = teams_represented[target_team]
+            if len(candidates) > 1:
+                needs_input = True
+            else:
+                winner_id = candidates[0]
+
+        # 2. Process Input if needed
+        if needs_input:
+            if self.pending_input:
+                winner_id = self.pending_input.get("selected_hero_id")
+                print(f"   [TIE] Team {target_team.name} chose {winner_id} to act first.")
+                # We do NOT flip coin here if it was a same-team choice? 
+                # Actually, rules say flip after one favored player resolves.
+                # If Red was favored, and Red chose A over D, Red acted. Flip coin.
+                if len(teams_represented) > 1:
+                     state.tie_breaker_team = TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
+            else:
+                return StepResult(
+                    requires_input=True,
+                    input_request={
+                        "type": "CHOOSE_ACTOR",
+                        "prompt": f"Team {target_team.name}, choose who acts first between {candidates}.",
+                        "player_ids": candidates,
+                        "team": target_team
+                    }
+                )
+
+        # 3. We have a winner! 
+        # Construct recurrence: [Winner Logic, Remaining TieBreaker]
+        remaining = [h for h in self.tied_hero_ids if h != winner_id]
+        
+        # Placeholder for real card logic. We find the card from the context buffer.
+        tied_cards = context.get("tied_cards", [])
+        winner_card = next((c for h, c in tied_cards if h == winner_id), None)
+        
+        new_steps = []
+        # A. Winner Action
+        new_steps.append(LogMessageStep(message=f"Resolving card for {winner_id} (Init: {winner_card.initiative if winner_card else '?'})"))
+        # B. Recurse for others
+        if remaining:
+            new_steps.append(ResolveTieBreakerStep(tied_hero_ids=remaining))
+
+        return StepResult(is_finished=True, new_steps=new_steps)
 
 class AttackSequenceStep(GameStep):
     """

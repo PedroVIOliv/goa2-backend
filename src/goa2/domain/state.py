@@ -32,6 +32,10 @@ class GameState(BaseModel):
     # ID of the Hero currently acting (Resolution Phase)
     current_actor_id: Optional[HeroID] = None
     
+    # The team that currently wins ties (Red or Blue)
+    # Flips every time a different-team tie is resolved.
+    tie_breaker_team: TeamColor = TeamColor.RED
+    
     # Interaction Stack
     # The top of the stack is the active request waiting for input.
     # Logic: 
