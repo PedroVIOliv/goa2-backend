@@ -1,7 +1,8 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Card, CardTier, CardColor, ActionType, Hero
+from goa2.domain.tile import Tile
+from goa2.domain.models import Team, TeamColor, Card, CardTier, CardColor, ActionType, Hero, Minion, MinionType
 from goa2.domain.types import HeroID, CardID
 from goa2.domain.hex import Hex
 from goa2.engine.steps import (
@@ -22,6 +23,31 @@ def empty_state():
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
         },
         current_actor_id="hero_red"
+    )
+
+@pytest.fixture
+def populated_state():
+    h1 = Hero(id="h1", name="Hero1", team=TeamColor.RED, deck=[])
+    m1 = Minion(id="m1", name="Minion1", type=MinionType.MELEE, team=TeamColor.RED)
+    
+    # Create Board with necessary tiles
+    start_hex = Hex(q=0, r=0, s=0)
+    target_hex = Hex(q=1, r=0, s=-1)
+    
+    board = Board()
+    board.tiles[start_hex] = Tile(hex=start_hex)
+    board.tiles[target_hex] = Tile(hex=target_hex)
+    
+    # Pre-occupy start hex
+    board.tiles[start_hex].occupant_id = "h1"
+    
+    return GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m1]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
+        },
+        unit_locations={"h1": start_hex}
     )
 
 @pytest.fixture
@@ -81,10 +107,7 @@ def test_reaction_window_validation(combat_state):
     assert "def_card_1" in req["options"]
     assert "PASS" in req["options"]
     
-    # Pass 2: Select Invalid Card (Mocking frontend bypass)
-    # This assumes strict validation, but our demo step currently warns & proceeds or crashes depending on impl.
-    # Let's test valid input first.
-    
+    # Pass 2: Select Invalid Card
     combat_state.execution_stack[-1].pending_input = {"selected_card_id": "def_card_1"}
     process_resolution_stack(combat_state)
     
@@ -99,10 +122,6 @@ def test_combat_resolution_block(combat_state):
     push_steps(combat_state, [step])
     
     process_resolution_stack(combat_state)
-    # Since we don't have "is_dead" logic fully wired to remove from team, check Logs?
-    # Or mock print. Step currently just prints. 
-    # Real test would check state change.
-    # For now, we assert it runs without error.
 
 def test_combat_resolution_hit(combat_state):
     # Defense 0 vs Attack 3 -> Hit
@@ -113,7 +132,6 @@ def test_combat_resolution_hit(combat_state):
     push_steps(combat_state, [step])
     
     process_resolution_stack(combat_state)
-    # Again, verifying side effects requires mock or inspecting stdout capsys.
     
 def test_attack_sequence_expansion(combat_state):
     # Check that the Macro step expands into 3 steps
@@ -127,14 +145,37 @@ def test_attack_sequence_expansion(combat_state):
     current = combat_state.execution_stack[-1]
     assert isinstance(current, SelectTargetStep)
 
-# --- New Error Handling Tests ---
+# --- Pathfinding Tests ---
+
+def test_move_unit_pathfinding(populated_state):
+    # Valid Move: 1 step
+    populated_state.execution_context["target_hex"] = Hex(q=1, r=0, s=-1)
+    step = MoveUnitStep(unit_id="h1", range_val=1)
+    
+    res = step.resolve(populated_state, populated_state.execution_context)
+    assert res.is_finished
+    assert populated_state.unit_locations["h1"] == Hex(q=1, r=0, s=-1)
+
+def test_move_unit_invalid_path(populated_state):
+    # Invalid Move: 5 steps away, range 1
+    populated_state.execution_context["target_hex"] = Hex(q=5, r=0, s=-5)
+    step = MoveUnitStep(unit_id="h1", range_val=1)
+    
+    start_loc = populated_state.unit_locations["h1"]
+    res = step.resolve(populated_state, populated_state.execution_context)
+    
+    assert res.is_finished
+    # Should NOT have moved
+    assert populated_state.unit_locations["h1"] == start_loc
+
+# --- Error Handling Tests ---
 
 def test_move_unit_error_handling(empty_state):
     # No actor
     step = MoveUnitStep(unit_id=None, destination_key="dest")
     empty_state.current_actor_id = None
     res = step.resolve(empty_state, {"dest": Hex(q=0,r=0,s=0)})
-    assert res.is_finished # Should finish with error log
+    assert res.is_finished
     
     # No destination
     step2 = MoveUnitStep(unit_id="h1", destination_key="missing_key")
@@ -144,7 +185,7 @@ def test_move_unit_error_handling(empty_state):
 def test_damage_error_handling(empty_state):
     step = DamageStep(amount=1, target_key="missing")
     res = step.resolve(empty_state, {})
-    assert res.is_finished # Finishes with log
+    assert res.is_finished
 
 def test_log_message(empty_state):
     step = LogMessageStep(message="Hello {name}")

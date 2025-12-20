@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
 from goa2.domain.models import ActionType, Card
+from goa2.domain.hex import Hex
+from goa2.engine import rules # For validation
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -144,24 +146,43 @@ class MoveUnitStep(GameStep):
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = self.unit_id if self.unit_id else state.current_actor_id
-        dest_hex = context.get(self.destination_key)
+        dest_val = context.get(self.destination_key)
         
         if not actor_id:
              print("   [ERROR] No actor for move.")
              return StepResult(is_finished=True)
              
-        if not dest_hex:
-             # In a real scenario, we might prompt for input HERE if missing.
-             # For now, assume a SelectTargetStep ran before this.
+        if not dest_val:
              print("   [ERROR] No destination for move.")
              return StepResult(is_finished=True)
 
-        # 1. Validate Path (using engine rules)
-        # Placeholder for full Hex object reconstruction from context
-        # rules.validate_movement_path(state.board, state.unit_locations, start, dest_hex, self.range_val)
+        # Ensure destination is a Hex object
+        if isinstance(dest_val, dict):
+            dest_hex = Hex(**dest_val)
+        else:
+            dest_hex = dest_val # Assume it is already a Hex
+
+        # 1. Get Current Location
+        start_hex = state.unit_locations.get(actor_id)
+        if not start_hex:
+            print(f"   [ERROR] Unit {actor_id} has no location on board.")
+            return StepResult(is_finished=True)
+
+        # 2. Validate Path (using engine rules)
+        is_valid = rules.validate_movement_path(
+            board=state.board,
+            unit_locations=state.unit_locations,
+            start=start_hex,
+            end=dest_hex,
+            max_steps=self.range_val
+        )
         
-        print(f"   [LOGIC] Moving {actor_id} to {dest_hex} (Range {self.range_val})")
-        # state.move_unit(actor_id, dest_hex)
+        if not is_valid:
+            print(f"   [INVALID] Move for {actor_id} to {dest_hex} is illegal.")
+            return StepResult(is_finished=True) # Mandatory step failed, halt.
+
+        print(f"   [LOGIC] Moving {actor_id} from {start_hex} to {dest_hex} (Range {self.range_val})")
+        state.move_unit(actor_id, dest_hex)
         return StepResult(is_finished=True)
 
 class ReactionWindowStep(GameStep):
@@ -200,15 +221,7 @@ class ReactionWindowStep(GameStep):
             
             # Case B: Selected Card
             if card_id:
-                # Validate it is in valid_ids (Security check)
-                if card_id not in valid_ids and valid_ids: # Allow if mock? No, be strict.
-                    # In demo/mock env, valid_ids might be empty if hero not fully setup.
-                    # For demo robustness, we warn but allow if no validation list exists.
-                    pass 
-
                 # Calculate Value
-                # In real engine, fetch card from Hand.
-                # For Demo: Assume mock value or fetch.
                 def_val = 0
                 selected_card = next((c for c in valid_defense_cards if c.id == card_id), None)
                 if selected_card:
@@ -224,7 +237,6 @@ class ReactionWindowStep(GameStep):
                 print(f"   [REACTION] Player {target_id} defends with {card_id} (Value: {def_val})")
                 context["defense_value"] = def_val
                 
-                # We could push a 'DiscardCardStep' here to actualize the cost
                 return StepResult(is_finished=True)
 
         # 2. Request Input
@@ -275,13 +287,6 @@ class AttackSequenceStep(GameStep):
         print(f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})")
         
         # Desired Execution Order: Select -> Reaction -> Combat
-        # The Handler will push these. 
-        # If Handler pushes [A, B, C], C is top?
-        # We need to define the contract.
-        # Usually "new_steps" implies "replace me with these".
-        # If we want Select to run first, it must be Top.
-        # So if we return [Select, Reaction, Combat], Handler should push Combat, then Reaction, then Select.
-        
         new_steps = [
             SelectTargetStep(prompt="Select Attack Target", output_key="victim_id"),
             ReactionWindowStep(target_player_key="victim_id"),
