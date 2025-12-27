@@ -138,10 +138,12 @@ def load_map(file_path: str) -> Board:
         
         current_zone = zones[current_zone_id]
         
-        for neighbor_hex in h.neighbors():
-            if neighbor_hex in board.tiles:
-                neighbor_zone_id = board.tiles[neighbor_hex].zone_id
-                if neighbor_zone_id and neighbor_zone_id != current_zone_id:
+        for neighbor_hex in board.get_neighbors(h):
+            neighbor_tile = board.get_tile(neighbor_hex)
+            if not neighbor_tile: continue # redundant due to get_neighbors
+            
+            neighbor_zone_id = neighbor_tile.zone_id
+            if neighbor_zone_id and neighbor_zone_id != current_zone_id:
                     # Found a connection
                     if neighbor_zone_id not in current_zone.neighbors:
                         current_zone.neighbors.append(neighbor_zone_id)

@@ -108,15 +108,16 @@ class GameState(BaseModel):
         self.unit_locations[unit_id] = target_hex
         
         # 2. Update Board Tiles (Grid)
-        if old_hex and old_hex in self.board.tiles:
+        if old_hex:
+             old_tile = self.board.get_tile(old_hex)
              # Only clear if it was occupied by THIS unit
-             current_occ = self.board.tiles[old_hex].occupant_id
-             if current_occ and str(current_occ) == str(unit_id):
-                 self.board.tiles[old_hex].occupant_id = None
+             if old_tile and old_tile.occupant_id and str(old_tile.occupant_id) == str(unit_id):
+                 old_tile.occupant_id = None
                  
-        if target_hex in self.board.tiles:
+        target_tile = self.board.get_tile(target_hex)
+        if target_tile:
             # Overwrite? Yes. Caller should validate emptiness if needed.
-            self.board.tiles[target_hex].occupant_id = BoardEntityID(str(unit_id))
+            target_tile.occupant_id = BoardEntityID(str(unit_id))
 
     def remove_unit(self, unit_id: UnitID):
         """
@@ -127,10 +128,10 @@ class GameState(BaseModel):
             loc = self.unit_locations[unit_id]
             del self.unit_locations[unit_id]
             
-            if loc in self.board.tiles:
-                current_occ = self.board.tiles[loc].occupant_id
-                if current_occ and str(current_occ) == str(unit_id):
-                    self.board.tiles[loc].occupant_id = None
+            tile = self.board.get_tile(loc)
+            if tile:
+                if tile.occupant_id and str(tile.occupant_id) == str(unit_id):
+                    tile.occupant_id = None
 
     class Config:
         # Pydantic V2 ConfigDict

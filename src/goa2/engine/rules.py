@@ -76,14 +76,11 @@ def validate_movement_path(
         if dist >= max_steps:
             continue
             
-        for neighbor in current.neighbors():
+        for neighbor in board.get_neighbors(current):
             if neighbor not in visited:
+                # 2. Obstacle Check
                 # If neighbor is blocked, we cannot Enter it.
-                # So we can't traverse it.
-                if neighbor in blocked and neighbor != end:
-                    # Exception: If 'end' was in blocked, we caught it in step 1.
-                    # But if we were allowing 'attack' or 'push', this might vary.
-                    # For pure MOVE, checked in step 1.
+                if board.tiles[neighbor].is_obstacle and neighbor != end:
                     continue
                 
                 visited.add(neighbor)

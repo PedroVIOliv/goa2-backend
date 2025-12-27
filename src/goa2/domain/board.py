@@ -85,3 +85,21 @@ class Board(BaseModel):
         for z in self.zones.values():
             for h in z.hexes:
                 self.tiles[h] = Tile(hex=h, zone_id=z.id)
+
+    # --- Smart Grid Methods (O(1) Boundary Checks) ---
+
+    def get_tile(self, h: Hex) -> Optional[Tile]:
+        """Safely retrieves a tile. Returns None if off-map."""
+        return self.tiles.get(h)
+
+    def is_on_map(self, h: Hex) -> bool:
+        """O(1) check if a hex coordinate exists on the board."""
+        return h in self.tiles
+
+    def get_neighbors(self, h: Hex) -> List[Hex]:
+        """Returns only the adjacent hexes that actually exist on this map."""
+        return [n for n in h.neighbors() if n in self.tiles]
+
+    def get_ring(self, h: Hex, radius: int) -> List[Hex]:
+        """Returns only the hexes in a ring that actually exist on this map."""
+        return [n for n in h.ring(radius) if n in self.tiles]
