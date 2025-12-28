@@ -8,11 +8,24 @@ from goa2.engine.steps import ResolveTieBreakerStep, LogMessageStep
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
     """
     Called when a player selects a card during the Planning Phase.
+    Validates that the card is in the player's hand.
     """
     if state.phase != GamePhase.PLANNING:
         print(f"   [!] Cannot commit card. Game is in {state.phase}")
         return
 
+    hero = state.get_hero(hero_id)
+    if not hero:
+        print(f"   [!] Error: Hero {hero_id} not found.")
+        return
+
+    # Check if card is in hand
+    if card not in hero.hand:
+        print(f"   [!] {hero_id} tried to play card {card.id} which is NOT in hand.")
+        return
+
+    # Move card from hand to pending buffer (Facedown on board)
+    hero.hand.remove(card)
     state.pending_inputs[hero_id] = card
     print(f"   [Planning] {hero_id} committed a card.")
 

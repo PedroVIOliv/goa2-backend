@@ -33,11 +33,16 @@ def test_phases_commit_and_revelation():
     c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
     c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, initiative=20, tier=CardTier.I, effect_id="e2", effect_text="Test")
     
+    # Put cards in hand
+    h1.hand.append(c1)
+    h2.hand.append(c2)
+
     # 1. Planning Phase
     state.phase = GamePhase.PLANNING
     phases.commit_card(state, "h1", c1)
     
-    assert state.pending_inputs["h1"] == c1
+    assert "h1" in state.pending_inputs
+    assert c1 not in h1.hand # Should have been removed
     assert state.phase == GamePhase.PLANNING # Not done yet
     
     # 2. Commit second card -> Trigger Revelation
@@ -55,6 +60,21 @@ def test_phases_commit_and_revelation():
     assert h1.current_turn_card == c1
     assert h2.current_turn_card == c2
 
+def test_phases_cannot_commit_card_not_in_hand():
+    """Test that committing a card not in hand is rejected."""
+    state = create_empty_state()
+    h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
+    state.teams[TeamColor.RED].heroes.append(h1)
+    
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    # Card is NOT in hand
+    
+    state.phase = GamePhase.PLANNING
+    phases.commit_card(state, "h1", c1)
+    
+    assert "h1" not in state.pending_inputs
+    assert state.phase == GamePhase.PLANNING
+
 def test_phases_pass_turn():
     """Test that passing a turn works correctly."""
     state = create_empty_state()
@@ -67,6 +87,7 @@ def test_phases_pass_turn():
     
     # h1 Plays a card
     c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    h1.hand.append(c1)
     phases.commit_card(state, "h1", c1)
     
     # h2 Passes
