@@ -27,6 +27,9 @@ class Hero(Unit):
     # Card Management
     draw_pile: List[Card] = Field(default_factory=list)
     hand: List[Card] = Field(default_factory=list)
+    played_cards: List[Card] = Field(default_factory=list, description="Cards currently on the dashboard (Unresolved or Resolved)")
+    current_turn_card: Optional[Card] = Field(default=None, description="The card played for the current turn (Unresolved)")
+    
     discard_pile: List[Card] = Field(default_factory=list)
     level: int = 1
     gold: int = 0
@@ -34,6 +37,18 @@ class Hero(Unit):
     items: Dict[StatType, int] = Field(default_factory=dict)
     # Circular reference to parent Team
     team_obj: Optional['Team'] = Field(default=None, exclude=True)
+
+    def get_effective_initiative(self) -> int:
+        """
+        Calculates total initiative for the current turn.
+        Formula: Card Base + Items[INITIATIVE] + (Future: Modifiers)
+        """
+        if not self.current_turn_card:
+            return 0
+        
+        val = self.current_turn_card.initiative
+        val += self.items.get(StatType.INITIATIVE, 0)
+        return val
 
     def initialize_state(self):
         """

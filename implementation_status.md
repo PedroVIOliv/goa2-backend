@@ -15,7 +15,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
 | **2.1 Game Loop** | **Implemented** | `handler.py` loop processes the `execution_stack`. |
-| **2.2 Turn Structure** | **Partial** | `phases.py` handles broad state. `ResolveTieBreakerStep` handles complex initiative ties. **Hero Respawn** logic is pending. **CRITICAL:** `resolution_queue` is currently static; needs refactor to "Re-identify Highest Initiative" dynamically per rules (supporting death/swap mid-round). |
+| **2.2 Turn Structure** | **Partial** | `phases.py` handles broad state. `ResolveTieBreakerStep` handles complex initiative ties. **Hero Respawn** logic is pending. `resolution_queue` has been refactored to `unresolved_hero_ids` for dynamic re-identification. |
 | **2.3 Lane Push** | **Missing** | No `LanePushStep` or trigger logic implemented yet. |
 | **2.4 End Phase** | **Missing** | No `EndPhaseStep` (Minion Battle, Level Up) implemented yet. |
 

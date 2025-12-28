@@ -16,30 +16,58 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
     state.pending_inputs[hero_id] = card
     print(f"   [Planning] {hero_id} committed a card.")
 
-    # Check if all heroes have committed
+    _check_phase_transition(state)
+
+def pass_turn(state: GameState, hero_id: HeroID):
+    """
+    Called when a player has no cards and must Pass.
+    """
+    if state.phase != GamePhase.PLANNING:
+        return
+    
+    hero = state.get_hero(hero_id)
+    if not hero:
+        return
+
+    # Rule Check: You must play a card if able.
+    if len(hero.hand) > 0:
+        print(f"   [!] {hero_id} cannot Pass (Hand has {len(hero.hand)} cards).")
+        return
+        
+    state.pending_inputs[hero_id] = None
+    print(f"   [Planning] {hero_id} PASSED.")
+    
+    _check_phase_transition(state)
+
+def _check_phase_transition(state: GameState):
+    # Check if all heroes have committed (Card or Pass)
     total_heroes = sum(len(team.heroes) for team in state.teams.values())
     if len(state.pending_inputs) >= total_heroes:
         start_revelation_phase(state)
 
 def start_revelation_phase(state: GameState):
     """
-    Reveals all cards and builds the initial resolution queue.
+    Reveals all cards and sets up the unresolved pool.
     """
     state.phase = GamePhase.REVELATION
     print("\n=== REVELATION PHASE ===")
 
-    # 1. Reveal all cards (set facedown = False)
-    # 2. Build sorted list of (HeroID, Card)
-    revealed_cards = []
-    for h_id, card in state.pending_inputs.items():
-        card.is_facedown = False
-        revealed_cards.append((h_id, card))
-
-    # 3. Sort by Initiative (Descending)
-    # Note: Primary sort is initiative. Tie-breakers handled during resolution.
-    revealed_cards.sort(key=lambda x: x[1].initiative, reverse=True)
+    state.unresolved_hero_ids = []
     
-    state.resolution_queue = revealed_cards
+    # Assign cards to heroes and populate the unresolved list
+    for h_id, card in state.pending_inputs.items():
+        # If card is None, the player Passed. They do not enter the resolution pool.
+        if card is None:
+            continue
+
+        hero = state.get_hero(h_id)
+        if hero:
+            card.is_facedown = False
+            hero.current_turn_card = card
+            state.unresolved_hero_ids.append(h_id)
+        else:
+            print(f"   [!] Error: Hero {h_id} not found during revelation.")
+
     state.pending_inputs = {} # Clear buffer
     
     # Transition to Resolution
@@ -48,50 +76,59 @@ def start_revelation_phase(state: GameState):
 def start_resolution_phase(state: GameState):
     state.phase = GamePhase.RESOLUTION
     print("=== RESOLUTION PHASE ===")
-    process_next_in_queue(state)
+    resolve_next_action(state)
 
-def process_next_in_queue(state: GameState):
+def resolve_next_action(state: GameState):
     """
-    Pops the next card(s) from the queue and populates the execution stack.
-    Handles grouping for ties.
+    Dynamically identifies the next actor based on current initiatives.
+    Follows Rule: "After each action... re-identify the player with Highest Initiative".
     """
-    if not state.resolution_queue:
+    if not state.unresolved_hero_ids:
         print("   [Queue] All cards resolved. Turn End.")
         # Trigger Turn End Logic here
         return
 
-    # 1. Identify Tied Group
-    top_h_id, top_card = state.resolution_queue[0]
-    target_initiative = top_card.initiative
-    
-    tied_group = []
-    while state.resolution_queue and state.resolution_queue[0][1].initiative == target_initiative:
-        tied_group.append(state.resolution_queue.pop(0))
+    # 1. Calculate current initiatives for all candidates
+    candidates: List[Tuple[HeroID, int]] = []
+    for h_id in state.unresolved_hero_ids:
+        hero = state.get_hero(h_id)
+        if hero:
+            candidates.append((h_id, hero.get_effective_initiative()))
+            
+    if not candidates:
+        return
 
-    # 2. If no tie -> Push logic immediately
-    if len(tied_group) == 1:
-        hero_id, card = tied_group[0]
+    # 2. Sort Descending
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    
+    # 3. Identify Tied Group
+    highest_init = candidates[0][1]
+    tied_hero_ids = [c[0] for c in candidates if c[1] == highest_init]
+
+    # 4. If no tie -> Resolve immediately
+    if len(tied_hero_ids) == 1:
+        hero_id = tied_hero_ids[0]
         state.current_actor_id = hero_id
-        print(f"   [Queue] Next actor: {hero_id} (Init: {card.initiative})")
         
-        # Convert Card to Steps (Macro Step)
-        # For now, we use a placeholder log step. 
-        # In real engine, we'd have card.get_steps()
+        # Remove from pool immediately (Acting/Resolved)
+        if hero_id in state.unresolved_hero_ids:
+            state.unresolved_hero_ids.remove(hero_id)
+            
+        print(f"   [Resolution] Next actor: {hero_id} (Init: {highest_init})")
+        
+        # Convert Card to Steps
         push_steps(state, [LogMessageStep(message=f"Resolving card for {hero_id}")])
         return
 
-    # 3. If tie -> Push Tie Breaker Step
-    print(f"   [Queue] Tie detected at Initiative {target_initiative} between {[h for h,c in tied_group]}")
+    # 5. If tie -> Push Tie Breaker Step
+    print(f"   [Resolution] Tie detected at Initiative {highest_init} between {tied_hero_ids}")
     
-    # We push the tied cards BACK into the queue (they will be resolved one by one after tie break)
-    # Actually, we should put them in a special state or context?
-    # Better: Push a TieBreakerStep that, when resolved, pushes the winner's logic 
-    # AND pushes the remaining tied players back onto the stack/queue.
+    # We DO NOT remove them from unresolved_hero_ids yet.
+    # The TieBreaker step will determine the winner, remove ONLY the winner, 
+    # and then recursively call resolve_next_action (implicitly via loop or explicit step).
+    # Wait, the TieBreakerStep in steps.py handles the recursion.
+    # But it needs to know how to "Execute" the winner.
     
     state.execution_stack.append(ResolveTieBreakerStep(
-        tied_hero_ids=[h for h,c in tied_group]
+        tied_hero_ids=tied_hero_ids
     ))
-    
-    # We need to remember the cards! 
-    # We store the tied_group in context so the TieBreaker can access them.
-    state.execution_context["tied_cards"] = tied_group

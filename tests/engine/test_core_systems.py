@@ -45,12 +45,64 @@ def test_phases_commit_and_revelation():
     
     assert state.phase == GamePhase.RESOLUTION # Should auto-transition through Revelation to Resolution
     
-    # process_next_in_queue is called automatically, so 1 card is already popped
-    assert len(state.resolution_queue) == 1 
-    assert state.current_actor_id == "h2" # Highest init (20) went first
+    # resolve_next_action is called automatically
+    # Highest init (h2) should be picked and REMOVED from the set
+    assert "h2" not in state.unresolved_hero_ids
+    assert "h1" in state.unresolved_hero_ids
+    assert state.current_actor_id == "h2"
     
-    # The remaining card in queue should be h1
-    assert state.resolution_queue[0][0] == "h1"
+    # Check that cards were assigned
+    assert h1.current_turn_card == c1
+    assert h2.current_turn_card == c2
+
+def test_phases_pass_turn():
+    """Test that passing a turn works correctly."""
+    state = create_empty_state()
+    h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
+    h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, deck=[])
+    state.teams[TeamColor.RED].heroes.append(h1)
+    state.teams[TeamColor.BLUE].heroes.append(h2)
+    
+    state.phase = GamePhase.PLANNING
+    
+    # h1 Plays a card
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    phases.commit_card(state, "h1", c1)
+    
+    # h2 Passes
+    phases.pass_turn(state, "h2")
+    
+    # Should transition to Resolution
+    assert state.phase == GamePhase.RESOLUTION
+    
+    # h1 is the only actor, so they are picked immediately
+    assert state.current_actor_id == "h1"
+    assert "h1" not in state.unresolved_hero_ids # Popped
+    
+    # h2 should not be in pool either
+    assert "h2" not in state.unresolved_hero_ids
+    
+    # h2 should have no active card
+    assert h2.current_turn_card is None
+
+def test_phases_cannot_pass_with_cards():
+    """Test that passing is forbidden if hand is not empty."""
+    state = create_empty_state()
+    h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
+    state.teams[TeamColor.RED].heroes.append(h1)
+    
+    # Give h1 a card in hand
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    h1.hand.append(c1)
+    
+    state.phase = GamePhase.PLANNING
+    
+    # Try to pass
+    phases.pass_turn(state, "h1")
+    
+    # Should NOT have committed a pass
+    assert "h1" not in state.pending_inputs
+    assert state.phase == GamePhase.PLANNING
 
 def test_phases_process_queue_tie_handling():
     """Test that ties are detected and handled."""
@@ -60,10 +112,18 @@ def test_phases_process_queue_tie_handling():
     c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
     c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, initiative=10, tier=CardTier.I, effect_id="e2", effect_text="Test")
     
-    # Manually populate queue with a tie
-    state.resolution_queue = [("h1", c1), ("h2", c2)]
+    # Setup Heroes with cards
+    h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
+    h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, deck=[])
+    h1.current_turn_card = c1
+    h2.current_turn_card = c2
+    state.teams[TeamColor.RED].heroes.append(h1)
+    state.teams[TeamColor.BLUE].heroes.append(h2)
     
-    phases.process_next_in_queue(state)
+    # Manually populate unresolved set
+    state.unresolved_hero_ids = ["h1", "h2"]
+    
+    phases.resolve_next_action(state)
     
     # Should have pushed a ResolveTieBreakerStep
     assert len(state.execution_stack) > 0

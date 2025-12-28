@@ -67,9 +67,9 @@ class GameState(BaseModel):
     # Planning Phase Buffer: HeroID -> Card
     pending_inputs: Dict[HeroID, Card] = Field(default_factory=dict)
     
-    # Resolution Phase Queue: List of (HeroID, Card)
-    # Ordered by Initiative
-    resolution_queue: List[Tuple[HeroID, Card]] = Field(default_factory=list)
+    # Resolution Phase Tracker: Set of HeroIDs who have not yet acted this turn.
+    # We dynamically re-sort this set every step to determine the next actor.
+    unresolved_hero_ids: List[HeroID] = Field(default_factory=list) # Using List for JSON stability, acts as Set.
 
     # Dynamic State: Unit ID -> Hex Location
     unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict)

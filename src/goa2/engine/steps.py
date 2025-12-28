@@ -352,19 +352,20 @@ class ResolveTieBreakerStep(GameStep):
                 )
 
         # 3. We have a winner! 
-        # Construct recurrence: [Winner Logic, Remaining TieBreaker]
-        remaining = [h for h in self.tied_hero_ids if h != winner_id]
+        # Identify the winner's card
+        winner_hero = state.get_hero(winner_id)
+        winner_card = winner_hero.current_turn_card if winner_hero else None
         
-        # Placeholder for real card logic. We find the card from the context buffer.
-        tied_cards = context.get("tied_cards", [])
-        winner_card = next((c for h, c in tied_cards if h == winner_id), None)
-        
+        # CRITICAL: Remove winner from unresolved pool so they don't act again immediately
+        # (This implements the "Re-identify" loop: Winner acts -> Stack Empty -> Engine finds next highest)
+        if winner_id in state.unresolved_hero_ids:
+            state.unresolved_hero_ids.remove(winner_id)
+            
         new_steps = []
         # A. Winner Action
         new_steps.append(LogMessageStep(message=f"Resolving card for {winner_id} (Init: {winner_card.initiative if winner_card else '?'})"))
-        # B. Recurse for others
-        if remaining:
-            new_steps.append(ResolveTieBreakerStep(tied_hero_ids=remaining))
+        
+        # We do NOT recurse. The engine loop will call resolve_next_action again when stack is empty.
 
         return StepResult(is_finished=True, new_steps=new_steps)
 
