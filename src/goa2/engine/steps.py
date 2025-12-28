@@ -274,6 +274,26 @@ class ResolveCombatStep(GameStep):
             
         return StepResult(is_finished=True)
 
+class FinalizeHeroTurnStep(GameStep):
+    """
+    Finalizes a hero's turn by moving their current card to the resolved dashboard.
+    Clears the actor context.
+    """
+    type: str = "finalize_hero_turn"
+    hero_id: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero = state.get_hero(self.hero_id)
+        if hero:
+            print(f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved.")
+            hero.resolve_current_card()
+        
+        # Clear transient context for the next actor
+        context.clear()
+        state.current_actor_id = None
+        
+        return StepResult(is_finished=True)
+
 class ResolveTieBreakerStep(GameStep):
     """
     Recursive handler for tied initiative players.
@@ -357,15 +377,18 @@ class ResolveTieBreakerStep(GameStep):
         winner_card = winner_hero.current_turn_card if winner_hero else None
         
         # CRITICAL: Remove winner from unresolved pool so they don't act again immediately
-        # (This implements the "Re-identify" loop: Winner acts -> Stack Empty -> Engine finds next highest)
         if winner_id in state.unresolved_hero_ids:
             state.unresolved_hero_ids.remove(winner_id)
             
+        state.current_actor_id = winner_id
+            
         new_steps = []
         # A. Winner Action
-        new_steps.append(LogMessageStep(message=f"Resolving card for {winner_id} (Init: {winner_card.initiative if winner_card else '?'})"))
+        new_steps.append(LogMessageStep(message=f"Resolving card for {winner_id}"))
         
-        # We do NOT recurse. The engine loop will call resolve_next_action again when stack is empty.
+        # TODO: Here we would push the actual steps from the card.
+        # For now, we at least push the Finalize step.
+        new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
 
         return StepResult(is_finished=True, new_steps=new_steps)
 

@@ -23,17 +23,17 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
-| **3.1 Hero State** | **Partial** | `Hero` model exists. Leveling math and Death Penalty/Reward logic are **Missing**. **Hero Dashboard (Turn slots for played cards)** is not yet implemented in the model. |
+| **3.1 Hero State** | **Partial** | `Hero` model exists with `deck`, `hand`, `discard_pile`, `played_cards`. `items` dict exists but lacks logic to link specific cards to item slots. Leveling math and Death Penalty/Reward logic are **Missing**. |
 | **3.2 Minion State** | **Partial** | `Minion` model exists. `rules.validate_movement_path` respects obstacles. **Heavy Immunity** and **Auras** are pending integration. |
 
 ## 4. Card System
 
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
-| **5.1 Card Anatomy** | **Implemented** | `Card` Pydantic model covers all fields (ActionType, Range, Value). |
-| **5.2 Card States** | **Partial** | Hand/Played/Discarded state tracking exists. `ReactionWindowStep` handles looking up Defense cards in hand. |
-| **5.3 Upgrade Mechanic** | **Missing** | No logic for Upgrading cards or equipping items yet. |
-| **5.1 Ultimate** | **Missing** | Ultimate card logic not implemented. |
+| **5.1 Card Anatomy** | **Complete** | `Card` model covers all fields. `is_facedown` logic correctly masks hidden info (`current_tier`, `current_color`, etc.). Validators enforce Range/Radius exclusivity and Color/Tier matching. |
+| **5.2 Card States** | **Partial** | `CardState` enum tracks Hand/Played/Discarded/Deck. `Hero` class has helpers `play_card`, `discard_card`, `retrieve_cards`. **Missing:** "Death Penalty" (Unresolved -> No Effect) and "Swap a card" logic. |
+| **5.3 Upgrade Mechanic** | **Missing** | No logic for Upgrading cards or equipping items (converting Card to `items` dict entry) yet. |
+| **5.1 Ultimate** | **Partial** | Ultimate cards are defined in data (e.g. `arien.py`) and model (`Tier IV`), but unlocking logic is missing. |
 
 ## 5. Actions & Keywords
 

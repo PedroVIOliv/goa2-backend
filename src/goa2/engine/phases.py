@@ -138,7 +138,11 @@ def resolve_next_action(state: GameState):
         print(f"   [Resolution] Next actor: {hero_id} (Init: {highest_init})")
         
         # Convert Card to Steps
-        push_steps(state, [LogMessageStep(message=f"Resolving card for {hero_id}")])
+        from goa2.engine.steps import FinalizeHeroTurnStep
+        push_steps(state, [
+            LogMessageStep(message=f"Resolving card for {hero_id}"),
+            FinalizeHeroTurnStep(hero_id=hero_id)
+        ])
         return
 
     # 5. If tie -> Push Tie Breaker Step

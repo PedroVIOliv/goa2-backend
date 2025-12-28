@@ -62,6 +62,20 @@ class Hero(Unit):
         card.state = CardState.UNRESOLVED
         card.is_facedown = True
         card.played_this_round = True
+        
+        # Set as current unresolved card. 
+        # It moves to 'played_cards' (Resolved slots) only after turn completion.
+        self.current_turn_card = card
+
+    def resolve_current_card(self):
+        """
+        Moves the current turn card to the resolved 'played_cards' list.
+        Should be called at the end of the turn.
+        """
+        if self.current_turn_card:
+            self.current_turn_card.state = CardState.RESOLVED
+            self.played_cards.append(self.current_turn_card)
+            self.current_turn_card = None
 
     def discard_card(self, card: Card, from_hand: bool = True):
         """
@@ -72,12 +86,59 @@ class Hero(Unit):
             if card not in self.hand:
                 raise ValueError(f"Cannot discard {card.id} from hand (not found).")
             self.hand.remove(card)
-        
-        # If discarding a Played card (e.g. from Dashboard), we assume caller removed it from played_cards.
-        # But we should handle state update:
+        else:
+            # Check other locations
+            if self.current_turn_card == card:
+                self.current_turn_card = None
+            elif card in self.played_cards:
+                self.played_cards.remove(card)
+
         card.state = CardState.DISCARD
         card.is_facedown = False # Open information
         self.discard_pile.append(card)
+
+    def swap_cards(self, card_a: Card, card_b: Card):
+        """
+        Swaps two cards between their respective locations (Hand, Resolved Slots, Unresolved Slot, Discard).
+        Swaps their State, Facedown status, and lifecycle flags.
+        """
+        # Helper to get location info: (Type, Container/Field, Index/Key)
+        def get_loc(c: Card):
+            if c in self.hand: return ('list', self.hand, self.hand.index(c))
+            if c in self.played_cards: return ('list', self.played_cards, self.played_cards.index(c))
+            if c in self.discard_pile: return ('list', self.discard_pile, self.discard_pile.index(c))
+            if c == self.current_turn_card: return ('field', 'current_turn_card', None)
+            return (None, None, None)
+
+        type_a, container_a, idx_a = get_loc(card_a)
+        type_b, container_b, idx_b = get_loc(card_b)
+
+        if not type_a: raise ValueError(f"Card A {card_a.id} not found.")
+        if not type_b: raise ValueError(f"Card B {card_b.id} not found.")
+
+        # 1. Swap References in Containers
+        # Case 1: Both are fields (Impossible for now as we have 1 unresolved field)
+        # Case 2: One field, one list
+        # Case 3: Both lists
+        
+        # We execute the swap by putting B in A's spot, and A in B's spot.
+        
+        # Step A: Put Card B into Location A
+        if type_a == 'list':
+            container_a[idx_a] = card_b
+        else: # field
+            setattr(self, container_a, card_b)
+            
+        # Step B: Put Card A into Location B
+        if type_b == 'list':
+            container_b[idx_b] = card_a
+        else: # field
+            setattr(self, container_b, card_a)
+            
+        # 2. Swap Attributes
+        card_a.state, card_b.state = card_b.state, card_a.state
+        card_a.is_facedown, card_b.is_facedown = card_b.is_facedown, card_a.is_facedown
+        card_a.played_this_round, card_b.played_this_round = card_b.played_this_round, card_a.played_this_round
 
     def retrieve_cards(self):
         """
@@ -86,6 +147,8 @@ class Hero(Unit):
         """
         # Combine lists
         cards_to_return = self.played_cards + self.discard_pile
+        if self.current_turn_card:
+            cards_to_return.append(self.current_turn_card)
         
         for card in cards_to_return:
             card.state = CardState.HAND
@@ -96,6 +159,7 @@ class Hero(Unit):
         # Clear piles
         self.played_cards = []
         self.discard_pile = []
+        self.current_turn_card = None
 
     def initialize_state(self):
         """
