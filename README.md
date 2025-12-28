@@ -1,116 +1,138 @@
 # Guards of Atlantis II - Game Engine Backend
 
-This project is a Python implementation of the game rules and engine for **Guards of Atlantis II**, a MOBA-style board game. It is designed to be a robust, stateless-server-friendly backend that handles complex turn-based logic, interruptions, and effect resolution.
+A high-fidelity, deterministic Python implementation of the game rules for **Guards of Atlantis II**. This project serves as the **authoritative backend engine**, designed to handle the complex state and logic of the game while providing a clean, structured interface for future **frontend implementations**.
+
+## 🎯 Design Goals
+
+1.  **Authoritative Logic:** The backend is the single source of truth for all rules and state transitions.
+2.  **Frontend Facilitation:** By reifying logic into a stack of atomic steps, the backend simplifies client-side development. The client doesn't need to know the rules; it simply renders the state and responds to specific `InputRequests` sent by the engine.
+3.  **Determinism:** Given the same sequence of inputs, the engine will always produce the same state, making replays and testing trivial.
+
+## 🌟 Core Philosophy: "Logic as Data"
+
+Unlike traditional engines that use deeply nested function calls, this engine uses a **Stack-Based Step Architecture**. Every action (playing a card, moving, attacking) is broken down into atomic `GameStep` objects pushed onto an `execution_stack`.
+
+### Why this matters:
+- **Mid-Action Interrupts:** If an attack requires a player to choose a defense card, the engine simply pauses, requests input, and resumes exactly where it left off.
+- **Deep Nesting:** Reactions to reactions (e.g., a trap triggered by a defense card) are handled naturally by pushing new steps on top of the stack.
+- **Stateless & Deterministic:** The entire state of a "paused" card resolution is captured in the stack, making it easy to serialize and resume on different server instances.
+
+---
+
+## 🏗 Architecture Overview
+
+### 1. Game State (`GameState`)
+The single source of truth. Contains the `board`, `teams`, `unit_locations`, and the two core processing containers:
+- **`execution_stack`**: A LIFO list of `GameStep` instances currently being resolved.
+- **`execution_context`**: A shared dictionary used by steps in the same chain to pass data (e.g., "Step 1" finds a target, "Step 2" deals damage to that target).
+
+### 2. The Step Engine (`src/goa2/engine/steps.py`)
+Logic is implemented in small, reusable classes:
+- **`SelectTargetStep`**: Handles interaction with players.
+- **`MoveUnitStep`**: Handles movement with pathfinding validation.
+- **`AttackSequenceStep`**: A "Macro Step" that expands into sub-steps (Select -> Reaction -> Combat).
+- **`ResolveTieBreakerStep`**: Handles initiative ties using coin flips and team choices.
+
+### 3. Smart Grid (`src/goa2/domain/board.py`)
+The board is a "Smart Grid" that ensures safety on non-uniform maps.
+- **O(1) Lookups:** Boundary checks and neighbor detection are done via hash-map lookups.
+- **Centralized Safety:** Logic always uses `board.get_neighbors(hex)` or `board.get_ring(hex, radius)`, which automatically filters out coordinates that don't exist on the map.
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Python 3.11+
-- [uv](https://github.com/astral-sh/uv) (Recommended for dependency management)
+- [uv](https://github.com/astral-sh/uv) (Extremely recommended)
 
-### Installation
+### Setup
 ```bash
-# Install dependencies
+# Sync dependencies
 uv sync
 ```
 
-### Running Tests
-We use `pytest` for testing. The suite covers unit tests, integration tests, and full character script validations.
+### Running the Engine Demo
+We have a walkthrough script that demonstrates multi-player interaction and the step-stack in action:
 ```bash
-# Run all tests
-uv run pytest tests/
+PYTHONPATH=src uv run python -m goa2.scripts.demo_step_engine
+```
 
-# Run specific character tests
-uv run pytest tests/scripts/test_arien.py
+### Running Tests & Coverage
+```bash
+PYTHONPATH=src uv run pytest --cov=goa2 tests/
 ```
 
 ---
 
-## 🏗 Architecture
+## 📖 Developer Guide
 
-The engine follows a **Command-driven** and **State-centric** architecture.
+### Implementing a New Card
+To implement a card like *"Move 1, then Attack"*:
+1. Create a `MacroStep` (or a helper function).
+2. Return a list of steps in the desired order.
 
-### 1. Game State (`GameState`)
-The `GameState` object is the single source of truth. It contains:
-- **Board**: Hex grid, zones, and unit locations.
-- **Teams/Units**: Mutable state of heroes and minions.
-- **Stacks & Queues**:
-  - `input_stack`: Push-down automaton for handling multi-step user input (e.g., Attack -> Select Target -> Defense Card).
-  - `resolution_queue`: Queue of cards/actions to be resolved in the current phase.
+```python
+class ChargeCardStep(GameStep):
+    def resolve(self, state, context):
+        steps = [
+            MoveUnitStep(range_val=1),
+            AttackSequenceStep(damage=3, range_val=1)
+        ]
+        return StepResult(is_finished=True, new_steps=steps)
+```
 
-### 2. Commands (The Action Layer)
-State mutations **ONLY** happen via `Command` objects (found in `src/goa2/engine/actions.py`).
-- **Pattern**: `Command.execute(state) -> GameState`
-- **Atomic**: Each command performs a specific logic block.
-- **Input-Driven**: Commands check the `input_stack` for required parameters. If input is missing, they raise `ValueError` (in tests) or would realistically return a request to the frontend.
+### Adding a New Interaction (Input)
+If you need a new type of player choice (e.g., "Choose a card to discard"):
+1. Create a step that returns `requires_input=True`.
+2. Provide the `player_id` and `input_request` data.
+3. The `handler.py` loop will automatically pause and return that request to the client.
 
-**Key Commands:**
-- `PlayCardCommand`: Commits a card to the resolution queue.
-- `ResolveNextCommand`: Advances the game loop, popping cards and triggering actions.
-- `ChooseActionCommand`: Handles the player's choice of Primary vs. Secondary action.
-- `AttackCommand` / `PerformMovementCommand`: Execute specific game mechanics.
-
-### 3. Effect System
-The engine supports complex card effects via a **Hook System** (`src/goa2/engine/effects.py`).
-- **Registry**: Effects are registered by string ID (e.g., `"effect_attack_discard_behind"`).
-- **Hooks**:
-  - `on_pre_action(ctx)`: Runs before the main action. Can interrupt flow by pushing to `input_stack`.
-  - `on_post_action(ctx)`: Runs after the action completes.
-- **Persistence**: Effects needing to persist state across interruptions (e.g., remembering a target while waiting for input) use `card.metadata`.
-
-### 4. Hex Grid
-The board uses **Cube Coordinates** (`q, r, s`) defined in `src/goa2/domain/hex.py`.
-- `q + r + s == 0` constraint is enforced.
-- Configured with Pydantic's `ConfigDict(frozen=True)` to ensure hashability for map lookups.
+### Rule Constants & Physics
+- **Movement Pathfinding:** Logic is centralized in `src/goa2/engine/rules.py`.
+- **Combat Math:** Passive auras (Minion modifiers) are handled in `src/goa2/engine/stats.py`.
 
 ---
 
-## 🧠 Coding Best Practices
+## 🗺 Roadmap & Rule Implementation
 
-### 1. State Immutability (Conceptual)
-While Python objects are mutable, treat `GameState` as something that transitions from one valid state to another. Avoid modifying state deeply nested within helper functions; keep mutations inside `Command.execute`.
+### 🏁 Win Conditions
+- [ ] **Lane Push:** Battle zone reaches the enemy throne.
+- [ ] **Last Push:** A push occurs when only one Wave Counter remains (Time Condition).
+- [ ] **Life Counters:** A team's last life counter is flipped.
 
-### 2. Input Handling
-If an action requires user input (e.g., "Select a Hex"):
-1. **Push Input Request**: The Command/Effect pushes an `InputRequest` to `state.input_stack`.
-2. **Return**: The execution halts.
-3. **Resume**: The next external call (from User/Test) provides the input via a specific Command (e.g., `ResolveSkillCommand`), which reads the top of the stack.
+### ⚔️ Combat & Resolution Rules
+- [x] **Initiative Sorting:** Simultaneous reveal followed by high-to-low resolution.
+- [x] **Dynamic Tie-Breaking:** Handle cross-team coin flips and same-team choices mid-resolution.
+- [ ] **Death Penalty:** If a hero is defeated while their card is **unresolved**, that card resolves with **No Effect**.
+- [x] **Minion Auras:** Passive +1/-1 modifiers based on proximity (implemented in `stats.py`).
 
-### 3. Pydantic V2
-We use Pydantic V2.
-- Use `model_config = ConfigDict(...)` instead of `class Config:`.
-- Ensure models that need to be hashed (like `Hex`) are frozen.
+### 🌊 End Phase (Round Cleanup)
+- [ ] **Minion Battle:** Compare counts in Battle Zone. Loser removes `Difference` minions.
+- [ ] **Heavy Constraint:** Heavy minions **must** be the last minions removed during Minion Battle.
+- [ ] **Upgrading:** Mandatory level-up and card-to-item "tucking" logic.
 
-### 4. Testing
-- **Unit Tests**: Test individual components (`hex`, `card`, `combat`).
-- **Script Tests** (`tests/scripts/`): These are high-value integration tests that verify specific Hero behaviors. Use `arien.py` as a template.
+### 🛠 Pending Primitives (Steps)
+- [ ] **Push(X):** Vector-based movement with obstacle collision.
+- [ ] **Swap / Place:** Teleportation and position exchange.
+- [ ] **Respawn:** Returning defeated heroes to base at start of turn.
 
 ---
 
-## 📂 Directory Structure
+## 📂 Project Structure
 
 ```
 src/goa2/
-├── domain/         # Data Models (State, Hex, Card, Unit)
-│   ├── models/     # Core Entity Definitions
-│   └── ...
+├── domain/         # Data Models (Pydantic V2)
+│   ├── models/     # Cards, Units, Teams, SpawnPoints
+│   ├── hex.py      # Cube coordinate math
+│   ├── state.py    # The GameState container
+│   └── board.py    # Grid & Zone logic
 ├── engine/         # Logic Core
-│   ├── actions.py  # Command implementations
-│   ├── combat.py   # Math/Rules for combat
-│   ├── effects.py  # Effect Registry & Base Classes
-│   └── rules.py    # Static Rule Logic (LOS, Movement)
-└── scripts/        # Hero-specific Logic/Effects (Arien, etc.)
+│   ├── steps.py    # Atomic GameStep definitions
+│   ├── handler.py  # The Stack processing loop
+│   ├── phases.py   # Turn/Phase orchestration
+│   ├── rules.py    # Physics (Pathfinding, LOS)
+│   └── stats.py    # Aura & Modifier calculations
+└── data/           # Static data (Hero definitions, Map JSONs)
 ```
-
-## 🛠 Adding Content
-
-### Adding a New Hero
-1. Define the Hero's cards and stats.
-2. If cards have unique logic, implement an `Effect` class in a new script (e.g., `src/goa2/scripts/new_hero.py`).
-3. Register the effect in `goa2.scripts.registry` (if applicable).
-4. Create a test file in `tests/scripts/test_new_hero.py` verifying the card flow.
-
-### Adding a New Mechanic
-1. Update `src/goa2/domain/models/` if new state is needed.
-2. Implement the logic in `src/goa2/engine/actions.py` or `mechanics.py`.
-3. Ensure `InputRequestType` is updated if new input forms are required.
