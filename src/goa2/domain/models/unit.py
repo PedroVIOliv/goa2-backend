@@ -50,6 +50,53 @@ class Hero(Unit):
         val += self.items.get(StatType.INITIATIVE, 0)
         return val
 
+    def play_card(self, card: Card):
+        """
+        Moves a card from Hand to 'Played' state (Facedown/Unresolved).
+        This marks the card as committed for the turn.
+        """
+        if card not in self.hand:
+            raise ValueError(f"Card {card.id} is not in hand.")
+            
+        self.hand.remove(card)
+        card.state = CardState.UNRESOLVED
+        card.is_facedown = True
+        card.played_this_round = True
+
+    def discard_card(self, card: Card, from_hand: bool = True):
+        """
+        Moves a card to the discard pile.
+        Default: From Hand (per rules).
+        """
+        if from_hand:
+            if card not in self.hand:
+                raise ValueError(f"Cannot discard {card.id} from hand (not found).")
+            self.hand.remove(card)
+        
+        # If discarding a Played card (e.g. from Dashboard), we assume caller removed it from played_cards.
+        # But we should handle state update:
+        card.state = CardState.DISCARD
+        card.is_facedown = False # Open information
+        self.discard_pile.append(card)
+
+    def retrieve_cards(self):
+        """
+        End of Round: Return Resolved and Discarded cards to hand.
+        Resets card states and lifecycle flags.
+        """
+        # Combine lists
+        cards_to_return = self.played_cards + self.discard_pile
+        
+        for card in cards_to_return:
+            card.state = CardState.HAND
+            card.is_facedown = False
+            card.played_this_round = False # Reset lifecycle flag
+            self.hand.append(card)
+            
+        # Clear piles
+        self.played_cards = []
+        self.discard_pile = []
+
     def initialize_state(self):
         """
         Initializes the dynamic state of the hero for a new game.

@@ -1,6 +1,6 @@
 from typing import List, Tuple, Dict, Any, Optional
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, GamePhase, Card
+from goa2.domain.models import TeamColor, GamePhase, Card, CardState
 from goa2.domain.types import HeroID
 from goa2.engine.handler import push_steps
 from goa2.engine.steps import ResolveTieBreakerStep, LogMessageStep
@@ -25,7 +25,13 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
         return
 
     # Move card from hand to pending buffer (Facedown on board)
-    hero.hand.remove(card)
+    # Using helper to ensure state consistency
+    try:
+        hero.play_card(card)
+    except ValueError as e:
+        print(f"   [!] Error playing card: {e}")
+        return
+
     state.pending_inputs[hero_id] = card
     print(f"   [Planning] {hero_id} committed a card.")
 
@@ -76,6 +82,8 @@ def start_revelation_phase(state: GameState):
         hero = state.get_hero(h_id)
         if hero:
             card.is_facedown = False
+            # card.state is already UNRESOLVED from play_card
+            
             hero.current_turn_card = card
             state.unresolved_hero_ids.append(h_id)
         else:

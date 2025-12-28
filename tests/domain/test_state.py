@@ -2,7 +2,7 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
+from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Card, CardColor, ActionType, CardTier, CardState
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequest, InputRequestType
 
@@ -74,3 +74,61 @@ def test_awaiting_input_type():
     
     s.input_stack.append(InputRequest(id="req1", request_type=InputRequestType.SELECT_UNIT, prompt="T", player_id="p1"))
     assert s.awaiting_input_type == InputRequestType.SELECT_UNIT
+
+def test_hero_card_lifecycle():
+    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t")
+    
+    h1.hand = [c1, c2]
+    
+    # 1. Play Card (Planning)
+    h1.play_card(c1)
+    
+    assert c1 not in h1.hand
+    assert c1.state == CardState.UNRESOLVED
+    assert c1.is_facedown is True
+    assert c1.played_this_round is True
+    
+    # 2. Discard (Defense or Cleanup)
+    h1.discard_card(c2, from_hand=True)
+    
+    assert c2 not in h1.hand
+    assert c2 in h1.discard_pile
+    assert c2.state == CardState.DISCARD
+    assert c2.is_facedown is False
+    assert c2.played_this_round is False # Was discarded directly, not played
+    
+    # 3. Discard Already Played Card
+    # Simulate resolution -> Discard
+    h1.discard_card(c1, from_hand=False) # Skip hand check
+    assert c1 in h1.discard_pile
+    assert c1.state == CardState.DISCARD
+    assert c1.played_this_round is True # Retains the flag! This is crucial for "Both Played and Discarded"
+
+def test_retrieve_cards_logic():
+    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t", played_this_round=True, state=CardState.RESOLVED)
+    
+    h1.discard_pile = [c1]
+    h1.played_cards = [c2]
+    h1.hand = []
+    
+    # Execute Retrieve
+    h1.retrieve_cards()
+    
+    # Verify Hand
+    assert len(h1.hand) == 2
+    assert c1 in h1.hand
+    assert c2 in h1.hand
+    
+    # Verify Piles Cleared
+    assert len(h1.discard_pile) == 0
+    assert len(h1.played_cards) == 0
+    
+    # Verify State Reset
+    assert c1.state == CardState.HAND
+    assert c1.played_this_round is False
+    assert c2.state == CardState.HAND
+    assert c2.played_this_round is False

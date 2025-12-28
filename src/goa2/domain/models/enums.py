@@ -44,7 +44,6 @@ class StatType(str, Enum):
 
 class CardState(str, Enum):
     HAND = "HAND"
-    PLAYED = "PLAYED"
     DECK = "DECK"
     DISCARD = "DISCARD"
     UNRESOLVED = "UNRESOLVED"
