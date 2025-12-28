@@ -23,6 +23,7 @@ class Card(GameEntity):
     # State Management
     state: CardState = CardState.DECK
     is_facedown: bool = True # Default is Hidden
+    played_this_round: bool = Field(default=False, description="True if card was played during Planning Phase this round.")
 
     # Range/Targeting Logic
     is_ranged: bool = False
@@ -94,6 +95,15 @@ class Card(GameEntity):
     @property
     def is_skill(self) -> bool:
         return self.primary_action == ActionType.SKILL
+
+    @model_validator(mode='after')
+    def validate_range_radius_exclusive(self) -> Card:
+        """
+        Rule: A card has Range OR Radius, not both.
+        """
+        if self.range_value is not None and self.radius_value is not None:
+            raise ValueError("Card cannot have both Range and Radius values.")
+        return self
 
     @model_validator(mode='after')
     def validate_tier_color_match(self) -> Card:

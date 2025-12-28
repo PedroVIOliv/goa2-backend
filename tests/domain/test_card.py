@@ -64,3 +64,14 @@ def test_automatic_secondary_actions():
     # Test ensure_clear (Attack -> Clear)
     c_atk = Card(id="a1", name="Atk", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", is_facedown=False)
     assert ActionType.CLEAR in c_atk.secondary_actions
+
+def test_card_range_radius_exclusivity():
+    # Valid: Range Only
+    Card(id="c1", name="R", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", range_value=2, is_facedown=False)
+    
+    # Valid: Radius Only
+    Card(id="c2", name="R", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", radius_value=1, is_facedown=False)
+    
+    # Invalid: Both
+    with pytest.raises(ValueError, match="Card cannot have both"):
+        Card(id="c3", name="R", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", range_value=2, radius_value=1, is_facedown=False)
