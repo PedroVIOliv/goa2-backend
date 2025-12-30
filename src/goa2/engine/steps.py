@@ -289,6 +289,61 @@ class ReactionWindowStep(GameStep):
             }
         )
 
+class RemoveUnitStep(GameStep):
+    """
+    Purely removes a unit from the board.
+    Does NOT grant rewards. Used by 'Remove' effects and as a sub-step of Defeat.
+    """
+    type: str = "remove_unit"
+    unit_id: str
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print(f"   [LOGIC] Removing {self.unit_id} from board.")
+        state.remove_unit(self.unit_id)
+        return StepResult(is_finished=True)
+
+class DefeatUnitStep(GameStep):
+    """
+    Processes the defeat of a unit (Combat/Skill Kill):
+    1. Awards Gold (Killer + Assists).
+    2. Updates Life Counters (if Hero).
+    3. Spawns RemoveUnitStep.
+    """
+    type: str = "defeat_unit"
+    victim_id: str
+    killer_id: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        victim = state.get_unit(self.victim_id)
+        if not victim:
+            return StepResult(is_finished=True)
+
+        print(f"   [DEATH] Processing Defeat of {self.victim_id}...")
+
+        # 1. Awards (Gold)
+        killer = state.get_unit(self.killer_id) if self.killer_id else None
+        reward = 0
+        
+        # Determine Reward
+        if hasattr(victim, 'level'): # Is Hero
+            reward = victim.level # Reward = Level
+            # TODO: Assist Rewards logic
+            # TODO: Life Counter Penalty logic
+            print(f"   [DEATH] Hero Defeated! Killer gains {reward} Gold. Life Counter lost.")
+        elif hasattr(victim, 'value'): # Is Minion
+            reward = victim.value
+            print(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
+        
+        if killer and hasattr(killer, 'gold'):
+            killer.gold += reward
+            print(f"   [ECONOMY] {killer.id} now has {killer.gold} Gold.")
+
+        # 2. Spawn Removal
+        # We spawn RemoveUnitStep to actually clear the board.
+        return StepResult(is_finished=True, new_steps=[
+            RemoveUnitStep(unit_id=self.victim_id)
+        ])
+
 class FindNextActorStep(GameStep):
     """
     Triggers the Phase engine to identify the next active player.
@@ -316,16 +371,18 @@ class ResolveCombatStep(GameStep):
         defense_val = context.get("defense_value", 0)
         attack_val = self.damage
         target_id = context.get(self.target_key)
+        actor_id = state.current_actor_id
         
         print(f"   [COMBAT] Attack ({attack_val}) vs Defense ({defense_val})")
         
         if defense_val >= attack_val:
             print(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
+            return StepResult(is_finished=True)
         else:
             print(f"   [RESULT] Attack HITS! {target_id} is DEFEATED!")
-            # Logic: state.kill_unit(target_id)
-            
-        return StepResult(is_finished=True)
+            return StepResult(is_finished=True, new_steps=[
+                DefeatUnitStep(victim_id=target_id, killer_id=actor_id)
+            ])
 
 class FinalizeHeroTurnStep(GameStep):
     """
