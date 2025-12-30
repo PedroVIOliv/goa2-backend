@@ -494,9 +494,13 @@ class ResolveCombatStep(GameStep):
     target_key: str = "victim_id"
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        target_id = context.get(self.target_key)
+        if not target_id:
+            print("   [COMBAT] No target selected. Combat cancelled.")
+            return StepResult(is_finished=True)
+
         defense_card_val = context.get("defense_value", 0)
         attack_val = self.damage
-        target_id = context.get(self.target_key)
         actor_id = state.current_actor_id
         
         # Calculate Passive Modifiers
@@ -812,14 +816,32 @@ class ResolveCardTextStep(GameStep):
             return StepResult(is_finished=True)
             
         card = hero.current_turn_card
-        print(f"   [SCRIPT] Executing custom logic for '{card.name}' (Effect: {card.effect_id}):")
-        print(f"            > \"{card.effect_text}\"")
+        print(f"   [SCRIPT] Executing logic for '{card.name}' (Effect: {card.effect_id})")
         
-        # TODO: Implement the Effect Registry lookup here.
-        # For now, if it's a simple Primary Attack/Move, we can mimic it for the demo,
-        # but the User requested we strictly treat it as "custom script".
+        from goa2.engine.effects import CardEffectRegistry
+        effect = CardEffectRegistry.get(card.effect_id)
         
-        return StepResult(is_finished=True)
+        if effect:
+            new_steps = effect.get_steps(state, hero, card)
+            return StepResult(is_finished=True, new_steps=new_steps)
+            
+        # Fallback to standard primary primitives if no specific script found
+        print(f"            > No custom script found. Using standard {card.primary_action.name} logic.")
+        new_steps = []
+        val = card.primary_action_value
+        
+        if card.primary_action == ActionType.MOVEMENT:
+            new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val))
+        elif card.primary_action == ActionType.ATTACK:
+            rng = card.range_value if card.range_value is not None else 1
+            new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
+        elif card.primary_action == ActionType.DEFENSE:
+            new_steps.append(LogMessageStep(message=f"{self.hero_id} Defends (Primary)."))
+        elif card.primary_action == ActionType.SKILL:
+            print(f"            > Skill '{card.name}' has no registered effect!")
+            new_steps.append(LogMessageStep(message=f"Skill '{card.name}' did nothing."))
+            
+        return StepResult(is_finished=True, new_steps=new_steps)
 
 class ResolveCardStep(GameStep):
     """
