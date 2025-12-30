@@ -320,26 +320,59 @@ class DefeatUnitStep(GameStep):
 
         print(f"   [DEATH] Processing Defeat of {self.victim_id}...")
 
-        # 1. Awards (Gold)
+        # 1. Identify Killer
         killer = state.get_unit(self.killer_id) if self.killer_id else None
-        reward = 0
         
-        # Determine Reward
+        # 2. Process Rewards/Penalties
         if hasattr(victim, 'level'): # Is Hero
-            reward = victim.level # Reward = Level
-            # TODO: Assist Rewards logic
-            # TODO: Life Counter Penalty logic
-            print(f"   [DEATH] Hero Defeated! Killer gains {reward} Gold. Life Counter lost.")
+            level = getattr(victim, 'level', 1)
+            
+            # Lookup Table
+            # Level: (Kill Reward, Assist Reward, Death Penalty)
+            rewards_table = {
+                1: (1, 1, 1),
+                2: (2, 1, 1),
+                3: (3, 1, 1),
+                4: (4, 2, 2),
+                5: (5, 2, 2),
+                6: (6, 2, 2),
+                7: (7, 3, 3),
+                8: (8, 3, 3)
+            }
+            kill_gold, assist_gold, penalty_counters = rewards_table.get(level, (level, 1, 1))
+            
+            # A. Killer Reward
+            if killer and hasattr(killer, 'gold'):
+                killer.gold += kill_gold
+                print(f"   [ECONOMY] Killer {killer.id} gains {kill_gold} Gold.")
+            
+            # B. Assist Reward
+            if killer and hasattr(killer, 'team'):
+                killer_team = state.teams.get(killer.team)
+                if killer_team:
+                    for ally in killer_team.heroes:
+                        if ally.id != killer.id:
+                            ally.gold += assist_gold
+                            print(f"   [ECONOMY] Assist: {ally.id} gains {assist_gold} Gold.")
+                            
+            # C. Death Penalty (Life Counters)
+            if hasattr(victim, 'team'):
+                victim_team = state.teams.get(victim.team)
+                if victim_team:
+                    victim_team.life_counters = max(0, victim_team.life_counters - penalty_counters)
+                    print(f"   [SCORE] Team {victim.team.name} loses {penalty_counters} Life Counter(s). Remaining: {victim_team.life_counters}")
+                    
+                    if victim_team.life_counters == 0:
+                         print(f"   [GAME OVER] Team {victim.team.name} has 0 Life Counters! ANNIHILATION.")
+                         # TODO: Trigger Game Over State
+            
         elif hasattr(victim, 'value'): # Is Minion
             reward = victim.value
             print(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
-        
-        if killer and hasattr(killer, 'gold'):
-            killer.gold += reward
-            print(f"   [ECONOMY] {killer.id} now has {killer.gold} Gold.")
+            if killer and hasattr(killer, 'gold'):
+                killer.gold += reward
 
-        # 2. Spawn Removal
-        # We spawn RemoveUnitStep to actually clear the board.
+        # 3. Spawn Removal
         return StepResult(is_finished=True, new_steps=[
             RemoveUnitStep(unit_id=self.victim_id)
         ])
