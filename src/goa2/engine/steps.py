@@ -459,10 +459,15 @@ class PlaceUnitStep(GameStep):
     type: str = "place_unit"
     unit_id: Optional[str] = None # If None, uses current_actor
     destination_key: str = "target_hex" # Where to look in context
+    target_hex_arg: Optional[Hex] = None # Explicit argument
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = self.unit_id if self.unit_id else state.current_actor_id
-        dest_val = context.get(self.destination_key)
+        
+        # Priority: explicit arg -> context
+        dest_val = self.target_hex_arg
+        if not dest_val:
+            dest_val = context.get(self.destination_key)
         
         if not actor_id:
              print("   [ERROR] No actor for place.")
@@ -900,6 +905,137 @@ class ResolveCardStep(GameStep):
             }
         )
 
+class ResolveDisplacementStep(GameStep):
+    """
+    Handles the placement of minions that could not spawn due to occupied tiles.
+    Uses BFS to find nearest empty hexes and prompts team if multiple options exist.
+    """
+    type: str = "resolve_displacement"
+    # List of (UnitID, OriginalHex)
+    displacements: List[Tuple[str, Hex]] = Field(default_factory=list) 
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if not self.displacements:
+            return StepResult(is_finished=True)
+
+        # 1. Sort by Team Preference (Tie Breaker)
+        red_units = []
+        blue_units = []
+        
+        for uid, origin in self.displacements:
+            unit = state.get_unit(uid)
+            if unit:
+                if unit.team == TeamColor.RED: red_units.append((uid, origin))
+                elif unit.team == TeamColor.BLUE: blue_units.append((uid, origin))
+        
+        first_group = []
+        second_group = []
+        
+        if state.tie_breaker_team == TeamColor.RED:
+            first_group = red_units
+            second_group = blue_units
+        else:
+            first_group = blue_units
+            second_group = red_units
+            
+        # Process Priority Group
+        active_group = first_group if first_group else second_group
+        if not active_group:
+             return StepResult(is_finished=True)
+
+        # A. Check Input (Unit Selection Logic)
+        if self.pending_input:
+             sel_uid = self.pending_input.get("selected_unit_id")
+             if sel_uid:
+                 # User selected a specific unit to place first.
+                 # We split execution: Step([Chosen]) -> Step([Others])
+                 target_tuple = next((u for u in active_group if u[0] == sel_uid), None)
+                 if target_tuple:
+                     remaining_active = [u for u in active_group if u[0] != sel_uid]
+                     remaining = remaining_active + (second_group if active_group is first_group else [])
+                     
+                     return StepResult(is_finished=True, new_steps=[
+                         ResolveDisplacementStep(displacements=[target_tuple]),
+                         ResolveDisplacementStep(displacements=remaining)
+                     ])
+
+        # B. If multiple options and no selection -> Prompt to Select Unit
+        if len(active_group) > 1:
+             options = [u[0] for u in active_group]
+             unit_obj = state.get_unit(options[0])
+             team = unit_obj.team if unit_obj else TeamColor.RED
+             
+             # Find delegate
+             delegate_id = "unknown"
+             team_obj = state.teams.get(team)
+             if team_obj and team_obj.heroes:
+                delegate_id = team_obj.heroes[0].id
+                
+             return StepResult(
+                 requires_input=True, 
+                 input_request={
+                     "type": "SELECT_UNIT", 
+                     "prompt": f"Team {team.name}, choose which displaced unit to place first.",
+                     "player_id": delegate_id,
+                     "valid_options": options
+                 }
+             )
+
+        # C. Single Unit Logic
+        uid, origin = active_group[0]
+        remaining = active_group[1:] + (second_group if active_group is first_group else [])
+        
+        # 2. Find Candidates
+        from goa2.engine.map_logic import find_nearest_empty_hexes
+        candidates = find_nearest_empty_hexes(state, origin, state.active_zone_id)
+        
+        if not candidates:
+            print(f"   [DISPLACE] No empty space found for {uid} in zone!")
+            return StepResult(is_finished=True, new_steps=[
+                ResolveDisplacementStep(displacements=remaining)
+            ])
+
+        # 3. Check Input (Hex Selection)
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if selection:
+                target_hex = Hex(**selection)
+                if target_hex in candidates:
+                     print(f"   [DISPLACE] Team chose {target_hex} for {uid}")
+                     return StepResult(is_finished=True, new_steps=[
+                        PlaceUnitStep(unit_id=uid, target_hex_arg=target_hex),
+                        ResolveDisplacementStep(displacements=remaining)
+                     ])
+        
+        # 4. Handle Auto-Select (or Prompt)
+        if len(candidates) == 1:
+            target = candidates[0]
+            print(f"   [DISPLACE] Auto-placing {uid} at {target}")
+            return StepResult(is_finished=True, new_steps=[
+                PlaceUnitStep(unit_id=uid, target_hex_arg=target),
+                ResolveDisplacementStep(displacements=remaining)
+            ])
+            
+        # 5. Request Input (Select Hex)
+        unit_obj = state.get_unit(uid)
+        team = unit_obj.team if unit_obj else TeamColor.RED
+        
+        delegate_id = "unknown"
+        team_obj = state.teams.get(team)
+        if team_obj and team_obj.heroes:
+            delegate_id = team_obj.heroes[0].id
+
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_HEX", 
+                "prompt": f"Team {team.name}, choose displacement for {unit_obj.name}.",
+                "player_id": delegate_id,
+                "valid_hexes": candidates,
+                "context_unit_id": uid
+            }
+        )
+
 class LanePushStep(GameStep):
     """
     Executes a Lane Push:
@@ -965,18 +1101,10 @@ class LanePushStep(GameStep):
         # 5. Respawn New Wave
         # Identify spawn points in new zone
         next_zone = state.board.zones.get(next_zone_id)
+        pending_displacements = []
+        
         if next_zone:
             # We need to spawn minions for BOTH teams at their respective points in the new zone.
-            # We'll spawn generic 'RespawnMinionStep' for each required minion?
-            # Or handle it in bulk here. Batch is better for atomic "Push" step.
-            
-            # Simple Logic: Iterate Spawn Points in Zone -> Spawn Unit.
-            # If occupied by token -> remove token.
-            # If occupied by unit -> Displacement logic (Complex).
-            # For MVP: Assume empty or overwrite/fail.
-            # Rules: "Occupied by Unit: Owning Team Places Minion..."
-            # That implies Input Request ("Place your displaced minion").
-            # We'll stick to auto-spawn on empty for now.
             
             for sp in next_zone.spawn_points:
                 if sp.is_minion_spawn:
@@ -995,9 +1123,14 @@ class LanePushStep(GameStep):
                                 state.move_unit(candidate.id, sp.location)
                                 print(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
                             else:
-                                print(f"   [PUSH] Spawn blocked at {sp.location} (Displacement needed)")
-                                # TODO: Queue Displacement Step
+                                print(f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)")
+                                pending_displacements.append((candidate.id, sp.location))
         
+        if pending_displacements:
+             return StepResult(is_finished=True, new_steps=[
+                 ResolveDisplacementStep(displacements=pending_displacements)
+             ])
+
         return StepResult(is_finished=True)
 
 class CheckLanePushStep(GameStep):
@@ -1232,7 +1365,7 @@ class AttackSequenceStep(GameStep):
         
         # Import filters locally to avoid circular top-level imports if any issues arise, 
         # though we already imported FilterCondition at top.
-        from goa2.engine.filters import RangeFilter, TeamFilter
+        from goa2.engine.filters import RangeFilter, TeamFilter, ImmunityFilter
         
         # Desired Execution Order: Select -> Reaction -> Combat
         new_steps = [
@@ -1242,7 +1375,8 @@ class AttackSequenceStep(GameStep):
                 output_key="victim_id",
                 filters=[
                     RangeFilter(max_range=self.range_val),
-                    TeamFilter(relation="ENEMY")
+                    TeamFilter(relation="ENEMY"),
+                    ImmunityFilter()
                 ]
             ),
             ReactionWindowStep(target_player_key="victim_id"),

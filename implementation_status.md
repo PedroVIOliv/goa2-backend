@@ -24,7 +24,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
 | **3.1 Hero State** | **Implemented** | `DefeatUnitStep` handles Death Rewards (Killer & Assists), Life Counter penalty, and Board Removal. |
-| **3.2 Minion State** | **Implemented** | `Minion` model exists. `rules.validate_movement_path` respects obstacles. **Heavy Immunity** and **Auras** are fully integrated into `ResolveCombatStep`. |
+| **3.2 Minion State** | **Implemented** | `Minion` model exists. `rules.validate_movement_path` respects obstacles. **Heavy Immunity** is fully implemented with `ImmunityFilter` and `is_immune` logic. |
 
 ## 4. Card System
 
@@ -55,5 +55,4 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 ## Summary of Critical Gaps
 1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card).
 2.  **Upgrade Mechanic**: Gold economy, Level Up buying, and "tucking" cards as items.
-3.  **Advanced Physics**: Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn.
-4.  **Heavy Immunity**: Enforcing that Heavy minions cannot be targeted while other minions are present (Step 3.2 logic is in place but needs explicit filter integration).
+3.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).

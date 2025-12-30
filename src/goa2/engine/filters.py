@@ -181,3 +181,17 @@ class AdjacencyFilter(FilterCondition):
                 return True
                 
         return False
+
+class ImmunityFilter(FilterCondition):
+    """
+    Filters out candidates that are Immune.
+    """
+    type: str = "immunity_filter"
+    
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        from goa2.engine import rules # Import inside to be safe
+        target = state.get_unit(candidate) if isinstance(candidate, str) else None
+        if not target: return False
+        
+        # If Immune, it fails the filter (returns False)
+        return not rules.is_immune(target, state)

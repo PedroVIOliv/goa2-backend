@@ -1,7 +1,9 @@
 from typing import List, Optional, Tuple
+from collections import deque
 from goa2.domain.state import GameState
 from goa2.domain.models import TeamColor
 from goa2.domain.types import UnitID
+from goa2.domain.hex import Hex
 
 def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[TeamColor]:
     """
@@ -101,3 +103,50 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
                     count += 1
                     
     return count
+
+def find_nearest_empty_hexes(
+    state: GameState, 
+    start_hex: Hex, 
+    zone_id: str
+) -> List[Hex]:
+    """
+    Finds the nearest empty hex(es) to start_hex within the specified zone.
+    Used for displacement/collision resolution.
+    Returns a list of equally-distant hexes.
+    """
+    zone = state.board.zones.get(zone_id)
+    if not zone: return []
+    
+    queue = deque([(start_hex, 0)])
+    visited = {start_hex}
+    
+    candidates = []
+    found_distance = None
+    
+    while queue:
+        current, dist = queue.popleft()
+        
+        # Optimization: If we found candidates at distance X, 
+        # stop processing anything at distance X+1
+        if found_distance is not None and dist > found_distance:
+            break
+            
+        # Check Validity (Only if not start hex)
+        if dist > 0:
+            if current in zone.hexes:
+                tile = state.board.get_tile(current)
+                # Check for Obstacle/Occupancy
+                # Note: Token is an obstacle. Unit is an occupant.
+                # Valid = Not Obstacle AND Not Occupied.
+                if tile and not tile.is_occupied:
+                    candidates.append(current)
+                    found_distance = dist
+        
+        # Expand (only if we haven't found a closer layer yet)
+        if found_distance is None:
+            for neighbor in current.neighbors():
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, dist + 1))
+                    
+    return candidates
