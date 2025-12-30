@@ -230,15 +230,34 @@ Each Hero has a deck of upgradable cards.
 *   **Unit:** Units means heroes and minions. Tokens are not units.
 *   **Zone:** A Zone is an area of the board comprised of multiple spaces.
 
-### 6.3 Combat Logic (Attack Resolution)
-1.  **Targeting:** Validate Range and Immunity.
-    *   **Line of Sight:** There are **NO** line of sight rules. Targets may be selected through obstacles as long as they are within Range/Radius.
-2.  **Modifiers:** Calculate `AttackPower` (Base + Items + Before Attack effects).
-3.  **Defense Interrupt:**
-    *   Target Hero may **discard** a card from hand to use its Defense Value.
-    *   Calculate `DefensePower` (Card + Items + Minion Auras + Mods).
-4.  **Result:**
-    *   If `AttackPower > DefensePower`: Target is **Defeated**.
-    *   If `AttackPower <= DefensePower`: Attack is **Blocked**.
-    *   *Note:* Minions have no Defense Interrupt and are always defeated if targeted.
-5.  **Aftermath:** Apply "After Attack" effects.
+### 6.4 Selection Logic (Filters)
+
+Target selection is handled by a robust Filter System that allows card effects to specify exact criteria. 
+
+
+
+**Core Filters:**
+
+*   **Range:** Limits selection to objects within X spaces.
+
+*   **Occupied:** Filters Hexes based on occupancy (Empty vs Occupied).
+
+*   **Team:** Filters Units by relation (Friendly/Enemy/Self).
+
+*   **Type:** Filters Units by type (Hero/Minion).
+
+*   **Adjacency:** Selects objects adjacent to specific tags (e.g., "Adjacent to Friendly Hero").
+
+*   **Terrain:** Filters Hexes by terrain type.
+
+
+
+**Resolution Protocol:**
+
+1.  **Gather Candidates:** All objects of the requested type (Units or Hexes) are collected.
+
+2.  **Apply Filters:** Candidates are tested against ALL specified filters.
+
+3.  **Auto-Select:** If only one candidate remains and `auto_select` is enabled, it is chosen automatically.
+
+4.  **Input Request:** If multiple candidates remain, the player is prompted to choose from the *Valid Options* only.

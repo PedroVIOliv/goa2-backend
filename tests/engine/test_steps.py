@@ -6,7 +6,7 @@ from goa2.domain.models import Team, TeamColor, Card, CardTier, CardColor, Actio
 from goa2.domain.types import HeroID, CardID
 from goa2.domain.hex import Hex
 from goa2.engine.steps import (
-    StepResult, GameStep, LogMessageStep, SelectTargetStep, 
+    StepResult, GameStep, LogMessageStep, SelectStep, 
     ReactionWindowStep, ResolveCombatStep, AttackSequenceStep,
     MoveUnitStep, DamageStep
 )
@@ -53,7 +53,7 @@ def populated_state():
 @pytest.fixture
 def combat_state(empty_state):
     # Setup Red Attacker
-    attacker = Hero(name="Red Hero", id=HeroID("hero_red"), deck=[])
+    attacker = Hero(name="Red Hero", id=HeroID("hero_red"), team=TeamColor.RED, deck=[])
     empty_state.teams[TeamColor.RED].heroes.append(attacker)
     
     # Setup Blue Defender with Defense Cards
@@ -68,7 +68,7 @@ def combat_state(empty_state):
         effect_id="e1", effect_text="e1", is_facedown=False
     )
     # Ensure it's in hand
-    defender = Hero(name="Blue Hero", id=HeroID("hero_blue"), deck=[def_card])
+    defender = Hero(name="Blue Hero", id=HeroID("hero_blue"), team=TeamColor.BLUE, deck=[def_card])
     defender.hand.append(def_card)
     
     empty_state.teams[TeamColor.BLUE].heroes.append(defender)
@@ -78,7 +78,11 @@ def combat_state(empty_state):
 # --- Tests ---
 
 def test_select_target_flow(empty_state):
-    step = SelectTargetStep(prompt="Choose", output_key="target_id")
+    # SelectStep requires at least 1 candidate to not auto-finish with "No candidates"
+    # So we must spoof a unit location
+    empty_state.unit_locations["target_1"] = Hex(q=0, r=0, s=0)
+    
+    step = SelectStep(target_type="UNIT", prompt="Choose", output_key="target_id")
     push_steps(empty_state, [step])
     
     # Pass 1: Request
@@ -87,7 +91,7 @@ def test_select_target_flow(empty_state):
     assert req["type"] == "SELECT_UNIT"
     
     # Pass 2: Provide Input
-    empty_state.execution_stack[-1].pending_input = {"selected_id": "target_1"}
+    empty_state.execution_stack[-1].pending_input = {"selection": "target_1"}
     req = process_resolution_stack(empty_state)
     
     assert req is None # Done
@@ -134,6 +138,12 @@ def test_combat_resolution_hit(combat_state):
     process_resolution_stack(combat_state)
     
 def test_attack_sequence_expansion(combat_state):
+    # Add an enemy so SelectStep pauses for input
+    # combat_state has Red Hero (current actor). Add Blue Hero in Range 1.
+    target_hex = Hex(q=1, r=0, s=-1)
+    combat_state.unit_locations["hero_blue"] = target_hex
+    combat_state.unit_locations["hero_red"] = Hex(q=0, r=0, s=0)
+    
     # Check that the Macro step expands into 3 steps
     step = AttackSequenceStep(damage=3, range_val=1)
     push_steps(combat_state, [step])
@@ -141,9 +151,9 @@ def test_attack_sequence_expansion(combat_state):
     # Run once to expand
     process_resolution_stack(combat_state)
     
-    # Now stack should have SelectTargetStep at top
+    # Now stack should have SelectStep at top waiting for input
     current = combat_state.execution_stack[-1]
-    assert isinstance(current, SelectTargetStep)
+    assert isinstance(current, SelectStep)
 
 # --- Pathfinding Tests ---
 

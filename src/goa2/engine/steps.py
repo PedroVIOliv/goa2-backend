@@ -56,47 +56,86 @@ class LogMessageStep(GameStep):
         return StepResult(is_finished=True)
 
 
-class SelectTargetStep(GameStep):
+from goa2.engine.filters import FilterCondition
+from goa2.domain.types import UnitID
+
+# ... (Previous imports) ...
+
+class SelectStep(GameStep):
     """
-    Waits for user input to select a target.
-    Stores the result in 'context' under 'output_key'.
+    Unified selection step using the Filter System.
+    Replaces SelectTargetStep and SelectHexStep.
     """
-    type: str = "select_target"
+    type: str = "select_step"
+    target_type: str # "UNIT" or "HEX"
     prompt: str
-    output_key: str = "target_id"
-    valid_targets: Optional[List[str]] = None # List of IDs
-    player_id: Optional[str] = None # Who should provide input? None = Active Player.
-
+    output_key: str = "selection"
+    filters: List[FilterCondition] = Field(default_factory=list)
+    auto_select_if_one: bool = False
+    
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        # Determine who should answer
-        target_player = self.player_id if self.player_id else state.current_actor_id
+        actor_id = state.current_actor_id
         
-        # 1. Check if we already have input
-        if self.pending_input:
-            # Validate input (Basic check)
-            selected_id = self.pending_input.get("selected_id")
+        # 1. Gather Candidates
+        candidates = []
+        if self.target_type == "UNIT":
+            # Collect all Unit IDs on board
+            candidates = list(state.unit_locations.keys())
+        elif self.target_type == "HEX":
+            # Collect all Hexes on board
+            # Optimization: If there is a RangeFilter, use it to narrow search area
+            # For now, simplistic iteration over all tiles
+            candidates = list(state.board.tiles.keys())
             
-            if not selected_id:
-                return StepResult(requires_input=True, input_request={
-                    "type": "SELECT_UNIT", 
-                    "prompt": "Invalid Selection. " + self.prompt,
-                    "player_id": target_player
-                })
+        # 2. Apply Filters
+        valid_candidates = []
+        for c in candidates:
+            is_valid = True
+            for f in self.filters:
+                if not f.apply(c, state, context):
+                    is_valid = False
+                    break
+            if is_valid:
+                valid_candidates.append(c)
 
-            # Store in Context
-            context[self.output_key] = selected_id
-            print(f"   [INPUT] Player {target_player} selected {selected_id}")
+        if not valid_candidates:
+            print(f"   [LOGIC] No valid candidates for selection '{self.prompt}'")
+            # If mandatory, this might be an issue. For now, we finish.
+            # Ideally, we might pass a 'None' or handle 'If Able' here.
             return StepResult(is_finished=True)
+
+        # 3. Auto-Select optimization
+        if self.auto_select_if_one and len(valid_candidates) == 1:
+            choice = valid_candidates[0]
+            context[self.output_key] = choice
+            print(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
+            return StepResult(is_finished=True)
+
+        # 4. Check Input
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
             
-        # 2. If no input, Request it
+            # Type Conversion for Hex
+            if self.target_type == "HEX" and isinstance(selection, dict):
+                 selection = Hex(**selection)
+            
+            if selection in valid_candidates:
+                context[self.output_key] = selection
+                print(f"   [INPUT] Player {actor_id} selected {selection}")
+                return StepResult(is_finished=True)
+            else:
+                 # Invalid choice, re-request
+                 pass
+
+        # 5. Request Input
+        # For Hexes, we might want to serialize them? Pydantic handles Hex serialization.
         return StepResult(
-            is_finished=False, 
-            requires_input=True, 
+            requires_input=True,
             input_request={
-                "type": "SELECT_UNIT",
+                "type": f"SELECT_{self.target_type}",
                 "prompt": self.prompt,
-                "valid_targets": self.valid_targets,
-                "player_id": target_player
+                "player_id": actor_id,
+                "valid_options": valid_candidates 
             }
         )
 
@@ -294,6 +333,261 @@ class FinalizeHeroTurnStep(GameStep):
         
         return StepResult(is_finished=True)
 
+class PlaceUnitStep(GameStep):
+    """
+    Moves a unit to a target hex directly.
+    No pathfinding validation. Used for respawns, swaps, and forced placements.
+    """
+    type: str = "place_unit"
+    unit_id: Optional[str] = None # If None, uses current_actor
+    destination_key: str = "target_hex" # Where to look in context
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        actor_id = self.unit_id if self.unit_id else state.current_actor_id
+        dest_val = context.get(self.destination_key)
+        
+        if not actor_id:
+             print("   [ERROR] No actor for place.")
+             return StepResult(is_finished=True)
+             
+        if not dest_val:
+             print("   [ERROR] No destination for place.")
+             return StepResult(is_finished=True)
+
+        # Ensure destination is a Hex object
+        if isinstance(dest_val, dict):
+            dest_hex = Hex(**dest_val)
+        else:
+            dest_hex = dest_val # Assume it is already a Hex
+
+        # Validation: Check if Tile is Occupied
+        tile = state.board.get_tile(dest_hex)
+        if tile and tile.is_occupied:
+             print(f"   [ERROR] Cannot place {actor_id} at {dest_hex}. Tile is occupied.")
+             return StepResult(is_finished=True)
+
+        print(f"   [LOGIC] Placing {actor_id} at {dest_hex}")
+        state.move_unit(actor_id, dest_hex)
+        return StepResult(is_finished=True)
+
+class SwapUnitsStep(GameStep):
+    """
+    Swaps the locations of two units.
+    Does not count as movement.
+    """
+    type: str = "swap_units"
+    unit_a_id: str
+    unit_b_id: str
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        loc_a = state.unit_locations.get(self.unit_a_id)
+        loc_b = state.unit_locations.get(self.unit_b_id)
+        
+        if not loc_a or not loc_b:
+            print(f"   [ERROR] Cannot swap {self.unit_a_id} and {self.unit_b_id}. Missing location(s).")
+            return StepResult(is_finished=True)
+
+        print(f"   [LOGIC] Swapping {self.unit_a_id} at {loc_a} with {self.unit_b_id} at {loc_b}")
+        
+        # Move A to B's spot, then B to A's spot.
+        # move_unit handles both unit_locations and board tiles.
+        state.move_unit(self.unit_a_id, loc_b)
+        state.move_unit(self.unit_b_id, loc_a)
+        
+        return StepResult(is_finished=True)
+
+class PushUnitStep(GameStep):
+    """
+    Pushes a unit away from a source location.
+    Stops at obstacles or board edge.
+    """
+    type: str = "push_unit"
+    target_id: str
+    source_hex: Optional[Hex] = None # If None, uses current actor's location
+    distance: int = 1
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        target_loc = state.unit_locations.get(self.target_id)
+        if not target_loc:
+            return StepResult(is_finished=True)
+            
+        src_hex = self.source_hex
+        if not src_hex:
+            if state.current_actor_id:
+                src_hex = state.unit_locations.get(state.current_actor_id)
+        
+        if not src_hex:
+            print("   [ERROR] No source for push.")
+            return StepResult(is_finished=True)
+            
+        if src_hex == target_loc:
+            print("   [ERROR] Cannot push from same hex.")
+            return StepResult(is_finished=True)
+
+        # 1. Determine Direction
+        direction_idx = src_hex.direction_to(target_loc)
+        if direction_idx is None:
+            # Fallback: Just pick a direction? No, GoA2 pushes are vector-based.
+            # If not in straight line, we can't push "away" cleanly in a hex grid.
+            print(f"   [ERROR] Push target {self.target_id} is not in a straight line from source.")
+            return StepResult(is_finished=True)
+
+        # 2. Iterative Move
+        current_loc = target_loc
+        actual_dist = 0
+        for _ in range(self.distance):
+            next_hex = current_loc.neighbor(direction_idx)
+            
+            # Check Board Boundaries
+            if next_hex not in state.board.tiles:
+                print(f"   [PUSH] {self.target_id} hit board edge at {current_loc}")
+                break
+                
+            # Check Obstacles (Static and Occupants)
+            tile = state.board.get_tile(next_hex)
+            if tile and tile.is_obstacle:
+                print(f"   [PUSH] {self.target_id} hit obstacle at {next_hex}")
+                break
+                
+            current_loc = next_hex
+            actual_dist += 1
+            
+        if actual_dist > 0:
+            print(f"   [LOGIC] Pushing {self.target_id} from {target_loc} to {current_loc} ({actual_dist} spaces)")
+            state.move_unit(self.target_id, current_loc)
+        else:
+            print(f"   [LOGIC] Push had no effect for {self.target_id}")
+
+        return StepResult(is_finished=True)
+
+class RespawnHeroStep(GameStep):
+    """
+    Handles the Hero Respawn choice.
+    If Hero is defeated, requests player input: Respawn or Pass.
+    """
+    type: str = "respawn_hero"
+    hero_id: str
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero = state.get_hero(self.hero_id)
+        if not hero:
+             return StepResult(is_finished=True)
+             
+        # Only respawn if not on board
+        if self.hero_id in state.unit_locations:
+            return StepResult(is_finished=True)
+
+        # 1. Check Input
+        if self.pending_input:
+            choice = self.pending_input.get("choice")
+            if choice == "PASS":
+                print(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
+                context["skipped_respawn"] = True
+                return StepResult(is_finished=True)
+            
+            selected_hex_dict = self.pending_input.get("spawn_hex")
+            if selected_hex_dict:
+                selected_hex = Hex(**selected_hex_dict)
+                print(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
+                state.move_unit(self.hero_id, selected_hex)
+                return StepResult(is_finished=True)
+
+        # 2. Find valid spawn points (Empty Hero Spawn Point for Team)
+        valid_hexes = []
+        for h, tile in state.board.tiles.items():
+            if (tile.spawn_point and 
+                tile.spawn_point.is_hero_spawn and 
+                tile.spawn_point.team == hero.team):
+                if not tile.is_occupied:
+                    valid_hexes.append(h)
+
+        if not valid_hexes:
+            print(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
+            return StepResult(is_finished=True)
+
+        # 3. Request Input
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "CHOOSE_RESPAWN",
+                "prompt": f"Hero {self.hero_id} is defeated. Respawn at an empty spawn point?",
+                "player_id": self.hero_id,
+                "options": ["RESPAWN", "PASS"],
+                "valid_hexes": valid_hexes
+            }
+        )
+
+class RespawnMinionStep(GameStep):
+    """
+    Respawns a minion of a certain type/team in the active zone.
+    """
+    type: str = "respawn_minion"
+    team: TeamColor
+    minion_type: Any # MinionType enum
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        zone_id = state.active_zone_id
+        if not zone_id: return StepResult(is_finished=True)
+        
+        zone = state.board.zones.get(zone_id)
+        if not zone: return StepResult(is_finished=True)
+        
+        # Count existing minions and spawn points in zone
+        team_obj = state.teams.get(self.team)
+        existing_count = 0
+        for m in team_obj.minions:
+            loc = state.unit_locations.get(m.id)
+            if loc and loc in zone.hexes and m.type == self.minion_type:
+                existing_count += 1
+                
+        spawn_count = 0
+        for h in zone.hexes:
+            tile = state.board.get_tile(h)
+            if tile and tile.spawn_point and tile.spawn_point.is_minion_spawn:
+                if (tile.spawn_point.team == self.team and 
+                    tile.spawn_point.minion_type == self.minion_type):
+                    spawn_count += 1
+                        
+        if existing_count >= spawn_count:
+            print(f"   [RESPAWN] Cannot respawn {self.minion_type} for {self.team}: Max count reached.")
+            return StepResult(is_finished=True)
+            
+        target_minion = next((m for m in team_obj.minions 
+                             if m.type == self.minion_type and m.id not in state.unit_locations), None)
+        if not target_minion:
+            print(f"   [RESPAWN] No available {self.minion_type} in supply.")
+            return StepResult(is_finished=True)
+            
+        # Select target hex
+        if self.pending_input:
+            selected_hex_dict = self.pending_input.get("spawn_hex")
+            if selected_hex_dict:
+                selected_hex = Hex(**selected_hex_dict)
+                
+                # Validation: Check Occupancy
+                tile = state.board.get_tile(selected_hex)
+                if tile and tile.is_occupied:
+                    print(f"   [ERROR] Cannot respawn {self.minion_type} at {selected_hex}. Occupied.")
+                    return StepResult(is_finished=True)
+
+                state.move_unit(target_minion.id, selected_hex)
+                print(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
+                return StepResult(is_finished=True)
+        
+        valid_spaces = [h for h in zone.hexes if not state.board.get_tile(h).is_occupied]
+        if not valid_spaces:
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_HEX",
+                "prompt": f"Select space to respawn {self.minion_type}.",
+                "player_id": state.current_actor_id,
+                "valid_hexes": valid_spaces
+            }
+        )
+
 class ResolveTieBreakerStep(GameStep):
     """
     Recursive handler for tied initiative players.
@@ -404,9 +698,21 @@ class AttackSequenceStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print(f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})")
         
+        # Import filters locally to avoid circular top-level imports if any issues arise, 
+        # though we already imported FilterCondition at top.
+        from goa2.engine.filters import RangeFilter, TeamFilter
+        
         # Desired Execution Order: Select -> Reaction -> Combat
         new_steps = [
-            SelectTargetStep(prompt="Select Attack Target", output_key="victim_id"),
+            SelectStep(
+                target_type="UNIT",
+                prompt="Select Attack Target",
+                output_key="victim_id",
+                filters=[
+                    RangeFilter(max_range=self.range_val),
+                    TeamFilter(relation="ENEMY")
+                ]
+            ),
             ReactionWindowStep(target_player_key="victim_id"),
             ResolveCombatStep(damage=self.damage, target_key="victim_id")
         ]

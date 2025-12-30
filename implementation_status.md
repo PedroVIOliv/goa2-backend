@@ -46,10 +46,11 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | - Skill / Hold | **Missing** | No generic `ApplyEffectStep` yet. |
 | **6.2 Keywords** | **Mixed** | |
 | - Adjacent / Range | **Implemented** | `rules.py` handles distance checks. |
-| - Push / Place | **Missing** | No `PushStep` or `PlaceStep`. |
-| - Respawn | **Missing** | No `RespawnStep`. |
-| - Swap | **Missing** | No `SwapStep` for units/tokens yet. (`Hero.swap_cards` for cards is implemented). |
+| - Push / Place | **Implemented** | `PushUnitStep` and `PlaceUnitStep` implemented. |
+| - Respawn | **Implemented** | `RespawnHeroStep` and `RespawnMinionStep` implemented. |
+| - Swap | **Implemented** | `SwapUnitsStep` implemented. |
 | - Line of Sight | **Implemented** | Explicitly ignored per rules (Pathfinding checks valid dest, Targeting checks Range only). |
+| **6.4 Selection** | **Implemented** | `SelectStep` with composable `FilterCondition` system (`Range`, `Team`, `Occupied`, etc.) handles all targeting. |
 
 ## Summary of Critical Gaps
 1.  **Macro-Game Loop**: End of Round (Minion Battle, Level Up) and Win Conditions (Lane Push) are the biggest missing pieces.

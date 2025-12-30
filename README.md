@@ -113,9 +113,9 @@ If you need a new type of player choice (e.g., "Choose a card to discard"):
 - [ ] **Upgrading:** Mandatory level-up and card-to-item "tucking" logic.
 
 ### 🛠 Pending Primitives (Steps)
-- [ ] **Push(X):** Vector-based movement with obstacle collision.
-- [ ] **Swap / Place:** Teleportation and position exchange.
-- [ ] **Respawn:** Returning defeated heroes to base at start of turn.
+- [x] **Push(X):** Vector-based movement with obstacle collision.
+- [x] **Swap / Place:** Teleportation and position exchange.
+- [x] **Respawn:** Returning defeated heroes to base at start of turn.
 
 ---
 
