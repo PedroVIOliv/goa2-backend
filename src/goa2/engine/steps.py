@@ -289,6 +289,20 @@ class ReactionWindowStep(GameStep):
             }
         )
 
+class FindNextActorStep(GameStep):
+    """
+    Triggers the Phase engine to identify the next active player.
+    Used to chain turns together.
+    """
+    type: str = "find_next_actor"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Import internally to avoid circular dependency (steps <-> phases)
+        from goa2.engine.phases import resolve_next_action
+        print("   [LOOP] Finding next actor...")
+        resolve_next_action(state)
+        return StepResult(is_finished=True)
+
 class ResolveCombatStep(GameStep):
     """
     Compares Attack vs Defense and applies results.
@@ -331,7 +345,7 @@ class FinalizeHeroTurnStep(GameStep):
         context.clear()
         state.current_actor_id = None
         
-        return StepResult(is_finished=True)
+        return StepResult(is_finished=True, new_steps=[FindNextActorStep()])
 
 class PlaceUnitStep(GameStep):
     """
@@ -587,6 +601,153 @@ class RespawnMinionStep(GameStep):
                 "valid_hexes": valid_spaces
             }
         )
+
+class ResolveCardTextStep(GameStep):
+    """
+    Placeholder for executing the specific Python script/logic associated with a card's text.
+    In a full implementation, this would look up a registry using `card.effect_id` 
+    and execute the specific function/class for that card.
+    """
+    type: str = "resolve_card_text"
+    card_id: str
+    hero_id: str
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero = state.get_hero(self.hero_id)
+        if not hero or not hero.current_turn_card:
+            return StepResult(is_finished=True)
+            
+        card = hero.current_turn_card
+        print(f"   [SCRIPT] Executing custom logic for '{card.name}' (Effect: {card.effect_id}):")
+        print(f"            > \"{card.effect_text}\"")
+        
+        # TODO: Implement the Effect Registry lookup here.
+        # For now, if it's a simple Primary Attack/Move, we can mimic it for the demo,
+        # but the User requested we strictly treat it as "custom script".
+        
+        return StepResult(is_finished=True)
+
+class ResolveCardStep(GameStep):
+    """
+    Analyzes the active card and prompts the user to choose an Action.
+    Spawns the appropriate logic steps based on the choice.
+    """
+    type: str = "resolve_card"
+    hero_id: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero = state.get_hero(self.hero_id)
+        if not hero or not hero.current_turn_card:
+            return StepResult(is_finished=True)
+            
+        card = hero.current_turn_card
+        
+        # 1. Gather Options
+        options = []
+        
+        # Primary
+        if card.primary_action:
+            options.append({
+                "id": "PRIMARY",
+                "type": card.primary_action, 
+                "value": card.primary_action_value,
+                "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
+            })
+            
+        # Secondaries
+        for action_type, val in card.secondary_actions.items():
+             options.append({
+                "id": f"SEC_{action_type.name}",
+                "type": action_type,
+                "value": val,
+                "text": f"Secondary: {action_type.name} ({val})"
+            })
+            
+        # 2. Process Input
+        if self.pending_input:
+            choice_id = self.pending_input.get("choice_id")
+            selected_opt = next((o for o in options if o["id"] == choice_id), None)
+            
+            if selected_opt:
+                act_type = selected_opt["type"]
+                val = selected_opt["value"]
+                is_primary = (choice_id == "PRIMARY")
+                
+                print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
+                
+                new_steps = []
+                
+                if is_primary:
+                    # User Mandate: Primary actions apply custom script.
+                    new_steps.append(ResolveCardTextStep(
+                        card_id=card.id, 
+                        hero_id=self.hero_id
+                    ))
+                else:
+                    # Secondary: Standard Primitives
+                    if act_type == ActionType.MOVEMENT:
+                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val))
+                        
+                    elif act_type == ActionType.FAST_TRAVEL:
+                        # Replaces Movement, usually standard Move logic + condition check.
+                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val)) 
+                        
+                    elif act_type == ActionType.ATTACK:
+                        rng = card.range_value if card.range_value is not None else 1
+                        new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
+                        
+                    elif act_type == ActionType.CLEAR:
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} clears tokens."))
+                        
+                    elif act_type == ActionType.HOLD:
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Holds."))
+                        
+                    elif act_type == ActionType.DEFENSE:
+                        # Should not happen as action, but valid in enum
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Defends (Active)."))
+
+                return StepResult(is_finished=True, new_steps=new_steps)
+
+        # 3. Request Input
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "CHOOSE_ACTION",
+                "prompt": f"Choose action for card {card.name}",
+                "player_id": self.hero_id,
+                "options": options
+            }
+        )
+
+class EndPhaseStep(GameStep):
+    """
+    Handles the End of Round logic:
+    1. Minion Battle
+    2. Retrieve Cards
+    3. Clear Tokens
+    4. Level Up
+    5. Reset for next Round
+    """
+    type: str = "end_phase"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print("   [ROUND END] Processing End Phase...")
+        
+        # TODO: Implement Minion Battle
+        # TODO: Implement Card Retrieval
+        # TODO: Implement Level Up
+        
+        # Reset Round
+        state.round += 1
+        state.turn = 1
+        
+        # Transition back to Planning for new round
+        # Import locally to avoid circular
+        from goa2.domain.models import GamePhase
+        state.phase = GamePhase.PLANNING
+        print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
+        
+        return StepResult(is_finished=True)
 
 class ResolveTieBreakerStep(GameStep):
     """

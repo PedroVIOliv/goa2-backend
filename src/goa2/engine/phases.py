@@ -105,8 +105,8 @@ def resolve_next_action(state: GameState):
     Follows Rule: "After each action... re-identify the player with Highest Initiative".
     """
     if not state.unresolved_hero_ids:
-        print("   [Queue] All cards resolved. Turn End.")
-        # Trigger Turn End Logic here
+        print("   [Queue] All cards resolved. Turn Complete.")
+        end_turn(state)
         return
 
     # 1. Calculate current initiatives for all candidates
@@ -138,9 +138,9 @@ def resolve_next_action(state: GameState):
         print(f"   [Resolution] Next actor: {hero_id} (Init: {highest_init})")
         
         # Convert Card to Steps
-        from goa2.engine.steps import FinalizeHeroTurnStep
+        from goa2.engine.steps import FinalizeHeroTurnStep, ResolveCardStep
         push_steps(state, [
-            LogMessageStep(message=f"Resolving card for {hero_id}"),
+            ResolveCardStep(hero_id=hero_id),
             FinalizeHeroTurnStep(hero_id=hero_id)
         ])
         return
@@ -149,11 +149,29 @@ def resolve_next_action(state: GameState):
     print(f"   [Resolution] Tie detected at Initiative {highest_init} between {tied_hero_ids}")
     
     # We DO NOT remove them from unresolved_hero_ids yet.
-    # The TieBreaker step will determine the winner, remove ONLY the winner, 
-    # and then recursively call resolve_next_action (implicitly via loop or explicit step).
-    # Wait, the TieBreakerStep in steps.py handles the recursion.
-    # But it needs to know how to "Execute" the winner.
-    
     state.execution_stack.append(ResolveTieBreakerStep(
         tied_hero_ids=tied_hero_ids
     ))
+
+def end_turn(state: GameState):
+    """
+    Called when all players have acted in the Resolution Phase.
+    """
+    print(f"   [Turn] End of Turn {state.turn}.")
+    
+    # TODO: Expire 'This Turn' effects here
+    
+    if state.turn < 4:
+        state.turn += 1
+        state.phase = GamePhase.PLANNING
+        print(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
+        # Ready for new inputs
+    else:
+        start_end_phase(state)
+
+def start_end_phase(state: GameState):
+    state.phase = GamePhase.CLEANUP
+    print("=== END PHASE ===")
+    
+    from goa2.engine.steps import EndPhaseStep
+    push_steps(state, [EndPhaseStep()])
