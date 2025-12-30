@@ -857,20 +857,21 @@ class ResolveCardStep(GameStep):
             return True
 
         # Primary
-        if card.primary_action:
-            if is_action_available(card.primary_action):
+        primary_action = card.current_primary_action
+        if primary_action:
+            if is_action_available(primary_action):
                 options.append({
-                    "id": "PRIMARY",
-                    "type": card.primary_action, 
-                    "value": card.primary_action_value,
-                    "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
+                    "id": primary_action.name,
+                    "type": primary_action, 
+                    "value": card.current_primary_action_value,
+                    "text": f"Primary: {primary_action.name} ({card.current_primary_action_value or '-'})"
                 })
             
         # Secondaries
-        for action_type, val in card.secondary_actions.items():
+        for action_type, val in card.current_secondary_actions.items():
             if is_action_available(action_type):
                  options.append({
-                    "id": f"SEC_{action_type.name}",
+                    "id": action_type.name,
                     "type": action_type,
                     "value": val,
                     "text": f"Secondary: {action_type.name} ({val})"
@@ -884,7 +885,8 @@ class ResolveCardStep(GameStep):
             if selected_opt:
                 act_type = selected_opt["type"]
                 val = selected_opt["value"]
-                is_primary = (choice_id == "PRIMARY")
+                # Determine if primary by checking the card itself
+                is_primary = (act_type == primary_action)
                 
                 print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
                 
@@ -904,83 +906,6 @@ class ResolveCardStep(GameStep):
                     elif act_type == ActionType.FAST_TRAVEL:
                         # Replaces Movement, usually standard Move logic + condition check.
                         new_steps.append(FastTravelStep(unit_id=self.hero_id)) 
-                        
-                    elif act_type == ActionType.ATTACK:
-                        rng = card.range_value if card.range_value is not None else 1
-                        new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
-                        
-                    elif act_type == ActionType.CLEAR:
-                        new_steps.append(LogMessageStep(message=f"{self.hero_id} clears tokens."))
-                        
-                    elif act_type == ActionType.HOLD:
-                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Holds."))
-                        
-                    elif act_type == ActionType.DEFENSE:
-                        # Should not happen as action, but valid in enum
-                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Defends (Active)."))
-
-                return StepResult(is_finished=True, new_steps=new_steps)
-
-        # 3. Request Input
-        return StepResult(
-            requires_input=True,
-            input_request={
-                "type": "CHOOSE_ACTION",
-                "prompt": f"Choose action for card {card.name}",
-                "player_id": self.hero_id,
-                "options": options
-            }
-        )
-        
-        # 1. Gather Options
-        options = []
-        
-        # Primary
-        if card.primary_action:
-            options.append({
-                "id": "PRIMARY",
-                "type": card.primary_action, 
-                "value": card.primary_action_value,
-                "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
-            })
-            
-        # Secondaries
-        for action_type, val in card.secondary_actions.items():
-             options.append({
-                "id": f"SEC_{action_type.name}",
-                "type": action_type,
-                "value": val,
-                "text": f"Secondary: {action_type.name} ({val})"
-            })
-            
-        # 2. Process Input
-        if self.pending_input:
-            choice_id = self.pending_input.get("choice_id")
-            selected_opt = next((o for o in options if o["id"] == choice_id), None)
-            
-            if selected_opt:
-                act_type = selected_opt["type"]
-                val = selected_opt["value"]
-                is_primary = (choice_id == "PRIMARY")
-                
-                print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
-                
-                new_steps = []
-                
-                if is_primary:
-                    # User Mandate: Primary actions apply custom script.
-                    new_steps.append(ResolveCardTextStep(
-                        card_id=card.id, 
-                        hero_id=self.hero_id
-                    ))
-                else:
-                    # Secondary: Standard Primitives
-                    if act_type == ActionType.MOVEMENT:
-                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val))
-                        
-                    elif act_type == ActionType.FAST_TRAVEL:
-                        # Replaces Movement, usually standard Move logic + condition check.
-                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val)) 
                         
                     elif act_type == ActionType.ATTACK:
                         rng = card.range_value if card.range_value is not None else 1

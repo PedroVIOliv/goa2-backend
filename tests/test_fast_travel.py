@@ -155,11 +155,12 @@ def test_fast_travel_option_filtering():
     # Card with FAST_TRAVEL
     card = Card(
         id="c1", name="Teleport", tier=CardTier.I, initiative=10,
-        primary_action=ActionType.FAST_TRAVEL, primary_action_value=0,
+        primary_action=ActionType.MOVEMENT, primary_action_value=3,
         secondary_actions={},
         color=CardColor.RED,
         effect_id="test_effect",
-        effect_text="Teleport to safe zone."
+        effect_text="Teleport to safe zone.",
+        is_facedown=False
     )
     hero.current_turn_card = card
     
@@ -179,14 +180,16 @@ def test_fast_travel_option_filtering():
     step = ResolveCardStep(hero_id="hero1")
     result = step.resolve(state, {})
     
-    # Options should be empty because Fast Travel is invalid
-    # If options empty, specific behavior depends on step loop, but result.input_request should NOT contain PRIMARY
+    # Verify that Fast Travel is indeed a secondary action on the card (added by validator)
+    assert ActionType.FAST_TRAVEL in card.secondary_actions
     
-    if result.requires_input:
-        # If it asked for input, ensure PRIMARY is not an option
-        opts = result.input_request.get("options", [])
-        assert not any(o["id"] == "PRIMARY" for o in opts)
-    else:
-        # If it finished automatically (because 0 options), that's also pass
-        assert True
+    # Options should contain MOVEMENT and HOLD, but NOT FAST_TRAVEL
+    assert result.requires_input
+    opts = result.input_request.get("options", [])
+    opt_ids = [o["id"] for o in opts]
+    
+    assert "MOVEMENT" in opt_ids
+    assert "HOLD" in opt_ids
+    assert "FAST_TRAVEL" not in opt_ids
+    assert len(opt_ids) == 2
 

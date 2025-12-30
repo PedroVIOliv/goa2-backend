@@ -66,7 +66,11 @@ class Card(GameEntity):
     
     @property
     def current_secondary_actions(self) -> Dict[ActionType, int]:
-        if self.is_facedown: return {}
+        if self.is_facedown: 
+            # Hold is always available and not hidden info
+            if ActionType.HOLD in self.secondary_actions:
+                return {ActionType.HOLD: 0}
+            return {}
         return self.secondary_actions
     
     @property
@@ -150,4 +154,22 @@ class Card(GameEntity):
         if not ActionType.CLEAR in self.secondary_actions:
             if self.primary_action == ActionType.ATTACK or ActionType.ATTACK in self.secondary_actions:
                 self.secondary_actions[ActionType.CLEAR] = 0
+        return self
+    
+    @model_validator(mode='after')
+    def ensure_fast_travel_hold_and_clear_are_never_primary(self) -> Card:
+        if self.primary_action in (ActionType.FAST_TRAVEL, ActionType.HOLD, ActionType.CLEAR):
+            raise ValueError("Fast Travel, Hold, and Clear cannot be primary actions.")
+        return self
+
+    @model_validator(mode='after')
+    def ensure_primary_is_attack_skill_movement_or_defense(self) -> Card:
+        if self.primary_action not in (ActionType.ATTACK, ActionType.SKILL, ActionType.MOVEMENT, ActionType.DEFENSE):
+            raise ValueError("Primary action must be Attack, Skill, Movement, or Defense.")
+        return self
+
+    @model_validator(mode='after')
+    def ensure_actiontypes_dont_overlap(self) -> Card:
+        if self.primary_action in self.secondary_actions:
+            raise ValueError("Primary action cannot be in secondary actions.")
         return self

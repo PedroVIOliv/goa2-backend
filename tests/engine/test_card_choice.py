@@ -56,12 +56,12 @@ def test_resolve_card_prompts_for_choice(choice_state):
     # Check Options
     opts = req["options"]
     ids = [o["id"] for o in opts]
-    assert "PRIMARY" in ids
-    assert "SEC_MOVEMENT" in ids
-    assert "SEC_HOLD" in ids
+    assert "ATTACK" in ids
+    assert "MOVEMENT" in ids
+    assert "HOLD" in ids
     
     # Verify Primary Text
-    prim = next(o for o in opts if o["id"] == "PRIMARY")
+    prim = next(o for o in opts if o["id"] == "ATTACK")
     assert prim["type"] == ActionType.ATTACK
     assert prim["value"] == 4
 
@@ -74,7 +74,7 @@ def test_choose_secondary_movement(choice_state):
     process_resolution_stack(choice_state)
     
     # 2. Provide Input: Secondary Move
-    choice_state.execution_stack[-1].pending_input = {"choice_id": "SEC_MOVEMENT"}
+    choice_state.execution_stack[-1].pending_input = {"choice_id": "MOVEMENT"}
     
     # 3. Run again
     # The ResolveCardStep should finish and spawn MoveUnitStep
@@ -99,7 +99,7 @@ def test_choose_primary_script(choice_state):
     process_resolution_stack(choice_state)
     
     # Input: Primary
-    choice_state.execution_stack[-1].pending_input = {"choice_id": "PRIMARY"}
+    choice_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
     
     req = process_resolution_stack(choice_state)
     assert req is None
@@ -108,12 +108,12 @@ def test_choose_primary_script(choice_state):
     # For now, ensuring it runs without error (stack empty) is good.
 
 def test_resolve_card_no_primary():
-    """Test a card that only has secondaries (rare but possible via overrides/items?)"""
-    # Actually Model validation ensures some structure, but let's test safety.
+    """Test a card that is facedown (no primary available)."""
     hero = create_test_hero("B", TeamColor.BLUE, (
-        None, None, 
+        ActionType.SKILL, None, 
         {ActionType.HOLD: 0}
     ))
+    hero.current_turn_card.is_facedown = True
     
     state = GameState(
         board=Board(),
@@ -126,6 +126,6 @@ def test_resolve_card_no_primary():
     req = process_resolution_stack(state)
     opts = req["options"]
     
-    # Should be no PRIMARY option
-    assert not any(o["id"] == "PRIMARY" for o in opts)
-    assert any(o["id"] == "SEC_HOLD" for o in opts)
+    # Should be no SKILL option (it is facedown)
+    assert not any(o["id"] == "SKILL" for o in opts)
+    assert any(o["id"] == "HOLD" for o in opts)
