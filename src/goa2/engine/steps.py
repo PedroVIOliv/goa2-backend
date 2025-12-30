@@ -733,21 +733,104 @@ class EndPhaseStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [ROUND END] Processing End Phase...")
         
-        # TODO: Implement Minion Battle
-        # TODO: Implement Card Retrieval
-        # TODO: Implement Level Up
+        self._resolve_minion_battle(state)
+        self._retrieve_cards(state)
+        self._clear_tokens(state)
+        self._level_up(state)
         
         # Reset Round
         state.round += 1
         state.turn = 1
         
         # Transition back to Planning for new round
-        # Import locally to avoid circular
         from goa2.domain.models import GamePhase
         state.phase = GamePhase.PLANNING
         print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
         
         return StepResult(is_finished=True)
+
+    def _resolve_minion_battle(self, state: GameState):
+        """
+        Compare minion counts in active zone. Loser removes difference.
+        Heavy minions must be last to be removed.
+        """
+        if not state.active_zone_id:
+            return
+
+        zone = state.board.zones.get(state.active_zone_id)
+        if not zone: return
+
+        red_minions = []
+        blue_minions = []
+        
+        # Find minions in this zone
+        # Optimization: Could iterate zone hexes instead of all units if zone is small vs unit count
+        # For now, iterate all units (safer)
+        for unit_id, loc in state.unit_locations.items():
+            if loc in zone.hexes:
+                unit = state.get_unit(unit_id)
+                # Check if it is a Minion (has 'type' and 'is_heavy')
+                if hasattr(unit, 'type') and hasattr(unit, 'is_heavy'): 
+                    if unit.team == TeamColor.RED:
+                        red_minions.append(unit)
+                    elif unit.team == TeamColor.BLUE:
+                        blue_minions.append(unit)
+        
+        r_count = len(red_minions)
+        b_count = len(blue_minions)
+        diff = abs(r_count - b_count)
+        
+        if diff == 0:
+            print("   [BATTLE] Minion count tied. No removals.")
+            return
+
+        loser_team = TeamColor.RED if r_count < b_count else TeamColor.BLUE
+        loser_minions = red_minions if loser_team == TeamColor.RED else blue_minions
+        
+        print(f"   [BATTLE] {loser_team.name} loses {diff} minion(s).")
+        
+        # Heavy Constraint: Sort so Heavies are at END of list (safest from removal)
+        # Non-Heavies (False) come before Heavies (True)
+        # We want to remove from the FRONT. So Sort key: is_heavy.
+        # False (0) -> Front, True (1) -> Back.
+        loser_minions.sort(key=lambda m: m.is_heavy)
+        
+        removals = loser_minions[:diff]
+        for m in removals:
+            print(f"   [BATTLE] Removing {m.id} ({m.type.name})")
+            state.remove_unit(m.id)
+            # Update Team roster? 
+            # Ideally state.remove_unit handles board. 
+            # We might want to remove from state.teams[color].minions list if we track them strictly there.
+            # But usually 'minions' list in Team is the 'supply' + 'board'. 
+            # If dead, they go back to supply (just off board).
+            # state.remove_unit removes from unit_locations.
+
+        if len(loser_minions) - diff <= 0:
+            print("   [BATTLE] Zone cleared of loser minions. (Lane Push Check needed)")
+            # TODO: Trigger Lane Push if count hit 0? 
+            # Rules say Lane Push is Immediate. 
+            # End Phase minion battle triggers it IF count reduces to 0.
+
+    def _retrieve_cards(self, state: GameState):
+        """Return all cards to hand."""
+        print("   [CLEANUP] retrieving cards...")
+        for team in state.teams.values():
+            for hero in team.heroes:
+                hero.retrieve_cards()
+
+    def _clear_tokens(self, state: GameState):
+        """Clear all tokens from board."""
+        # Simple iteration. 
+        # Future: Some tokens might persist.
+        # for tile in state.board.tiles.values():
+        #     if tile.token: tile.token = None
+        pass
+
+    def _level_up(self, state: GameState):
+        """Placeholder for Level Up phase."""
+        print("   [LEVEL UP] (Skipped for now)")
+
 
 class ResolveTieBreakerStep(GameStep):
     """

@@ -17,7 +17,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **2.1 Game Loop** | **Implemented** | `handler.py` loop processes the `execution_stack`. |
 | **2.2 Turn Structure** | **Implemented** | `phases.py` handles broad state. `ResolveTieBreakerStep` handles ties. `FindNextActorStep` handles cycling. `ResolveCardStep` handles Primary/Secondary choice. |
 | **2.3 Lane Push** | **Missing** | No `LanePushStep` or trigger logic implemented yet. |
-| **2.4 End Phase** | **Missing** | No `EndPhaseStep` (Minion Battle, Level Up) implemented yet. |
+| **2.4 End Phase** | **Implemented** | `EndPhaseStep` handles Minion Battle (with Heavy Constraint), Card Retrieval, and Round Reset. Level Up is placeholder. |
 
 ## 3. Entity States
 
