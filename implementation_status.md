@@ -41,7 +41,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | :--- | :--- | :--- |
 | **6.1 Action Types** | **Mixed** | |
 | - Movement | **Implemented** | `MoveUnitStep` with pathfinding validation. |
-| - Attack | **Implemented** | `AttackSequenceStep` (Macro) -> `SelectStep` -> `ReactionWindow` -> `ResolveCombat`. |
+| - Attack | **Implemented** | `AttackSequenceStep` (Macro) -> `SelectStep` -> `ReactionWindow` -> `ResolveCombat`. **Note:** Reaction Window auto-skips for Minion targets. |
 | - Defense | **Implemented** | `ReactionWindowStep` allows discarding a card to modify defense values. |
 | - Skill / Hold | **Implemented** | `ResolveCardStep` supports `HOLD`. Skills delegate to `ResolveCardTextStep` placeholder. |
 | **6.2 Keywords** | **Mixed** | |

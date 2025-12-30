@@ -201,3 +201,39 @@ def test_log_message(empty_state):
     step = LogMessageStep(message="Hello {name}")
     res = step.resolve(empty_state, {"name": "World"})
     assert res.is_finished
+
+# --- Reaction Window Minion Tests ---
+
+def test_reaction_window_minion_skip(combat_state):
+    # Setup: Add a Minion to Blue Team
+    m1 = Minion(id="minion_blue", name="Blue Minion", type=MinionType.MELEE, team=TeamColor.BLUE)
+    combat_state.teams[TeamColor.BLUE].minions.append(m1)
+    
+    # Target the Minion
+    combat_state.execution_context["target_id"] = "minion_blue"
+    
+    step = ReactionWindowStep(target_player_key="target_id")
+    push_steps(combat_state, [step])
+    
+    # Run stack
+    req = process_resolution_stack(combat_state)
+    
+    # Assertions
+    assert req is None  # Should not request input
+    assert combat_state.execution_context.get("defense_value") == 0 # Defense forced to 0
+    assert not combat_state.execution_stack # Stack should be empty
+
+def test_reaction_window_hero_prompt(combat_state):
+    # Target Blue Hero (who has cards, from fixture)
+    combat_state.execution_context["target_id"] = "hero_blue"
+    
+    step = ReactionWindowStep(target_player_key="target_id")
+    push_steps(combat_state, [step])
+    
+    # Run stack
+    req = process_resolution_stack(combat_state)
+    
+    # Assertions
+    assert req is not None
+    assert req["type"] == "SELECT_CARD_OR_PASS"
+    assert req["player_id"] == "hero_blue"

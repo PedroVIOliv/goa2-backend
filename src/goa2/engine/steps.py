@@ -238,13 +238,19 @@ class ReactionWindowStep(GameStep):
 
         # Find Target Hero to check hand
         target_hero = state.get_hero(target_id)
+
+        # Optimization: Minions/Non-Heroes cannot react.
+        if not target_hero:
+            print(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
+            context["defense_value"] = 0
+            return StepResult(is_finished=True)
+
         valid_defense_cards = []
-        if target_hero:
-            for card in target_hero.hand:
-                # Check Primary or Secondary for Defense
-                if (card.primary_action == ActionType.DEFENSE or 
-                    ActionType.DEFENSE in card.secondary_actions):
-                    valid_defense_cards.append(card)
+        for card in target_hero.hand:
+            # Check Primary or Secondary for Defense
+            if (card.primary_action == ActionType.DEFENSE or 
+                ActionType.DEFENSE in card.secondary_actions):
+                valid_defense_cards.append(card)
 
         valid_ids = [c.id for c in valid_defense_cards]
         
