@@ -24,7 +24,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | Rule Section | Status | Notes |
 | :--- | :--- | :--- |
 | **3.1 Hero State** | **Partial** | `Hero` model exists. `DefeatUnitStep` handles Death Rewards (Killer) and Removal. Life Counter penalty and Assist rewards are pending. |
-| **3.2 Minion State** | **Partial** | `Minion` model exists. `rules.validate_movement_path` respects obstacles. **Heavy Immunity** and **Auras** are pending integration. |
+| **3.2 Minion State** | **Implemented** | `Minion` model exists. `rules.validate_movement_path` respects obstacles. **Heavy Immunity** and **Auras** are fully integrated into `ResolveCombatStep`. |
 
 ## 4. Card System
 

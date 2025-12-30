@@ -368,14 +368,20 @@ class ResolveCombatStep(GameStep):
     target_key: str = "victim_id"
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        defense_val = context.get("defense_value", 0)
+        defense_card_val = context.get("defense_value", 0)
         attack_val = self.damage
         target_id = context.get(self.target_key)
         actor_id = state.current_actor_id
         
-        print(f"   [COMBAT] Attack ({attack_val}) vs Defense ({defense_val})")
+        # Calculate Passive Modifiers
+        from goa2.engine.stats import calculate_minion_defense_modifier
+        mod_val = calculate_minion_defense_modifier(state, target_id)
         
-        if defense_val >= attack_val:
+        total_defense = defense_card_val + mod_val
+        
+        print(f"   [COMBAT] Attack ({attack_val}) vs Defense ({defense_card_val} Card + {mod_val} Mod = {total_defense})")
+        
+        if total_defense >= attack_val:
             print(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
             return StepResult(is_finished=True)
         else:
