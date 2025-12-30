@@ -21,6 +21,7 @@ class StepResult(BaseModel):
     requires_input: bool = False
     input_request: Optional[Dict[str, Any]] = None
     new_steps: List['GameStep'] = Field(default_factory=list) # Steps to spawn
+    abort_action: bool = False  # If True, abort remaining steps in current action
 
 class GameStep(BaseModel, ABC):
     """
@@ -34,6 +35,10 @@ class GameStep(BaseModel, ABC):
     
     # Input buffer: If the client provides input, it's stored here before 'resolve' is called
     pending_input: Optional[Any] = None
+    
+    # Mandatory step flag: Per GoA2 rules, mandatory steps that fail abort the action.
+    # Optional steps ("you may", "up to", "if able") set this to False.
+    is_mandatory: bool = True
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         """
@@ -102,10 +107,12 @@ class SelectStep(GameStep):
                 valid_candidates.append(c)
 
         if not valid_candidates:
-            print(f"   [LOGIC] No valid candidates for selection '{self.prompt}'")
-            # If mandatory, this might be an issue. For now, we finish.
-            # Ideally, we might pass a 'None' or handle 'If Able' here.
-            return StepResult(is_finished=True)
+            if self.is_mandatory:
+                print(f"   [ABORT] Mandatory selection '{self.prompt}' failed. No candidates.")
+                return StepResult(is_finished=True, abort_action=True)
+            else:
+                print(f"   [SKIP] Optional selection '{self.prompt}' skipped. No candidates.")
+                return StepResult(is_finished=True)
 
         # 3. Auto-Select optimization
         if self.auto_select_if_one and len(valid_candidates) == 1:
@@ -220,8 +227,11 @@ class MoveUnitStep(GameStep):
         )
         
         if not is_valid:
-            print(f"   [INVALID] Move for {actor_id} to {dest_hex} is illegal.")
-            return StepResult(is_finished=True) # Mandatory step failed, halt.
+            # NOTE: This should rarely happen if SelectStep correctly filtered movement options.
+            # Invalid path is an ERROR (wrong destination chosen), not an abort trigger.
+            # Abort only happens at SelectStep when no valid options exist at all.
+            print(f"   [ERROR] Invalid move for {actor_id} to {dest_hex}. Path blocked or out of range.")
+            return StepResult(is_finished=True)
 
         print(f"   [LOGIC] Moving {actor_id} from {start_hex} to {dest_hex} (Range {self.range_val})")
         state.move_unit(actor_id, dest_hex)

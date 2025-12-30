@@ -103,3 +103,41 @@ Start -> FindNext -> [Wait for Input] -> ResolveCard -> [Action Steps] -> Finali
 *   **Unit Tests:** Test pure functions directly.
 *   **Integration Tests:** Test Steps by setting up a `GameState`, pushing the Step, and calling `process_resolution_stack(state)`.
 *   **Verification:** Assert `state` changes (positions, gold, counters) after the stack is empty.
+
+---
+
+## 6. Mandatory vs Optional Steps
+
+Per GoA2 rules: *"Card text must be applied in exact order. If you cannot complete a mandatory step, stop and skip remaining steps."*
+
+### Step Fields
+```python
+class GameStep:
+    is_mandatory: bool = True  # Default: mandatory
+
+class StepResult:
+    abort_action: bool = False  # Set True to abort on failure
+```
+
+### Behavior
+| Step Type | On Failure | Engine Action |
+|-----------|------------|---------------|
+| Mandatory (`is_mandatory=True`) | Returns `abort_action=True` | Clears stack to `FinalizeHeroTurnStep` |
+| Optional (`is_mandatory=False`) | Returns `is_finished=True` | Continues to next step |
+
+### Example Usage
+```python
+# "You may move 1 space" - optional
+MoveUnitStep(unit_id=hero.id, range_val=1, is_mandatory=False)
+
+# "Attack target" - mandatory (default)
+SelectStep(target_type="UNIT", filters=[...])  # is_mandatory=True by default
+```
+
+### Implementation
+When a step fails and `is_mandatory=True`:
+1. Return `StepResult(is_finished=True, abort_action=True)`
+2. Handler calls `_clear_to_finalize(state)`
+3. All steps until `FinalizeHeroTurnStep` are popped and skipped
+
+See [Card Effects Guidelines](docs/card_effects_guidelines.md) for detailed patterns.

@@ -20,7 +20,13 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         # 2. Resolve
         result: StepResult = current_step.resolve(state, state.execution_context)
         
-        # 3. Handle Result
+        # 3. Handle Abort (GoA2 Rule: Mandatory step failure aborts action)
+        if result.abort_action:
+            print("   [ENGINE] Action aborted. Clearing remaining action steps.")
+            _clear_to_finalize(state)
+            continue
+        
+        # 4. Handle Result
         
         if result.requires_input:
             # The step needs input. Put it back.
@@ -31,11 +37,26 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
             # Step wants to stay on stack (e.g. multi-turn or waiting)
             state.execution_stack.append(current_step)
             
-        # 4. Handle Spawned Steps
+        # 5. Handle Spawned Steps
         if result.new_steps:
             state.execution_stack.extend(reversed(result.new_steps))
             
     return None
+
+
+def _clear_to_finalize(state: GameState):
+    """
+    Clears all steps from the stack until FinalizeHeroTurnStep is found.
+    This effectively aborts the current action chain without skipping turn finalization.
+    """
+    from goa2.engine.steps import FinalizeHeroTurnStep
+    
+    while state.execution_stack:
+        step = state.execution_stack[-1]
+        if isinstance(step, FinalizeHeroTurnStep):
+            break
+        state.execution_stack.pop()
+        print(f"   [ENGINE] Skipped step: {step.type}")
 
 def push_steps(state: GameState, steps: list[GameStep]):
     """Helper to push new steps. Note: Stack is LIFO, so we extend in REVERSE order if we want them to execute 1, 2, 3."""

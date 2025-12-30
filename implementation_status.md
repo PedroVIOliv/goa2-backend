@@ -53,5 +53,5 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **6.4 Selection** | **Implemented** | `SelectStep` with composable `FilterCondition` system. |
 
 ## Summary of Critical Gaps
-1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card).
+1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card). **Note:** Mandatory/Optional step distinction and abort mechanism now implemented - see `ARCHITECTURE.md` Section 6 and `docs/card_effects_guidelines.md`.
 2.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).
