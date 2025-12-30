@@ -230,6 +230,19 @@ Each Hero has a deck of upgradable cards.
 *   **Unit:** Units means heroes and minions. Tokens are not units.
 *   **Zone:** A Zone is an area of the board comprised of multiple spaces.
 
+### 6.3 Combat Logic (Attack Resolution)
+1.  **Targeting:** Validate Range and Immunity.
+    *   **Line of Sight:** There are **NO** line of sight rules. Targets may be selected through obstacles as long as they are within Range/Radius.
+2.  **Modifiers:** Calculate `AttackPower` (Base + Items + Before Attack effects).
+3.  **Defense Interrupt:**
+    *   Target Hero may **discard** a card from hand to use its Defense Value.
+    *   Calculate `DefensePower` (Card + Items + Minion Auras + Mods).
+4.  **Result:**
+    *   If `AttackPower > DefensePower`: Target is **Defeated**.
+    *   If `AttackPower <= DefensePower`: Attack is **Blocked**.
+    *   *Note:* Minions have no Defense Interrupt and are always defeated if targeted.
+5.  **Aftermath:** Apply "After Attack" effects.
+
 ### 6.4 Selection Logic (Filters)
 
 Target selection is handled by a robust Filter System that allows card effects to specify exact criteria. 

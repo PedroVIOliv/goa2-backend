@@ -97,25 +97,26 @@ If you need a new type of player choice (e.g., "Choose a card to discard"):
 ## 🗺 Roadmap & Rule Implementation
 
 ### 🏁 Win Conditions
-- [ ] **Lane Push:** Battle zone reaches the enemy throne.
-- [ ] **Last Push:** A push occurs when only one Wave Counter remains (Time Condition).
+- [x] **Lane Push:** Battle zone reaches the enemy throne.
+- [x] **Last Push:** A push occurs when only one Wave Counter remains (Time Condition).
 - [ ] **Life Counters:** A team's last life counter is flipped.
 
 ### ⚔️ Combat & Resolution Rules
 - [x] **Initiative Sorting:** Simultaneous reveal followed by high-to-low resolution.
 - [x] **Dynamic Tie-Breaking:** Handle cross-team coin flips and same-team choices mid-resolution.
-- [ ] **Death Penalty:** If a hero is defeated while their card is **unresolved**, that card resolves with **No Effect**.
-- [x] **Minion Auras:** Passive +1/-1 modifiers based on proximity (implemented in `stats.py`).
+- [x] **Death Penalty:** If a hero is defeated, team loses life counters. Correct Gold rewards awarded.
+- [x] **Minion Auras:** Passive +1/-1 modifiers based on proximity (Integrated in Combat).
 
 ### 🌊 End Phase (Round Cleanup)
-- [ ] **Minion Battle:** Compare counts in Battle Zone. Loser removes `Difference` minions.
-- [ ] **Heavy Constraint:** Heavy minions **must** be the last minions removed during Minion Battle.
+- [x] **Minion Battle:** Compare counts in Battle Zone. Loser removes `Difference` minions.
+- [x] **Heavy Constraint:** Heavy minions **must** be the last minions removed during Minion Battle.
 - [ ] **Upgrading:** Mandatory level-up and card-to-item "tucking" logic.
 
-### 🛠 Pending Primitives (Steps)
+### 🛠 Completed Primitives (Steps)
 - [x] **Push(X):** Vector-based movement with obstacle collision.
 - [x] **Swap / Place:** Teleportation and position exchange.
-- [x] **Respawn:** Returning defeated heroes to base at start of turn.
+- [x] **Respawn:** Returning defeated heroes to base and spawning new minions waves.
+- [x] **Card Choice:** Players choose between Primary Action (Scripted) or Secondary Action.
 
 ---
 
