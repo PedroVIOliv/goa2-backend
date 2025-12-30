@@ -372,9 +372,11 @@ class DefeatUnitStep(GameStep):
             if killer and hasattr(killer, 'gold'):
                 killer.gold += reward
 
-        # 3. Spawn Removal
+        # 3. Spawn Removal and Check Push
+        # Execution Order: RemoveUnitStep -> CheckLanePushStep
         return StepResult(is_finished=True, new_steps=[
-            RemoveUnitStep(unit_id=self.victim_id)
+            RemoveUnitStep(unit_id=self.victim_id),
+            CheckLanePushStep()
         ])
 
 class FindNextActorStep(GameStep):
@@ -814,22 +816,212 @@ class ResolveCardStep(GameStep):
                 "options": options
             }
         )
+        
+        # 1. Gather Options
+        options = []
+        
+        # Primary
+        if card.primary_action:
+            options.append({
+                "id": "PRIMARY",
+                "type": card.primary_action, 
+                "value": card.primary_action_value,
+                "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
+            })
+            
+        # Secondaries
+        for action_type, val in card.secondary_actions.items():
+             options.append({
+                "id": f"SEC_{action_type.name}",
+                "type": action_type,
+                "value": val,
+                "text": f"Secondary: {action_type.name} ({val})"
+            })
+            
+        # 2. Process Input
+        if self.pending_input:
+            choice_id = self.pending_input.get("choice_id")
+            selected_opt = next((o for o in options if o["id"] == choice_id), None)
+            
+            if selected_opt:
+                act_type = selected_opt["type"]
+                val = selected_opt["value"]
+                is_primary = (choice_id == "PRIMARY")
+                
+                print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
+                
+                new_steps = []
+                
+                if is_primary:
+                    # User Mandate: Primary actions apply custom script.
+                    new_steps.append(ResolveCardTextStep(
+                        card_id=card.id, 
+                        hero_id=self.hero_id
+                    ))
+                else:
+                    # Secondary: Standard Primitives
+                    if act_type == ActionType.MOVEMENT:
+                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val))
+                        
+                    elif act_type == ActionType.FAST_TRAVEL:
+                        # Replaces Movement, usually standard Move logic + condition check.
+                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val)) 
+                        
+                    elif act_type == ActionType.ATTACK:
+                        rng = card.range_value if card.range_value is not None else 1
+                        new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
+                        
+                    elif act_type == ActionType.CLEAR:
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} clears tokens."))
+                        
+                    elif act_type == ActionType.HOLD:
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Holds."))
+                        
+                    elif act_type == ActionType.DEFENSE:
+                        # Should not happen as action, but valid in enum
+                        new_steps.append(LogMessageStep(message=f"{self.hero_id} Defends (Active)."))
 
-class EndPhaseStep(GameStep):
+                return StepResult(is_finished=True, new_steps=new_steps)
+
+        # 3. Request Input
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "CHOOSE_ACTION",
+                "prompt": f"Choose action for card {card.name}",
+                "player_id": self.hero_id,
+                "options": options
+            }
+        )
+
+class LanePushStep(GameStep):
     """
-    Handles the End of Round logic:
-    1. Minion Battle
-    2. Retrieve Cards
-    3. Clear Tokens
-    4. Level Up
-    5. Reset for next Round
+    Executes a Lane Push:
+    1. Removes Wave Counter.
+    2. Moves Battle Zone.
+    3. Wipes Minions in old zone.
+    4. Respawns Minions in new zone.
+    5. Checks Victory Conditions (Throne or Last Push).
     """
-    type: str = "end_phase"
+    type: str = "lane_push"
+    losing_team: TeamColor
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print("   [ROUND END] Processing End Phase...")
+        from goa2.engine.map_logic import get_push_target_zone_id
         
-        self._resolve_minion_battle(state)
+        print(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
+        
+        # 1. Remove Wave Counter
+        state.wave_counter -= 1
+        print(f"   [PUSH] Wave Counter removed. Remaining: {state.wave_counter}")
+        
+        if state.wave_counter <= 0:
+            print("   [GAME OVER] Last Push Victory!")
+            # TODO: Handle Game Over
+            return StepResult(is_finished=True)
+
+        # 2. Determine Next Zone
+        next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
+        
+        if is_game_over:
+            print(f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached.")
+            return StepResult(is_finished=True)
+            
+        if not next_zone_id:
+            print("   [ERROR] Could not determine next zone for push.")
+            return StepResult(is_finished=True)
+
+        current_zone = state.board.zones.get(state.active_zone_id)
+        
+        # 3. Wipe Old Minions
+        # Per rules: "Remove all Minions from old Battle Zone."
+        # Heroes stay? Yes, heroes are displaced only if blocking spawn (handled by respawn logic later).
+        # Actually rules say: "Occupied by Unit: Owning Team Places Minion..."
+        # But here we just wipe OLD minions.
+        
+        to_remove = []
+        if current_zone:
+            for uid, loc in state.unit_locations.items():
+                if loc in current_zone.hexes:
+                    unit = state.get_unit(uid)
+                    # Check if Minion
+                    if hasattr(unit, 'type') and hasattr(unit, 'value'): # Duck typing Minion
+                        to_remove.append(uid)
+        
+        for uid in to_remove:
+            state.remove_unit(uid)
+            print(f"   [PUSH] Wiped {uid} from old zone.")
+
+        # 4. Update Zone
+        print(f"   [PUSH] Battle Zone moved: {state.active_zone_id} -> {next_zone_id}")
+        state.active_zone_id = next_zone_id
+        
+        # 5. Respawn New Wave
+        # Identify spawn points in new zone
+        next_zone = state.board.zones.get(next_zone_id)
+        if next_zone:
+            # We need to spawn minions for BOTH teams at their respective points in the new zone.
+            # We'll spawn generic 'RespawnMinionStep' for each required minion?
+            # Or handle it in bulk here. Batch is better for atomic "Push" step.
+            
+            # Simple Logic: Iterate Spawn Points in Zone -> Spawn Unit.
+            # If occupied by token -> remove token.
+            # If occupied by unit -> Displacement logic (Complex).
+            # For MVP: Assume empty or overwrite/fail.
+            # Rules: "Occupied by Unit: Owning Team Places Minion..."
+            # That implies Input Request ("Place your displaced minion").
+            # We'll stick to auto-spawn on empty for now.
+            
+            for sp in next_zone.spawn_points:
+                if sp.is_minion_spawn:
+                    # Find a minion of this type in reserve
+                    team = state.teams.get(sp.team)
+                    if team:
+                        # Find off-board minion
+                        candidate = next((m for m in team.minions 
+                                        if m.type == sp.minion_type 
+                                        and m.id not in state.unit_locations), None)
+                        
+                        if candidate:
+                            # Check occupancy
+                            tile = state.board.get_tile(sp.location)
+                            if tile and not tile.is_occupied:
+                                state.move_unit(candidate.id, sp.location)
+                                print(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
+                            else:
+                                print(f"   [PUSH] Spawn blocked at {sp.location} (Displacement needed)")
+                                # TODO: Queue Displacement Step
+        
+        return StepResult(is_finished=True)
+
+class CheckLanePushStep(GameStep):
+    """
+    Checks if the active zone meets the condition for a Lane Push (0 minions for one team).
+    If so, spawns a LanePushStep.
+    """
+    type: str = "check_lane_push"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        from goa2.engine.map_logic import check_lane_push_trigger
+        
+        losing_team = check_lane_push_trigger(state, state.active_zone_id)
+        if losing_team:
+            print(f"   [CHECK] Lane Push Condition Met for {losing_team.name}")
+            return StepResult(is_finished=True, new_steps=[
+                LanePushStep(losing_team=losing_team)
+            ])
+            
+        return StepResult(is_finished=True)
+
+class EndPhaseCleanupStep(GameStep):
+    """
+    Handles the non-combat cleanup of End Phase:
+    Retrieve Cards, Clear Tokens, Level Up, Round Reset.
+    """
+    type: str = "end_phase_cleanup"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print("   [CLEANUP] Processing End Phase Cleanup...")
         self._retrieve_cards(state)
         self._clear_tokens(state)
         self._level_up(state)
@@ -838,12 +1030,47 @@ class EndPhaseStep(GameStep):
         state.round += 1
         state.turn = 1
         
-        # Transition back to Planning for new round
         from goa2.domain.models import GamePhase
         state.phase = GamePhase.PLANNING
         print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
         
         return StepResult(is_finished=True)
+
+    def _retrieve_cards(self, state: GameState):
+        for team in state.teams.values():
+            for hero in team.heroes:
+                hero.retrieve_cards()
+
+    def _clear_tokens(self, state: GameState):
+        pass
+
+    def _level_up(self, state: GameState):
+        pass
+
+class EndPhaseStep(GameStep):
+    """
+    Entry point for End Phase.
+    Executes Minion Battle, checks for Lane Push, then queues Cleanup.
+    """
+    type: str = "end_phase"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print("   [ROUND END] Processing End Phase (Battle)...")
+        
+        self._resolve_minion_battle(state)
+        
+        new_steps = []
+        
+        # Check Push
+        from goa2.engine.map_logic import check_lane_push_trigger
+        losing_team = check_lane_push_trigger(state, state.active_zone_id)
+        if losing_team:
+            new_steps.append(LanePushStep(losing_team=losing_team))
+            
+        # Always Cleanup after battle (and optional push)
+        new_steps.append(EndPhaseCleanupStep())
+        
+        return StepResult(is_finished=True, new_steps=new_steps)
 
     def _resolve_minion_battle(self, state: GameState):
         """
@@ -859,13 +1086,9 @@ class EndPhaseStep(GameStep):
         red_minions = []
         blue_minions = []
         
-        # Find minions in this zone
-        # Optimization: Could iterate zone hexes instead of all units if zone is small vs unit count
-        # For now, iterate all units (safer)
         for unit_id, loc in state.unit_locations.items():
             if loc in zone.hexes:
                 unit = state.get_unit(unit_id)
-                # Check if it is a Minion (has 'type' and 'is_heavy')
                 if hasattr(unit, 'type') and hasattr(unit, 'is_heavy'): 
                     if unit.team == TeamColor.RED:
                         red_minions.append(unit)
@@ -885,47 +1108,12 @@ class EndPhaseStep(GameStep):
         
         print(f"   [BATTLE] {loser_team.name} loses {diff} minion(s).")
         
-        # Heavy Constraint: Sort so Heavies are at END of list (safest from removal)
-        # Non-Heavies (False) come before Heavies (True)
-        # We want to remove from the FRONT. So Sort key: is_heavy.
-        # False (0) -> Front, True (1) -> Back.
         loser_minions.sort(key=lambda m: m.is_heavy)
         
         removals = loser_minions[:diff]
         for m in removals:
             print(f"   [BATTLE] Removing {m.id} ({m.type.name})")
             state.remove_unit(m.id)
-            # Update Team roster? 
-            # Ideally state.remove_unit handles board. 
-            # We might want to remove from state.teams[color].minions list if we track them strictly there.
-            # But usually 'minions' list in Team is the 'supply' + 'board'. 
-            # If dead, they go back to supply (just off board).
-            # state.remove_unit removes from unit_locations.
-
-        if len(loser_minions) - diff <= 0:
-            print("   [BATTLE] Zone cleared of loser minions. (Lane Push Check needed)")
-            # TODO: Trigger Lane Push if count hit 0? 
-            # Rules say Lane Push is Immediate. 
-            # End Phase minion battle triggers it IF count reduces to 0.
-
-    def _retrieve_cards(self, state: GameState):
-        """Return all cards to hand."""
-        print("   [CLEANUP] retrieving cards...")
-        for team in state.teams.values():
-            for hero in team.heroes:
-                hero.retrieve_cards()
-
-    def _clear_tokens(self, state: GameState):
-        """Clear all tokens from board."""
-        # Simple iteration. 
-        # Future: Some tokens might persist.
-        # for tile in state.board.tiles.values():
-        #     if tile.token: tile.token = None
-        pass
-
-    def _level_up(self, state: GameState):
-        """Placeholder for Level Up phase."""
-        print("   [LEVEL UP] (Skipped for now)")
 
 
 class ResolveTieBreakerStep(GameStep):
@@ -1018,10 +1206,8 @@ class ResolveTieBreakerStep(GameStep):
             
         new_steps = []
         # A. Winner Action
-        new_steps.append(LogMessageStep(message=f"Resolving card for {winner_id}"))
+        new_steps.append(ResolveCardStep(hero_id=winner_id))
         
-        # TODO: Here we would push the actual steps from the card.
-        # For now, we at least push the Finalize step.
         new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
 
         return StepResult(is_finished=True, new_steps=new_steps)

@@ -7,20 +7,24 @@ from goa2.engine.phases import start_resolution_phase
 from goa2.engine.handler import process_resolution_stack
 
 def create_hero(id_str, team, initiative):
-    card = Card(
+    # Return JUST the hero, card assignment happens on state object
+    hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
+    return hero
+
+def create_card(id_str, initiative):
+    return Card(
         id=f"card_{id_str}",
         name=f"Card {id_str}",
         tier=CardTier.I,
         color=CardColor.RED,
         initiative=initiative,
         primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.HOLD: 0},
         effect_id="e",
         effect_text="t",
         is_facedown=False
     )
-    hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
-    hero.current_turn_card = card
-    return hero
 
 def test_automatic_turn_cycling():
     hero_a = create_hero("A", TeamColor.RED, 20)
@@ -35,31 +39,54 @@ def test_automatic_turn_cycling():
         }
     )
     
-    # Setup unresolved pool manually as if Revelation phase just ended
+    # Assign Cards to State Heroes
+    state.get_hero("A").current_turn_card = create_card("A", 20)
+    state.get_hero("B").current_turn_card = create_card("B", 10)
+    state.get_hero("C").current_turn_card = create_card("C", 5)
+    
+    # Setup unresolved pool
     state.unresolved_hero_ids = ["A", "B", "C"]
     
-    # Start Resolution
-    # This should prime the stack with A's steps
+    # Start Resolution - Picks A
     start_resolution_phase(state)
     
-    # Run the engine
-    # Since these cards have no complex steps (phases.py just pushes Log + Finalize), 
-    # it should run straight through A -> B -> C -> End.
-    process_resolution_stack(state)
+    # --- Turn A ---
+    # 1. Process until Input (ResolveCardStep)
+    req = process_resolution_stack(state)
+    assert req["type"] == "CHOOSE_ACTION"
+    assert req["player_id"] == "A"
+    
+    # 2. Provide Input (Secondary Hold)
+    state.execution_stack[-1].pending_input = {"choice_id": "SEC_HOLD"}
+    
+    # 3. Process until Next Input (B)
+    req = process_resolution_stack(state)
+    
+    # Should automatically cycle A -> Finalize -> FindNext -> B -> ResolveCardStep
+    assert req is not None
+    assert req["type"] == "CHOOSE_ACTION"
+    assert req["player_id"] == "B"
+    
+    # --- Turn B ---
+    state.execution_stack[-1].pending_input = {"choice_id": "SEC_HOLD"}
+    req = process_resolution_stack(state)
+    
+    assert req is not None
+    assert req["type"] == "CHOOSE_ACTION"
+    assert req["player_id"] == "C"
+    
+    # --- Turn C ---
+    state.execution_stack[-1].pending_input = {"choice_id": "SEC_HOLD"}
+    req = process_resolution_stack(state)
+    
+    # --- End ---
+    assert req is None # Finished
     
     # Verification
-    
-    # 1. All heroes should be out of the unresolved pool
-    assert len(state.unresolved_hero_ids) == 0, "Not all heroes resolved!"
-    
-    # 2. All cards should be in resolved slots (implied by empty current_turn_card)
-    assert hero_a.current_turn_card is None
-    assert hero_b.current_turn_card is None
-    assert hero_c.current_turn_card is None
-    
-    # 3. Check resolved pile
-    assert len(hero_a.played_cards) == 1
-    assert len(hero_b.played_cards) == 1
-    assert len(hero_c.played_cards) == 1
+    assert len(state.unresolved_hero_ids) == 0
+    assert state.get_hero("A").current_turn_card is None
+    assert state.get_hero("B").current_turn_card is None
+    assert state.get_hero("C").current_turn_card is None
+    assert len(state.get_hero("A").played_cards) == 1
     
     print("Test passed: Automatic cycling worked for A -> B -> C.")

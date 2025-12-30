@@ -14,28 +14,25 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         if safety_counter > MAX_STEPS:
             raise RuntimeError("Infinite Loop detected in Engine Resolution Stack")
 
-        # 1. Peek at top step
-        current_step: GameStep = state.execution_stack[-1]
+        # 1. Pop the top step
+        current_step: GameStep = state.execution_stack.pop()
         
         # 2. Resolve
-        # We pass the state and the SHARED context
         result: StepResult = current_step.resolve(state, state.execution_context)
         
         # 3. Handle Result
         
         if result.requires_input:
-            # The step needs input. It is NOT popped.
+            # The step needs input. Put it back.
+            state.execution_stack.append(current_step)
             return result.input_request
 
-        if result.is_finished:
-            # Success! Pop the step.
-            state.execution_stack.pop()
+        if not result.is_finished:
+            # Step wants to stay on stack (e.g. multi-turn or waiting)
+            state.execution_stack.append(current_step)
             
         # 4. Handle Spawned Steps
         if result.new_steps:
-            # We want new_steps[0] to run FIRST.
-            # Since stack is LIFO, we push new_steps[-1], then ... new_steps[0].
-            # So we push in reverse order.
             state.execution_stack.extend(reversed(result.new_steps))
             
     return None

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from goa2.domain.state import GameState
 from goa2.domain.models import TeamColor
 from goa2.domain.types import UnitID
@@ -37,7 +37,6 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[T
     # Logic:
     # If Red has 0 and Blue > 0 -> Red Loses Zone (Blue Pushes)
     # If Blue has 0 and Red > 0 -> Blue Loses Zone (Red Pushes)
-    # If Both 0? (Mutually assured destruction? Usually wait for spawn)
     
     if red_minions == 0 and blue_minions > 0:
         return TeamColor.RED # Red lost control
@@ -45,6 +44,36 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[T
         return TeamColor.BLUE # Blue lost control
         
     return None
+
+def get_push_target_zone_id(state: GameState, losing_team: TeamColor) -> Tuple[Optional[str], bool]:
+    """
+    Calculates the next zone ID based on the losing team.
+    Returns (next_zone_id, is_game_over).
+    """
+    current_id = state.active_zone_id
+    if not current_id: return None, False
+    
+    lane = state.board.lane
+    if not lane or current_id not in lane:
+        return None, False
+        
+    idx = lane.index(current_id)
+    
+    # Direction Logic:
+    # Lane is ordered RedBase -> BlueBase
+    # Red Loses -> Index - 1 (Towards Red Base)
+    # Blue Loses -> Index + 1 (Towards Blue Base)
+    
+    if losing_team == TeamColor.RED:
+        new_idx = idx - 1
+        if new_idx < 0:
+            return None, True # Red Base Lost
+    else: # BLUE
+        new_idx = idx + 1
+        if new_idx >= len(lane):
+            return None, True # Blue Base Lost
+            
+    return lane[new_idx], False
 
 def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
     """
@@ -72,92 +101,3 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
                     count += 1
                     
     return count
-
-def execute_push(state: GameState, losing_team: TeamColor):
-    """
-    Executes the lane push logic.
-    1. Identify Next Zone based on losing team (Red pushes towards Blue base, etc).
-    2. Teleport remaining minions? Or usually they are wiped and respawned?
-       Design: "When a push happens, the Battle Zone shifts."
-       Usually involves clearing old minions and spawning new wave in new zone.
-    3. Update active_zone_id.
-    """
-    current_zone = state.board.zones.get(state.active_zone_id)
-    if not current_zone:
-        return
-        
-    lane = state.board.lane
-    if not lane:
-        # Fallback to current simple logic if no lane defined
-        print(f"   [!] PUSH TRIGGERED! Losing Team: {losing_team.name} (No Lane Defined)")
-        return
-        
-    try:
-        idx = lane.index(state.active_zone_id)
-    except ValueError:
-        return
-
-    # Direction Logic:
-    # Lane is ordered RedBase -> BlueBase
-    # If Red Loses (0 Red Minions) -> Blue Pushes -> Battle moves TOWARDS Red Base (Index - 1)
-    # If Blue Loses (0 Blue Minions) -> Red Pushes -> Battle moves TOWARDS Blue Base (Index + 1)
-    
-    new_idx = idx
-    if losing_team == TeamColor.RED:
-        new_idx = idx - 1
-    else: # BLUE
-        new_idx = idx + 1
-        
-    # Check Bounds (Game Over?)
-    if new_idx < 0:
-        print("   [!] RED BASE DESTROYED! BLUE WINS!")
-        return 
-    if new_idx >= len(lane):
-        print("   [!] BLUE BASE DESTROYED! RED WINS!")
-        return
-        
-    new_zone_id = lane[new_idx]
-    
-    # Execute Transition
-    print(f"   [!] PUSH TRIGGERED! {state.active_zone_id} -> {new_zone_id}")
-    
-    # 1. Clear Minions from Old Zone logic is handled by rules (they die naturally or are wiped?)
-    # Rules 2.3.3: "Remove all Minions from old Battle Zone."
-    # We iterate all minions and remove those in old zone.
-    # Note: iterating a modified dict is risky, gather keys first.
-    to_remove = []
-    old_zone_hexes = current_zone.hexes
-    
-    for uid, loc in state.unit_locations.items():
-        if loc in old_zone_hexes:
-            # Check if it is a minion (by checking all teams)
-            is_minion = False
-            for team in state.teams.values():
-                 for m in team.minions:
-                     if m.id == uid:
-                         is_minion = True
-                         break
-                 if is_minion: break
-            
-            if is_minion:
-                to_remove.append(uid)
-                
-    for uid in to_remove:
-        # Remove from Board Tile
-        loc = state.unit_locations.get(uid)
-        if loc and loc in state.board.tiles:
-            state.board.tiles[loc].occupant_id = None
-            
-        # Remove from Locations
-        del state.unit_locations[uid]
-        
-        # Remove from Team list
-        for team in state.teams.values():
-            team.minions = [m for m in team.minions if m.id != uid]
-
-    # 2. Update Active Zone
-    state.active_zone_id = new_zone_id
-    
-    # 3. Spawn New Wave (Stub for now, or MVP spawn)
-    print("   [i] Spawning new wave not implemented yet.")
-    print(f"   [!] PUSH TRIGGERED! Losing Team: {losing_team.name}")
