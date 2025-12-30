@@ -54,5 +54,4 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 
 ## Summary of Critical Gaps
 1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card).
-2.  **Upgrade Mechanic**: Gold economy, Level Up buying, and "tucking" cards as items.
-3.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).
+2.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).

@@ -209,3 +209,53 @@ def validate_attack_target(
         return False
         
     return True
+
+def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zone_id: str) -> List[str]:
+    """
+    Identifies zones eligible for Fast Travel.
+    Rule 6.1 (Fast Travel):
+    - Start Zone must be Empty of Enemies.
+    - Dest Zone must be Empty of Enemies.
+    - Dest Zone must match Start Zone OR be Adjacent to Start Zone.
+    """
+    safe_zones = []
+    
+    # 1. Check Start Zone Safety
+    # If Start Zone has enemies, Fast Travel is impossible.
+    start_zone = state.board.zones.get(current_zone_id)
+    if not start_zone: 
+        return []
+        
+    start_has_enemies = False
+    for unit_id, loc in state.unit_locations.items():
+        if loc in start_zone.hexes:
+            unit = state.get_unit(unit_id)
+            if unit and hasattr(unit, 'team') and unit.team != team:
+                start_has_enemies = True
+                break
+    
+    if start_has_enemies:
+        return []
+
+    # 2. Identify Candidates (Self + Neighbors)
+    candidates = [current_zone_id] + start_zone.neighbors
+    
+    # 3. Filter Candidates (Dest Zone must be Empty of Enemies)
+    for z_id in candidates:
+        zone = state.board.zones.get(z_id)
+        if not zone: continue
+        
+        has_enemies = False
+        for unit_id, loc in state.unit_locations.items():
+            if loc in zone.hexes:
+                unit = state.get_unit(unit_id)
+                # Note: Tokens are obstacles, not enemies. Rules specify "Empty of Enemies".
+                if unit and hasattr(unit, 'team') and unit.team != team:
+                    has_enemies = True
+                    break
+        
+        if not has_enemies:
+            safe_zones.append(z_id)
+            
+    return safe_zones
+

@@ -227,6 +227,88 @@ class MoveUnitStep(GameStep):
         state.move_unit(actor_id, dest_hex)
         return StepResult(is_finished=True)
 
+class FastTravelStep(GameStep):
+    """
+    Handles Fast Travel action.
+    Rule 6.1:
+    - Replaces Movement.
+    - Requires Start Zone Empty of Enemies.
+    - Requires Dest Zone Empty of Enemies.
+    - Dest Zone must be Start Zone or Adjacent.
+    - Ignores Card movement value (uses Teleport logic).
+    """
+    type: str = "fast_travel"
+    unit_id: Optional[str] = None
+    
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        actor_id = self.unit_id if self.unit_id else state.current_actor_id
+        if not actor_id: return StepResult(is_finished=True)
+        
+        unit = state.get_unit(actor_id)
+        if not unit: return StepResult(is_finished=True)
+        
+        # 1. Get Current Location & Zone
+        current_hex = state.unit_locations.get(actor_id)
+        if not current_hex: return StepResult(is_finished=True)
+        
+        current_zone_id = state.board.get_zone_for_hex(current_hex)
+        if not current_zone_id:
+            print(f"   [ERROR] Fast Travel failed: {actor_id} is not in a valid zone.")
+            return StepResult(is_finished=True)
+            
+        # 2. Get Safe Zones
+        from goa2.engine.rules import get_safe_zones_for_fast_travel
+        safe_zones = get_safe_zones_for_fast_travel(state, unit.team, current_zone_id)
+        
+        if not safe_zones:
+            print(f"   [FAST TRAVEL] Failed. Start zone not safe or no safe destinations.")
+            return StepResult(is_finished=True)
+            
+        # 3. Collect Valid Hexes in Safe Zones
+        valid_hexes = []
+        for z_id in safe_zones:
+            zone = state.board.zones.get(z_id)
+            if zone:
+                for h in zone.hexes:
+                    tile = state.board.get_tile(h)
+                    if tile and not tile.is_occupied:
+                         valid_hexes.append(h)
+                         
+        if not valid_hexes:
+            print(f"   [FAST TRAVEL] No empty spaces in safe zones.")
+            return StepResult(is_finished=True)
+            
+        # 4. Check Input (Selection)
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if selection:
+                target_hex = Hex(**selection)
+                if target_hex in valid_hexes:
+                    print(f"   [FAST TRAVEL] {actor_id} traveling to {target_hex}")
+                    return StepResult(is_finished=True, new_steps=[
+                        PlaceUnitStep(unit_id=actor_id, target_hex_arg=target_hex)
+                    ])
+                    
+        # 5. Auto-Select?
+        if len(valid_hexes) == 1:
+            target = valid_hexes[0]
+            print(f"   [FAST TRAVEL] Auto-traveling to {target}")
+            return StepResult(is_finished=True, new_steps=[
+                PlaceUnitStep(unit_id=actor_id, target_hex_arg=target)
+            ])
+
+        # 6. Request Input
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_HEX",
+                "prompt": f"Select Fast Travel Destination (Safe Zones: {safe_zones})",
+                "player_id": actor_id,
+                "valid_hexes": valid_hexes
+            }
+        )
+
+
 class ReactionWindowStep(GameStep):
     """
     Gives a target player a chance to react (Play Defense Card).
@@ -757,23 +839,42 @@ class ResolveCardStep(GameStep):
         # 1. Gather Options
         options = []
         
+        # Helper to validate availability
+        from goa2.engine.rules import get_safe_zones_for_fast_travel
+        
+        def is_action_available(act_type: ActionType) -> bool:
+            if act_type == ActionType.FAST_TRAVEL:
+                # Check 6.1 Requirements
+                u_loc = state.unit_locations.get(self.hero_id)
+                if not u_loc: return False
+                z_id = state.board.get_zone_for_hex(u_loc)
+                if not z_id: return False
+                
+                # Check for safe zones
+                safe = get_safe_zones_for_fast_travel(state, hero.team, z_id)
+                if not safe:
+                     return False
+            return True
+
         # Primary
         if card.primary_action:
-            options.append({
-                "id": "PRIMARY",
-                "type": card.primary_action, 
-                "value": card.primary_action_value,
-                "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
-            })
+            if is_action_available(card.primary_action):
+                options.append({
+                    "id": "PRIMARY",
+                    "type": card.primary_action, 
+                    "value": card.primary_action_value,
+                    "text": f"Primary: {card.primary_action.name} ({card.primary_action_value or '-'})"
+                })
             
         # Secondaries
         for action_type, val in card.secondary_actions.items():
-             options.append({
-                "id": f"SEC_{action_type.name}",
-                "type": action_type,
-                "value": val,
-                "text": f"Secondary: {action_type.name} ({val})"
-            })
+            if is_action_available(action_type):
+                 options.append({
+                    "id": f"SEC_{action_type.name}",
+                    "type": action_type,
+                    "value": val,
+                    "text": f"Secondary: {action_type.name} ({val})"
+                })
             
         # 2. Process Input
         if self.pending_input:
@@ -802,7 +903,7 @@ class ResolveCardStep(GameStep):
                         
                     elif act_type == ActionType.FAST_TRAVEL:
                         # Replaces Movement, usually standard Move logic + condition check.
-                        new_steps.append(MoveUnitStep(unit_id=self.hero_id, range_val=val)) 
+                        new_steps.append(FastTravelStep(unit_id=self.hero_id)) 
                         
                     elif act_type == ActionType.ATTACK:
                         rng = card.range_value if card.range_value is not None else 1
