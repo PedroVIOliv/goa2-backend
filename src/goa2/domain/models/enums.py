@@ -58,6 +58,7 @@ class GamePhase(str, Enum):
     REVELATION = "REVELATION"  # Reveal cards
     RESOLUTION = "RESOLUTION"  # Acting order
     CLEANUP = "CLEANUP"        # Round/Turn end
+    LEVEL_UP = "LEVEL_UP"      # Mandatory upgrading
 
 class ResolutionStep(str, Enum):
     NONE = "NONE"

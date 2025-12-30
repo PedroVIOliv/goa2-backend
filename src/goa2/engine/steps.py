@@ -4,7 +4,10 @@ from typing import Optional, Dict, Any, List, Union, Tuple
 from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
-from goa2.domain.models import ActionType, Card, TeamColor
+from goa2.domain.models import (
+    ActionType, Card, TeamColor, CardTier, CardColor, 
+    StatType, CardState, GamePhase
+)
 from goa2.domain.hex import Hex
 from goa2.engine import rules # For validation
 
@@ -1165,11 +1168,14 @@ class EndPhaseCleanupStep(GameStep):
         self._clear_tokens(state)
         self._level_up(state)
         
+        if state.pending_upgrades:
+             # Transition to Level Up interaction
+             print("   [PHASE] Level Up Phase started.")
+             return StepResult(is_finished=True, new_steps=[ResolveUpgradesStep()])
+        
         # Reset Round
         state.round += 1
         state.turn = 1
-        
-        from goa2.domain.models import GamePhase
         state.phase = GamePhase.PLANNING
         print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
         
@@ -1184,7 +1190,37 @@ class EndPhaseCleanupStep(GameStep):
         pass
 
     def _level_up(self, state: GameState):
-        pass
+        """
+        Calculates gold spending and level increments.
+        Rule 3.1: Costs follow cumulative table. Mandatory purchase.
+        """
+        LEVEL_COSTS = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7}
+        any_level_ups = False
+        
+        for team in state.teams.values():
+            for hero in team.heroes:
+                upgrades_this_round = 0
+                while hero.level < 8:
+                    next_level = hero.level + 1
+                    cost = LEVEL_COSTS[next_level]
+                    if hero.gold >= cost:
+                        hero.gold -= cost
+                        hero.level = next_level
+                        upgrades_this_round += 1
+                        any_level_ups = True
+                        print(f"   [LEVEL] {hero.id} reached Level {hero.level}!")
+                    else:
+                        break
+                
+                if upgrades_this_round > 0:
+                    state.pending_upgrades[hero.id] = upgrades_this_round
+                else:
+                    # Pity Coin: Players who did not Level Up gain 1 Gold.
+                    hero.gold += 1
+                    print(f"   [ECONOMY] {hero.id} did not level up. Gains 1 Pity Gold. (Gold: {hero.gold})")
+        
+        if any_level_ups:
+             state.phase = GamePhase.LEVEL_UP
 
 class EndPhaseStep(GameStep):
     """
@@ -1384,3 +1420,132 @@ class AttackSequenceStep(GameStep):
         ]
         
         return StepResult(is_finished=True, new_steps=new_steps)
+
+def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
+    """
+    Executes the upgrade transition for a hero.
+    1. Removes old tier card of same color.
+    2. Adds chosen card to hand.
+    3. Tucks pair card as item.
+    4. Decrements pending count.
+    """
+    hero = state.get_hero(hero_id)
+    if not hero: return
+
+    # 1. Find the chosen card in deck
+    chosen_card = next((c for c in hero.deck if c.id == chosen_card_id), None)
+    if not chosen_card:
+        print(f"   [!] Upgrade Error: Chosen card {chosen_card_id} not found in deck.")
+        return
+
+    # 2. Find the previous tier card in hand (to remove)
+    prev_card = None
+    if chosen_card.tier != CardTier.IV: # Not ultimate
+        for c in hero.hand:
+            if c.color == chosen_card.color:
+                prev_card = c
+                break
+    
+    # 3. Find the Pair Card (the other card of same color/tier)
+    pair_card = None
+    if chosen_card.tier != CardTier.IV:
+        pair_card = next((c for c in hero.deck 
+                         if c.color == chosen_card.color 
+                         and c.tier == chosen_card.tier 
+                         and c.id != chosen_card.id), None)
+
+    # 4. EXECUTE TRANSITIONS
+    if prev_card:
+        print(f"   [UPGRADE] Removing {prev_card.id} (Tier {prev_card.tier.name}) from hand.")
+        hero.hand.remove(prev_card)
+        prev_card.state = CardState.RETIRED
+
+    print(f"   [UPGRADE] Adding {chosen_card.id} (Tier {chosen_card.tier.name}) to hand.")
+    chosen_card.state = CardState.HAND
+    hero.hand.append(chosen_card)
+
+    if pair_card:
+        stat = pair_card.item
+        if stat:
+            hero.items[stat] = hero.items.get(stat, 0) + 1
+            print(f"   [UPGRADE] Tucking {pair_card.id} as Item (+1 {stat.name}).")
+        pair_card.state = CardState.ITEM
+
+    if hero_id in state.pending_upgrades:
+        state.pending_upgrades[hero_id] -= 1
+        if state.pending_upgrades[hero_id] <= 0:
+            del state.pending_upgrades[hero_id]
+
+class RoundResetStep(GameStep):
+    """Resets round state and transitions to Planning."""
+    type: str = "round_reset"
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        state.round += 1
+        state.turn = 1
+        state.phase = GamePhase.PLANNING
+        print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
+        return StepResult(is_finished=True)
+
+class ResolveUpgradesStep(GameStep):
+    """
+    Simultaneous Upgrade loop.
+    Waits for players to finish their pending upgrades.
+    """
+    type: str = "resolve_upgrades"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if not state.pending_upgrades:
+             print("   [PHASE] All upgrades complete.")
+             return StepResult(is_finished=True, new_steps=[RoundResetStep()])
+
+        broadcast_data = {}
+        for h_id, count in state.pending_upgrades.items():
+            options = self._get_upgrade_options(state, h_id)
+            broadcast_data[h_id] = {
+                "remaining": count,
+                "options": options
+            }
+
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "UPGRADE_PHASE",
+                "players": broadcast_data,
+                "prompt": "Mandatory Upgrade Phase"
+            }
+        )
+
+    def _get_upgrade_options(self, state: GameState, hero_id: str):
+        hero = state.get_hero(hero_id)
+        if not hero: return []
+        non_basic_colors = [CardColor.RED, CardColor.BLUE, CardColor.GREEN]
+        hand_non_basics = [c for c in hero.hand if c.color in non_basic_colors]
+        if not hand_non_basics: return []
+        
+        tier_map = {CardTier.I: 1, CardTier.II: 2, CardTier.III: 3}
+        min_tier_val = min(tier_map.get(c.tier, 99) for c in hand_non_basics)
+        
+        if min_tier_val == 3:
+             ultimates = [c for c in hero.deck if c.tier == CardTier.IV]
+             return [{
+                 "type": "ULTIMATE",
+                 "cards": [c.id for c in ultimates],
+                 "card_details": [c.model_dump() for c in ultimates]
+             }]
+
+        eligible_colors = [c.color for c in hand_non_basics if tier_map.get(c.tier) == min_tier_val]
+        next_tier_map = {1: CardTier.II, 2: CardTier.III}
+        target_tier = next_tier_map.get(min_tier_val)
+        if not target_tier: return []
+        
+        options = []
+        for color in eligible_colors:
+            pair = [c for c in hero.deck if c.color == color and c.tier == target_tier and c.state == CardState.DECK]
+            if len(pair) == 2:
+                options.append({
+                    "color": color,
+                    "tier": target_tier,
+                    "pair": [c.id for c in pair],
+                    "card_details": [c.model_dump() for c in pair]
+                })
+        return options

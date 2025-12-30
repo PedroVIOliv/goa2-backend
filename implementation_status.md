@@ -17,7 +17,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **2.1 Game Loop** | **Implemented** | `handler.py` loop processes the `execution_stack`. |
 | **2.2 Turn Structure** | **Implemented** | `phases.py` handles broad state. `ResolveTieBreakerStep` handles ties. `FindNextActorStep` handles cycling. `ResolveCardStep` handles Primary/Secondary choice. |
 | **2.3 Lane Push** | **Implemented** | `LanePushStep` handles Wave Counter removal, Zone transition, and Minion Wipe. Triggered by Minion Battle or Combat Death. |
-| **2.4 End Phase** | **Implemented** | `EndPhaseStep` handles Minion Battle (with Heavy Constraint), Card Retrieval, and Round Reset. Level Up is placeholder. |
+| **2.4 End Phase** | **Implemented** | `EndPhaseStep` handles Minion Battle (with Heavy Constraint), Card Retrieval, and Round Reset. Level Up and Mandatory Upgrading fully implemented. |
 
 ## 3. Entity States
 
@@ -32,8 +32,8 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | :--- | :--- | :--- |
 | **5.1 Card Anatomy** | **Complete** | `Card` model covers all fields. `is_facedown` logic correctly masks hidden info. |
 | **5.2 Card States** | **Complete** | `CardState` enum tracks Hand/Played/Discarded/Deck. `ResolveCardStep` handles action choices. |
-| **5.3 Upgrade Mechanic** | **Missing** | No logic for Upgrading cards or equipping items yet. |
-| **5.1 Ultimate** | **Partial** | Ultimate cards defined, but unlocking logic is missing. |
+| **5.3 Upgrade Mechanic** | **Implemented** | Mandatory level-up, color selection from lowest tier, card-to-item tucking, and Ultimate unlocking. |
+| **5.1 Ultimate** | **Complete** | Ultimate cards defined and unlocking logic implemented. |
 
 ## 5. Actions & Keywords
 
