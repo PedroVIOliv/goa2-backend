@@ -149,3 +149,63 @@ def test_pity_coin_gain(upgrade_state):
     assert h1.level == 1
     assert h1.gold == 1
     assert upgrade_state.phase == GamePhase.PLANNING # No level up, resets round
+
+def test_simultaneous_multi_player_upgrades(upgrade_state):
+    # Setup H2 (Blue) with 1 gold (1 level up)
+    # H1 already has 3 gold (2 level ups) from fixture
+    h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, level=1, gold=1, deck=[])
+    
+    # H2 Deck
+    b1 = Card(id="h2_b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, effect_id="e4", effect_text="e4")
+    b2a = Card(id="h2_b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, effect_id="e5", effect_text="e5", item=StatType.RANGE)
+    b2b = Card(id="h2_b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, effect_id="e6", effect_text="e6", item=StatType.MOVEMENT)
+    r1 = Card(id="h2_r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e1", effect_text="e1")
+    g1 = Card(id="h2_g1", name="Green I", tier=CardTier.I, color=CardColor.GREEN, initiative=1, primary_action=ActionType.MOVEMENT, effect_id="e7", effect_text="e7")
+
+    h2.deck = [b1, b2a, b2b, r1, g1]
+    h2.hand = [b1, r1, g1]
+    for c in h2.hand: c.state = CardState.HAND
+    for c in h2.deck: 
+        if c not in h2.hand: c.state = CardState.DECK
+        
+    upgrade_state.teams[TeamColor.BLUE].heroes.append(h2)
+
+    # 1. Start End Phase
+    push_steps(upgrade_state, [EndPhaseCleanupStep()])
+    process_resolution_stack(upgrade_state)
+    
+    # Verify Pending Counts
+    assert upgrade_state.pending_upgrades["h1"] == 2
+    assert upgrade_state.pending_upgrades["h2"] == 1
+    
+    # 2. Get first broadcast request
+    req = process_resolution_stack(upgrade_state)
+    assert req["type"] == "UPGRADE_PHASE"
+    assert "h1" in req["players"]
+    assert "h2" in req["players"]
+    
+    # 3. Simulate H2 (1 level) picking their card
+    apply_hero_upgrade(upgrade_state, "h2", "h2_b2a")
+    
+    # 4. Resolve again - H2 should be GONE from the broadcast, H1 still there with 2
+    req2 = process_resolution_stack(upgrade_state)
+    assert "h2" not in req2["players"]
+    assert req2["players"]["h1"]["remaining"] == 2
+    
+    # 5. Simulate H1 first pick
+    apply_hero_upgrade(upgrade_state, "h1", "r2a")
+    
+    # 6. Resolve again - H1 still there with 1
+    req3 = process_resolution_stack(upgrade_state)
+    assert req3["players"]["h1"]["remaining"] == 1
+    
+    # 7. Simulate H1 final pick
+    apply_hero_upgrade(upgrade_state, "h1", "b2a")
+    
+    # 8. Resolve again - All done, should reset round
+    process_resolution_stack(upgrade_state) # ResolveUpgrades finishes
+    process_resolution_stack(upgrade_state) # RoundReset runs
+    
+    assert upgrade_state.round == 2
+    assert upgrade_state.phase == GamePhase.PLANNING
+    assert not upgrade_state.pending_upgrades
