@@ -24,7 +24,6 @@ class Hero(Unit):
     title: Optional[str] = None
 
     deck: List[Card]
-    # Card Management
     draw_pile: List[Card] = Field(default_factory=list)
     hand: List[Card] = Field(default_factory=list)
     played_cards: List[Card] = Field(default_factory=list, description="Cards currently on the dashboard (Unresolved or Resolved)")
@@ -33,10 +32,8 @@ class Hero(Unit):
     discard_pile: List[Card] = Field(default_factory=list)
     level: int = 1
     gold: int = 0
-    # Items (Passive Stat Bonuses)
-    items: Dict[StatType, int] = Field(default_factory=dict)
-    # Circular reference to parent Team
-    team_obj: Optional['Team'] = Field(default=None, exclude=True)
+    items: Dict[StatType, int] = Field(default_factory=dict) # Items (Passive Stat Bonuses)
+    team_obj: Optional['Team'] = Field(default=None, exclude=True) # Circular reference to parent Team
 
     def get_effective_initiative(self) -> int:
         """
@@ -87,7 +84,6 @@ class Hero(Unit):
                 raise ValueError(f"Cannot discard {card.id} from hand (not found).")
             self.hand.remove(card)
         else:
-            # Check other locations
             if self.current_turn_card == card:
                 self.current_turn_card = None
             elif card in self.played_cards:
@@ -116,26 +112,17 @@ class Hero(Unit):
         if not type_a: raise ValueError(f"Card A {card_a.id} not found.")
         if not type_b: raise ValueError(f"Card B {card_b.id} not found.")
 
-        # 1. Swap References in Containers
-        # Case 1: Both are fields (Impossible for now as we have 1 unresolved field)
-        # Case 2: One field, one list
-        # Case 3: Both lists
-        
         # We execute the swap by putting B in A's spot, and A in B's spot.
-        
-        # Step A: Put Card B into Location A
         if type_a == 'list':
             container_a[idx_a] = card_b
         else: # field
             setattr(self, container_a, card_b)
             
-        # Step B: Put Card A into Location B
         if type_b == 'list':
             container_b[idx_b] = card_a
         else: # field
             setattr(self, container_b, card_a)
             
-        # 2. Swap Attributes
         card_a.state, card_b.state = card_b.state, card_a.state
         card_a.is_facedown, card_b.is_facedown = card_b.is_facedown, card_a.is_facedown
         card_a.played_this_round, card_b.played_this_round = card_b.played_this_round, card_a.played_this_round
@@ -145,7 +132,6 @@ class Hero(Unit):
         End of Round: Return Resolved and Discarded cards to hand.
         Resets card states and lifecycle flags.
         """
-        # Combine lists
         cards_to_return = self.played_cards + self.discard_pile
         if self.current_turn_card:
             cards_to_return.append(self.current_turn_card)
@@ -156,7 +142,6 @@ class Hero(Unit):
             card.played_this_round = False # Reset lifecycle flag
             self.hand.append(card)
             
-        # Clear piles
         self.played_cards = []
         self.discard_pile = []
         self.current_turn_card = None

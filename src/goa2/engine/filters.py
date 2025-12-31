@@ -136,7 +136,6 @@ class AdjacencyFilter(FilterCondition):
     target_tags: List[str] # ["FRIENDLY", "HERO"]
     
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        # 1. Determine location of candidate
         cand_hex = None
         if isinstance(candidate, Hex):
             cand_hex = candidate
@@ -145,23 +144,15 @@ class AdjacencyFilter(FilterCondition):
             
         if not cand_hex: return False
         
-        # 2. Check neighbors
         neighbors = cand_hex.neighbors()
         
         for n in neighbors:
-            # Check who is at neighbor n
             tile = state.board.get_tile(n)
             if not tile or not tile.occupant_id:
                 continue
                 
             occupant = state.get_unit(tile.occupant_id)
             if not occupant: continue
-            
-            # 3. Check tags
-            # We construct a mock context to reuse other filters? 
-            # Or just hardcode common tags here? 
-            # Reusing filters is cleaner but circular.
-            # Let's do manual check for now for simplicity.
             
             actor_id = state.current_actor_id
             actor = state.get_unit(actor_id)

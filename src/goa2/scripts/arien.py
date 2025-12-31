@@ -56,7 +56,6 @@ class DiscardBehindEffect(Effect):
                     if unit and unit.team != attacker.team:
                          if hasattr(unit, 'hand'):
                              candidates.append(unit)
-                             # If "Up to 1", do we stop at first?
                              # Text: "Up to 1 enemy hero in ANY of the X spaces..."
                              # This implies we look at all eligible spaces and choose 1 hero from ALL found.
         
@@ -100,7 +99,6 @@ class DiscardBehindEffect(Effect):
              ctx.card.metadata["waiting_for_discard_target"] = False
              return
              
-        # Repetition Logic
         if self.repeat:
              repeat_count = ctx.card.metadata.get("repeat_count", 0)
              if repeat_count < 1:
@@ -134,7 +132,6 @@ class DiscardBehindEffect(Effect):
             print(f"   {hero.name} discarded {discarded.name}")
         else:
             print(f"   {hero.name} has no cards -> Defeated!")
-            # Logic: Remove from board if defeated
             if state:
                 defeat_unit(state, hero.id, killer_id=killer_id)
 
@@ -246,11 +243,9 @@ class NobleBladeEffect(Effect):
         target_loc = ctx.state.unit_locations.get(target.id)
         if not target_loc: return
 
-        # Find adjacent allies to TARGET
         candidates = []
         for adj in target_loc.neighbors():
              if adj in ctx.state.unit_locations.values():
-                 # Reverse lookup (inefficient but works)
                  for uid, loc in ctx.state.unit_locations.items():
                      if loc == adj:
                          u = ctx.state.get_unit(uid)
@@ -287,7 +282,7 @@ class NobleBladeEffect(Effect):
                  req = InputRequest(
                     id=str(uuid.uuid4()),
                     player_id=ctx.actor.id, 
-                    request_type=InputRequestType.SELECT_HEX, # Or custom MOVEMENT_HEX logic?
+                    request_type=InputRequestType.SELECT_HEX,
                     context={
                         "unit_id": unit_id_str, # Unit to move
                         "range": 1,
@@ -297,7 +292,6 @@ class NobleBladeEffect(Effect):
                  ctx.state.input_stack.append(req)
                  ctx.card.metadata["noble_blade_step"] = "select_hex"
              else:
-                 # Cancelled or None? Mark resolved
                  ctx.card.metadata["noble_blade_resolved"] = True
 
         elif step == "select_hex":
@@ -329,8 +323,6 @@ class SpellBreakEffect(Effect):
         return "effect_silence_heroes_radius"
         
     def on_pre_action(self, ctx: EffectContext) -> None:
-        # Radius 2 (assume standard or card value?)
-        # Card usually has range/radius.
         radius = ctx.card.radius_value or 2 # Default to 2 if not set
         
         actor_loc = ctx.state.unit_locations.get(ctx.actor.id)
@@ -338,7 +330,6 @@ class SpellBreakEffect(Effect):
 
         print(f"   [Effect] Spell Break: Applying SILENCE (Radius {radius})")
         
-        # Check all units
         for uid, loc in ctx.state.unit_locations.items():
             if uid == ctx.actor.id: continue
             
@@ -346,10 +337,7 @@ class SpellBreakEffect(Effect):
             if dist <= radius:
                 unit = ctx.state.get_unit(uid)
                 if unit and unit.team != ctx.actor.team:
-                    # Enemy Unit. Check if Hero? (Effect name says heroes)
-                    # "Silence Heroes"
                     if hasattr(unit, 'hand'): # Duck type Hero
-                        # Apply Marker if not present
                         if not any(m.name == "SILENCE" for m in unit.markers):
                             m = Marker(id=str(uuid.uuid4()), name="SILENCE")
                             unit.markers.append(m)

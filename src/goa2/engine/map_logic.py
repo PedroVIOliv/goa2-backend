@@ -11,7 +11,6 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[T
     Condition: Minion Count for a Team in BattleZone == 0.
     Returns the LOSING team (the one with 0 minions), or None.
     """
-    # Defensive check
     if not active_zone_id:
         return None
         
@@ -19,11 +18,9 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[T
     if not zone:
         return None
     
-    # Count Minions in Zone
     red_minions = 0
     blue_minions = 0
     
-    # Iterate Teams
     for team_color, team in state.teams.items():
         count = 0
         for minion in team.minions:
@@ -36,7 +33,6 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[T
         elif team_color == TeamColor.BLUE:
             blue_minions = count
                 
-    # Logic:
     # If Red has 0 and Blue > 0 -> Red Loses Zone (Blue Pushes)
     # If Blue has 0 and Red > 0 -> Blue Loses Zone (Red Pushes)
     
@@ -61,7 +57,6 @@ def get_push_target_zone_id(state: GameState, losing_team: TeamColor) -> Tuple[O
         
     idx = lane.index(current_id)
     
-    # Direction Logic:
     # Lane is ordered RedBase -> BlueBase
     # Red Loses -> Index - 1 (Towards Red Base)
     # Blue Loses -> Index + 1 (Towards Blue Base)
@@ -86,7 +81,6 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
         return 0
         
     count = 0
-    # Check Minions (Iterate Teams)
     for team_obj in state.teams.values():
         if team_obj.color != team: # Hostile Team
             for minion in team_obj.minions:
@@ -94,7 +88,6 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
                 if loc and loc in zone.hexes:
                      count += 1
                 
-    # Check Heroes (Iterate Teams -> Heroes)
     for t_color, t_obj in state.teams.items():
         if t_color != team:
             for hero in t_obj.heroes:

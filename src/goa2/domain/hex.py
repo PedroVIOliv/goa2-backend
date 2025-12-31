@@ -86,7 +86,6 @@ class Hex(BaseModel):
         # Start at direction 4 (West) scaled by radius
         # Note: vectors definition in neighbors/neighbor matches HexDirection:
         # 0=NE, 1=E, 2=SE, 3=SW, 4=W, 5=NW
-        # W is index 4: Hex(q=-1, r=1, s=0)
         
         # Directions vectors again for reference or reuse
         # We need a predictable starting vector. 

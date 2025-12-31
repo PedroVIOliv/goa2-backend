@@ -67,7 +67,7 @@ class LogMessageStep(GameStep):
 from goa2.engine.filters import FilterCondition
 from goa2.domain.types import UnitID
 
-# ... (Previous imports) ...
+
 
 class SelectStep(GameStep):
     """
@@ -84,18 +84,14 @@ class SelectStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = state.current_actor_id
         
-        # 1. Gather Candidates
         candidates = []
         if self.target_type == "UNIT":
-            # Collect all Unit IDs on board
             candidates = list(state.unit_locations.keys())
         elif self.target_type == "HEX":
-            # Collect all Hexes on board
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
             candidates = list(state.board.tiles.keys())
             
-        # 2. Apply Filters
         valid_candidates = []
         for c in candidates:
             is_valid = True
@@ -114,14 +110,12 @@ class SelectStep(GameStep):
                 print(f"   [SKIP] Optional selection '{self.prompt}' skipped. No candidates.")
                 return StepResult(is_finished=True)
 
-        # 3. Auto-Select optimization
         if self.auto_select_if_one and len(valid_candidates) == 1:
             choice = valid_candidates[0]
             context[self.output_key] = choice
             print(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
             return StepResult(is_finished=True)
 
-        # 4. Check Input
         if self.pending_input:
             selection = self.pending_input.get("selection")
             
@@ -137,8 +131,6 @@ class SelectStep(GameStep):
                  # Invalid choice, re-request
                  pass
 
-        # 5. Request Input
-        # For Hexes, we might want to serialize them? Pydantic handles Hex serialization.
         return StepResult(
             requires_input=True,
             input_request={
@@ -205,19 +197,16 @@ class MoveUnitStep(GameStep):
              print("   [ERROR] No destination for move.")
              return StepResult(is_finished=True)
 
-        # Ensure destination is a Hex object
         if isinstance(dest_val, dict):
             dest_hex = Hex(**dest_val)
         else:
             dest_hex = dest_val # Assume it is already a Hex
 
-        # 1. Get Current Location
         start_hex = state.unit_locations.get(actor_id)
         if not start_hex:
             print(f"   [ERROR] Unit {actor_id} has no location on board.")
             return StepResult(is_finished=True)
 
-        # 2. Validate Path (using engine rules)
         is_valid = rules.validate_movement_path(
             board=state.board,
             unit_locations=state.unit_locations,
@@ -257,7 +246,6 @@ class FastTravelStep(GameStep):
         unit = state.get_unit(actor_id)
         if not unit: return StepResult(is_finished=True)
         
-        # 1. Get Current Location & Zone
         current_hex = state.unit_locations.get(actor_id)
         if not current_hex: return StepResult(is_finished=True)
         
@@ -266,7 +254,6 @@ class FastTravelStep(GameStep):
             print(f"   [ERROR] Fast Travel failed: {actor_id} is not in a valid zone.")
             return StepResult(is_finished=True)
             
-        # 2. Get Safe Zones
         from goa2.engine.rules import get_safe_zones_for_fast_travel
         safe_zones = get_safe_zones_for_fast_travel(state, unit.team, current_zone_id)
         
@@ -274,7 +261,6 @@ class FastTravelStep(GameStep):
             print(f"   [FAST TRAVEL] Failed. Start zone not safe or no safe destinations.")
             return StepResult(is_finished=True)
             
-        # 3. Collect Valid Hexes in Safe Zones
         valid_hexes = []
         for z_id in safe_zones:
             zone = state.board.zones.get(z_id)
@@ -288,7 +274,6 @@ class FastTravelStep(GameStep):
             print(f"   [FAST TRAVEL] No empty spaces in safe zones.")
             return StepResult(is_finished=True)
             
-        # 4. Check Input (Selection)
         if self.pending_input:
             selection = self.pending_input.get("selection")
             if selection:
@@ -299,7 +284,6 @@ class FastTravelStep(GameStep):
                         PlaceUnitStep(unit_id=actor_id, target_hex_arg=target_hex)
                     ])
                     
-        # 5. Auto-Select?
         if len(valid_hexes) == 1:
             target = valid_hexes[0]
             print(f"   [FAST TRAVEL] Auto-traveling to {target}")
@@ -307,7 +291,6 @@ class FastTravelStep(GameStep):
                 PlaceUnitStep(unit_id=actor_id, target_hex_arg=target)
             ])
 
-        # 6. Request Input
         return StepResult(
             requires_input=True,
             input_request={
@@ -331,7 +314,6 @@ class ReactionWindowStep(GameStep):
         target_id = context.get(self.target_player_key)
         if not target_id: return StepResult(is_finished=True) # Should not happen
 
-        # Find Target Hero to check hand
         target_hero = state.get_hero(target_id)
 
         # Optimization: Minions/Non-Heroes cannot react.
@@ -342,14 +324,12 @@ class ReactionWindowStep(GameStep):
 
         valid_defense_cards = []
         for card in target_hero.hand:
-            # Check Primary or Secondary for Defense
             if (card.primary_action == ActionType.DEFENSE or 
                 ActionType.DEFENSE in card.secondary_actions):
                 valid_defense_cards.append(card)
 
         valid_ids = [c.id for c in valid_defense_cards]
         
-        # 1. Check Input
         if self.pending_input:
             card_id = self.pending_input.get("selected_card_id")
             
@@ -361,7 +341,6 @@ class ReactionWindowStep(GameStep):
             
             # Case B: Selected Card
             if card_id:
-                # Calculate Value
                 def_val = 0
                 selected_card = next((c for c in valid_defense_cards if c.id == card_id), None)
                 if selected_card:
@@ -379,7 +358,6 @@ class ReactionWindowStep(GameStep):
                 
                 return StepResult(is_finished=True)
 
-        # 2. Request Input
         return StepResult(
             requires_input=True,
             input_request={
@@ -421,14 +399,12 @@ class DefeatUnitStep(GameStep):
 
         print(f"   [DEATH] Processing Defeat of {self.victim_id}...")
 
-        # 1. Identify Killer
         killer = state.get_unit(self.killer_id) if self.killer_id else None
         
-        # 2. Process Rewards/Penalties
         if hasattr(victim, 'level'): # Is Hero
             level = getattr(victim, 'level', 1)
             
-            # Lookup Table
+            
             # Level: (Kill Reward, Assist Reward, Death Penalty)
             rewards_table = {
                 1: (1, 1, 1),
@@ -442,12 +418,10 @@ class DefeatUnitStep(GameStep):
             }
             kill_gold, assist_gold, penalty_counters = rewards_table.get(level, (level, 1, 1))
             
-            # A. Killer Reward
             if killer and hasattr(killer, 'gold'):
                 killer.gold += kill_gold
                 print(f"   [ECONOMY] Killer {killer.id} gains {kill_gold} Gold.")
             
-            # B. Assist Reward
             if killer and hasattr(killer, 'team'):
                 killer_team = state.teams.get(killer.team)
                 if killer_team:
@@ -456,7 +430,6 @@ class DefeatUnitStep(GameStep):
                             ally.gold += assist_gold
                             print(f"   [ECONOMY] Assist: {ally.id} gains {assist_gold} Gold.")
                             
-            # C. Death Penalty (Life Counters)
             if hasattr(victim, 'team'):
                 victim_team = state.teams.get(victim.team)
                 if victim_team:
@@ -473,7 +446,6 @@ class DefeatUnitStep(GameStep):
             if killer and hasattr(killer, 'gold'):
                 killer.gold += reward
 
-        # 3. Spawn Removal and Check Push
         # Execution Order: RemoveUnitStep -> CheckLanePushStep
         return StepResult(is_finished=True, new_steps=[
             RemoveUnitStep(unit_id=self.victim_id),
@@ -576,13 +548,11 @@ class PlaceUnitStep(GameStep):
              print("   [ERROR] No destination for place.")
              return StepResult(is_finished=True)
 
-        # Ensure destination is a Hex object
         if isinstance(dest_val, dict):
             dest_hex = Hex(**dest_val)
         else:
             dest_hex = dest_val # Assume it is already a Hex
 
-        # Validation: Check if Tile is Occupied
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied:
              print(f"   [ERROR] Cannot place {actor_id} at {dest_hex}. Tile is occupied.")
@@ -611,8 +581,6 @@ class SwapUnitsStep(GameStep):
 
         print(f"   [LOGIC] Swapping {self.unit_a_id} at {loc_a} with {self.unit_b_id} at {loc_b}")
         
-        # Move A to B's spot, then B to A's spot.
-        # move_unit handles both unit_locations and board tiles.
         state.move_unit(self.unit_a_id, loc_b)
         state.move_unit(self.unit_b_id, loc_a)
         
@@ -646,7 +614,6 @@ class PushUnitStep(GameStep):
             print("   [ERROR] Cannot push from same hex.")
             return StepResult(is_finished=True)
 
-        # 1. Determine Direction
         direction_idx = src_hex.direction_to(target_loc)
         if direction_idx is None:
             # Fallback: Just pick a direction? No, GoA2 pushes are vector-based.
@@ -654,18 +621,15 @@ class PushUnitStep(GameStep):
             print(f"   [ERROR] Push target {self.target_id} is not in a straight line from source.")
             return StepResult(is_finished=True)
 
-        # 2. Iterative Move
         current_loc = target_loc
         actual_dist = 0
         for _ in range(self.distance):
             next_hex = current_loc.neighbor(direction_idx)
             
-            # Check Board Boundaries
             if next_hex not in state.board.tiles:
                 print(f"   [PUSH] {self.target_id} hit board edge at {current_loc}")
                 break
                 
-            # Check Obstacles (Static and Occupants)
             tile = state.board.get_tile(next_hex)
             if tile and tile.is_obstacle:
                 print(f"   [PUSH] {self.target_id} hit obstacle at {next_hex}")
@@ -699,7 +663,6 @@ class RespawnHeroStep(GameStep):
         if self.hero_id in state.unit_locations:
             return StepResult(is_finished=True)
 
-        # 1. Check Input
         if self.pending_input:
             choice = self.pending_input.get("choice")
             if choice == "PASS":
@@ -714,7 +677,6 @@ class RespawnHeroStep(GameStep):
                 state.move_unit(self.hero_id, selected_hex)
                 return StepResult(is_finished=True)
 
-        # 2. Find valid spawn points (Empty Hero Spawn Point for Team)
         valid_hexes = []
         for h, tile in state.board.tiles.items():
             if (tile.spawn_point and 
@@ -727,7 +689,6 @@ class RespawnHeroStep(GameStep):
             print(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
             return StepResult(is_finished=True)
 
-        # 3. Request Input
         return StepResult(
             requires_input=True,
             input_request={
@@ -868,21 +829,17 @@ class ResolveCardStep(GameStep):
             
         card = hero.current_turn_card
         
-        # 1. Gather Options
         options = []
         
-        # Helper to validate availability
         from goa2.engine.rules import get_safe_zones_for_fast_travel
         
         def is_action_available(act_type: ActionType) -> bool:
             if act_type == ActionType.FAST_TRAVEL:
-                # Check 6.1 Requirements
                 u_loc = state.unit_locations.get(self.hero_id)
                 if not u_loc: return False
                 z_id = state.board.get_zone_for_hex(u_loc)
                 if not z_id: return False
                 
-                # Check for safe zones
                 safe = get_safe_zones_for_fast_travel(state, hero.team, z_id)
                 if not safe:
                      return False
@@ -909,7 +866,6 @@ class ResolveCardStep(GameStep):
                     "text": f"Secondary: {action_type.name} ({val})"
                 })
             
-        # 2. Process Input
         if self.pending_input:
             choice_id = self.pending_input.get("choice_id")
             selected_opt = next((o for o in options if o["id"] == choice_id), None)
@@ -955,7 +911,6 @@ class ResolveCardStep(GameStep):
 
                 return StepResult(is_finished=True, new_steps=new_steps)
 
-        # 3. Request Input
         return StepResult(
             requires_input=True,
             input_request={
@@ -979,7 +934,6 @@ class ResolveDisplacementStep(GameStep):
         if not self.displacements:
             return StepResult(is_finished=True)
 
-        # 1. Sort by Team Preference (Tie Breaker)
         red_units = []
         blue_units = []
         
@@ -999,17 +953,13 @@ class ResolveDisplacementStep(GameStep):
             first_group = blue_units
             second_group = red_units
             
-        # Process Priority Group
         active_group = first_group if first_group else second_group
         if not active_group:
              return StepResult(is_finished=True)
 
-        # A. Check Input (Unit Selection Logic)
         if self.pending_input:
              sel_uid = self.pending_input.get("selected_unit_id")
              if sel_uid:
-                 # User selected a specific unit to place first.
-                 # We split execution: Step([Chosen]) -> Step([Others])
                  target_tuple = next((u for u in active_group if u[0] == sel_uid), None)
                  if target_tuple:
                      remaining_active = [u for u in active_group if u[0] != sel_uid]
@@ -1020,13 +970,11 @@ class ResolveDisplacementStep(GameStep):
                          ResolveDisplacementStep(displacements=remaining)
                      ])
 
-        # B. If multiple options and no selection -> Prompt to Select Unit
         if len(active_group) > 1:
              options = [u[0] for u in active_group]
              unit_obj = state.get_unit(options[0])
              team = unit_obj.team if unit_obj else TeamColor.RED
              
-             # Find delegate
              delegate_id = "unknown"
              team_obj = state.teams.get(team)
              if team_obj and team_obj.heroes:
@@ -1042,11 +990,9 @@ class ResolveDisplacementStep(GameStep):
                  }
              )
 
-        # C. Single Unit Logic
         uid, origin = active_group[0]
         remaining = active_group[1:] + (second_group if active_group is first_group else [])
         
-        # 2. Find Candidates
         from goa2.engine.map_logic import find_nearest_empty_hexes
         candidates = find_nearest_empty_hexes(state, origin, state.active_zone_id)
         
@@ -1056,7 +1002,6 @@ class ResolveDisplacementStep(GameStep):
                 ResolveDisplacementStep(displacements=remaining)
             ])
 
-        # 3. Check Input (Hex Selection)
         if self.pending_input:
             selection = self.pending_input.get("selection")
             if selection:
@@ -1068,7 +1013,6 @@ class ResolveDisplacementStep(GameStep):
                         ResolveDisplacementStep(displacements=remaining)
                      ])
         
-        # 4. Handle Auto-Select (or Prompt)
         if len(candidates) == 1:
             target = candidates[0]
             print(f"   [DISPLACE] Auto-placing {uid} at {target}")
@@ -1077,7 +1021,6 @@ class ResolveDisplacementStep(GameStep):
                 ResolveDisplacementStep(displacements=remaining)
             ])
             
-        # 5. Request Input (Select Hex)
         unit_obj = state.get_unit(uid)
         team = unit_obj.team if unit_obj else TeamColor.RED
         
@@ -1114,7 +1057,6 @@ class LanePushStep(GameStep):
         
         print(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
         
-        # 1. Remove Wave Counter
         state.wave_counter -= 1
         print(f"   [PUSH] Wave Counter removed. Remaining: {state.wave_counter}")
         
@@ -1123,7 +1065,6 @@ class LanePushStep(GameStep):
             # TODO: Handle Game Over
             return StepResult(is_finished=True)
 
-        # 2. Determine Next Zone
         next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
         
         if is_game_over:
@@ -1136,7 +1077,6 @@ class LanePushStep(GameStep):
 
         current_zone = state.board.zones.get(state.active_zone_id)
         
-        # 3. Wipe Old Minions
         # Per rules: "Remove all Minions from old Battle Zone."
         # Heroes stay? Yes, heroes are displaced only if blocking spawn (handled by respawn logic later).
         # Actually rules say: "Occupied by Unit: Owning Team Places Minion..."
@@ -1147,7 +1087,6 @@ class LanePushStep(GameStep):
             for uid, loc in state.unit_locations.items():
                 if loc in current_zone.hexes:
                     unit = state.get_unit(uid)
-                    # Check if Minion
                     if hasattr(unit, 'type') and hasattr(unit, 'value'): # Duck typing Minion
                         to_remove.append(uid)
         
@@ -1155,12 +1094,9 @@ class LanePushStep(GameStep):
             state.remove_unit(uid)
             print(f"   [PUSH] Wiped {uid} from old zone.")
 
-        # 4. Update Zone
         print(f"   [PUSH] Battle Zone moved: {state.active_zone_id} -> {next_zone_id}")
         state.active_zone_id = next_zone_id
         
-        # 5. Respawn New Wave
-        # Identify spawn points in new zone
         next_zone = state.board.zones.get(next_zone_id)
         pending_displacements = []
         
@@ -1169,16 +1105,13 @@ class LanePushStep(GameStep):
             
             for sp in next_zone.spawn_points:
                 if sp.is_minion_spawn:
-                    # Find a minion of this type in reserve
                     team = state.teams.get(sp.team)
                     if team:
-                        # Find off-board minion
                         candidate = next((m for m in team.minions 
                                         if m.type == sp.minion_type 
                                         and m.id not in state.unit_locations), None)
                         
                         if candidate:
-                            # Check occupancy
                             tile = state.board.get_tile(sp.location)
                             if tile and not tile.is_occupied:
                                 state.move_unit(candidate.id, sp.location)
@@ -1227,11 +1160,9 @@ class EndPhaseCleanupStep(GameStep):
         self._level_up(state)
         
         if state.pending_upgrades:
-             # Transition to Level Up interaction
              print("   [PHASE] Level Up Phase started.")
              return StepResult(is_finished=True, new_steps=[ResolveUpgradesStep()])
         
-        # Reset Round
         state.round += 1
         state.turn = 1
         state.phase = GamePhase.PLANNING
@@ -1294,13 +1225,11 @@ class EndPhaseStep(GameStep):
         
         new_steps = []
         
-        # Check Push
         from goa2.engine.map_logic import check_lane_push_trigger
         losing_team = check_lane_push_trigger(state, state.active_zone_id)
         if losing_team:
             new_steps.append(LanePushStep(losing_team=losing_team))
             
-        # Always Cleanup after battle (and optional push)
         new_steps.append(EndPhaseCleanupStep())
         
         return StepResult(is_finished=True, new_steps=new_steps)
@@ -1363,7 +1292,6 @@ class ResolveTieBreakerStep(GameStep):
         if not self.tied_hero_ids:
             return StepResult(is_finished=True)
 
-        # 1. Group remaining tied players by Team
         teams_represented = {}
         for h_id in self.tied_hero_ids:
             hero = state.get_hero(h_id)
@@ -1383,16 +1311,13 @@ class ResolveTieBreakerStep(GameStep):
                 candidates = teams_represented[favored_team]
                 target_team = favored_team
             else:
-                # Favored team not tied? Pick first available team.
                 target_team = list(teams_represented.keys())[0]
                 candidates = teams_represented[target_team]
             
-            # If target team has multiple players -> they must choose
             if len(candidates) > 1:
                 needs_input = True
             else:
                 winner_id = candidates[0]
-                # FLIP COIN only if we resolved a Different-Team tie
                 state.tie_breaker_team = TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
                 print(f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. Coin flipped.")
 
@@ -1405,14 +1330,10 @@ class ResolveTieBreakerStep(GameStep):
             else:
                 winner_id = candidates[0]
 
-        # 2. Process Input if needed
         if needs_input:
             if self.pending_input:
                 winner_id = self.pending_input.get("selected_hero_id")
                 print(f"   [TIE] Team {target_team.name} chose {winner_id} to act first.")
-                # We do NOT flip coin here if it was a same-team choice? 
-                # Actually, rules say flip after one favored player resolves.
-                # If Red was favored, and Red chose A over D, Red acted. Flip coin.
                 if len(teams_represented) > 1:
                      state.tie_breaker_team = TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
             else:
@@ -1426,8 +1347,7 @@ class ResolveTieBreakerStep(GameStep):
                     }
                 )
 
-        # 3. We have a winner! 
-        # Identify the winner's card
+        # We have a winner! 
         winner_hero = state.get_hero(winner_id)
         winner_card = winner_hero.current_turn_card if winner_hero else None
         
@@ -1438,7 +1358,6 @@ class ResolveTieBreakerStep(GameStep):
         state.current_actor_id = winner_id
             
         new_steps = []
-        # A. Winner Action
         new_steps.append(ResolveCardStep(hero_id=winner_id))
         
         new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
@@ -1457,8 +1376,6 @@ class AttackSequenceStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print(f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})")
         
-        # Import filters locally to avoid circular top-level imports if any issues arise, 
-        # though we already imported FilterCondition at top.
         from goa2.engine.filters import RangeFilter, TeamFilter, ImmunityFilter
         
         # Desired Execution Order: Select -> Reaction -> Combat
@@ -1490,21 +1407,18 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
     hero = state.get_hero(hero_id)
     if not hero: return
 
-    # 1. Find the chosen card in deck
     chosen_card = next((c for c in hero.deck if c.id == chosen_card_id), None)
     if not chosen_card:
         print(f"   [!] Upgrade Error: Chosen card {chosen_card_id} not found in deck.")
         return
 
-    # 2. Find the previous tier card in hand (to remove)
     prev_card = None
-    if chosen_card.tier != CardTier.IV: # Not ultimate
+    if chosen_card.tier != CardTier.IV: 
         for c in hero.hand:
             if c.color == chosen_card.color:
                 prev_card = c
                 break
     
-    # 3. Find the Pair Card (the other card of same color/tier)
     pair_card = None
     if chosen_card.tier != CardTier.IV:
         pair_card = next((c for c in hero.deck 
@@ -1512,7 +1426,6 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
                          and c.tier == chosen_card.tier 
                          and c.id != chosen_card.id), None)
 
-    # 4. EXECUTE TRANSITIONS
     if prev_card:
         print(f"   [UPGRADE] Removing {prev_card.id} (Tier {prev_card.tier.name}) from hand.")
         hero.hand.remove(prev_card)

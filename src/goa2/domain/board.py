@@ -29,19 +29,13 @@ class Board(BaseModel):
     """
     The static map container.
     """
-    # All valid traversable or occupy-able hexes are implicitly defined 
-    # by inclusion in a Zone or simply by the coordinate system, 
-    # but usually we want a master list of "The Map".
     
     zones: Dict[str, Zone] = Field(default_factory=dict)
     
-    # Spawn points definitions
     spawn_points: List[SpawnPoint] = Field(default_factory=list)
 
-    # Tile Grid (New Source of Truth for Topology)
     tiles: Dict[Hex, Tile] = Field(default_factory=dict)
     
-    # Lane Definition (Ordered Sequence of Zone IDs for Push Logic)
     # E.g. [RedBase, Zone1, Mid, Zone2, BlueBase]
     lane: List[str] = Field(default_factory=list)
 
@@ -52,8 +46,8 @@ class Board(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """
         Populate the hex lookup table after initialization.
-        Using model_post_init instead of validator to avoid ser/de issues with private fields.
         """
+        # Using model_post_init instead of validator to avoid ser/de issues with private fields.
         self._rebuild_lookup()
 
     def _rebuild_lookup(self):

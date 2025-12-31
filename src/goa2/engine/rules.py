@@ -13,7 +13,6 @@ def validate_movement_path(
     start: Hex, 
     end: Hex, 
     max_steps: int, 
-
     ignore_obstacles: bool = False,
     active_zone_id: Optional[str] = None
 ) -> bool:
@@ -24,34 +23,16 @@ def validate_movement_path(
     - Cannot end on Obstacle.
     - Path length <= max_steps.
     """
-    # 0. Trivial check
     if start == end:
-        return False # Moving 0 steps is invalid.
+        return False
         
-    # 1. Check if destination is strictly valid 
-    
-    # Active Zone Check (REMOVED: Movement between zones is allowed) 
-    # if active_zone_id:
-    #     ...
-
-    # Destination checks
     if not ignore_obstacles:
-        # Check static obstacles
-        # Check obstacles (Static or Dynamic)
         if board.get_tile(end).is_obstacle:
             return False
             
-        # Check Tile Occupancy (Preferred source of truth)
-        # Check Tile Occupancy redundancy removed 
-        # (is_obstacle covers is_occupied)
-        # Fallback to legacy check (if tiles not populated or for robustness)
         elif end in unit_locations.values():
             return False
 
-    # 2. Pathfinding (BFS)
-    # Blocked set includes static obstacles and all units
-    # Note: Virtual tiles are handled in the loop via get_tile(neighbor).is_obstacle
-    
     queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
     visited: Set[Hex] = {start}
     
@@ -66,8 +47,7 @@ def validate_movement_path(
             
         for neighbor in board.get_neighbors(current):
             if neighbor not in visited:
-                # 2. Obstacle Check
-                # If neighbor is blocked, we cannot Enter it.
+                # Note: Virtual tiles are handled in the loop via get_tile(neighbor).is_obstacle
                 if board.get_tile(neighbor).is_obstacle and neighbor != end:
                     continue
                 
@@ -81,23 +61,16 @@ def is_immune(target: Unit, state: GameState) -> bool:
     Checks if a target unit has Immunity.
     Rule 3.2: "Heavy Immunity: Immune to all Actions... until no more friendly minions are present."
     """
-    # 1. Check Heavy Minion Immunity
-    # We need to know if it is a Heavy Minion.
     if isinstance(target, Minion) and target.is_heavy:
-        # Check for Friendly Minions in BattleZone (Active Zone)
         # "until no more friendly minions are present" (Usually implies in the battle)
-        # Note: Bounding rule ensures minions are in BattleZone.
-        # So we check if any OTHER friendly minion exists in the Active Zone.
-        
         zone_id = state.active_zone_id
         if not zone_id:
-            return False # Fallback
+            return False
             
         zone = state.board.zones.get(zone_id)
         if not zone:
             return False
             
-        # Iterate all minions of same team
         team = state.teams.get(target.team)
         if not team:
             return False
@@ -106,10 +79,8 @@ def is_immune(target: Unit, state: GameState) -> bool:
             if m.id == target.id:
                 continue
                 
-            # Check location
             loc = state.unit_locations.get(m.id)
             if loc and loc in zone.hexes:
-                # Found another friendly minion in battle zone
                 return True
                 
     return False
@@ -131,7 +102,6 @@ def validate_target(
     3. Immunity (Heavies, etc.)
     """
     
-    # 0. Immunity Check
     if is_immune(target, state):
         return False
         
@@ -140,8 +110,7 @@ def validate_target(
     
     if not s_loc or not t_loc:
         return False
-        
-    # 1. Geometry
+            
     if requires_straight_line:
         if not s_loc.is_straight_line(t_loc):
             return False
@@ -150,7 +119,6 @@ def validate_target(
     if dist > range_val:
         return False
         
-    # 2. LOS
     # Rule 4.1: "No 'Line of Sight' obstructions" is standard for Range/Radius.
     # However, some specific rules might require it. 
     # For now, default ignores it.
@@ -165,7 +133,6 @@ def validate_attack_target(
     requires_line_of_sight: bool = True,
     requires_straight_line: bool = False,
     
-    # New Args for full validation
     state: Optional[GameState] = None,
     attacker: Optional[Unit] = None,
     target: Optional[Unit] = None
@@ -187,7 +154,6 @@ def validate_attack_target(
         )
 
     # Legacy Fallback (Geometry Only)
-    # 1. Geometry Check
     if requires_straight_line:
         if not attacker_pos.is_straight_line(target_pos):
             return False
@@ -208,7 +174,6 @@ def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zo
     """
     safe_zones = []
     
-    # 1. Check Start Zone Safety
     # If Start Zone has enemies, Fast Travel is impossible.
     start_zone = state.board.zones.get(current_zone_id)
     if not start_zone: 
@@ -225,10 +190,8 @@ def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zo
     if start_has_enemies:
         return []
 
-    # 2. Identify Candidates (Self + Neighbors)
     candidates = [current_zone_id] + start_zone.neighbors
     
-    # 3. Filter Candidates (Dest Zone must be Empty of Enemies)
     for z_id in candidates:
         zone = state.board.zones.get(z_id)
         if not zone: continue
@@ -246,4 +209,3 @@ def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zo
             safe_zones.append(z_id)
             
     return safe_zones
-

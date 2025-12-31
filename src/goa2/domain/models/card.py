@@ -20,7 +20,6 @@ class Card(GameEntity):
     
     initiative: int
     
-    # State Management
     state: CardState = CardState.DECK
     is_facedown: bool = True # Default is Hidden
     played_this_round: bool = Field(default=False, description="True if card was played during Planning Phase this round.")
@@ -33,7 +32,6 @@ class Card(GameEntity):
     # Item (Passive bonuses when equipped as item)
     item: Optional[StatType] = None
     
-    # Runtime metadata
     metadata: Dict[str, Any] = None
 
     def __init__(self, **data):

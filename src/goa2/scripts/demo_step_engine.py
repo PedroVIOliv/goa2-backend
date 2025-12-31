@@ -7,26 +7,22 @@ from goa2.engine.handler import process_resolution_stack, push_steps
 def run_demo():
     print("=== Multi-Player Step Engine Demo ===")
     
-    # 1. Setup
     state = GameState(
         board=Board(),
         teams={TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[])},
         current_actor_id="hero_red_01" # It is Red's turn
     )
     
-    # 2. Define Card Logic
-    # Red Player selects target -> Blue Player (hardcoded ID for demo) selects defense
     card_steps = [
         LogMessageStep(message="[Turn] It is {actor_id}'s turn.", ),
         
-        # Step 1: Active Player selects target
         SelectTargetStep(
             prompt="[Red] Select target for Attack", 
             output_key="target_id",
             player_id="hero_red_01" 
         ),
         
-        # Step 2: Reaction - Opponent (Blue) chooses to defend
+        # Red Player selects target -> Blue Player (hardcoded ID for demo) selects defense
         # In a real engine, we'd dynamically determine who the owner of 'target_id' is.
         # Here, we hardcode it to verify the mechanism.
         SelectTargetStep(
@@ -43,25 +39,20 @@ def run_demo():
     print("[1] Player plays 'Coordinated Attack'")
     push_steps(state, card_steps)
     
-    # --- Loop 1: Red Input ---
     print("\n[2] Engine Processing (Pass 1)...")
     req = process_resolution_stack(state)
     print(f"[!] Paused. Request: {req}")
     
-    # Simulate Red Input
     print("   -> Red Player selects 'hero_blue_01'")
     state.execution_stack[-1].pending_input = {"selected_id": "hero_blue_01"}
     
-    # --- Loop 2: Blue Input ---
     print("\n[3] Engine Processing (Pass 2)...")
     req = process_resolution_stack(state)
     print(f"[!] Paused. Request: {req}")
     
-    # Simulate Blue Input
     print("   -> Blue Player selects 'card_deflect'")
     state.execution_stack[-1].pending_input = {"selected_id": "card_deflect"}
     
-    # --- Loop 3: Resolution ---
     print("\n[4] Engine Processing (Pass 3)...")
     req = process_resolution_stack(state)
     

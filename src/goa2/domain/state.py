@@ -17,9 +17,6 @@ class GameState(BaseModel):
     board: Board
     teams: Dict[TeamColor, Team]
     
-
-
-    # Map State
     active_zone_id: Optional[str] = None # The ID of the current Battle Zone
     
     phase: GamePhase = GamePhase.SETUP
@@ -29,31 +26,33 @@ class GameState(BaseModel):
     turn: int = 1
     wave_counter: int = 5
     
-    # ID of the Hero currently acting (Resolution Phase)
-    current_actor_id: Optional[HeroID] = None
+    current_actor_id: Optional[HeroID] = None # ID of the Hero currently acting (Resolution Phase)
     
     # The team that currently wins ties (Red or Blue)
     # Flips every time a different-team tie is resolved.
     tie_breaker_team: TeamColor = TeamColor.RED
     
-    # Interaction Stack
-    # The top of the stack is the active request waiting for input.
+    input_stack: List[InputRequest] = Field(default_factory=list) # The top of the stack is the active request waiting for input.
     # Logic: 
     # 1. Action pushes Request.
     # 2. State pauses.
     # 3. Client responds to Request[0].
     # 4. Engine pops Request.
-    input_stack: List[InputRequest] = Field(default_factory=list)
-
-    # Execution Stack for Step-Based Engine (The "Stack & Step" Architecture)
-    # Stores instances of GameStep (from goa2.engine.steps)
+    execution_stack: List[Any] = Field(default_factory=list) # Stores instances of GameStep (from goa2.engine.steps)
     # Typed as List[Any] to avoid circular imports with steps.py
-    execution_stack: List[Any] = Field(default_factory=list)
     
-    # Shared Context for the current resolution chain
-    # Stores transient data like "selected_target_id" between steps
-    execution_context: Dict[str, Any] = Field(default_factory=dict)
+    execution_context: Dict[str, Any] = Field(default_factory=dict) # Stores transient data like "selected_target_id" between steps
     
+    pending_inputs: Dict[HeroID, Card] = Field(default_factory=dict) # Planning Phase Buffer: HeroID -> Card
+    
+    pending_upgrades: Dict[HeroID, int] = Field(default_factory=dict) # Level Up Phase Buffer: HeroID -> Number of upgrades pending
+    
+    unresolved_hero_ids: List[HeroID] = Field(default_factory=list) # Resolution Phase Tracker: Set of HeroIDs who have not yet acted this turn.
+    # We dynamically re-sort this set every step to determine the next actor.
+    # Using List for JSON stability, acts as Set.
+
+    unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict) # Dynamic State: Unit ID -> Hex Location
+
     @property
     def awaiting_input_type(self) -> InputRequestType:
         """
@@ -64,19 +63,6 @@ class GameState(BaseModel):
             return InputRequestType.NONE
         return self.input_stack[-1].request_type
     
-    # Planning Phase Buffer: HeroID -> Card
-    pending_inputs: Dict[HeroID, Card] = Field(default_factory=dict)
-    
-    # Level Up Phase Buffer: HeroID -> Number of upgrades pending
-    pending_upgrades: Dict[HeroID, int] = Field(default_factory=dict)
-    
-    # Resolution Phase Tracker: Set of HeroIDs who have not yet acted this turn.
-    # We dynamically re-sort this set every step to determine the next actor.
-    unresolved_hero_ids: List[HeroID] = Field(default_factory=list) # Using List for JSON stability, acts as Set.
-
-    # Dynamic State: Unit ID -> Hex Location
-    unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict)
-
     def get_hero(self, hero_id: HeroID) -> Optional[Hero]:
         """Finds a Hero by ID."""
         for team in self.teams.values():
@@ -106,11 +92,9 @@ class GameState(BaseModel):
         """
         from goa2.domain.types import BoardEntityID # Import locally to avoid circular if any, or just use string cast
         
-        # 1. Update Unit Location Mapping
         old_hex = self.unit_locations.get(unit_id)
         self.unit_locations[unit_id] = target_hex
         
-        # 2. Update Board Tiles (Grid)
         if old_hex:
              old_tile = self.board.get_tile(old_hex)
              # Only clear if it was occupied by THIS unit
@@ -137,7 +121,6 @@ class GameState(BaseModel):
                     tile.occupant_id = None
 
     class Config:
-        # Pydantic V2 ConfigDict
         arbitrary_types_allowed = True
         
 GameState.model_rebuild()
