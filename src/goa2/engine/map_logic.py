@@ -139,7 +139,9 @@ def find_nearest_empty_hexes(
         if found_distance is None:
             for neighbor in current.neighbors():
                 if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, dist + 1))
+                    # SAFETY: Only expand to hexes that exist on the board
+                    if state.board.is_on_map(neighbor):
+                        visited.add(neighbor)
+                        queue.append((neighbor, dist + 1))
                     
     return candidates
