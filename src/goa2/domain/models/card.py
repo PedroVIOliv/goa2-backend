@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Dict, Any, List, Tuple
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from .enums import CardTier, CardColor, ActionType, StatType, CardState
 from .base import GameEntity
 
@@ -86,9 +86,10 @@ class Card(GameEntity):
         if self.is_facedown: return 0
         return self.initiative
 
-    class Config:
-        frozen = False
+    model_config = ConfigDict(
+        frozen = False,
         populate_by_name = True
+    )
     
     @property
     def is_basic(self) -> bool:

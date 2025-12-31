@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from goa2.domain.types import HeroID
 from enum import Enum
 
@@ -23,5 +23,6 @@ class InputRequest(BaseModel):
     request_type: InputRequestType # WHAT to answer
     context: Dict[str, Any] = Field(default_factory=dict) # Metadata e.g. valid_hexes
 
-    class Config:
+    model_config = ConfigDict(
         arbitrary_types_allowed = True
+    )

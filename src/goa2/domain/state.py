@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
@@ -120,7 +120,8 @@ class GameState(BaseModel):
                 if tile.occupant_id and str(tile.occupant_id) == str(unit_id):
                     tile.occupant_id = None
 
-    class Config:
+    model_config = ConfigDict(
         arbitrary_types_allowed = True
+    )
         
 GameState.model_rebuild()
