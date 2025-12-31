@@ -38,7 +38,7 @@ def validate_movement_path(
     if not ignore_obstacles:
         # Check static obstacles
         # Check obstacles (Static or Dynamic)
-        if board.tiles.get(end) and board.tiles[end].is_obstacle:
+        if board.get_tile(end).is_obstacle:
             return False
             
         # Check Tile Occupancy (Preferred source of truth)
@@ -50,19 +50,7 @@ def validate_movement_path(
 
     # 2. Pathfinding (BFS)
     # Blocked set includes static obstacles and all units
-    blocked: Set[Hex] = set()
-    if not ignore_obstacles:
-        # Add occupied tiles or static obstacles from Tile grid
-        for h, tile in board.tiles.items():
-            if tile.is_obstacle:
-                blocked.add(h)
-        # Fallback
-        if not board.tiles:
-             blocked.update(unit_locations.values())
-        
-        # We start at 'start', which is occupied by self. 
-        # But we leave it, so don't treat 'start' as blocked for neighbors? 
-        # BFS won't visit start again anyway if we track visited.
+    # Note: Virtual tiles are handled in the loop via get_tile(neighbor).is_obstacle
     
     queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
     visited: Set[Hex] = {start}
@@ -80,7 +68,7 @@ def validate_movement_path(
             if neighbor not in visited:
                 # 2. Obstacle Check
                 # If neighbor is blocked, we cannot Enter it.
-                if board.tiles[neighbor].is_obstacle and neighbor != end:
+                if board.get_tile(neighbor).is_obstacle and neighbor != end:
                     continue
                 
                 visited.add(neighbor)

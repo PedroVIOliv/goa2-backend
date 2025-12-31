@@ -3,6 +3,7 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero, CardTier, CardColor, ActionType, Card
 from goa2.domain.types import HeroID, UnitID
+from goa2.domain.hex import Hex
 from goa2.engine.steps import DefeatUnitStep, RemoveUnitStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 
@@ -29,11 +30,9 @@ def combat_state():
         }
     )
     # Place units
-    state.move_unit(hero_killer.id, "0,0,0") # Dummy hex logic handled by mock or simple strings if parsing allows, 
     # but move_unit expects Hex objects usually or steps handle conversion.
     # Here we are testing Steps which do NOT use move_unit for 'remove'.
     # But state.remove_unit needs unit_locations entry.
-    from goa2.domain.hex import Hex
     state.move_unit(hero_killer.id, Hex(q=0,r=0,s=0))
     state.move_unit(minion_victim.id, Hex(q=1,r=0,s=-1))
     state.move_unit(hero_victim.id, Hex(q=2,r=0,s=-2))
@@ -59,7 +58,6 @@ def test_defeat_heavy_minion_rewards(combat_state):
     state, killer, _, _ = combat_state
     heavy = create_minion("HeavyV", TeamColor.BLUE, MinionType.HEAVY)
     state.teams[TeamColor.BLUE].minions.append(heavy)
-    from goa2.domain.hex import Hex
     state.move_unit(heavy.id, Hex(q=5, r=0, s=-5))
 
     # Heavy value is 4

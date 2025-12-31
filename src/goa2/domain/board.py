@@ -88,18 +88,20 @@ class Board(BaseModel):
 
     # --- Smart Grid Methods (O(1) Boundary Checks) ---
 
-    def get_tile(self, h: Hex) -> Optional[Tile]:
-        """Safely retrieves a tile. Returns None if off-map."""
-        return self.tiles.get(h)
+    def get_tile(self, h: Hex) -> Tile:
+        """Retrieves a tile. Returns a virtual terrain tile if off-map."""
+        if h in self.tiles:
+            return self.tiles[h]
+        return Tile(hex=h, is_terrain=True)
 
     def is_on_map(self, h: Hex) -> bool:
         """O(1) check if a hex coordinate exists on the board."""
         return h in self.tiles
 
     def get_neighbors(self, h: Hex) -> List[Hex]:
-        """Returns only the adjacent hexes that actually exist on this map."""
-        return [n for n in h.neighbors() if n in self.tiles]
+        """Returns all adjacent hexes (off-map hexes are treated as terrain)."""
+        return h.neighbors()
 
     def get_ring(self, h: Hex, radius: int) -> List[Hex]:
-        """Returns only the hexes in a ring that actually exist on this map."""
-        return [n for n in h.ring(radius) if n in self.tiles]
+        """Returns all hexes in a ring (off-map hexes are treated as terrain)."""
+        return h.ring(radius)

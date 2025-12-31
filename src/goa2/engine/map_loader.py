@@ -2,6 +2,7 @@ import json
 from typing import Dict, List, Set, Tuple
 
 from goa2.domain.board import Board, Zone
+from goa2.domain.tile import Tile
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor
 
@@ -120,13 +121,11 @@ def load_map(file_path: str) -> Board:
     
     # 3.1 Apply Obstacles to Tiles
     for h_obs in obstacles:
-        if h_obs in board.tiles:
-            board.tiles[h_obs].is_terrain = True
+        if h_obs not in board.tiles:
+            # Create a tile for terrain even if it has no zone
+            board.tiles[h_obs] = Tile(hex=h_obs, is_terrain=True)
         else:
-            # If an obstacle hex was defined but wasn't in a zone, 
-            # we might need to create it or ignore it. 
-            # Usually Board only tracks tiles inside Zones.
-            pass
+            board.tiles[h_obs].is_terrain = True
     
     # 3b. Calculate Zone Neighbors (Geometric Adjacency)
     # We iterate all hexes in the board (via Tiles or Zones)
