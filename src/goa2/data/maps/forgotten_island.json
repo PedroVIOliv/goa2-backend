@@ -4,6 +4,11 @@
             "id": "zone_1767126614242_sih20",
             "label": "Mid",
             "color": "#ff9800"
+        },
+        {
+            "id": "zone_1767193765411_tmbwh",
+            "label": "RedBeach",
+            "color": "#f06d59"
         }
     ],
     "hex_map": [
@@ -449,6 +454,315 @@
             "r": -5,
             "s": 4,
             "zone_id": "zone_1767126614242_sih20",
+            "tags": []
+        },
+        {
+            "q": -2,
+            "r": -4,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -2,
+            "r": -3,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -2,
+            "r": -2,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": -3,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": -3,
+            "s": 7,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -5,
+            "r": -2,
+            "s": 7,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -6,
+            "r": -1,
+            "s": 7,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -7,
+            "r": 0,
+            "s": 7,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -8,
+            "r": 1,
+            "s": 7,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedMeleeSpawn"
+            ]
+        },
+        {
+            "q": -8,
+            "r": 2,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -8,
+            "r": 3,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -7,
+            "r": 3,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -7,
+            "r": 4,
+            "s": 3,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -6,
+            "r": 4,
+            "s": 2,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -6,
+            "r": 5,
+            "s": 1,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -5,
+            "r": 5,
+            "s": 0,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": 4,
+            "s": 0,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": 3,
+            "s": 0,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": 2,
+            "s": 1,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": 1,
+            "s": 2,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": 0,
+            "s": 3,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "BlueRangedSpawn"
+            ]
+        },
+        {
+            "q": -3,
+            "r": -1,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -3,
+            "r": -2,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": -2,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedMeleeSpawn"
+            ]
+        },
+        {
+            "q": -4,
+            "r": -1,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "BlueMeleeSpawn"
+            ]
+        },
+        {
+            "q": -4,
+            "r": 0,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": 1,
+            "s": 3,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": 2,
+            "s": 2,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -4,
+            "r": 3,
+            "s": 1,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "BlueMeleeSpawn"
+            ]
+        },
+        {
+            "q": -5,
+            "r": 4,
+            "s": 1,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedMeleeSpawn"
+            ]
+        },
+        {
+            "q": -5,
+            "r": 3,
+            "s": 2,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -6,
+            "r": 3,
+            "s": 3,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -5,
+            "r": 2,
+            "s": 3,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "BlueMeleeSpawn"
+            ]
+        },
+        {
+            "q": -6,
+            "r": 2,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedRangedSpawn"
+            ]
+        },
+        {
+            "q": -7,
+            "r": 2,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -6,
+            "r": 1,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedHeavySpawn"
+            ]
+        },
+        {
+            "q": -5,
+            "r": 1,
+            "s": 4,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "BlueHeavySpawn"
+            ]
+        },
+        {
+            "q": -5,
+            "r": 0,
+            "s": 5,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -5,
+            "r": -1,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": [
+                "RedMeleeSpawn"
+            ]
+        },
+        {
+            "q": -6,
+            "r": 0,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
+            "tags": []
+        },
+        {
+            "q": -7,
+            "r": 1,
+            "s": 6,
+            "zone_id": "zone_1767193765411_tmbwh",
             "tags": []
         }
     ]
