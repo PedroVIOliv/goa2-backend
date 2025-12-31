@@ -27,6 +27,13 @@ def zones_by_label(board):
     return {z.label: z for z in board.zones.values() if z.label}
 
 
+class TestWaveLaneOrder:
+    """Tests for verifying wave lane order."""
+    
+    def test_wave_lane_order(self, board):
+        """Wave lane order should be correct."""
+        assert board.lane == ["RedBase", "RedBeach", "Mid", "BlueBeach", "BlueBase"]
+
 class TestZoneAdjacencies:
     """Tests for verifying zone adjacency relationships."""
     

@@ -121,18 +121,24 @@ def load_map(file_path: str) -> Board:
                     if current_zone_id not in neighbor_zone.neighbors:
                         neighbor_zone.neighbors.append(current_zone_id)
     
-    ordered_labels = ["RedBase", "RedBeach", "Mid", "BlueBeach", "BlueBase"]
+    # Lane inference
+    # Priority: 1. "lane" field in JSON, 2. "ordered_labels" fallback
+    lane_labels = data.get("lane")
+    if not lane_labels:
+        lane_labels = ["RedBase", "RedBeach", "Mid", "BlueBeach", "BlueBase"]
+        
     lane_ids = []
-    
     label_to_id = {z.label: z.id for z in zones.values() if z.label}
     
-    for label in ordered_labels:
+    for label in lane_labels:
         if label in label_to_id:
             lane_ids.append(label_to_id[label])
+        else:
+            print(f"[MapLoader] Warning: Lane label '{label}' not found in zones.")
             
     if len(lane_ids) >= 3:
         board.lane = lane_ids
-        print(f"[MapLoader] Inferred Lane: {ordered_labels}")
+        print(f"[MapLoader] Inferred Lane: {lane_labels}")
     else:
         print(f"[MapLoader] Could not infer minimal lane (RedBase->Mid->BlueBase). Found: {list(label_to_id.keys())}")
         
