@@ -49,12 +49,13 @@ def steps_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m1]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[h2], minions=[m2])
         },
-        unit_locations={
-            "h1": red_base_hex,
-            "h2": blue_base_hex
-        },
+        entity_locations={},
         active_zone_id="RedBase"
     )
+    # Use Unified Placement
+    state.place_entity("h1", red_base_hex)
+    state.place_entity("h2", blue_base_hex)
+    
     return state
 
 def test_lane_push_spawning_and_displacement(steps_state):
@@ -63,8 +64,7 @@ def test_lane_push_spawning_and_displacement(steps_state):
     
     # Put a hero on the Blue Spawn point in Mid to block it
     blue_spawn_hex = Hex(q=1, r=-1, s=0)
-    steps_state.unit_locations["h2"] = blue_spawn_hex
-    steps_state.board.get_tile(blue_spawn_hex).occupant_id = "h2"
+    steps_state.place_entity("h2", blue_spawn_hex)
     
     # Execute LanePush for BLUE losing (pushes towards BLUE BASE)
     # Mid (idx 1) -> target idx 2 (BlueBase)
@@ -80,14 +80,13 @@ def test_lane_push_mid_spawning(steps_state):
     
     # Block Blue spawn in Mid
     blue_spawn_hex = Hex(q=1, r=-1, s=0)
-    steps_state.unit_locations["h2"] = blue_spawn_hex
-    steps_state.board.get_tile(blue_spawn_hex).occupant_id = "h2"
+    steps_state.place_entity("h2", blue_spawn_hex)
     
     result = push_step.resolve(steps_state, {})
     
     assert steps_state.active_zone_id == "Mid"
     # Red minion should have spawned at (1,0,-1)
-    assert steps_state.unit_locations["m_red_1"] == Hex(q=1, r=0, s=-1)
+    assert steps_state.entity_locations["m_red_1"] == Hex(q=1, r=0, s=-1)
     # Blue minion spawn was blocked by h2, so it should be in new_steps as ResolveDisplacement
     assert len(result.new_steps) == 1
     assert isinstance(result.new_steps[0], ResolveDisplacementStep)
@@ -106,7 +105,7 @@ def test_combat_error_paths(steps_state):
     assert result.is_finished is True
     
     # DefeatUnitStep with non-existent killer (should still work for rewards, just no killer gold)
-    steps_state.unit_locations["m_red_1"] = Hex(q=1,r=0,s=-1)
+    steps_state.place_entity("m_red_1", Hex(q=1,r=0,s=-1))
     defeat_minion = DefeatUnitStep(victim_id="m_red_1", killer_id="ghost")
     result = defeat_minion.resolve(steps_state, {})
     assert result.is_finished is True
@@ -135,7 +134,7 @@ def test_tie_breaker_complex(steps_state):
 
 def test_reaction_window_edge_cases(steps_state):
     rw = ReactionWindowStep(target_player_key="target_id")
-    steps_state.unit_locations["h2"] = Hex(q=2, r=0, s=-2)
+    steps_state.place_entity("h2", Hex(q=2, r=0, s=-2))
     
     # Invalid card_id in input
     ctx = {"target_id": "h2"}
@@ -150,15 +149,15 @@ def test_check_lane_push_step(steps_state):
     check = CheckLanePushStep()
     steps_state.active_zone_id = "Mid"
     # Add minions to Mid
-    steps_state.unit_locations["m_red_1"] = Hex(q=1, r=0, s=-1)
-    steps_state.unit_locations["m_blue_1"] = Hex(q=1, r=-1, s=0)
+    steps_state.place_entity("m_red_1", Hex(q=1, r=0, s=-1))
+    steps_state.place_entity("m_blue_1", Hex(q=1, r=-1, s=0))
     
     result = check.resolve(steps_state, {})
     assert result.is_finished is True
     assert not result.new_steps
     
     # Trigger push (Red has 0 minions in Mid)
-    del steps_state.unit_locations["m_red_1"]
+    steps_state.remove_entity("m_red_1")
     result_push = check.resolve(steps_state, {})
     assert len(result_push.new_steps) == 1
     assert isinstance(result_push.new_steps[0], LanePushStep)
@@ -166,7 +165,7 @@ def test_check_lane_push_step(steps_state):
 def test_select_step_variations(steps_state):
     # Mandatory failure (no candidates)
     select_none = SelectStep(target_type="UNIT", prompt="Fail", is_mandatory=True, filters=[])
-    steps_state.unit_locations = {} # Wipe locations
+    steps_state.entity_locations = {} # Wipe locations
     res = select_none.resolve(steps_state, {})
     assert res.is_finished is True
     assert res.abort_action is True
@@ -178,7 +177,7 @@ def test_select_step_variations(steps_state):
     assert res_opt.abort_action is False
 
     # Auto select if one
-    steps_state.unit_locations = {"h1": Hex(q=0, r=0, s=0)}
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
     select_auto = SelectStep(target_type="UNIT", prompt="Auto", auto_select_if_one=True)
     ctx = {}
     res_auto = select_auto.resolve(steps_state, ctx)
@@ -214,21 +213,25 @@ def test_move_unit_step_errors(steps_state):
 def test_fast_travel_step_scenarios(steps_state):
     # Error: Not in zone
     ft = FastTravelStep(unit_id="h1")
-    steps_state.unit_locations["h1"] = Hex(q=100, r=100, s=-200) # Out of bounds/No zone
+    steps_state.place_entity("h1", Hex(q=100, r=100, s=-200)) # Out of bounds/No zone
     assert ft.resolve(steps_state, {}).is_finished is True
 
     # No safe zones (Enemy in RedBase)
-    steps_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    steps_state.unit_locations["h2"] = Hex(q=0, r=0, s=0) # Same hex = enemy in zone
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    steps_state.place_entity("h2", Hex(q=0, r=0, s=0)) # Same hex = enemy in zone
     assert ft.resolve(steps_state, {}).is_finished is True
     
     # Success path: Clear enemies
-    del steps_state.unit_locations["h2"]
-    # h1 is at (0,0,0). Register it on the tile too.
-    steps_state.board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
-    # Ensure Mid has at least 2 empty spaces
-    steps_state.board.get_tile(Hex(q=1, r=0, s=-1)).occupant_id = None
-    steps_state.board.get_tile(Hex(q=1, r=-1, s=0)).occupant_id = None
+    steps_state.remove_entity("h2")
+    # h1 is at (0,0,0). 
+    # NOTE: Since h2 was at (0,0,0), removing it cleared the tile. 
+    # But h1 still thinks it is at (0,0,0). We must re-place h1 to ensure consistency for test.
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    
+    # Ensure Mid has at least 2 empty spaces (done via setup or remove)
+    
+    # Previous tests might have left junk. But fixture returns clean state except h1/h2 placements.
+    # Mid has (1,0,-1) and (1,-1,0). Both empty.
 
     res = ft.resolve(steps_state, {})
     # Should have multiple options (1,0,-1) and (1,-1,0) in Mid
@@ -242,7 +245,7 @@ def test_fast_travel_step_scenarios(steps_state):
     
     # Auto travel case (Only one empty hex in safe zones)
     # Block (1,-1,0)
-    steps_state.board.get_tile(Hex(q=1, r=-1, s=0)).occupant_id = "blocker"
+    steps_state.place_entity("blocker", Hex(q=1, r=-1, s=0))
     ft.pending_input = None
     res_auto = ft.resolve(steps_state, {})
     assert res_auto.is_finished is True
@@ -250,7 +253,7 @@ def test_fast_travel_step_scenarios(steps_state):
     
     # Invalid selection
     # To test invalid selection, we need multiple options again.
-    steps_state.board.get_tile(Hex(q=1, r=-1, s=0)).occupant_id = None
+    steps_state.remove_entity("blocker")
     ft.pending_input = {"selection": {"q": 99, "r": 99, "s": -198}}
     res_invalid = ft.resolve(steps_state, {})
     assert res_invalid.requires_input is True
@@ -311,7 +314,7 @@ def test_swap_and_place_errors(steps_state):
     
     # Place error (Occupied)
     place = PlaceUnitStep(unit_id="h2", target_hex_arg=Hex(q=0, r=0, s=0))
-    steps_state.board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
+    # h1 is at (0,0,0) by default in fixture
     assert place.resolve(steps_state, {}).is_finished is True
     
     # Place missing actor
@@ -325,9 +328,9 @@ def test_respawn_hero_variations(steps_state):
     assert RespawnHeroStep(hero_id="ghost").resolve(steps_state, {}).is_finished is True
     
     # Hero already on board
-    steps_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
     assert RespawnHeroStep(hero_id="h1").resolve(steps_state, {}).is_finished is True
-    del steps_state.unit_locations["h1"]
+    steps_state.remove_entity("h1")
     
     # No empty spawn points
     # Fixture has spawn points in Mid. RedBase has none.
@@ -351,7 +354,7 @@ def test_respawn_hero_variations(steps_state):
     # Success respawn
     rh.pending_input = {"spawn_hex": {"q": 0, "r": 0, "s": 0}}
     assert rh.resolve(steps_state, {}).is_finished is True
-    assert steps_state.unit_locations["h1"] == Hex(q=0, r=0, s=0)
+    assert steps_state.entity_locations["h1"] == Hex(q=0, r=0, s=0)
 
 def test_respawn_minion_errors(steps_state):
     from goa2.engine.steps import RespawnMinionStep
@@ -370,8 +373,7 @@ def test_respawn_minion_variations(steps_state):
     rm = RespawnMinionStep(team=TeamColor.RED, minion_type=MinionType.MELEE)
     
     # Max count reached
-    # Mid has 1 red melee spawn point in Tile, but let's check Board.spawn_points too just in case.
-    steps_state.unit_locations["m_red_1"] = Hex(q=1, r=0, s=-1)
+    steps_state.place_entity("m_red_1", Hex(q=1, r=0, s=-1))
     # Ensure Mid only has 1 spawn point for RED MELEE
     # (Done in fixture)
     assert rm.resolve(steps_state, {}).is_finished is True
@@ -380,7 +382,7 @@ def test_respawn_minion_variations(steps_state):
     steps_state.board.get_tile(Hex(q=1, r=-1, s=0)).spawn_point = SpawnPoint(location=Hex(q=1, r=-1, s=0), team=TeamColor.RED, type=SpawnType.MINION, minion_type=MinionType.MELEE)
     
     # No available minion in supply
-    del steps_state.unit_locations["m_red_1"]
+    steps_state.remove_entity("m_red_1")
     old_minions = steps_state.teams[TeamColor.RED].minions
     steps_state.teams[TeamColor.RED].minions = [] # Empty supply
     assert rm.resolve(steps_state, {}).is_finished is True
@@ -389,15 +391,15 @@ def test_respawn_minion_variations(steps_state):
     steps_state.teams[TeamColor.RED].minions = old_minions
     rm.pending_input = {"spawn_hex": {"q": 1, "r": 0, "s": -1}}
     assert rm.resolve(steps_state, {}).is_finished is True
-    assert steps_state.unit_locations["m_red_1"] == Hex(q=1, r=0, s=-1)
+    assert steps_state.entity_locations["m_red_1"] == Hex(q=1, r=0, s=-1)
     
     # Error: Occupied
     rm.pending_input = {"spawn_hex": {"q": 1, "r": 0, "s": -1}}
-    steps_state.board.get_tile(Hex(q=1, r=0, s=-1)).occupant_id = "blocker"
-    # m_red_1 is not on board yet (del it)
-    del steps_state.unit_locations["m_red_1"]
+    steps_state.place_entity("blocker", Hex(q=1, r=0, s=-1))
+    # m_red_1 is not on board yet (remove it)
+    steps_state.remove_entity("m_red_1")
     assert rm.resolve(steps_state, {}).is_finished is True
-    assert "m_red_1" not in steps_state.unit_locations
+    assert "m_red_1" not in steps_state.entity_locations
 
 def test_push_unit_variations(steps_state):
     # No target loc
@@ -406,36 +408,32 @@ def test_push_unit_variations(steps_state):
 
     # No source hex (current_actor is None)
     steps_state.current_actor_id = None
-    steps_state.unit_locations["h2"] = Hex(q=2, r=0, s=-2)
+    steps_state.place_entity("h2", Hex(q=2, r=0, s=-2))
     push_no_src = PushUnitStep(target_id="h2")
     assert push_no_src.resolve(steps_state, {}).is_finished is True
 
     # Same hex error
     steps_state.current_actor_id = "h1"
-    steps_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
     push_same = PushUnitStep(target_id="h1")
     assert push_same.resolve(steps_state, {}).is_finished is True
 
     # Not straight line error
-    steps_state.unit_locations["h2"] = Hex(q=1, r=1, s=-2) # Not in straight line from (0,0,0)
+    steps_state.place_entity("h2", Hex(q=1, r=1, s=-2)) # Not in straight line from (0,0,0)
     push_diag = PushUnitStep(target_id="h2")
     assert push_diag.resolve(steps_state, {}).is_finished is True
 
     # Hit board edge
-    steps_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    steps_state.unit_locations["h2"] = Hex(q=1, r=0, s=-1)
-    # Direction is 0? Neighbor(0) of (1,0,-1) is (2,0,-2) which exists. 
-    # Let's use a very far hex or remove tiles.
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    steps_state.place_entity("h2", Hex(q=2, r=0, s=-2)) # Far end
     push_edge = PushUnitStep(target_id="h2", distance=10)
-    # BlueBase is at (2,0,-2). Neighbor(0) of (2,0,-2) is (3,0,-3) which is off map.
-    steps_state.unit_locations["h2"] = Hex(q=2, r=0, s=-2)
     assert push_edge.resolve(steps_state, {}).is_finished is True
-    assert steps_state.unit_locations["h2"] == Hex(q=2, r=0, s=-2) # Didn't move
+    assert steps_state.entity_locations["h2"] == Hex(q=2, r=0, s=-2) # Didn't move
 
     # Hit obstacle
-    steps_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    steps_state.unit_locations["h2"] = Hex(q=1, r=0, s=-1)
+    steps_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    steps_state.place_entity("h2", Hex(q=1, r=0, s=-1))
     steps_state.board.get_tile(Hex(q=2, r=0, s=-2)).is_terrain = True # Obstacle
     push_obs = PushUnitStep(target_id="h2", distance=2)
     assert push_obs.resolve(steps_state, {}).is_finished is True
-    assert steps_state.unit_locations["h2"] == Hex(q=1, r=0, s=-1) # Blocked
+    assert steps_state.entity_locations["h2"] == Hex(q=1, r=0, s=-1) # Blocked

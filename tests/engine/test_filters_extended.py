@@ -48,19 +48,15 @@ def extended_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[h2], minions=[m1, m2])
         },
-        unit_locations={
-            "h1": Hex(q=0, r=0, s=0),
-            "h2": Hex(q=2, r=0, s=-2),
-            "m1": Hex(q=1, r=0, s=-1),
-            "m2": Hex(q=3, r=0, s=-3)
-        },
+        entity_locations={},
         current_actor_id="h1",
         active_zone_id="Mid"
     )
-    
     # Sync board occupancy
-    for uid, loc in state.unit_locations.items():
-        board.get_tile(loc).occupant_id = uid
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
+    state.place_entity("h2", Hex(q=2, r=0, s=-2))
+    state.place_entity("m1", Hex(q=1, r=0, s=-1))
+    state.place_entity("m2", Hex(q=3, r=0, s=-3))
         
     return state
 
@@ -104,7 +100,7 @@ def test_range_filter_edge_cases(extended_state):
     assert f.apply(Hex(q=1, r=0, s=-1), state_no_actor, {}) is False
     
     # Actor has no location
-    state_no_loc = extended_state.model_copy(update={"unit_locations": {}})
+    state_no_loc = extended_state.model_copy(update={"entity_locations": {}})
     assert f.apply("m1", state_no_loc, {}) is False
     
     # Target has no location

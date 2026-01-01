@@ -2,14 +2,13 @@ from typing import Dict, Set, Optional, List, Deque
 from collections import deque
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board
-from goa2.domain.types import UnitID
+from goa2.domain.types import UnitID, BoardEntityID
 from goa2.domain.state import GameState
 from goa2.domain.models import ActionType, Minion, TeamColor
 from goa2.domain.models.unit import Unit
 
 def validate_movement_path(
     board: Board, 
-    unit_locations: Dict[UnitID, Hex], 
     start: Hex, 
     end: Hex, 
     max_steps: int, 
@@ -27,10 +26,8 @@ def validate_movement_path(
         return False
         
     if not ignore_obstacles:
+        # Check occupancy via the Board Cache (now guaranteed synced)
         if board.get_tile(end).is_obstacle:
-            return False
-            
-        elif end in unit_locations.values():
             return False
 
     queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
@@ -75,13 +72,17 @@ def is_immune(target: Unit, state: GameState) -> bool:
         if not team:
             return False
             
+        # Optimization: We only care about Minions. 
+        # Iterate team.minions instead of entity_locations to filter by Type first.
         for m in team.minions:
             if m.id == target.id:
                 continue
-                
-            loc = state.unit_locations.get(m.id)
-            if loc and loc in zone.hexes:
-                return True
+            
+            # Use unified lookup
+            if m.id in state.entity_locations:
+                loc = state.entity_locations[m.id]
+                if loc in zone.hexes:
+                    return True
                 
     return False
 
@@ -105,8 +106,8 @@ def validate_target(
     if is_immune(target, state):
         return False
         
-    s_loc = state.unit_locations.get(source.id)
-    t_loc = state.unit_locations.get(target.id)
+    s_loc = state.entity_locations.get(source.id)
+    t_loc = state.entity_locations.get(target.id)
     
     if not s_loc or not t_loc:
         return False
@@ -126,7 +127,6 @@ def validate_target(
     return True
 
 def validate_attack_target(
-    unit_locations: Dict[UnitID, Hex], # Legacy arg, kept for compatibility if needed, but we prefer GameState
     attacker_pos: Hex, # Legacy
     target_pos: Hex,   # Legacy
     range_val: int,
@@ -180,10 +180,11 @@ def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zo
         return []
         
     start_has_enemies = False
-    for unit_id, loc in state.unit_locations.items():
+    for entity_id, loc in state.entity_locations.items():
         if loc in start_zone.hexes:
-            unit = state.get_unit(unit_id)
-            if unit and hasattr(unit, 'team') and unit.team != team:
+            # We use get_entity because it might be a Unit or a Token
+            entity = state.get_entity(entity_id)
+            if entity and hasattr(entity, 'team') and entity.team != team:
                 start_has_enemies = True
                 break
     
@@ -197,11 +198,11 @@ def get_safe_zones_for_fast_travel(state: GameState, team: TeamColor, current_zo
         if not zone: continue
         
         has_enemies = False
-        for unit_id, loc in state.unit_locations.items():
+        for entity_id, loc in state.entity_locations.items():
             if loc in zone.hexes:
-                unit = state.get_unit(unit_id)
+                entity = state.get_entity(entity_id)
                 # Note: Tokens are obstacles, not enemies. Rules specify "Empty of Enemies".
-                if unit and hasattr(unit, 'team') and unit.team != team:
+                if entity and hasattr(entity, 'team') and entity.team != team:
                     has_enemies = True
                     break
         

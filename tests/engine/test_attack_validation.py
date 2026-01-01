@@ -24,7 +24,7 @@ def base_state():
         TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
         TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
     }
-    state = GameState(board=board, teams=teams)
+    state = GameState(board=board, teams=teams, entity_locations={})
     state.active_zone_id = "z1"
     board.zones["z1"] = Zone(id="z1", label="Zone 1", hexes=list(board.tiles.keys()))
     
@@ -38,11 +38,10 @@ def test_basic_attack_valid(base_state):
     base_state.teams[TeamColor.RED].heroes.append(h1)
     base_state.teams[TeamColor.BLUE].minions.append(m1)
     
-    base_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    base_state.unit_locations["m1"] = Hex(q=1, r=0, s=-1) # distance 1
+    base_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    base_state.place_entity("m1", Hex(q=1, r=0, s=-1)) # distance 1
     
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=1, r=0, s=-1),
         range_val=1,
@@ -56,11 +55,10 @@ def test_attack_out_of_range(base_state):
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
     m1 = Minion(id="m1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
     
-    base_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    base_state.unit_locations["m1"] = Hex(q=2, r=0, s=-2) # distance 2
+    base_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    base_state.place_entity("m1", Hex(q=2, r=0, s=-2)) # distance 2
     
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=2, r=0, s=-2),
         range_val=1,
@@ -78,15 +76,14 @@ def test_attack_immune_target(base_state):
     base_state.teams[TeamColor.RED].heroes.append(h1)
     base_state.teams[TeamColor.BLUE].minions.extend([heavy, m2])
     
-    base_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    base_state.unit_locations["heavy"] = Hex(q=1, r=0, s=-1)
-    base_state.unit_locations["m2"] = Hex(q=2, r=0, s=-2) # Another friendly minion in the same zone
+    base_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    base_state.place_entity("heavy", Hex(q=1, r=0, s=-1))
+    base_state.place_entity("m2", Hex(q=2, r=0, s=-2)) # Another friendly minion in the same zone
     
     # Verify immunity check separately
     assert rules.is_immune(heavy, base_state) is True
     
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=1, r=0, s=-1),
         range_val=1,
@@ -100,13 +97,12 @@ def test_attack_straight_line_required(base_state):
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
     m1 = Minion(id="m1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
     
-    base_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
+    base_state.place_entity("h1", Hex(q=0, r=0, s=0))
     
     # Case 1: Straight line (Valid)
     pos_straight = Hex(q=2, r=0, s=-2)
-    base_state.unit_locations["m1"] = pos_straight
+    base_state.place_entity("m1", pos_straight)
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=pos_straight,
         range_val=3,
@@ -118,9 +114,8 @@ def test_attack_straight_line_required(base_state):
     
     # Case 2: Not a straight line (Invalid)
     pos_not_straight = Hex(q=2, r=-1, s=-1) # distance 2, but not straight
-    base_state.unit_locations["m1"] = pos_not_straight
+    base_state.place_entity("m1", pos_not_straight)
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=pos_not_straight,
         range_val=3,
@@ -132,14 +127,11 @@ def test_attack_straight_line_required(base_state):
 
 def test_attack_legacy_fallback(base_state):
     """Test fallback when state/attacker/target are missing."""
-    u_locs = {
-        "a": Hex(q=0, r=0, s=0),
-        "t": Hex(q=1, r=0, s=-1)
-    }
+    # Note: validate_attack_target NO LONGER ACCEPTS unit_locations map.
+    # It relies on positional args purely for geometry if state is missing.
     
     # Valid range
     assert rules.validate_attack_target(
-        unit_locations=u_locs,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=1, r=0, s=-1),
         range_val=1
@@ -147,22 +139,20 @@ def test_attack_legacy_fallback(base_state):
     
     # Out of range
     assert rules.validate_attack_target(
-        unit_locations=u_locs,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=2, r=0, s=-2),
         range_val=1
     ) is False
 
 def test_attack_missing_locations(base_state):
-    """Test failure when units missing from unit_locations."""
+    """Test failure when units missing from entity_locations."""
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
     m1 = Minion(id="m1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
     
-    # h1 is NOT in unit_locations
-    base_state.unit_locations["m1"] = Hex(q=1, r=0, s=-1)
+    # h1 is NOT in entity_locations
+    base_state.place_entity("m1", Hex(q=1, r=0, s=-1))
     
     assert rules.validate_attack_target(
-        unit_locations=base_state.unit_locations,
         attacker_pos=Hex(q=0, r=0, s=0),
         target_pos=Hex(q=1, r=0, s=-1),
         range_val=5,
@@ -193,15 +183,15 @@ def test_secondary_attack_respects_immunity(base_state):
     melee = Minion(id="melee", name="Melee", type=MinionType.MELEE, team=TeamColor.BLUE)
     base_state.teams[TeamColor.BLUE].minions.extend([heavy, melee])
     
-    # Place units
-    base_state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
-    base_state.unit_locations["heavy"] = Hex(q=1, r=0, s=-1)
-    base_state.unit_locations["melee"] = Hex(q=1, r=-1, s=0)
+    # Place units using place_entity (Corrects SelectStep finding them)
+    base_state.place_entity("h1", Hex(q=0, r=0, s=0))
+    base_state.place_entity("heavy", Hex(q=1, r=0, s=-1))
+    base_state.place_entity("melee", Hex(q=1, r=-1, s=0))
     
     # Add one more minion to ensure Heavy is immune (Rule 3.2)
     m_supp = Minion(id="m_supp", name="Support", type=MinionType.MELEE, team=TeamColor.BLUE)
     base_state.teams[TeamColor.BLUE].minions.append(m_supp)
-    base_state.unit_locations["m_supp"] = Hex(q=2, r=0, s=-2)
+    base_state.place_entity("m_supp", Hex(q=2, r=0, s=-2))
     
     # 3. Start ResolveCardStep
     step = ResolveCardStep(hero_id="h1")
@@ -216,6 +206,10 @@ def test_secondary_attack_respects_immunity(base_state):
     
     # 6. Next step should be SelectStep (from AttackSequenceStep expansion)
     req2 = process_resolution_stack(base_state)
+    
+    # If SelectStep finds candidates, it prompts SELECT_UNIT.
+    # If it finds NO candidates (because logic was broken), it returns None (abort).
+    assert req2 is not None
     assert req2["type"] == "SELECT_UNIT"
     
     # 7. VERIFY: 'heavy' is filtered out, 'melee' is valid

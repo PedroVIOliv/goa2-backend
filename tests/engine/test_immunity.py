@@ -32,18 +32,14 @@ def immunity_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[m_heavy, m_support])
         },
-        unit_locations={
-            "h1": Hex(q=0, r=0, s=0),
-            "m_heavy": Hex(q=1, r=0, s=-1),
-            "m_supp": Hex(q=2, r=0, s=-2)
-        },
+        entity_locations={},
         current_actor_id="h1",
         active_zone_id="z1"
     )
     # Sync board
-    board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
-    board.get_tile(Hex(q=1, r=0, s=-1)).occupant_id = "m_heavy"
-    board.get_tile(Hex(q=2, r=0, s=-2)).occupant_id = "m_supp"
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
+    state.place_entity("m_heavy", Hex(q=1, r=0, s=-1))
+    state.place_entity("m_supp", Hex(q=2, r=0, s=-2))
     
     return state
 

@@ -52,6 +52,14 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | - Line of Sight | **Implemented** | Explicitly ignored per rules. |
 | **6.4 Selection** | **Implemented** | `SelectStep` with composable `FilterCondition` system. |
 
+## 6. Architecture Updates (New)
+
+| Feature | Status | Notes |
+| :--- | :--- | :--- |
+| **Unified Entity Manager** | **Implemented** | `GameState` now acts as the single source of truth for positions via `entity_locations`. `board.tiles` is a read-only cache automatically synchronized. |
+| **Serialization** | **Robust** | `Hex` class supports round-trip serialization as dictionary keys (stringified) for JSON storage. |
+| **Token Support** | **Implemented** | `state.misc_entities` allows storing and placing Tokens/Obstacles on the board. |
+
 ## Summary of Critical Gaps
 1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card). **Note:** Mandatory/Optional step distinction and abort mechanism now implemented - see `ARCHITECTURE.md` Section 6 and `docs/card_effects_guidelines.md`.
 2.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).

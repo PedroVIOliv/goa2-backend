@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
@@ -51,7 +51,36 @@ class GameState(BaseModel):
     # We dynamically re-sort this set every step to determine the next actor.
     # Using List for JSON stability, acts as Set.
 
-    unit_locations: Dict[UnitID, Hex] = Field(default_factory=dict) # Dynamic State: Unit ID -> Hex Location
+    # Registry for active non-Unit entities (Tokens, Traps, etc.)
+    # Units are stored in self.teams, everything else goes here.
+    misc_entities: Dict[BoardEntityID, Any] = Field(default_factory=dict) 
+
+    # Master Record of positions for ALL entities (Units + Tokens)
+    entity_locations: Dict[BoardEntityID, Hex] = Field(default_factory=dict) 
+
+    @model_validator(mode='after')
+    def rebuild_occupancy_cache(self) -> 'GameState':
+        """
+        Synchronizes board.tiles.occupant_id based on entity_locations.
+        This ensures that entity_locations is the Single Source of Truth for persistence.
+        """
+        # 1. Clear existing occupancy on board tiles
+        for tile in self.board.tiles.values():
+            tile.occupant_id = None
+            
+        # 2. Re-populate based on entity_locations
+        from goa2.domain.types import BoardEntityID
+        for uid, location in self.entity_locations.items():
+            if location in self.board.tiles:
+                self.board.tiles[location].occupant_id = BoardEntityID(str(uid))
+        
+        return self
+
+    @property
+    def unit_locations(self) -> Dict[UnitID, Hex]:
+        """Legacy accessor for backwards compatibility during refactor."""
+        # Convert keys to UnitID
+        return {UnitID(str(k)): v for k, v in self.entity_locations.items()}
 
     @property
     def awaiting_input_type(self) -> InputRequestType:
@@ -71,6 +100,17 @@ class GameState(BaseModel):
                     return hero
         return None
 
+    def get_entity(self, entity_id: BoardEntityID) -> Optional[Any]: 
+        """
+        Unified lookup for ANY entity on the board (Unit or Token).
+        """
+        # 1. Check Misc Entities
+        if entity_id in self.misc_entities:
+            return self.misc_entities[entity_id]
+
+        # 2. Check Units
+        return self.get_unit(UnitID(str(entity_id)))
+
     def get_unit(self, unit_id: UnitID) -> Optional[Unit]:
         """
         Finds a Unit (Hero or Minion) by ID.
@@ -85,40 +125,50 @@ class GameState(BaseModel):
                      return minion
         return None
 
-    def move_unit(self, unit_id: UnitID, target_hex: Hex):
+    def place_entity(self, entity_id: BoardEntityID, target_hex: Hex):
         """
-        Moves a unit to a target hex, updating both unit_locations and board tiles.
-        Clears the old tile's occupant and sets the new tile's occupant.
+        Primary Primitive for putting something on the map.
+        Updates Location Record AND Tile Cache.
+        Overwrites any existing position.
         """
-        from goa2.domain.types import BoardEntityID # Import locally to avoid circular if any, or just use string cast
-        
-        old_hex = self.unit_locations.get(unit_id)
-        self.unit_locations[unit_id] = target_hex
-        
+        # 1. Clear old location if exists
+        old_hex = self.entity_locations.get(entity_id)
         if old_hex:
              old_tile = self.board.get_tile(old_hex)
-             # Only clear if it was occupied by THIS unit
-             if old_tile and old_tile.occupant_id and str(old_tile.occupant_id) == str(unit_id):
+             if old_tile and old_tile.occupant_id and str(old_tile.occupant_id) == str(entity_id):
                  old_tile.occupant_id = None
-                 
+        
+        # 2. Update Record
+        self.entity_locations[entity_id] = target_hex
+        
+        # 3. Update New Tile Cache
         target_tile = self.board.get_tile(target_hex)
         if target_tile:
-            # Overwrite? Yes. Caller should validate emptiness if needed.
-            target_tile.occupant_id = BoardEntityID(str(unit_id))
+            target_tile.occupant_id = entity_id
 
-    def remove_unit(self, unit_id: UnitID):
+    def remove_entity(self, entity_id: BoardEntityID):
         """
-        Removes a unit from the board (locations and tiles).
-        Does NOT remove it from the Team roster.
+        Removes an entity from the board (locations and tiles).
+        Does NOT remove it from Teams or Misc Registry.
         """
-        if unit_id in self.unit_locations:
-            loc = self.unit_locations[unit_id]
-            del self.unit_locations[unit_id]
+        if entity_id in self.entity_locations:
+            loc = self.entity_locations[entity_id]
+            del self.entity_locations[entity_id]
             
             tile = self.board.get_tile(loc)
             if tile:
-                if tile.occupant_id and str(tile.occupant_id) == str(unit_id):
+                if tile.occupant_id and str(tile.occupant_id) == str(entity_id):
                     tile.occupant_id = None
+
+    def move_unit(self, unit_id: UnitID, target_hex: Hex):
+        """Wrapper for place_entity."""
+        from goa2.domain.types import BoardEntityID
+        self.place_entity(BoardEntityID(str(unit_id)), target_hex)
+
+    def remove_unit(self, unit_id: UnitID):
+        """Wrapper for remove_entity."""
+        from goa2.domain.types import BoardEntityID
+        self.remove_entity(BoardEntityID(str(unit_id)))
 
     model_config = ConfigDict(
         arbitrary_types_allowed = True

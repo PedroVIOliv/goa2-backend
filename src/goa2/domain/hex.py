@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
-from pydantic import BaseModel, field_validator, ConfigDict
-from typing import ClassVar, List, Iterator, Optional
+from pydantic import BaseModel, field_validator, ConfigDict, PlainSerializer, BeforeValidator, model_validator
+from typing import ClassVar, List, Iterator, Optional, Annotated, Union, Any
 
 class HexDirection(int, Enum):
     """
@@ -13,6 +13,16 @@ class HexDirection(int, Enum):
     SW = 3
     W = 4
     NW = 5
+
+def parse_hex_key(v: Any) -> Any:
+    """Parses string representation back to dict for Hex initialization."""
+    if isinstance(v, str):
+        # Handle format "(q, r, s)" or "q,r,s"
+        v = v.strip("()")
+        parts = v.split(",")
+        if len(parts) == 3:
+            return {"q": int(parts[0]), "r": int(parts[1]), "s": int(parts[2])}
+    return v
 
 class Hex(BaseModel):
     """
@@ -43,6 +53,28 @@ class Hex(BaseModel):
     
     def __str__(self) -> str:
         return f"({self.q}, {self.r}, {self.s})"
+
+    # Custom serialization logic to allow Hex as dict key
+    # When dumping to JSON, it converts to string.
+    # When loading from JSON (where keys are strings), we need to parse back.
+    # Note: This requires the usage of Annotated type where Hex is used if we wanted fully transparent behavior,
+    # but putting it on the model ensures it works generally.
+    # Actually, Pydantic 2.0+ handles `Dict[Hex, ...]` by calling `str(Hex)` for keys.
+    # We just need to handle the input parsing side.
+    
+    # We inject a validator that runs BEFORE the model fields are processed.
+    # If input is a string, we parse it to a dict.
+    # But wait, @model_validator(mode='before') on the class works best.
+    
+    @model_validator(mode='before')
+    @classmethod
+    def parse_string_input(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v = v.strip("()")
+            parts = v.split(",")
+            if len(parts) == 3:
+                return {"q": int(parts[0]), "r": int(parts[1]), "s": int(parts[2])}
+        return v
 
     def length(self) -> int:
         """Distance from center (0,0,0)."""

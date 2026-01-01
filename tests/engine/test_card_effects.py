@@ -44,9 +44,9 @@ def effect_state():
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[minion])
         }
     )
-    state.unit_locations = {"A": Hex(q=0,r=0,s=0), "M1": Hex(q=2,r=0,s=-2)}
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "A"
-    state.board.tiles[Hex(q=2,r=0,s=-2)].occupant_id = "M1"
+    # Use Unified Placement
+    state.place_entity("A", Hex(q=0,r=0,s=0))
+    state.place_entity("M1", Hex(q=2,r=0,s=-2))
     state.current_actor_id = "A"
     
     return state
@@ -79,5 +79,5 @@ def test_arcane_whirlpool_swap(effect_state):
     assert res is None # Stack finished
     
     # 7. Verify Positions
-    assert effect_state.unit_locations["A"] == Hex(q=2,r=0,s=-2)
-    assert effect_state.unit_locations["M1"] == Hex(q=0,r=0,s=0)
+    assert effect_state.entity_locations["A"] == Hex(q=2,r=0,s=-2)
+    assert effect_state.entity_locations["M1"] == Hex(q=0,r=0,s=0)

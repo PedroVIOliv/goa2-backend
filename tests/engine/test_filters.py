@@ -25,17 +25,13 @@ def filter_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[h2], minions=[m1])
         },
-        unit_locations={
-            "h1": Hex(q=0, r=0, s=0),   # Center
-            "h2": Hex(q=2, r=0, s=-2),  # Range 2
-            "m1": Hex(q=1, r=0, s=-1)   # Range 1
-        },
+        entity_locations={},
         current_actor_id="h1"
     )
-    # Sync board occupancy
-    board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
-    board.get_tile(Hex(q=2, r=0, s=-2)).occupant_id = "h2"
-    board.get_tile(Hex(q=1, r=0, s=-1)).occupant_id = "m1"
+    # Use Unified Placement (Syncs cache automatically)
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
+    state.place_entity("h2", Hex(q=2, r=0, s=-2))
+    state.place_entity("m1", Hex(q=1, r=0, s=-1))
     
     return state
 

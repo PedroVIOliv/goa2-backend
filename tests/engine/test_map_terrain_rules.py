@@ -69,12 +69,18 @@ def test_movement_blocked_by_void():
     board = Board(tiles={
         Hex(q=0, r=0, s=0): Tile(hex=Hex(q=0, r=0, s=0))
     })
-    unit_locations = {"u1": Hex(q=0, r=0, s=0)}
+    # NOTE: unit_locations is no longer needed by validate_movement_path directly
+    # unit_locations = {"u1": Hex(q=0, r=0, s=0)}
     
     # Try to move to a neighbor (which is off-map)
     neighbor = Hex(q=1, r=0, s=-1)
     # Even if range is 1, it should fail because the neighbor is virtual terrain (obstacle)
-    assert rules.validate_movement_path(board, unit_locations, Hex(q=0, r=0, s=0), neighbor, 1) is False
+    assert rules.validate_movement_path(
+        board=board, 
+        start=Hex(q=0, r=0, s=0), 
+        end=neighbor, 
+        max_steps=1
+    ) is False
 
 def test_get_neighbors_includes_void():
     """Verify that get_neighbors returns all 6 neighbors now."""

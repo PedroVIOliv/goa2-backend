@@ -21,17 +21,18 @@ def basic_state():
     board = Board()
     board.tiles[start_hex] = Tile(hex=start_hex)
     board.tiles[target_hex] = Tile(hex=target_hex)
-    board.tiles[start_hex].occupant_id = "hero_red"
     
-    return GameState(
+    state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
         },
-        unit_locations={"hero_red": start_hex},
+        entity_locations={},
         current_actor_id="hero_red"
     )
+    state.place_entity("hero_red", start_hex)
+    return state
 
 
 class TestMandatoryStepAbort:
@@ -101,7 +102,7 @@ class TestMandatoryStepAbort:
         
         # Setup: All hexes in range are occupied (no valid movement destinations)
         adjacent_hex = Hex(q=1, r=0, s=-1)
-        basic_state.board.tiles[adjacent_hex].occupant_id = "obstacle"  # Block the only adjacent hex
+        basic_state.place_entity("obstacle", adjacent_hex) # Block
         
         push_steps(basic_state, [
             FinalizeHeroTurnStep(hero_id="hero_red"),
@@ -110,7 +111,7 @@ class TestMandatoryStepAbort:
             SelectStep(
                 target_type="HEX",
                 prompt="Select movement destination",
-                filters=[RangeFilter(max_range=1), OccupiedFilter(require_empty=True)],
+                filters=[RangeFilter(max_range=1), OccupiedFilter(is_occupied=False)], # Note: OccupiedFilter changed param name from require_empty to is_occupied=False
                 is_mandatory=True  # No valid hexes -> abort
             )
         ])
@@ -120,7 +121,7 @@ class TestMandatoryStepAbort:
         # Should not prompt for HEX selection since there are no valid options
         assert req is None or req.get("type") != "SELECT_HEX"
         # Hero should NOT have moved
-        assert basic_state.unit_locations["hero_red"] == Hex(q=0, r=0, s=0)
+        assert basic_state.entity_locations["hero_red"] == Hex(q=0, r=0, s=0)
     
     def test_move_unit_with_wrong_destination_is_error_not_abort(self, basic_state):
         """MoveUnitStep with invalid path is an error, not an abort trigger.
@@ -142,11 +143,11 @@ class TestMandatoryStepAbort:
             MoveUnitStep(unit_id="hero_red", range_val=1)  # Invalid, but no abort
         ])
         
-        start_loc = basic_state.unit_locations["hero_red"]
+        start_loc = basic_state.entity_locations["hero_red"]
         req = process_resolution_stack(basic_state)
         
         # Hero did NOT move (path invalid)
-        assert basic_state.unit_locations["hero_red"] == start_loc
+        assert basic_state.entity_locations["hero_red"] == start_loc
         # But the next step DID execute (no abort occurred)
         assert basic_state.execution_context.get("next_step_ran") == True
 

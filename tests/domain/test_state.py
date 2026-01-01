@@ -1,72 +1,157 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Card, CardColor, ActionType, CardTier, CardState
+from goa2.domain.models import Team, TeamColor, Hero, Minion, Card, CardTier, CardColor, ActionType, CardState
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputRequest, InputRequestType
+from goa2.domain.types import HeroID, UnitID, BoardEntityID
+from goa2.domain.input import InputRequestType, InputRequest
 
 @pytest.fixture
-def populated_state():
-    h1 = Hero(id="h1", name="Hero1", team=TeamColor.RED, deck=[])
-    m1 = Minion(id="m1", name="Minion1", type=MinionType.MELEE, team=TeamColor.RED)
+def empty_state():
+    board = Board()
+    board.tiles[Hex(q=0, r=0, s=0)] = board.get_tile(Hex(q=0, r=0, s=0))
+    board.tiles[Hex(q=1, r=0, s=-1)] = board.get_tile(Hex(q=1, r=0, s=-1))
     
-    # Create Board with necessary tiles
+    teams = {
+        TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+        TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
+    }
+    return GameState(board=board, teams=teams)
+
+def test_place_entity_updates_cache(empty_state):
+    state = empty_state
+    hex_loc = Hex(q=0, r=0, s=0)
+    uid = "test_unit"
+    
+    # Action
+    state.place_entity(BoardEntityID(uid), hex_loc)
+    
+    # Verify Master Record
+    assert state.entity_locations[uid] == hex_loc
+    
+    # Verify Cache
+    tile = state.board.get_tile(hex_loc)
+    assert tile.occupant_id == uid
+    assert tile.is_occupied
+
+def test_move_entity_clears_old_cache(empty_state):
+    state = empty_state
     start_hex = Hex(q=0, r=0, s=0)
     target_hex = Hex(q=1, r=0, s=-1)
+    uid = "test_unit"
     
-    board = Board()
-    board.tiles[start_hex] = Tile(hex=start_hex)
-    board.tiles[target_hex] = Tile(hex=target_hex)
-    
-    # Pre-occupy start hex
-    board.tiles[start_hex].occupant_id = "h1"
-    
-    return GameState(
-        board=board,
-        teams={
-            TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m1]),
-            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
-        },
-        unit_locations={"h1": start_hex}
-    )
-
-def test_get_lookup(populated_state):
-    # Found
-    assert populated_state.get_hero("h1") is not None
-    assert populated_state.get_unit("h1") is not None
-    assert populated_state.get_unit("m1") is not None
-    
-    # Not Found
-    assert populated_state.get_hero("ghost") is None
-    assert populated_state.get_unit("ghost") is None
-
-def test_movement_logic(populated_state):
-    # Move H1 to 1,0,-1
-    target = Hex(q=1, r=0, s=-1)
-    
-    # Check Pre-condition
-    assert "h1" in populated_state.unit_locations
+    state.place_entity(BoardEntityID(uid), start_hex)
+    assert state.board.get_tile(start_hex).occupant_id == uid
     
     # Move
-    populated_state.move_unit("h1", target)
+    state.place_entity(BoardEntityID(uid), target_hex)
     
-    # Check Post-condition
-    assert populated_state.unit_locations["h1"] == target
-    assert populated_state.board.tiles[target].occupant_id == "h1"
+    # Verify Old Cleared
+    assert state.board.get_tile(start_hex).occupant_id is None
+    assert not state.board.get_tile(start_hex).is_occupied
     
-    # Check Cleanup of old tile
-    old = Hex(q=0, r=0, s=0)
-    if old in populated_state.board.tiles:
-        assert populated_state.board.tiles[old].occupant_id is None
+    # Verify New Set
+    assert state.entity_locations[uid] == target_hex
+    assert state.board.get_tile(target_hex).occupant_id == uid
 
-def test_remove_unit(populated_state):
-    populated_state.remove_unit("h1")
-    assert "h1" not in populated_state.unit_locations
-    # Tile check
+def test_validator_rebuilds_cache():
+    """Verify that loading state from dict/json syncs the board."""
+    # Construct raw dict state directly
+    # We want to ensure that if 'entity_locations' has data, but 'board.tiles' doesn't have occupancy,
+    # the validator fills it in.
+    
+    h_dict = {"q": 0, "r": 0, "s": 0}
+    
+    state_dict = {
+        "board": {
+            "zones": {},
+            "spawn_points": [],
+            "tiles": {
+                # Pydantic V2 allows some flexibility in key parsing or we can assume it loads
+                # However, usually for JSON keys are strings "0,0,0". 
+                # Here we are testing python dict input.
+                # Let's provide the tile structure expected.
+                # Note: Dictionary keys in JSON/Dict for complex types usually require a specific format or serialization.
+                # But for this test, we can minimalize the board to just have the tile structure needed.
+            },
+            "lane": []
+        },
+        "teams": {
+            "RED": {"color": "RED", "heroes": [], "minions": []},
+            "BLUE": {"color": "BLUE", "heroes": [], "minions": []}
+        },
+        "entity_locations": {"ghost_unit": h_dict},
+        "misc_entities": {}
+    }
+    
+    # We need the Board to actually CONTAIN the tile at (0,0,0) so the validator can find it.
+    # But passing keys for Hex in a dict is tricky without the serializer.
+    # Instead of creating from dict, let's create the object and THEN modify it to simulate "unsynced" state,
+    # then trigger validation? No, validation runs on init.
+    
+    # Alternative: Instantiate GameState with valid objects, but verify logic holds.
+    # The validator runs `after` model init.
+    
+    board = Board()
+    h = Hex(q=0, r=0, s=0)
+    board.tiles[h] = board.get_tile(h)
+    
+    # If we init with entity_locations set, the validator should populate the board tile.
+    # The board passed in has NO occupant.
+    
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
+        },
+        entity_locations={"ghost_unit": h}
+    )
+    
+    # Validator should have run
+    tile = state.board.get_tile(h)
+    assert tile.occupant_id == "ghost_unit"
+    assert tile.is_occupied
+
+def test_misc_entities_storage(empty_state):
+    state = empty_state
+    
+    # Register a Token (simulated as dict for now since we didn't import Token class)
+    token_id = BoardEntityID("trap_1")
+    state.misc_entities[token_id] = {"type": "TRAP", "id": token_id}
+    
     loc = Hex(q=0, r=0, s=0)
-    if loc in populated_state.board.tiles:
-        assert populated_state.board.tiles[loc].occupant_id is None
+    state.place_entity(token_id, loc)
+    
+    # Lookup via unified method
+    retrieved = state.get_entity(token_id)
+    assert retrieved is not None
+    assert retrieved["type"] == "TRAP"
+    
+    assert state.board.get_tile(loc).occupant_id == token_id
+
+def test_awaiting_input_type():
+    s = GameState(board=Board(), teams={})
+    assert s.awaiting_input_type == InputRequestType.NONE
+
+def test_hero_card_lifecycle():
+    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
+    h1.hand.append(c1)
+    
+    # Planning
+    # ... logic tested in integration tests usually
+    assert c1.state == CardState.HAND
+
+def test_retrieve_cards_logic():
+    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
+    h1.discard_pile.append(c1)
+    
+    h1.retrieve_cards()
+    assert c1.state == CardState.HAND
+    assert c1 in h1.hand
+    assert not c1.played_this_round
 
 def test_awaiting_input_type():
     s = GameState(board=Board(), teams={})

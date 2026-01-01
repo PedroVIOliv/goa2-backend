@@ -38,17 +38,17 @@ def populated_state():
     board.tiles[start_hex] = Tile(hex=start_hex)
     board.tiles[target_hex] = Tile(hex=target_hex)
     
-    # Pre-occupy start hex
-    board.tiles[start_hex].occupant_id = "h1"
-    
-    return GameState(
+    # Use Unified Placement
+    state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m1]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
         },
-        unit_locations={"h1": start_hex}
+        entity_locations={}
     )
+    state.place_entity("h1", start_hex)
+    return state
 
 @pytest.fixture
 def combat_state(empty_state):
@@ -80,7 +80,13 @@ def combat_state(empty_state):
 def test_select_target_flow(empty_state):
     # SelectStep requires at least 1 candidate to not auto-finish with "No candidates"
     # So we must spoof a unit location
-    empty_state.unit_locations["target_1"] = Hex(q=0, r=0, s=0)
+    empty_state.place_entity("target_1", Hex(q=0, r=0, s=0))
+    # Note: SelectStep now filters for actual units. We need to add target_1 to a team or mock get_unit.
+    # We'll use a real unit ID "hero_red" which exists in empty_state default (no, default has empty heroes)
+    
+    # Add a mock hero so filtering passes
+    hero = Hero(id="target_1", name="Target", team=TeamColor.BLUE, deck=[])
+    empty_state.teams[TeamColor.BLUE].heroes.append(hero)
     
     step = SelectStep(target_type="UNIT", prompt="Choose", output_key="target_id")
     push_steps(empty_state, [step])
@@ -141,8 +147,8 @@ def test_attack_sequence_expansion(combat_state):
     # Add an enemy so SelectStep pauses for input
     # combat_state has Red Hero (current actor). Add Blue Hero in Range 1.
     target_hex = Hex(q=1, r=0, s=-1)
-    combat_state.unit_locations["hero_blue"] = target_hex
-    combat_state.unit_locations["hero_red"] = Hex(q=0, r=0, s=0)
+    combat_state.place_entity("hero_blue", target_hex)
+    combat_state.place_entity("hero_red", Hex(q=0, r=0, s=0))
     
     # Check that the Macro step expands into 3 steps
     step = AttackSequenceStep(damage=3, range_val=1)
@@ -164,19 +170,19 @@ def test_move_unit_pathfinding(populated_state):
     
     res = step.resolve(populated_state, populated_state.execution_context)
     assert res.is_finished
-    assert populated_state.unit_locations["h1"] == Hex(q=1, r=0, s=-1)
+    assert populated_state.entity_locations["h1"] == Hex(q=1, r=0, s=-1)
 
 def test_move_unit_invalid_path(populated_state):
     # Invalid Move: 5 steps away, range 1
     populated_state.execution_context["target_hex"] = Hex(q=5, r=0, s=-5)
     step = MoveUnitStep(unit_id="h1", range_val=1)
     
-    start_loc = populated_state.unit_locations["h1"]
+    start_loc = populated_state.entity_locations["h1"]
     res = step.resolve(populated_state, populated_state.execution_context)
     
     assert res.is_finished
     # Should NOT have moved
-    assert populated_state.unit_locations["h1"] == start_loc
+    assert populated_state.entity_locations["h1"] == start_loc
 
 # --- Error Handling Tests ---
 

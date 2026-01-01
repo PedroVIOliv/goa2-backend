@@ -65,14 +65,15 @@ class RangeFilter(FilterCondition):
         origin_uid = self.origin_id if self.origin_id else state.current_actor_id
         if not origin_uid: return False
         
-        origin_hex = state.unit_locations.get(origin_uid)
+        # Use Unified Location
+        origin_hex = state.entity_locations.get(origin_uid)
         if not origin_hex: return False
         
         target_hex = None
         if isinstance(candidate, Hex):
             target_hex = candidate
-        elif isinstance(candidate, str): # UnitID
-            target_hex = state.unit_locations.get(candidate)
+        elif isinstance(candidate, str): # EntityID
+            target_hex = state.entity_locations.get(candidate)
             
         if not target_hex: return False
         
@@ -92,13 +93,17 @@ class TeamFilter(FilterCondition):
         actor_id = state.current_actor_id
         if not actor_id: return False
         
-        actor = state.get_unit(actor_id)
-        target = state.get_unit(candidate) if isinstance(candidate, str) else None
+        actor = state.get_entity(actor_id)
+        target = state.get_entity(candidate) if isinstance(candidate, str) else None
         
         if not actor or not target: 
-             print(f"TeamFilter: Missing actor ({actor}) or target ({target}) for {candidate}")
+             # Only warn if strict logic required. For now, fail silently (filter mismatch)
              return False
         
+        # Ensure both have 'team' attribute (Tokens might not)
+        if not hasattr(actor, 'team') or not hasattr(target, 'team'):
+             return False
+
         if self.relation == "SELF":
             return actor.id == target.id
             
@@ -107,9 +112,7 @@ class TeamFilter(FilterCondition):
         if self.relation == "FRIENDLY":
             return is_same_team and (actor.id != target.id)
         elif self.relation == "ENEMY":
-            res = not is_same_team
-            if not res: print(f"TeamFilter: {actor.team} vs {target.team} is not ENEMY")
-            return res
+            return not is_same_team
             
         return False
 
@@ -118,13 +121,13 @@ class UnitTypeFilter(FilterCondition):
     unit_type: Literal["HERO", "MINION"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        unit = state.get_unit(candidate) if isinstance(candidate, str) else None
-        if not unit: return False
+        entity = state.get_entity(candidate) if isinstance(candidate, str) else None
+        if not entity: return False
         
         if self.unit_type == "HERO":
-            return isinstance(unit, Hero)
+            return isinstance(entity, Hero)
         elif self.unit_type == "MINION":
-            return isinstance(unit, Minion)
+            return isinstance(entity, Minion)
         return False
 
 class AdjacencyFilter(FilterCondition):
@@ -140,7 +143,7 @@ class AdjacencyFilter(FilterCondition):
         if isinstance(candidate, Hex):
             cand_hex = candidate
         elif isinstance(candidate, str):
-            cand_hex = state.unit_locations.get(candidate)
+            cand_hex = state.entity_locations.get(candidate)
             
         if not cand_hex: return False
         
@@ -150,19 +153,26 @@ class AdjacencyFilter(FilterCondition):
             tile = state.board.get_tile(n)
             if not tile or not tile.occupant_id:
                 continue
-                
-            occupant = state.get_unit(tile.occupant_id)
+            
+            # Use Unified Lookup
+            occupant = state.get_entity(tile.occupant_id)
             if not occupant: continue
             
             actor_id = state.current_actor_id
-            actor = state.get_unit(actor_id)
+            actor = state.get_entity(actor_id)
             
             matches = True
             for tag in self.target_tags:
                 if tag == "FRIENDLY":
-                    if not actor or occupant.team != actor.team or occupant.id == actor.id: matches = False
+                    if not hasattr(occupant, 'team') or not hasattr(actor, 'team'):
+                        matches = False
+                    elif occupant.team != actor.team or occupant.id == actor.id: 
+                        matches = False
                 elif tag == "ENEMY":
-                    if not actor or occupant.team == actor.team: matches = False
+                    if not hasattr(occupant, 'team') or not hasattr(actor, 'team'):
+                         matches = False
+                    elif occupant.team == actor.team: 
+                        matches = False
                 elif tag == "HERO":
                     if not isinstance(occupant, Hero): matches = False
                 elif tag == "MINION":
@@ -181,8 +191,10 @@ class ImmunityFilter(FilterCondition):
     
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         from goa2.engine import rules # Import inside to be safe
-        target = state.get_unit(candidate) if isinstance(candidate, str) else None
+        target = state.get_entity(candidate) if isinstance(candidate, str) else None
         if not target: return False
         
         # If Immune, it fails the filter (returns False)
-        return not rules.is_immune(target, state)
+        if isinstance(target, Unit):
+            return not rules.is_immune(target, state)
+        return True # Non-units (Tokens) typically don't have "Immunity" logic yet, so pass default.

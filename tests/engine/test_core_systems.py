@@ -163,21 +163,22 @@ def test_rules_validate_target_geometry():
     h1 = Hero(id="h1", name="A", team=TeamColor.RED, deck=[])
     h2 = Hero(id="h2", name="B", team=TeamColor.BLUE, deck=[])
     
-    state.unit_locations["h1"] = Hex(q=0, r=0, s=0)
+    # Use unified placement
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
     
     # Case 1: Adjacent (Valid)
-    state.unit_locations["h2"] = Hex(q=1, r=-1, s=0) 
+    state.place_entity("h2", Hex(q=1, r=-1, s=0)) 
     assert rules.validate_target(h1, h2, ActionType.ATTACK, state, range_val=1) is True
     
     # Case 2: Out of Range
-    state.unit_locations["h2"] = Hex(q=2, r=-2, s=0)
+    state.place_entity("h2", Hex(q=2, r=-2, s=0))
     assert rules.validate_target(h1, h2, ActionType.ATTACK, state, range_val=1) is False
     
     # Case 3: Straight Line Requirement
-    state.unit_locations["h2"] = Hex(q=2, r=-2, s=0) # Is straight line
+    state.place_entity("h2", Hex(q=2, r=-2, s=0)) # Is straight line
     assert rules.validate_target(h1, h2, ActionType.ATTACK, state, range_val=3, requires_straight_line=True) is True
     
-    state.unit_locations["h2"] = Hex(q=1, r=1, s=-2) # Not straight line from 0,0,0
+    state.place_entity("h2", Hex(q=1, r=1, s=-2)) # Not straight line from 0,0,0
     assert rules.validate_target(h1, h2, ActionType.ATTACK, state, range_val=3, requires_straight_line=True) is False
 
 def test_rules_validate_movement_obstacles():
@@ -188,10 +189,15 @@ def test_rules_validate_movement_obstacles():
     state.board.tiles[obs_hex] = Tile(q=1, r=-1, s=0, is_terrain=True, hex=obs_hex)
     
     # Setup Unit at 0,0,0
-    state.unit_locations["u1"] = Hex(q=0, r=0, s=0)
+    state.place_entity("u1", Hex(q=0, r=0, s=0))
     
     # Try to move TO obstacle
-    assert rules.validate_movement_path(state.board, state.unit_locations, Hex(q=0, r=0, s=0), obs_hex, 1) is False
+    assert rules.validate_movement_path(
+        board=state.board, 
+        start=Hex(q=0, r=0, s=0), 
+        end=obs_hex, 
+        max_steps=1
+    ) is False
     
     # Try to move THROUGH obstacle to 2, -2, 0
     target = Hex(q=2, r=-2, s=0)
@@ -199,7 +205,12 @@ def test_rules_validate_movement_obstacles():
     # Path: 0,0,0 -> 1,-1,0 (Blocked) -> 2,-2,0. 
     # Alternative path: 0,0,0 -> 0,-1,1 -> 1,-2,1 -> 2,-2,0 (Length 3). 
     # If Max Steps = 2, should fail.
-    assert rules.validate_movement_path(state.board, state.unit_locations, Hex(q=0, r=0, s=0), target, 2) is False
+    assert rules.validate_movement_path(
+        board=state.board, 
+        start=Hex(q=0, r=0, s=0), 
+        end=target, 
+        max_steps=2
+    ) is False
 
 # -----------------------------------------------------------------------------
 # 3. Test Hex Math

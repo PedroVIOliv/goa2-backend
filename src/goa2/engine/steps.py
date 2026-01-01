@@ -86,7 +86,9 @@ class SelectStep(GameStep):
         
         candidates = []
         if self.target_type == "UNIT":
-            candidates = list(state.unit_locations.keys())
+            # Filter entity_locations for things that are actually Units
+            all_entities = list(state.entity_locations.keys())
+            candidates = [eid for eid in all_entities if state.get_unit(UnitID(str(eid)))]
         elif self.target_type == "HEX":
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
@@ -202,14 +204,13 @@ class MoveUnitStep(GameStep):
         else:
             dest_hex = dest_val # Assume it is already a Hex
 
-        start_hex = state.unit_locations.get(actor_id)
+        start_hex = state.entity_locations.get(actor_id)
         if not start_hex:
             print(f"   [ERROR] Unit {actor_id} has no location on board.")
             return StepResult(is_finished=True)
 
         is_valid = rules.validate_movement_path(
             board=state.board,
-            unit_locations=state.unit_locations,
             start=start_hex,
             end=dest_hex,
             max_steps=self.range_val
@@ -246,7 +247,7 @@ class FastTravelStep(GameStep):
         unit = state.get_unit(actor_id)
         if not unit: return StepResult(is_finished=True)
         
-        current_hex = state.unit_locations.get(actor_id)
+        current_hex = state.entity_locations.get(actor_id)
         if not current_hex: return StepResult(is_finished=True)
         
         current_zone_id = state.board.get_zone_for_hex(current_hex)
@@ -572,8 +573,8 @@ class SwapUnitsStep(GameStep):
     unit_b_id: str
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        loc_a = state.unit_locations.get(self.unit_a_id)
-        loc_b = state.unit_locations.get(self.unit_b_id)
+        loc_a = state.entity_locations.get(self.unit_a_id)
+        loc_b = state.entity_locations.get(self.unit_b_id)
         
         if not loc_a or not loc_b:
             print(f"   [ERROR] Cannot swap {self.unit_a_id} and {self.unit_b_id}. Missing location(s).")
@@ -581,8 +582,14 @@ class SwapUnitsStep(GameStep):
 
         print(f"   [LOGIC] Swapping {self.unit_a_id} at {loc_a} with {self.unit_b_id} at {loc_b}")
         
-        state.move_unit(self.unit_a_id, loc_b)
-        state.move_unit(self.unit_b_id, loc_a)
+        # Safer Swap: Lift both, then place both.
+        # This avoids overwriting tile occupancy during the intermediate step
+        # and doesn't rely on place_entity's "only clear if self" logic.
+        state.remove_entity(self.unit_a_id)
+        state.remove_entity(self.unit_b_id)
+        
+        state.place_entity(self.unit_a_id, loc_b)
+        state.place_entity(self.unit_b_id, loc_a)
         
         return StepResult(is_finished=True)
 

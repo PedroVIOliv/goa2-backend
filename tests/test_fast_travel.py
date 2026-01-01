@@ -5,26 +5,42 @@ from goa2.domain.models import Hero, Unit, TeamColor, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Zone
 from goa2.domain.tile import Tile
-from goa2.domain.types import HeroID, UnitID
+from goa2.domain.types import HeroID, UnitID, BoardEntityID
 
 class MockGameState:
     def __init__(self):
         self.board = Board()
-        self.unit_locations = {}
+        self.entity_locations = {}
         self.teams = {}
         self.current_actor_id = None
+        self.misc_entities = {}
         
+    @property
+    def unit_locations(self):
+         # Shim for legacy code if any left in steps (though we refactored steps.py)
+         # Steps.py now uses entity_locations directly.
+         return self.entity_locations
+
     def get_unit(self, uid):
         # Mock wrapper
         for t in self.teams.values():
              for h in t.heroes:
-                 if h.id == uid: return h
+                 if str(h.id) == str(uid): return h
              for m in t.minions:
-                 if m.id == uid: return m
+                 if str(m.id) == str(uid): return m
         return None
         
     def get_hero(self, uid):
         return self.get_unit(uid)
+        
+    def get_entity(self, uid):
+        return self.get_unit(uid)
+
+    def place_entity(self, uid, hex_loc):
+        self.entity_locations[str(uid)] = hex_loc
+        tile = self.board.get_tile(hex_loc)
+        if tile:
+            tile.occupant_id = BoardEntityID(str(uid))
 
 def test_fast_travel_success_same_zone():
     state = MockGameState()
@@ -38,8 +54,9 @@ def test_fast_travel_success_same_zone():
     hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
     state.teams[TeamColor.RED] = type("Team", (), {"heroes": [hero], "minions": []})()
     state.current_actor_id = "hero1"
-    state.unit_locations["hero1"] = Hex(q=0,r=0,s=0)
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "hero1"
+    
+    # Use unified placement
+    state.place_entity("hero1", Hex(q=0,r=0,s=0))
     
     # No enemies in Z1
     
@@ -67,8 +84,7 @@ def test_fast_travel_success_adjacent_zone():
     state.teams[TeamColor.RED] = type("Team", (), {"heroes": [hero], "minions": []})()
     
     state.current_actor_id = "hero1"
-    state.unit_locations["hero1"] = Hex(q=0,r=0,s=0)
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "hero1"
+    state.place_entity("hero1", Hex(q=0,r=0,s=0))
     
     step = FastTravelStep(unit_id="hero1")
     result = step.resolve(state, {})
@@ -94,10 +110,8 @@ def test_fast_travel_fail_enemy_in_start():
     state.teams[TeamColor.BLUE] = type("Team", (), {"heroes": [], "minions": [enemy]})()
     
     state.current_actor_id = "hero1"
-    state.unit_locations["hero1"] = Hex(q=0,r=0,s=0)
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "hero1"
-    state.unit_locations["e1"] = Hex(q=1,r=0,s=-1) # Enemy in same zone
-    state.board.tiles[Hex(q=1,r=0,s=-1)].occupant_id = "e1"
+    state.place_entity("hero1", Hex(q=0,r=0,s=0))
+    state.place_entity("e1", Hex(q=1,r=0,s=-1)) # Enemy in same zone
     
     step = FastTravelStep(unit_id="hero1")
     result = step.resolve(state, {})
@@ -122,10 +136,8 @@ def test_fast_travel_exclude_unsafe_dest():
     state.teams[TeamColor.BLUE] = type("Team", (), {"heroes": [], "minions": [enemy]})()
     
     state.current_actor_id = "hero1"
-    state.unit_locations["hero1"] = Hex(q=0,r=0,s=0)
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "hero1"
-    state.unit_locations["e1"] = Hex(q=20,r=0,s=-20) # Enemy in Z3
-    state.board.tiles[Hex(q=20,r=0,s=-20)].occupant_id = "e1"
+    state.place_entity("hero1", Hex(q=0,r=0,s=0))
+    state.place_entity("e1", Hex(q=20,r=0,s=-20)) # Enemy in Z3
     
     step = FastTravelStep(unit_id="hero1")
     result = step.resolve(state, {})
@@ -167,14 +179,12 @@ def test_fast_travel_option_filtering():
     state.teams[TeamColor.RED] = type("Team", (), {"heroes": [hero], "minions": []})()
     
     state.current_actor_id = "hero1"
-    state.unit_locations["hero1"] = Hex(q=0,r=0,s=0)
-    state.board.tiles[Hex(q=0,r=0,s=0)].occupant_id = "hero1"
+    state.place_entity("hero1", Hex(q=0,r=0,s=0))
     
     # Enemy makes zone unsafe
     enemy = Minion(id=UnitID("e1"), name="E1", type=MinionType.MELEE, team=TeamColor.BLUE)
     state.teams[TeamColor.BLUE] = type("Team", (), {"heroes": [], "minions": [enemy]})()
-    state.unit_locations["e1"] = Hex(q=1,r=0,s=-1)
-    state.board.tiles[Hex(q=1,r=0,s=-1)].occupant_id = "e1"
+    state.place_entity("e1", Hex(q=1,r=0,s=-1))
     
     # Run Step
     step = ResolveCardStep(hero_id="hero1")

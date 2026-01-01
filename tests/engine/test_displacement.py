@@ -35,16 +35,13 @@ def displacement_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m_block, m_disp]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
         },
-        unit_locations={
-            "h1": Hex(q=0, r=0, s=0),
-            "m_block": Hex(q=1, r=-1, s=0)
-        },
+        entity_locations={},
         active_zone_id="z1",
         tie_breaker_team=TeamColor.RED
     )
     # Sync board
-    board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
-    board.get_tile(Hex(q=1, r=-1, s=0)).occupant_id = "m_block"
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
+    state.place_entity("m_block", Hex(q=1, r=-1, s=0))
     
     return state
 
@@ -72,14 +69,14 @@ def test_displacement_auto_select(displacement_state):
     process_resolution_stack(displacement_state)
     
     # Assert
-    final_loc = displacement_state.unit_locations.get("m_disp")
+    final_loc = displacement_state.entity_locations.get("m_disp")
     assert final_loc == Hex(q=1, r=0, s=-1)
 
 def test_displacement_prompt(displacement_state):
     # Free up the other neighbor to force a choice
     # Clear (1,-1,0)
     blocker_hex = Hex(q=1, r=-1, s=0)
-    displacement_state.remove_unit("m_block")
+    displacement_state.remove_entity("m_block")
     
     origin = Hex(q=0, r=0, s=0)
     step = ResolveDisplacementStep(displacements=[("m_disp", origin)])
@@ -103,7 +100,7 @@ def test_displacement_prompt(displacement_state):
     # Should spawn placement
     process_resolution_stack(displacement_state) # PlaceUnit
     
-    assert displacement_state.unit_locations.get("m_disp") == target
+    assert displacement_state.entity_locations.get("m_disp") == target
 
 def test_displacement_multi_unit_selection(displacement_state):
     # Scenario: 2 Minions displaced from same spot.
@@ -134,7 +131,7 @@ def test_displacement_multi_unit_selection(displacement_state):
     process_resolution_stack(displacement_state) # Resolve(m_disp_2) -> Spawns Place
     process_resolution_stack(displacement_state) # PlaceUnit(m_disp_2)
     
-    assert displacement_state.unit_locations.get("m_disp_2") == Hex(q=1, r=0, s=-1)
+    assert displacement_state.entity_locations.get("m_disp_2") == Hex(q=1, r=0, s=-1)
     
     # Run 3: ResolveDisplacement(remaining=[m_disp]) runs.
     # Now (1,0,-1) is OCCUPIED by m_disp_2.
@@ -147,4 +144,4 @@ def test_displacement_multi_unit_selection(displacement_state):
     # Spawns PlaceUnit(m_disp) at (2,0,-2) (Auto-select)
     process_resolution_stack(displacement_state) # PlaceUnit
     
-    assert displacement_state.unit_locations.get("m_disp") == Hex(q=2, r=0, s=-2)
+    assert displacement_state.entity_locations.get("m_disp") == Hex(q=2, r=0, s=-2)

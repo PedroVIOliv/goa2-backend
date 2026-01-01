@@ -30,14 +30,11 @@ def base_state():
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m1]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[h2], minions=[])
         },
-        unit_locations={
-            "h1": Hex(q=0, r=0, s=0),
-            "h2": Hex(q=1, r=0, s=-1)
-        }
+        entity_locations={}
     )
     # Sync board tiles
-    state.board.get_tile(Hex(q=0, r=0, s=0)).occupant_id = "h1"
-    state.board.get_tile(Hex(q=1, r=0, s=-1)).occupant_id = "h2"
+    state.place_entity("h1", Hex(q=0, r=0, s=0))
+    state.place_entity("h2", Hex(q=1, r=0, s=-1))
     
     return state
 
@@ -48,7 +45,7 @@ def test_place_unit_step(base_state):
     
     res = step.resolve(base_state, context)
     assert res.is_finished
-    assert base_state.unit_locations["h1"] == dest
+    assert base_state.entity_locations["h1"] == dest
     assert base_state.board.get_tile(dest).occupant_id == "h1"
     assert base_state.board.get_tile(Hex(q=0, r=0, s=0)).occupant_id is None
 
@@ -63,7 +60,7 @@ def test_place_unit_occupied(base_state):
     assert res.is_finished
     
     # Assert h1 did NOT move
-    assert base_state.unit_locations["h1"] == Hex(q=0, r=0, s=0)
+    assert base_state.entity_locations["h1"] == Hex(q=0, r=0, s=0)
     # Assert h2 is still there
     assert base_state.board.get_tile(dest).occupant_id == "h2"
 
@@ -75,8 +72,8 @@ def test_swap_units_step(base_state):
     res = step.resolve(base_state, {})
     
     assert res.is_finished
-    assert base_state.unit_locations["h1"] == loc2
-    assert base_state.unit_locations["h2"] == loc1
+    assert base_state.entity_locations["h1"] == loc2
+    assert base_state.entity_locations["h2"] == loc1
     assert base_state.board.get_tile(loc1).occupant_id == "h2"
     assert base_state.board.get_tile(loc2).occupant_id == "h1"
 
@@ -86,10 +83,8 @@ def test_respawn_minion_occupied(base_state):
     zone_hexes = [Hex(q=0, r=0, s=0), Hex(q=1, r=0, s=-1)]
     base_state.board.zones["test_zone"] = Zone(id="test_zone", name="Test", hexes=zone_hexes)
     
-    # Occupy the spawn hex with h1
+    # Occupy the spawn hex with h1 (already there from fixture)
     spawn_hex = Hex(q=0, r=0, s=0) 
-    base_state.unit_locations["h1"] = spawn_hex
-    base_state.board.get_tile(spawn_hex).occupant_id = "h1"
     base_state.board.get_tile(spawn_hex).zone_id = "test_zone"
 
     # Define Spawn Point
@@ -105,7 +100,7 @@ def test_respawn_minion_occupied(base_state):
     
     # Should finish but NOT move the minion
     assert res.is_finished
-    assert "m1" not in base_state.unit_locations
+    assert "m1" not in base_state.entity_locations
     assert base_state.board.get_tile(spawn_hex).occupant_id == "h1"
 
 def test_push_unit_step_basic(base_state):
@@ -114,7 +109,7 @@ def test_push_unit_step_basic(base_state):
     res = step.resolve(base_state, {})
     
     assert res.is_finished
-    assert base_state.unit_locations["h2"] == Hex(q=2, r=0, s=-2)
+    assert base_state.entity_locations["h2"] == Hex(q=2, r=0, s=-2)
 
 def test_push_unit_blocked_by_obstacle(base_state):
     # Place obstacle at (2,0,-2)
@@ -124,20 +119,19 @@ def test_push_unit_blocked_by_obstacle(base_state):
     res = step.resolve(base_state, {})
     
     assert res.is_finished
-    assert base_state.unit_locations["h2"] == Hex(q=1, r=0, s=-1)
+    assert base_state.entity_locations["h2"] == Hex(q=1, r=0, s=-1)
 
 def test_push_unit_blocked_by_unit(base_state):
     # Place h3 at (2,0,-2)
     h3 = Hero(id="h3", name="Hero3", team=TeamColor.BLUE, deck=[])
     base_state.teams[TeamColor.BLUE].heroes.append(h3)
-    base_state.unit_locations["h3"] = Hex(q=2, r=0, s=-2)
-    base_state.board.get_tile(Hex(q=2, r=0, s=-2)).occupant_id = "h3"
+    base_state.place_entity("h3", Hex(q=2, r=0, s=-2))
     
     step = PushUnitStep(target_id="h2", source_hex=Hex(q=0, r=0, s=0), distance=2)
     res = step.resolve(base_state, {})
     
     assert res.is_finished
-    assert base_state.unit_locations["h2"] == Hex(q=1, r=0, s=-1)
+    assert base_state.entity_locations["h2"] == Hex(q=1, r=0, s=-1)
 
 def test_respawn_hero_step(base_state):
     base_state.remove_unit("h1")
@@ -153,7 +147,7 @@ def test_respawn_hero_step(base_state):
     step.pending_input = {"choice": "RESPAWN", "spawn_hex": {"q": -3, "r": 0, "s": 3}}
     res = step.resolve(base_state, {})
     assert res.is_finished
-    assert base_state.unit_locations["h1"] == spawn_hex
+    assert base_state.entity_locations["h1"] == spawn_hex
 
 def test_respawn_minion_step(base_state):
     base_state.active_zone_id = "test_zone"
@@ -175,4 +169,4 @@ def test_respawn_minion_step(base_state):
     step.pending_input = {"spawn_hex": {"q": 2, "r": 0, "s": -2}}
     res = step.resolve(base_state, {})
     assert res.is_finished
-    assert base_state.unit_locations["m1"] == spawn_hex
+    assert base_state.entity_locations["m1"] == spawn_hex
