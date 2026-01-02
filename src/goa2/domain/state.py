@@ -57,6 +57,32 @@ class GameState(BaseModel):
 
     # Master Record of positions for ALL entities (Units + Tokens)
     entity_locations: Dict[BoardEntityID, Hex] = Field(default_factory=dict) 
+    
+    next_entity_id: int = 1
+
+    def create_entity_id(self, prefix: str) -> str:
+        """
+        Generates a guaranteed unique ID for a new entity.
+        Format: {prefix}_{counter}
+        """
+        new_id = f"{prefix}_{self.next_entity_id}"
+        self.next_entity_id += 1
+        return new_id
+        
+    def register_entity(self, entity: Any, collection_type: str = "token"):
+        """
+        Registers a new entity into the state (misc_entities or team rosters).
+        Enforces Global Uniqueness check.
+        """
+        if self.get_entity(entity.id) is not None:
+             raise ValueError(f"ID Collision: Entity with ID {entity.id} already exists!")
+             
+        if collection_type == "token":
+             self.misc_entities[entity.id] = entity
+        else:
+             # Units should be added to teams directly via Team logic usually, 
+             # but if this is used for spawning mid-game:
+             pass
 
     @model_validator(mode='after')
     def rebuild_occupancy_cache(self) -> 'GameState':

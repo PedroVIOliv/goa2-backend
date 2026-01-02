@@ -22,6 +22,9 @@ Unlike traditional engines that use deeply nested function calls, this engine us
 ## 🏗 Architecture Overview
 
 > **For a detailed deep-dive into the Engine Internals, Step Lifecycle, and Best Practices, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+> **Proposed Architecture Changes:**
+> *   [Unique ID System Plan](docs/plan_unique_id_system.md)
+> *   [Active Effects & Modifiers Plan](docs/plan_active_effects_system.md)
 
 ### 1. Game State (`GameState`)
 The single source of truth. Contains the `board`, `teams`, `unit_locations`, and the two core processing containers:
