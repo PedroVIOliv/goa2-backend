@@ -86,10 +86,16 @@ class GameState(BaseModel):
              
         if collection_type == "token":
              self.misc_entities[entity.id] = entity
-        else:
-             # Units should be added to teams directly via Team logic usually, 
-             # but if this is used for spawning mid-game:
-             pass
+        elif collection_type == "minion":
+             if not hasattr(entity, 'team') or entity.team not in self.teams:
+                 raise ValueError(f"Cannot register minion {entity.id}: Invalid or missing team.")
+             self.teams[entity.team].minions.append(entity)
+             print(f"   [State] Registered Minion {entity.id} to Team {entity.team}")
+        elif collection_type == "hero":
+             if not hasattr(entity, 'team') or entity.team not in self.teams:
+                 raise ValueError(f"Cannot register hero {entity.id}: Invalid or missing team.")
+             self.teams[entity.team].heroes.append(entity)
+             print(f"   [State] Registered Hero {entity.id} to Team {entity.team}")
 
     @model_validator(mode='after')
     def rebuild_occupancy_cache(self) -> 'GameState':

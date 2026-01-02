@@ -113,7 +113,7 @@ class SelectStep(GameStep):
                 print(f"   [SKIP] Optional selection '{self.prompt}' skipped. No candidates.")
                 return StepResult(is_finished=True)
 
-        if self.auto_select_if_one and len(valid_candidates) == 1:
+        if self.auto_select_if_one and len(valid_candidates) == 1 and self.is_mandatory:
             choice = valid_candidates[0]
             context[self.output_key] = choice
             print(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
@@ -122,6 +122,10 @@ class SelectStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             
+            if selection == "SKIP" and not self.is_mandatory:
+                print(f"   [SKIP] Player chose to skip optional selection.")
+                return StepResult(is_finished=True)
+
             # Type Conversion for Hex
             if self.target_type == "HEX" and isinstance(selection, dict):
                  selection = Hex(**selection)
@@ -140,7 +144,8 @@ class SelectStep(GameStep):
                 "type": f"SELECT_{self.target_type}",
                 "prompt": self.prompt,
                 "player_id": actor_id,
-                "valid_options": valid_candidates 
+                "valid_options": valid_candidates,
+                "can_skip": not self.is_mandatory
             }
         )
 
