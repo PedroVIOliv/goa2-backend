@@ -130,15 +130,17 @@ If you need a new type of player choice (e.g., "Choose a card to discard"):
 ```
 src/goa2/
 ├── domain/         # Data Models (Pydantic V2)
-│   ├── models/     # Cards, Units, Teams, SpawnPoints
+│   ├── models/     # Cards, Units, Teams, SpawnPoints, Modifiers
 │   ├── hex.py      # Cube coordinate math
 │   ├── state.py    # The GameState container
-│   └── board.py    # Grid & Zone logic
+│   ├── board.py    # Grid & Zone logic
+│   └── factory.py  # Entity Creation (Unique IDs)
 ├── engine/         # Logic Core
 │   ├── steps.py    # Atomic GameStep definitions
 │   ├── handler.py  # The Stack processing loop
 │   ├── phases.py   # Turn/Phase orchestration
 │   ├── rules.py    # Physics (Pathfinding, LOS)
-│   └── stats.py    # Aura & Modifier calculations
+│   ├── stats.py    # Aura & Modifier calculations
+│   └── effects.py  # Card Logic Registry
 └── data/           # Static data (Hero definitions, Map JSONs)
 ```

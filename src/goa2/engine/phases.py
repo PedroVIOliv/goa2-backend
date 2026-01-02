@@ -2,6 +2,7 @@ from typing import List, Tuple, Dict, Any, Optional
 from goa2.domain.state import GameState
 from goa2.domain.models import TeamColor, GamePhase, Card, CardState
 from goa2.domain.types import HeroID
+from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.engine.handler import push_steps
 from goa2.engine.steps import ResolveTieBreakerStep, LogMessageStep
 
@@ -153,13 +154,18 @@ def resolve_next_action(state: GameState):
         tied_hero_ids=tied_hero_ids
     ))
 
+def expire_modifiers(state: GameState, duration: DurationType):
+    """Removes active modifiers that have reached their expiration."""
+    state.active_modifiers = [m for m in state.active_modifiers if m.duration != duration]
+    print(f"   [Cleanup] Expired all {duration.name} modifiers.")
+
 def end_turn(state: GameState):
     """
     Called when all players have acted in the Resolution Phase.
     """
     print(f"   [Turn] End of Turn {state.turn}.")
     
-    # TODO: Expire 'This Turn' effects here
+    expire_modifiers(state, DurationType.THIS_TURN)
     
     if state.turn < 4:
         state.turn += 1

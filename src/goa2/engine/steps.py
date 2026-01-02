@@ -8,6 +8,7 @@ from goa2.domain.models import (
     ActionType, Card, TeamColor, CardTier, CardColor, 
     StatType, CardState, GamePhase
 )
+from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
 from goa2.engine import rules # For validation
 
@@ -1162,6 +1163,8 @@ class EndPhaseCleanupStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [CLEANUP] Processing End Phase Cleanup...")
+        from goa2.engine.phases import expire_modifiers
+        expire_modifiers(state, DurationType.THIS_ROUND)
         self._retrieve_cards(state)
         self._clear_tokens(state)
         self._level_up(state)

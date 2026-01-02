@@ -141,3 +141,40 @@ When a step fails and `is_mandatory=True`:
 3. All steps until `FinalizeHeroTurnStep` are popped and skipped
 
 See [Card Effects Guidelines](docs/card_effects_guidelines.md) for detailed patterns.
+
+---
+
+## 7. Active Effects & Stats System
+
+The engine uses a **Computed Stats** model rather than mutating base stats directly.
+
+### The Modifier Model
+Temporary buffs/debuffs are stored as `Modifier` objects in `state.active_modifiers`.
+
+```python
+class Modifier(BaseModel):
+    id: str                      # Unique ID
+    source_id: str               # ID of entity/card that created this
+    target_id: BoardEntityID     # Affected Unit ID
+    stat_type: Optional[StatType] = None
+    value_mod: int = 0
+    status_tag: Optional[str] = None # e.g., "IGNORE_OBSTACLES"
+    duration: DurationType       # THIS_TURN, THIS_ROUND, PASSIVE
+    created_at_turn: int
+    created_at_round: int
+```
+
+### Usage
+*   **Reading Stats:** NEVER read `unit.movement` directly. Use `stats.get_computed_stat(state, unit.id, StatType.MOVEMENT)`.
+*   **Checking Status:** Use `stats.has_status(state, unit.id, "IGNORE_OBSTACLES")`.
+*   **Writing Effects:** Use `state.add_modifier(Modifier(...))`.
+
+---
+
+## 8. Unique ID System
+
+To prevent ID collisions between Units and Tokens:
+
+1.  **Static IDs:** Heroes use fixed IDs (e.g., `hero_arien`).
+2.  **Dynamic IDs:** Minions and Tokens MUST use `EntityFactory` to generate monotonic IDs (e.g., `minion_42`, `token_trap_105`).
+3.  **Registration:** Always use `state.register_entity(entity)` to add objects to the game. This method enforces global uniqueness.

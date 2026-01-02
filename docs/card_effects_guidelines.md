@@ -1,6 +1,6 @@
 # Card Effects Implementation Guidelines
 
-This guide explains how to implement card effects following GoA2's mandatory/optional step rules.
+This guide explains how to implement card effects following GoA2's mandatory/optional step rules and the Active Effects system.
 
 ## Core Rule
 
@@ -17,7 +17,9 @@ This guide explains how to implement card effects following GoA2's mandatory/opt
 
 ## Implementation Pattern
 
-### Default (Mandatory)
+### 1. Instant Actions (Steps)
+Use `GameStep` objects for things that happen *now* (Move, Attack, Push).
+
 ```python
 @register_effect("effect_attack_then_move")
 class AttackThenMoveEffect(CardEffect):
@@ -36,7 +38,9 @@ class AttackThenMoveEffect(CardEffect):
         ]
 ```
 
-### Optional Step
+### 2. Optional Actions (Steps)
+Use `is_mandatory=False` for "You may" or "Up to" effects. If these fail (or no valid target exists), the engine continues execution instead of aborting.
+
 ```python
 @register_effect("effect_optional_push")
 class OptionalPushEffect(CardEffect):
@@ -48,6 +52,29 @@ class OptionalPushEffect(CardEffect):
             # "You may" = optional
             PushUnitStep(target_id=..., distance=2, is_mandatory=False)
         ]
+```
+
+### 3. Active Effects (Buffs/Debuffs)
+Use `Modifier` objects for things that last over time ("This turn", "This round").
+
+**Do NOT** try to implement these as steps.
+**DO** use a step to apply the modifier.
+
+```python
+# Create a Step to apply the modifier
+class ApplyStatusStep(GameStep):
+    def resolve(self, state, context):
+        state.add_modifier(Modifier(
+            id=state.create_entity_id("mod"),
+            source_id="card_deluge",
+            target_id="hero_arien",
+            stat_type=StatType.ATTACK,
+            value_mod=1,
+            duration=DurationType.THIS_TURN,
+            created_at_turn=state.turn,
+            created_at_round=state.round
+        ))
+        return StepResult(is_finished=True)
 ```
 
 ## Abort Behavior

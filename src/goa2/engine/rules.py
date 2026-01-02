@@ -22,6 +22,9 @@ def validate_movement_path(
     - Cannot end on Obstacle.
     - Path length <= max_steps.
     """
+    if max_steps <= 0:
+        return False
+
     if start == end:
         return False
         

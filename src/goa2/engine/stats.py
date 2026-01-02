@@ -1,17 +1,41 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, MinionType, Minion, Hero
-from goa2.domain.types import UnitID
+from goa2.domain.models import TeamColor, MinionType, Minion, Hero, StatType
+from goa2.domain.types import UnitID, BoardEntityID
+
+def get_computed_stat(state: GameState, unit_id: UnitID, stat_type: StatType, base_value: int = 0) -> int:
+    """
+    Calculates the final value of a stat for a unit.
+    Formula: Base + Items + Modifiers
+    """
+    unit = state.get_unit(unit_id)
+    if not unit:
+        return base_value
+    
+    total = base_value
+    
+    # 1. Add Item Bonuses (for Heroes)
+    if isinstance(unit, Hero):
+        total += unit.items.get(stat_type, 0)
+        
+    # 2. Add Active Modifiers
+    for mod in state.active_modifiers:
+        if str(mod.target_id) == str(unit_id) and mod.stat_type == stat_type:
+            total += mod.value_mod
+            
+    return total
+
+def has_status(state: GameState, entity_id: BoardEntityID, status_tag: str) -> bool:
+    """Checks if an entity has a specific status tag/override."""
+    for mod in state.active_modifiers:
+        if str(mod.target_id) == str(entity_id) and mod.status_tag == status_tag:
+            return True
+    return False
 
 def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:
     """
     Calculates the cumulative defense modifier provided by nearby minions.
     Uses Hex.ring for optimized spatial lookups.
-    
-    Logic:
-    - Allied Melee/Heavy (Range 1): +1 Defense
-    - Enemy Minion (Range 1): -1 Defense
-    - Enemy Ranged Minion (Range 2): -1 Defense
     """
     target_loc = state.unit_locations.get(target_unit_id)
     if not target_loc:
@@ -24,13 +48,10 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
     total_mod = 0
     target_team = target_unit.team
 
-    # Helper to check occupant of a hex
     def get_unit_at(hex_coord):
-        # Invert unit_locations or check board tiles
-        # Given we have state.board.tiles, checking tiles is O(1)
         tile = state.board.tiles.get(hex_coord)
         if tile and tile.occupant_id:
-            return state.get_unit(tile.occupant_id)
+            return state.get_unit(UnitID(str(tile.occupant_id)))
         return None
 
     # --- RANGE 1 (Ring 1) ---
@@ -40,11 +61,9 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
             continue
             
         if unit.team == target_team:
-            # Allied Melee/Heavy gives +1
             if unit.type in (MinionType.MELEE, MinionType.HEAVY):
                 total_mod += 1
         else:
-            # ANY Enemy minion at Range 1 gives -1
             total_mod -= 1
 
     # --- RANGE 2 (Ring 2) ---
@@ -53,7 +72,6 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
         if not unit or not isinstance(unit, Minion):
             continue
             
-        # Only Enemy Ranged at Range 2 gives -1
         if unit.team != target_team and unit.type == MinionType.RANGED:
             total_mod -= 1
                     

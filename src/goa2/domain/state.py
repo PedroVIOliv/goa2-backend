@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Card, Minion, Hero, Unit, GamePhase, ResolutionStep
+from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 
@@ -59,6 +60,12 @@ class GameState(BaseModel):
     entity_locations: Dict[BoardEntityID, Hex] = Field(default_factory=dict) 
     
     next_entity_id: int = 1
+    
+    active_modifiers: List[Modifier] = Field(default_factory=list)
+
+    def add_modifier(self, modifier: Modifier):
+        """Adds a modifier to the active list."""
+        self.active_modifiers.append(modifier)
 
     def create_entity_id(self, prefix: str) -> str:
         """
