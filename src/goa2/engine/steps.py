@@ -445,7 +445,11 @@ class DefeatUnitStep(GameStep):
                     
                     if victim_team.life_counters == 0:
                          print(f"   [GAME OVER] Team {victim.team.name} has 0 Life Counters! ANNIHILATION.")
-                         # TODO: Trigger Game Over State
+                         winning_team = TeamColor.BLUE if victim.team == TeamColor.RED else TeamColor.RED
+                         return StepResult(is_finished=True, new_steps=[
+                             RemoveUnitStep(unit_id=self.victim_id),
+                             TriggerGameOverStep(winner=winning_team, condition="ANNIHILATION")
+                         ])
             
         elif hasattr(victim, 'value'): # Is Minion
             reward = victim.value
@@ -1075,14 +1079,19 @@ class LanePushStep(GameStep):
         
         if state.wave_counter <= 0:
             print("   [GAME OVER] Last Push Victory!")
-            # TODO: Handle Game Over
-            return StepResult(is_finished=True)
+            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
+            return StepResult(is_finished=True, new_steps=[
+                TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")
+            ])
 
         next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
         
         if is_game_over:
             print(f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached.")
-            return StepResult(is_finished=True)
+            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
+            return StepResult(is_finished=True, new_steps=[
+                TriggerGameOverStep(winner=winning_team, condition="LANE_PUSH")
+            ])
             
         if not next_zone_id:
             print("   [ERROR] Could not determine next zone for push.")
@@ -1535,3 +1544,27 @@ class ResolveUpgradesStep(GameStep):
                     "card_details": [c.model_dump() for c in pair]
                 })
         return options
+
+class TriggerGameOverStep(GameStep):
+    """
+    Executes an immediate Game Over sequence.
+    1. Sets winner and condition.
+    2. Changes Phase to GAME_OVER.
+    3. PURGES execution and input stacks to stop all gameplay.
+    """
+    type: str = "trigger_game_over"
+    winner: TeamColor
+    condition: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print(f"   [GAME OVER] Victory for {self.winner.name}! Reason: {self.condition}")
+        
+        state.winner = self.winner
+        state.victory_condition = self.condition
+        state.phase = GamePhase.GAME_OVER
+        
+        # Hard Stop: Clear everything pending
+        state.execution_stack.clear()
+        state.input_stack.clear()
+        
+        return StepResult(is_finished=True)

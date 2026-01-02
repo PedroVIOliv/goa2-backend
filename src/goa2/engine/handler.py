@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 from goa2.domain.state import GameState
+from goa2.domain.models import GamePhase
 from goa2.engine.steps import GameStep, StepResult
 
 def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
@@ -8,6 +9,10 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
     """
     safety_counter = 0
     MAX_STEPS = 1000
+
+    if state.phase == GamePhase.GAME_OVER:
+        print("   [ENGINE] Game is Over. Halting execution.")
+        return None
 
     while state.execution_stack:
         safety_counter += 1

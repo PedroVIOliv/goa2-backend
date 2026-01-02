@@ -61,6 +61,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **Token Support** | **Implemented** | `state.misc_entities` allows storing and placing Tokens/Obstacles on the board. |
 | **Unique ID System** | **Implemented** | Monotonic IDs for dynamic entities (Minions/Tokens) via `EntityFactory` and `state.register_entity` to prevent collisions. |
 | **Active Effects System** | **Implemented** | `Modifier` and `DurationType` implemented. `stats.get_computed_stat` calculates dynamic stats. Modifiers expire automatically at turn/round end. |
+| **Game Over System** | **Implemented** | Atomic `TriggerGameOverStep` handles winner assignment, stack purging, and phase transition. `GameState.is_game_over` flag added. |
 
 ## Summary of Critical Gaps
 1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card). **Note:** Mandatory/Optional step distinction and abort mechanism now implemented - see `ARCHITECTURE.md` Section 6 and `docs/card_effects_guidelines.md`.

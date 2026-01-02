@@ -58,6 +58,7 @@ class GamePhase(str, Enum):
     RESOLUTION = "RESOLUTION"  # Acting order
     CLEANUP = "CLEANUP"        # Round/Turn end
     LEVEL_UP = "LEVEL_UP"      # Mandatory upgrading
+    GAME_OVER = "GAME_OVER"    # Game has ended
 
 class ResolutionStep(str, Enum):
     NONE = "NONE"

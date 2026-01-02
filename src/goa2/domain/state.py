@@ -33,6 +33,9 @@ class GameState(BaseModel):
     # Flips every time a different-team tie is resolved.
     tie_breaker_team: TeamColor = TeamColor.RED
     
+    winner: Optional[TeamColor] = None
+    victory_condition: Optional[str] = None
+    
     input_stack: List[InputRequest] = Field(default_factory=list) # The top of the stack is the active request waiting for input.
     # Logic: 
     # 1. Action pushes Request.
@@ -114,6 +117,11 @@ class GameState(BaseModel):
                 self.board.tiles[location].occupant_id = BoardEntityID(str(uid))
         
         return self
+
+    @property
+    def is_game_over(self) -> bool:
+        """Returns True if the game has ended."""
+        return self.phase == GamePhase.GAME_OVER
 
     @property
     def unit_locations(self) -> Dict[UnitID, Hex]:
