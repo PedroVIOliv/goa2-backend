@@ -82,6 +82,7 @@ def start_revelation_phase(state: GameState):
 
         hero = state.get_hero(h_id)
         if hero:
+            print(f"   [Reveal] {h_id} reveals {card.name} (Init: {card.initiative})")
             card.is_facedown = False
             # card.state is already UNRESOLVED from play_card
             
@@ -115,6 +116,10 @@ def resolve_next_action(state: GameState):
     for h_id in state.unresolved_hero_ids:
         hero = state.get_hero(h_id)
         if hero:
+            # Safety Check: Cards must be revealed to have effective initiative > 0
+            if hero.current_turn_card and hero.current_turn_card.is_facedown:
+                print(f"   [!] Warning: Initiative calculated for facedown card of {h_id}!")
+            
             candidates.append((h_id, hero.get_effective_initiative()))
             
     if not candidates:

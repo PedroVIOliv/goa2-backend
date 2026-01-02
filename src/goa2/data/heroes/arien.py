@@ -2,6 +2,9 @@ from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, Stat
 from goa2.domain.types import HeroID
 from .registry import HeroRegistry
 
+# Register effects
+import goa2.scripts.arien_effects
+
 def create_arien() -> Hero:
     """
     Arien

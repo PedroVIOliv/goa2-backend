@@ -42,7 +42,7 @@ class Hero(Unit):
         if not self.current_turn_card:
             return 0
         
-        val = self.current_turn_card.initiative
+        val = self.current_turn_card.current_initiative
         val += self.items.get(StatType.INITIATIVE, 0)
         return val
 

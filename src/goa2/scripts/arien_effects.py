@@ -1,8 +1,11 @@
 from __future__ import annotations
 from typing import List, Dict, Any, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import GameStep, StepResult, SelectStep, SwapUnitsStep
-from goa2.engine.filters import UnitTypeFilter, TeamFilter, RangeFilter
+from goa2.engine.steps import GameStep, StepResult, SelectStep, SwapUnitsStep, PlaceUnitStep
+from goa2.engine.filters import (
+    UnitTypeFilter, TeamFilter, RangeFilter, OccupiedFilter, 
+    SpawnPointFilter, AdjacentSpawnPointFilter
+)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -13,7 +16,6 @@ class SwapEnemyMinionEffect(CardEffect):
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
         return [
             SelectStep(
-                player_id=hero.id,
                 target_type="UNIT",
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
@@ -38,3 +40,54 @@ class SwapWithSelectedStep(GameStep):
                  SwapUnitsStep(unit_a_id=self.hero_id, unit_b_id=target_id)
              ])
         return StepResult(is_finished=True)
+
+@register_effect("effect_teleport_strict")
+@register_effect("effect_teleport_no_spawn_no_adj")
+class TeleportStrictEffect(CardEffect):
+    """
+    Card text: "Place yourself into a space in range without a spawn point 
+    and not adjacent to an empty spawn point."
+    Used by: Liquid Leap, Magical Current
+    """
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        range_val = card.range_value if card.range_value is not None else 0
+        
+        return [
+            SelectStep(
+                target_type="HEX",
+                prompt="Select destination for Teleport",
+                output_key="target_hex",
+                filters=[
+                    RangeFilter(max_range=range_val),
+                    OccupiedFilter(is_occupied=False),
+                    SpawnPointFilter(has_spawn_point=False),
+                    AdjacentSpawnPointFilter(is_empty=True, must_not_have=True)
+                ],
+                is_mandatory=True
+            ),
+            PlaceUnitStep(unit_id=hero.id, destination_key="target_hex")
+        ]
+
+@register_effect("effect_teleport_no_spawn")
+class TeleportNoSpawnEffect(CardEffect):
+    """
+    Card text: "Place yourself into a space in range without a spawn point."
+    Used by: Stranger Tide
+    """
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        range_val = card.range_value if card.range_value is not None else 0
+        
+        return [
+            SelectStep(
+                target_type="HEX",
+                prompt="Select destination for Teleport",
+                output_key="target_hex",
+                filters=[
+                    RangeFilter(max_range=range_val),
+                    OccupiedFilter(is_occupied=False),
+                    SpawnPointFilter(has_spawn_point=False)
+                ],
+                is_mandatory=True
+            ),
+            PlaceUnitStep(unit_id=hero.id, destination_key="target_hex")
+        ]

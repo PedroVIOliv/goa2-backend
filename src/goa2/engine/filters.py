@@ -197,3 +197,51 @@ class ImmunityFilter(FilterCondition):
         if isinstance(target, Unit):
             return not rules.is_immune(target, state)
         return True # Non-units (Tokens) typically don't have "Immunity" logic yet, so pass default.
+
+class SpawnPointFilter(FilterCondition):
+    """
+    Filters hexes based on whether they have a spawn point.
+    """
+    type: str = "spawn_point_filter"
+    has_spawn_point: bool = False
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if isinstance(candidate, Hex):
+            tile = state.board.get_tile(candidate)
+            if not tile: return False
+            return (tile.spawn_point is not None) == self.has_spawn_point
+        return False
+
+class AdjacentSpawnPointFilter(FilterCondition):
+    """
+    Filters hexes based on proximity to spawn points.
+    """
+    type: str = "adjacent_spawn_point_filter"
+    is_empty: bool = True
+    must_not_have: bool = True # True means "not adjacent to", False means "must be adjacent to"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        cand_hex = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(candidate)
+            
+        if not cand_hex: return False
+        
+        neighbors = cand_hex.neighbors()
+        has_adj = False
+        for n in neighbors:
+            tile = state.board.get_tile(n)
+            if tile and tile.spawn_point:
+                if self.is_empty:
+                    if not tile.is_occupied:
+                        has_adj = True
+                        break
+                else:
+                    has_adj = True
+                    break
+        
+        if self.must_not_have:
+            return not has_adj
+        return has_adj
