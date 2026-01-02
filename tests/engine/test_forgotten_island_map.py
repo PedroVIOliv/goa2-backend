@@ -5,7 +5,7 @@ Verifies zone adjacencies and spawn point configurations.
 import pytest
 import os
 from goa2.engine.map_loader import load_map
-from goa2.domain.models import TeamColor, MinionType
+from goa2.domain.models import TeamColor
 from goa2.domain.models.spawn import SpawnType
 
 # Path to the forgotten_island.json map file

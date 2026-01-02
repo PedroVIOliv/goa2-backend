@@ -1,13 +1,12 @@
 from __future__ import annotations
-from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Card, Minion, Hero, Unit, GamePhase, ResolutionStep
-from goa2.domain.models.modifier import Modifier, DurationType
-from goa2.domain.types import HeroID, CardID, UnitID, BoardEntityID
+from goa2.domain.models import Team, TeamColor, Card, Hero, Unit, GamePhase, ResolutionStep
+from goa2.domain.models.modifier import Modifier
+from goa2.domain.types import HeroID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 
 class GameState(BaseModel):

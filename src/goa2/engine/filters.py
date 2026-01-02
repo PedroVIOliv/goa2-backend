@@ -1,12 +1,11 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional, List, Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, Minion, Hero, Unit
+from goa2.domain.models import Minion, Hero, Unit
 from goa2.domain.hex import Hex
-from goa2.domain.types import UnitID
 
 # -----------------------------------------------------------------------------
 # Base Filter

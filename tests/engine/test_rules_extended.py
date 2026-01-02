@@ -2,7 +2,7 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, ActionType
+from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.rules import (
     validate_movement_path, is_immune, validate_attack_target,

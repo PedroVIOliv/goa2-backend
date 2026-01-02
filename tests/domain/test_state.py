@@ -1,9 +1,9 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Hero, Minion, Card, CardTier, CardColor, ActionType, CardState
+from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType, CardState
 from goa2.domain.hex import Hex
-from goa2.domain.types import HeroID, UnitID, BoardEntityID
+from goa2.domain.types import BoardEntityID
 from goa2.domain.input import InputRequestType, InputRequest
 
 @pytest.fixture

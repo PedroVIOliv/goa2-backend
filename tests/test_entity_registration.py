@@ -1,7 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, MinionType, Minion, Hero, Card
+from goa2.domain.models import Team, TeamColor, MinionType, Hero
 from goa2.domain.factory import EntityFactory
 from goa2.domain.types import HeroID
 

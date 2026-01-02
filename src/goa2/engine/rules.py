@@ -1,8 +1,7 @@
-from typing import Dict, Set, Optional, List, Deque
+from typing import Set, Optional, List, Deque
 from collections import deque
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board
-from goa2.domain.types import UnitID, BoardEntityID
 from goa2.domain.state import GameState
 from goa2.domain.models import ActionType, Minion, TeamColor
 from goa2.domain.models.unit import Unit

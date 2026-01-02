@@ -2,9 +2,9 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero, ActionType
+from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero
 from goa2.domain.types import HeroID, UnitID
-from goa2.engine.steps import ResolveCombatStep, DefeatUnitStep
+from goa2.engine.steps import ResolveCombatStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 
 def create_hero(id_str, team):

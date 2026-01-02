@@ -1,7 +1,6 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.map_logic import (

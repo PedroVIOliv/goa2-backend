@@ -1,13 +1,12 @@
-from typing import List, Optional
+from typing import List
 import random
 
 from goa2.domain.state import GameState
-from goa2.domain.models import Team, TeamColor, Hero, GamePhase, CardTier, CardState
+from goa2.domain.models import Team, TeamColor, GamePhase, CardTier, CardState
 from goa2.engine.map_loader import load_map
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.factory import EntityFactory
-from goa2.domain.board import SpawnType
-
+from goa2.domain.models.spawn import SpawnType
 class GameSetup:
     """
     Orchestrates the initialization of a new game.

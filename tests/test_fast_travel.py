@@ -1,10 +1,7 @@
-import pytest
-from goa2.engine.steps import FastTravelStep, StepResult, PlaceUnitStep
-from goa2.domain.state import GameState
-from goa2.domain.models import Hero, Unit, TeamColor, Minion, MinionType
+from goa2.engine.steps import FastTravelStep, PlaceUnitStep
+from goa2.domain.models import Hero, TeamColor, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
 from goa2.domain.types import HeroID, UnitID, BoardEntityID
 
 class MockGameState:
@@ -154,7 +151,7 @@ def test_fast_travel_exclude_unsafe_dest():
 def test_fast_travel_option_filtering():
     # Verify ResolveCardStep filters out Fast Travel if unsafe
     from goa2.engine.steps import ResolveCardStep
-    from goa2.domain.models import ActionType, Card, CardTier, CardState, CardColor
+    from goa2.domain.models import ActionType, Card, CardTier, CardColor
     state = MockGameState()
     
     # 1. Setup Unsafe Zone (Enemy present)

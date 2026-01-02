@@ -1,7 +1,7 @@
 
 import pytest
 from goa2.engine.setup import GameSetup
-from goa2.domain.models import TeamColor, GamePhase, CardTier, CardState, SpawnType, Hero, Card, ActionType, CardColor
+from goa2.domain.models import TeamColor, GamePhase, CardTier, CardState, Hero, Card, ActionType, CardColor
 from goa2.domain.types import HeroID
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.data.heroes.arien import create_arien

@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Optional
-from pydantic import Field
 from goa2.domain.models.base import BoardEntity
 from goa2.domain.types import HeroID
 

@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from goa2.domain.models import Hero, CardTier
+from goa2.domain.models import Hero
 
 class HeroRegistry:
     """

@@ -1,7 +1,6 @@
-import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Hero, StatType, CardTier
+from goa2.domain.models import Team, TeamColor, Hero, StatType
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.engine import stats
 from goa2.engine.phases import end_turn, expire_modifiers

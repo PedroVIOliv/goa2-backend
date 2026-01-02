@@ -1,6 +1,6 @@
 import pytest
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, Hero, Card, ActionType, CardTier, CardColor, CardState, GamePhase, Team
+from goa2.domain.models import TeamColor, Hero, Card, ActionType, CardTier, CardColor, GamePhase, Team
 from goa2.domain.hex import Hex
 from goa2.engine import phases, rules
 from goa2.domain.board import Board, Tile

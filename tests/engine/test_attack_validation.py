@@ -4,7 +4,7 @@ from goa2.domain.models import TeamColor, Hero, Minion, Team, ActionType, Minion
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Tile, Zone
 from goa2.engine import rules
-from goa2.engine.steps import ResolveCardStep, SelectStep
+from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 
 @pytest.fixture

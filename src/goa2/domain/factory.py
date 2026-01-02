@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from goa2.domain.models import Minion, MinionType, TeamColor, Token
-from goa2.domain.types import BoardEntityID
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState

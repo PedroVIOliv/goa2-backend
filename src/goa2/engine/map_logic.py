@@ -2,7 +2,6 @@ from typing import List, Optional, Tuple
 from collections import deque
 from goa2.domain.state import GameState
 from goa2.domain.models import TeamColor
-from goa2.domain.types import UnitID
 from goa2.domain.hex import Hex
 
 def check_lane_push_trigger(state: GameState, active_zone_id: str) -> Optional[TeamColor]:

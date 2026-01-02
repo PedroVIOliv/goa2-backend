@@ -1,8 +1,8 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Minion, MinionType, GamePhase, Hero
-from goa2.engine.steps import DefeatUnitStep, TriggerGameOverStep, LanePushStep, StepResult
+from goa2.domain.models import Team, TeamColor, GamePhase, Hero
+from goa2.engine.steps import DefeatUnitStep, TriggerGameOverStep, LanePushStep
 from goa2.engine.handler import process_resolution_stack
 from goa2.domain.types import HeroID
 

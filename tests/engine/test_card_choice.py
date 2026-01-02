@@ -3,7 +3,7 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
-from goa2.engine.steps import ResolveCardStep, MoveUnitStep, ResolveCardTextStep, LogMessageStep
+from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 
 def create_test_hero(id_str, team, card_actions):

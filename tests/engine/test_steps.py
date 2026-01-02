@@ -6,7 +6,7 @@ from goa2.domain.models import Team, TeamColor, Card, CardTier, CardColor, Actio
 from goa2.domain.types import HeroID, CardID
 from goa2.domain.hex import Hex
 from goa2.engine.steps import (
-    StepResult, GameStep, LogMessageStep, SelectStep, 
+    LogMessageStep, SelectStep, 
     ReactionWindowStep, ResolveCombatStep, AttackSequenceStep,
     MoveUnitStep, DamageStep
 )

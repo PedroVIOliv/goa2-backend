@@ -1,5 +1,5 @@
 from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, StatType
-from goa2.domain.types import HeroID, CardID
+from goa2.domain.types import HeroID
 from .registry import HeroRegistry
 
 def create_arien() -> Hero:

@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any, List, Tuple
-from pydantic import BaseModel, Field, model_validator, ConfigDict
+from typing import Optional, Dict, Any
+from pydantic import Field, model_validator, ConfigDict
 from .enums import CardTier, CardColor, ActionType, StatType, CardState
 from .base import GameEntity
 
@@ -143,14 +143,14 @@ class Card(GameEntity):
 
     @model_validator(mode='after')
     def ensure_fast_travel_if_applicable(self) -> Card:
-        if not ActionType.FAST_TRAVEL in self.secondary_actions:
+        if ActionType.FAST_TRAVEL not in self.secondary_actions:
             if self.primary_action == ActionType.MOVEMENT or ActionType.MOVEMENT in self.secondary_actions:
                 self.secondary_actions[ActionType.FAST_TRAVEL] = 0
         return self
 
     @model_validator(mode='after')
     def ensure_clear_if_applicable(self) -> Card:
-        if not ActionType.CLEAR in self.secondary_actions:
+        if ActionType.CLEAR not in self.secondary_actions:
             if self.primary_action == ActionType.ATTACK or ActionType.ATTACK in self.secondary_actions:
                 self.secondary_actions[ActionType.CLEAR] = 0
         return self

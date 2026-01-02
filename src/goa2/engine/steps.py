@@ -1,12 +1,12 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, Union, Tuple
+from abc import ABC
+from typing import Optional, Dict, Any, List, Tuple
 from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
 from goa2.domain.models import (
-    ActionType, Card, TeamColor, CardTier, CardColor, 
-    StatType, CardState, GamePhase
+    ActionType, TeamColor, CardTier, CardColor, 
+    CardState, GamePhase
 )
 from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
@@ -123,7 +123,7 @@ class SelectStep(GameStep):
             selection = self.pending_input.get("selection")
             
             if selection == "SKIP" and not self.is_mandatory:
-                print(f"   [SKIP] Player chose to skip optional selection.")
+                print("   [SKIP] Player chose to skip optional selection.")
                 return StepResult(is_finished=True)
 
             # Type Conversion for Hex
@@ -265,7 +265,7 @@ class FastTravelStep(GameStep):
         safe_zones = get_safe_zones_for_fast_travel(state, unit.team, current_zone_id)
         
         if not safe_zones:
-            print(f"   [FAST TRAVEL] Failed. Start zone not safe or no safe destinations.")
+            print("   [FAST TRAVEL] Failed. Start zone not safe or no safe destinations.")
             return StepResult(is_finished=True)
             
         valid_hexes = []
@@ -278,7 +278,7 @@ class FastTravelStep(GameStep):
                          valid_hexes.append(h)
                          
         if not valid_hexes:
-            print(f"   [FAST TRAVEL] No empty spaces in safe zones.")
+            print("   [FAST TRAVEL] No empty spaces in safe zones.")
             return StepResult(is_finished=True)
             
         if self.pending_input:

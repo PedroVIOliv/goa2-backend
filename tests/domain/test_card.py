@@ -1,6 +1,6 @@
 import pytest
 from goa2.domain.models.card import Card
-from goa2.domain.models.enums import CardTier, CardColor, ActionType, CardState
+from goa2.domain.models.enums import CardTier, CardColor, ActionType
 
 def test_card_masking():
     c = Card(

@@ -1,6 +1,5 @@
-from typing import Dict, Any, Optional, List
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, MinionType, Minion, Hero, StatType
+from goa2.domain.models import MinionType, Minion, Hero, StatType
 from goa2.domain.types import UnitID, BoardEntityID
 
 def get_computed_stat(state: GameState, unit_id: UnitID, stat_type: StatType, base_value: int = 0) -> int:

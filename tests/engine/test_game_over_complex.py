@@ -4,13 +4,12 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, GamePhase, Minion, MinionType
+from goa2.domain.models import Team, TeamColor, Hero, GamePhase
 from goa2.domain.types import HeroID
 from goa2.engine.steps import (
-    AttackSequenceStep, MoveUnitStep, StepResult, DefeatUnitStep, 
+    AttackSequenceStep, MoveUnitStep, DefeatUnitStep, 
     RemoveUnitStep, TriggerGameOverStep
 )
-from goa2.engine.handler import process_resolution_stack
 
 @pytest.fixture
 def game_state():
@@ -72,8 +71,7 @@ def test_game_over_purges_remaining_action_steps(game_state):
     4. Verify that the "Move 2" step is NEVER executed because the stack was purged.
     """
     from goa2.engine.steps import (
-        SelectStep, ReactionWindowStep, ResolveCombatStep, 
-        DefeatUnitStep, RemoveUnitStep, TriggerGameOverStep
+        SelectStep, ReactionWindowStep, ResolveCombatStep
     )
     
     # 1. INITIAL STATE

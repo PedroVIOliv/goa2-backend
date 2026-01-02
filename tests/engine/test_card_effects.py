@@ -3,11 +3,9 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Card, CardTier, CardColor, ActionType
 from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep, ResolveCardTextStep
+from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
-
-# Import to register effects
-import goa2.scripts.arien_effects 
+import goa2.scripts.arien_effects # Import to register effects
 
 @pytest.fixture
 def effect_state():

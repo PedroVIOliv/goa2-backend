@@ -1,10 +1,9 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
 
 from goa2.domain.models.spawn import SpawnPoint
-from goa2.domain.models.base import GameEntity
 
 class Tile(BaseModel):
     """

@@ -1,10 +1,10 @@
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple
 from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor, GamePhase, Card, CardState
+from goa2.domain.models import GamePhase, Card
 from goa2.domain.types import HeroID
-from goa2.domain.models.modifier import Modifier, DurationType
+from goa2.domain.models.modifier import DurationType
 from goa2.engine.handler import push_steps
-from goa2.engine.steps import ResolveTieBreakerStep, LogMessageStep
+from goa2.engine.steps import ResolveTieBreakerStep
 
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
     """

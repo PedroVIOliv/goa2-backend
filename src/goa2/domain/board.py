@@ -1,11 +1,9 @@
 from __future__ import annotations
-from enum import Enum
-from typing import Set, Dict, Optional, List, Union, Any
-from pydantic import BaseModel, Field, model_validator
+from typing import Set, Dict, Optional, List, Any
+from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import TeamColor, MinionType
-from goa2.domain.models.spawn import SpawnPoint, SpawnType
+from goa2.domain.models.spawn import SpawnPoint
 from goa2.domain.tile import Tile
 
 class Zone(BaseModel):

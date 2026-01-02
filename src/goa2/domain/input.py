@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from goa2.domain.types import HeroID
 from enum import Enum

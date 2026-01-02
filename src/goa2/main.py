@@ -1,5 +1,3 @@
-from goa2.domain.state import GameState
-from goa2.engine.map_loader import load_map
 
 def main():
     print("Welcome to Guards of Atlantis II (Engine Reset)")

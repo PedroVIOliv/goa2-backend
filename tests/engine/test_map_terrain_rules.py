@@ -1,6 +1,5 @@
-import pytest
 from goa2.domain.hex import Hex
-from goa2.domain.board import Board, Tile, Zone
+from goa2.domain.board import Board, Tile
 from goa2.engine.map_loader import load_map
 from goa2.engine import rules
 import json

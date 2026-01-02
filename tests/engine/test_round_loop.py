@@ -1,9 +1,7 @@
-import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, GamePhase, Hero
-from goa2.domain.types import HeroID
-from goa2.engine.phases import resolve_next_action, end_turn
+from goa2.domain.models import Team, TeamColor, GamePhase
+from goa2.engine.phases import resolve_next_action
 from goa2.engine.handler import process_resolution_stack
 
 def test_turn_increment():

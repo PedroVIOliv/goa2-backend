@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.tile import Tile
@@ -46,8 +46,8 @@ def load_map(file_path: str) -> Board:
     obstacles: Set[Hex] = set()
     spawn_points: List[SpawnPoint] = []
     
-    from goa2.domain.board import SpawnPoint, SpawnType
-    from goa2.domain.models import MinionType
+    from goa2.domain.models.spawn import SpawnPoint, SpawnType
+    from goa2.domain.models.enums import MinionType
     
     for h_def in data.get("hex_map", []):
         q = h_def["q"]

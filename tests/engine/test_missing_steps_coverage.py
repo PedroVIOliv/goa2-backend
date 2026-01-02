@@ -4,8 +4,7 @@ from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.steps import (
-    ResolveCardStep, ResolveCardTextStep, MoveUnitStep, 
-    AttackSequenceStep, LogMessageStep
+    ResolveCardStep, ResolveCardTextStep
 )
 from goa2.engine.handler import process_resolution_stack, push_steps
 

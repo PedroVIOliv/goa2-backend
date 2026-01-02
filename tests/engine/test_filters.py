@@ -4,7 +4,7 @@ from goa2.domain.board import Board
 from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
-from goa2.engine.steps import SelectStep, StepResult
+from goa2.engine.steps import SelectStep
 from goa2.engine.filters import RangeFilter, TeamFilter, OccupiedFilter, UnitTypeFilter
 
 @pytest.fixture

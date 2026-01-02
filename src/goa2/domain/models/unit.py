@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import List, Optional, TYPE_CHECKING, Dict
 from pydantic import Field
 from .enums import TeamColor, MinionType, StatType, CardTier, CardState
-from .base import GameEntity, BoardEntity
+from .base import BoardEntity
 from .card import Card
 from .marker import Marker
 
@@ -136,15 +136,10 @@ class Hero(Unit):
             cards_to_return.append(self.current_turn_card)
         
         for card in cards_to_return:
-            card.state = CardState.HAND
             card.is_facedown = False
             card.played_this_round = False # Reset lifecycle flag
-            self.hand.append(card)
+            self.return_card_to_hand(card)
             
-        self.played_cards = []
-        self.discard_pile = []
-        self.current_turn_card = None
-
     def return_card_to_hand(self, card: Card):
         """
         Returns a card to the hand.
@@ -154,6 +149,12 @@ class Hero(Unit):
         card.state = CardState.HAND
         card.is_facedown = False
         self.hand.append(card)
+        if card in self.played_cards:
+            self.played_cards.remove(card)
+        if card in self.discard_pile:
+            self.discard_pile.remove(card)
+        if card == self.current_turn_card:
+            self.current_turn_card = None
 
     def return_card_to_deck(self, card: Card):
         """
