@@ -24,7 +24,6 @@ class Hero(Unit):
     title: Optional[str] = None
 
     deck: List[Card]
-    draw_pile: List[Card] = Field(default_factory=list)
     hand: List[Card] = Field(default_factory=list)
     played_cards: List[Card] = Field(default_factory=list, description="Cards currently on the dashboard (Unresolved or Resolved)")
     current_turn_card: Optional[Card] = Field(default=None, description="The card played for the current turn (Unresolved)")
@@ -145,6 +144,26 @@ class Hero(Unit):
         self.played_cards = []
         self.discard_pile = []
         self.current_turn_card = None
+
+    def return_card_to_hand(self, card: Card):
+        """
+        Returns a card to the hand.
+        """
+        if card in self.hand:
+            raise ValueError(f"Card {card.id} is already in hand.")
+        card.state = CardState.HAND
+        card.is_facedown = False
+        self.hand.append(card)
+
+    def return_card_to_deck(self, card: Card):
+        """
+        Returns a card to the deck.
+        """
+        if card in self.deck:
+            raise ValueError(f"Card {card.id} is already in deck.")
+        card.state = CardState.DECK
+        card.is_facedown = False
+        self.deck.append(card)
 
     def initialize_state(self):
         """

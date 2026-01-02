@@ -5,6 +5,7 @@ from .card import Card
 from .team import Team
 from .token import Token
 from .marker import Marker
+from .spawn import SpawnType, SpawnPoint
 
 # Resolve Circular References
 Hero.model_rebuild()

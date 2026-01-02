@@ -8,7 +8,7 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **1.1 The Grid** | **Implemented** | `Hex` class handles Coordinates, Adjacency, Distance. |
 | **1.2 Space Classification** | **Implemented** | `Board` handles Zones and Terrain. `SpawnPoints` defined in models. |
 | **1.3 Object Classification** | **Implemented** | `Unit` (Heroes/Minions), `Token` (Obstacles) defined in models. |
-| **1.4 Game Setup** | **Pending** | `GameState` initialization logic needs to support 4/6/8 player config and counters. |
+| **1.4 Game Setup** | **Implemented** | `GameSetup.create_game` handles Board Loading, Team Init, Hero Placement, and Minion Spawning. Logic supports 1v1 to 5v5 scaling (Life Counters). |
 
 ## 2. Temporal Definitions
 
