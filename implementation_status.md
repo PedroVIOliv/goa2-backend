@@ -64,5 +64,6 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 | **Game Over System** | **Implemented** | Atomic `TriggerGameOverStep` handles winner assignment, stack purging, and phase transition. `GameState.is_game_over` flag added. |
 
 ## Summary of Critical Gaps
-1.  **Card Effect Registry**: Actually implementing the script logic for individual cards (the "Text" of the card). **Note:** Mandatory/Optional step distinction and abort mechanism now implemented - see `ARCHITECTURE.md` Section 6 and `docs/card_effects_guidelines.md`.
+1.  **Card Effect Registry**: Implementation of hero-specific card logic is underway.
+    *   **Arien**: `liquid_leap`, `magical_current`, `stranger_tide`, and `arcane_whirlpool` are implemented in `arien_effects.py` (using card IDs as effect IDs).
 2.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).

@@ -26,7 +26,7 @@ def effect_state():
         secondary_actions={},
         is_ranged=True,
         range_value=4,
-        effect_id="effect_swap_enemy_minion",
+        effect_id="arcane_whirlpool",
         effect_text="Swap with an enemy minion in range.",
         is_facedown=False
     )

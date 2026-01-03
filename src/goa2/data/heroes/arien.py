@@ -24,7 +24,7 @@ def create_arien() -> Hero:
         primary_action=ActionType.SKILL,
         primary_action_value=None, # Ultimates often lack a standard value
         secondary_actions={},
-        effect_id="effect_ultimate_move_before_attack",
+        effect_id="living_tsunami",
         effect_text="Once per turn, before performing an Attack action, you may move 1 space."
     ),
 
@@ -45,7 +45,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=4,
         item=StatType.DEFENSE,
-        effect_id="effect_swap_enemy_minion_repeat",
+        effect_id="ebb_and_flow",
         effect_text="Swap with an enemy minion in range; if it was adjacent to you, may repeat once."
     ),
     Card(
@@ -63,7 +63,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=3,
         item=StatType.RADIUS,
-        effect_id="effect_teleport_no_spawn",
+        effect_id="stranger_tide",
         effect_text="Place yourself into a space in range without a spawn point."
     ),
     Card(
@@ -80,7 +80,7 @@ def create_arien() -> Hero:
         },
         radius_value=1,
         item=StatType.ATTACK,
-        effect_id="effect_slow_radius",
+        effect_id="deluge",
         effect_text="This turn: Enemy heroes in radius cannot fast travel, or move more than 1 space with a movement action."
     ),
     Card(
@@ -95,7 +95,7 @@ def create_arien() -> Hero:
             ActionType.MOVEMENT: 3 # Corrected from Defense to Movement
         },
         item=StatType.RANGE,
-        effect_id="effect_ignore_minion_defense_immune_others",
+        effect_id="master_duelist",
         effect_text="Ignore all minion defense modifiers. This round: You are immune to attack actions of all enemy heroes, except this attacker."
     ),
     Card(
@@ -111,7 +111,7 @@ def create_arien() -> Hero:
             ActionType.MOVEMENT: 4
         },
         item=StatType.INITIATIVE,
-        effect_id="effect_attack_discard_behind_repeat",
+        effect_id="violent_torrent",
         effect_text="Target a unit adjacent to you. Before the attack: Up to 1 enemy hero in any of the 5 spaces in a straight line directly behind the target discards a card, or is defeated. May repeat once on a different unit."
     ),
     Card(
@@ -129,7 +129,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=2,
         item=StatType.MOVEMENT,
-        effect_id="effect_push_adjacent",
+        effect_id="tidal_blast",
         effect_text="Target a unit in range. After the attack: You may push an enemy unit adjacent to you up to 3 spaces."
     ),
 
@@ -151,7 +151,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=4,
         item=StatType.DEFENSE,
-        effect_id="effect_swap_enemy_minion",
+        effect_id="arcane_whirlpool",
         effect_text="Swap with an enemy minion in range."
     ),
     Card(
@@ -169,7 +169,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=3,
         item=StatType.ATTACK,
-        effect_id="effect_teleport_no_spawn_no_adj",
+        effect_id="magical_current",
         effect_text="Place yourself into a space in range without a spawn point and not adjacent to an empty spawn point."
     ),
     Card(
@@ -184,7 +184,7 @@ def create_arien() -> Hero:
             ActionType.MOVEMENT: 3 # Corrected from Defense to Movement
         },
         item=StatType.INITIATIVE,
-        effect_id="effect_ignore_minion_defense_immune_others_turn",
+        effect_id="expert_duelist",
         effect_text="Ignore all minion defense modifiers. This turn: You are immune to attack actions of all enemy heroes, except this attacker."
     ),
     Card(
@@ -199,7 +199,7 @@ def create_arien() -> Hero:
             ActionType.DEFENSE: 6
         },
         item=StatType.ATTACK,
-        effect_id="effect_slow_adjacent",
+        effect_id="slippery_ground",
         effect_text="This turn: Enemy heroes adjacent to you cannot fast travel, or move more than 1 space with a movement action."
     ),
     Card(
@@ -217,7 +217,7 @@ def create_arien() -> Hero:
         is_ranged=True,
         range_value=2,
         item=StatType.DEFENSE,
-        effect_id="effect_push_adjacent_lesser",
+        effect_id="rogue_wave",
         effect_text="Target a unit in range. After the attack: You may push an enemy unit adjacent to you up to 2 spaces."
     ),
     Card(
@@ -233,7 +233,7 @@ def create_arien() -> Hero:
             ActionType.MOVEMENT: 4
         },
         item=StatType.INITIATIVE,
-        effect_id="effect_attack_discard_behind_lesser",
+        effect_id="raging_stream",
         effect_text="Target a unit adjacent to you. Before the attack: Up to 1 enemy hero in any of the 3 spaces in a straight line directly behind the target discards a card, or is defeated."
     ),
 
@@ -252,7 +252,7 @@ def create_arien() -> Hero:
             ActionType.DEFENSE: 3
         },
         radius_value=3,
-        effect_id="effect_silence_heroes_radius",
+        effect_id="spell_break",
         effect_text="This turn: Enemy heroes in radius cannot perform skill actions, except on gold cards."
     ),
     Card(
@@ -267,7 +267,7 @@ def create_arien() -> Hero:
             ActionType.DEFENSE: 2,
             ActionType.MOVEMENT: 1
         },
-        effect_id="effect_attack_move_ally",
+        effect_id="noble_blade",
         effect_text="Target a unit adjacent to you. Before the attack: You may move another unit that is adjacent to the target 1 space."
     ),
     Card(
@@ -281,7 +281,7 @@ def create_arien() -> Hero:
         secondary_actions={
             ActionType.MOVEMENT: 3
         },
-        effect_id="effect_ignore_minion_defense",
+        effect_id="aspiring_duelist",
         effect_text="Ignore all minion defense modifiers."
     ),
     Card(
@@ -296,7 +296,7 @@ def create_arien() -> Hero:
             ActionType.DEFENSE: 6,
             ActionType.MOVEMENT: 4
         },
-        effect_id="effect_attack_discard_behind",
+        effect_id="dangerous_current",
         effect_text="Target a unit adjacent to you. Before the attack: Up to 1 enemy hero in any of the 2 spaces in a straight line directly behind the target discards a card, or is defeated."
     ),
     Card(
@@ -313,7 +313,7 @@ def create_arien() -> Hero:
         },
         is_ranged=True,
         range_value=2,
-        effect_id="effect_teleport_strict",
+        effect_id="liquid_leap",
         effect_text="Place yourself into a space in range without a spawn point and not adjacent to an empty spawn point."
     )
     ]

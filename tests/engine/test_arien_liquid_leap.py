@@ -48,7 +48,7 @@ def leap_state():
         secondary_actions={},
         is_ranged=True,
         range_value=2,
-        effect_id="effect_teleport_strict",
+        effect_id="liquid_leap",
         effect_text="...",
         is_facedown=False
     )

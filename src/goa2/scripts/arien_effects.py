@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
 
-@register_effect("effect_swap_enemy_minion")
+@register_effect("arcane_whirlpool")
 class SwapEnemyMinionEffect(CardEffect):
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
         return [
@@ -41,8 +41,8 @@ class SwapWithSelectedStep(GameStep):
              ])
         return StepResult(is_finished=True)
 
-@register_effect("effect_teleport_strict")
-@register_effect("effect_teleport_no_spawn_no_adj")
+@register_effect("liquid_leap")
+@register_effect("magical_current")
 class TeleportStrictEffect(CardEffect):
     """
     Card text: "Place yourself into a space in range without a spawn point 
@@ -68,7 +68,7 @@ class TeleportStrictEffect(CardEffect):
             PlaceUnitStep(unit_id=hero.id, destination_key="target_hex")
         ]
 
-@register_effect("effect_teleport_no_spawn")
+@register_effect("stranger_tide")
 class TeleportNoSpawnEffect(CardEffect):
     """
     Card text: "Place yourself into a space in range without a spawn point."
