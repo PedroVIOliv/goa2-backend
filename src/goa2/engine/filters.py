@@ -58,10 +58,20 @@ class RangeFilter(FilterCondition):
     type: str = "range_filter"
     max_range: int
     min_range: int = 0
-    origin_id: Optional[str] = None # If None, uses current_actor_id from state
+    origin_id: Optional[str] = None # Literal ID
+    origin_key: Optional[str] = None # Key in context to find ID
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        origin_uid = self.origin_id if self.origin_id else state.current_actor_id
+        origin_uid = None
+        
+        if self.origin_id:
+            origin_uid = self.origin_id
+        elif self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        
         if not origin_uid: return False
         
         # Use Unified Location
@@ -245,3 +255,91 @@ class AdjacentSpawnPointFilter(FilterCondition):
         if self.must_not_have:
             return not has_adj
         return has_adj
+
+class AdjacencyToContextFilter(FilterCondition):
+    """
+    Selects units adjacent to the entity ID stored in a context variable.
+    """
+    type: str = "adjacency_to_context_filter"
+    target_key: str
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+
+        target_id = context.get(self.target_key)
+
+        if not target_id: return False
+
+        target_hex = state.entity_locations.get(target_id)
+
+        if not target_hex: return False
+
+        cand_hex = None
+
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(candidate)
+            if not cand_hex: return False
+            # "Check via tile": Ensure both are valid board positions
+            if not state.board.is_on_map(target_hex) or not state.board.is_on_map(cand_hex):
+                return False
+            return cand_hex.distance(target_hex) == 1
+class ExcludeIdentityFilter(FilterCondition):
+    """
+    Excludes specific unit IDs from selection.
+    Can exclude self and/or IDs found in context keys.
+    """
+    type: str = "exclude_identity_filter"
+    exclude_self: bool = True
+    exclude_keys: List[str] = []
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str): return True # Only applies to Units (IDs)
+        if self.exclude_self:
+            if candidate == state.current_actor_id:
+                return False
+        for key in self.exclude_keys:
+            val = context.get(key)
+            if val == candidate:
+                return False
+        return True
+class HasEmptyNeighborFilter(FilterCondition):
+    """
+    Ensures the candidate unit has at least one valid empty neighbor to move to.
+    Prevents selecting 'trapped' units for movement effects.
+    """
+    type: str = "has_empty_neighbor_filter"
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        cand_hex = None
+        if isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(candidate)
+        elif isinstance(candidate, Hex):
+            cand_hex = candidate
+        if not cand_hex: return False
+        neighbors = cand_hex.neighbors()
+        for n in neighbors:
+            # Check if hex exists on board
+            tile = state.board.get_tile(n)
+            if tile and not tile.is_obstacle:
+                 return True
+        return False
+class ForcedMovementByEnemyFilter(FilterCondition):
+    """
+    Checks if the candidate is protected from forced movement by enemies.
+    """
+    type: str = "forced_movement_by_enemy_filter"
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # 1. Check Relation: Is actor an enemy of candidate?
+        actor_id = state.current_actor_id
+        if not actor_id: return True # Should not happen
+        actor = state.get_entity(actor_id)
+        target = state.get_entity(candidate) if isinstance(candidate, str) else None
+        if not actor or not target: return True
+        if not hasattr(actor, 'team') or not hasattr(target, 'team'): return True
+        is_enemy = (actor.team != target.team)
+        if not is_enemy:
+            return True # Filter passes if not an enemy (can move allies unless blocked by something else)
+        # 2. Check Status: Does candidate have 'PREVENT_ENEMY_DISPLACEMENT'?
+        from goa2.engine.stats import has_status
+        if has_status(state, candidate, "PREVENT_ENEMY_DISPLACEMENT"):
+            return False # Filter fails (cannot be selected)
+        return True

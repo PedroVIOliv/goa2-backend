@@ -41,6 +41,18 @@ class GameStep(BaseModel, ABC):
     # Optional steps ("you may", "up to", "if able") set this to False.
     is_mandatory: bool = True
 
+    # Conditional Execution: If set, this step only runs if 'active_if_key' exists in context.
+    active_if_key: Optional[str] = None
+
+    def should_skip(self, context: Dict[str, Any]) -> bool:
+        """Checks if the step should be skipped based on active_if_key."""
+        if self.active_if_key:
+            val = context.get(self.active_if_key)
+            # Skip if key is missing or None (falsy is tricky, but usually checking existence/non-None is safer)
+            if val is None: 
+                return True
+        return False
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         """
         Executes the step.
@@ -83,6 +95,10 @@ class SelectStep(GameStep):
     auto_select_if_one: bool = False
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            print(f"   [SKIP] Conditional Step '{self.prompt}' skipped (Key '{self.active_if_key}' missing).")
+            return StepResult(is_finished=True)
+
         actor_id = state.current_actor_id
         
         candidates = []
@@ -539,12 +555,21 @@ class PlaceUnitStep(GameStep):
     No pathfinding validation. Used for respawns, swaps, and forced placements.
     """
     type: str = "place_unit"
-    unit_id: Optional[str] = None # If None, uses current_actor
+    unit_id: Optional[str] = None # If None, checks unit_key, then current_actor
+    unit_key: Optional[str] = None # Look up unit_id in context
     destination_key: str = "target_hex" # Where to look in context
     target_hex_arg: Optional[Hex] = None # Explicit argument
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        actor_id = self.unit_id if self.unit_id else state.current_actor_id
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        actor_id = self.unit_id
+        if not actor_id and self.unit_key:
+            actor_id = context.get(self.unit_key)
+            
+        if not actor_id:
+             actor_id = state.current_actor_id
         
         # Priority: explicit arg -> context
         dest_val = self.target_hex_arg
@@ -1392,31 +1417,41 @@ class AttackSequenceStep(GameStep):
     """
     Composite Step.
     Expands into: Select Target -> Reaction Window -> Resolve Combat.
+    If target_id_key is provided, assumes target is already selected in context and skips selection.
     """
     type: str = "attack_sequence"
     damage: int
-    range_val: int
+    range_val: int = 1
+    target_id_key: Optional[str] = None # Optional: Use existing context key instead of selecting
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print(f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})")
         
         from goa2.engine.filters import RangeFilter, TeamFilter, ImmunityFilter
         
-        # Desired Execution Order: Select -> Reaction -> Combat
-        new_steps = [
-            SelectStep(
-                target_type="UNIT",
-                prompt="Select Attack Target",
-                output_key="victim_id",
-                filters=[
-                    RangeFilter(max_range=self.range_val),
-                    TeamFilter(relation="ENEMY"),
-                    ImmunityFilter()
-                ]
-            ),
-            ReactionWindowStep(target_player_key="victim_id"),
-            ResolveCombatStep(damage=self.damage, target_key="victim_id")
-        ]
+        key = self.target_id_key if self.target_id_key else "victim_id"
+        
+        new_steps = []
+        
+        # Only spawn selection if we don't have a pre-selected key
+        if not self.target_id_key:
+            new_steps.append(
+                SelectStep(
+                    target_type="UNIT",
+                    prompt="Select Attack Target",
+                    output_key=key,
+                    filters=[
+                        RangeFilter(max_range=self.range_val),
+                        TeamFilter(relation="ENEMY"),
+                        ImmunityFilter()
+                    ]
+                )
+            )
+            
+        new_steps.extend([
+            ReactionWindowStep(target_player_key=key),
+            ResolveCombatStep(damage=self.damage, target_key=key)
+        ])
         
         return StepResult(is_finished=True, new_steps=new_steps)
 

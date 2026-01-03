@@ -65,5 +65,5 @@ Based on `deterministic_rules.md` vs `src/goa2/engine/steps.py`.
 
 ## Summary of Critical Gaps
 1.  **Card Effect Registry**: Implementation of hero-specific card logic is underway.
-    *   **Arien**: `liquid_leap`, `magical_current`, `stranger_tide`, and `arcane_whirlpool` are implemented in `arien_effects.py` (using card IDs as effect IDs).
+    *   **Arien**: `liquid_leap`, `magical_current`, `stranger_tide`, `arcane_whirlpool` and `noble_blade` are implemented in `arien_effects.py` (using card IDs as effect IDs).
 2.  **Advanced Physics**: **Implemented** Handling "Displacement" when multiple units are forced into the same space during a Lane Push respawn. (Queue-based resolution with Team Prompt).
