@@ -12,6 +12,9 @@ from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
 from goa2.engine import rules # For validation
 
+from goa2.domain.models.enums import StatType
+from goa2.domain.models.effect import EffectType, EffectScope
+
 # -----------------------------------------------------------------------------
 # Base Classes
 # -----------------------------------------------------------------------------
@@ -65,6 +68,106 @@ class GameStep(BaseModel, ABC):
 # -----------------------------------------------------------------------------
 # Common Steps
 # -----------------------------------------------------------------------------
+
+class CreateModifierStep(GameStep):
+    """Creates a Modifier in the game state."""
+    type: str = "create_modifier"
+
+    target_id: Optional[str] = None
+    target_key: Optional[str] = None  # Read from context
+
+    stat_type: Optional[StatType] = None
+    value_mod: int = 0
+    status_tag: Optional[str] = None
+    duration: DurationType = DurationType.THIS_TURN
+
+    # Card linkage (for card-based effects)
+    source_card_id: Optional[str] = None  # Explicit card ID
+    use_context_card: bool = True         # If True, use "current_card_id" from context
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        target = self.target_id or context.get(self.target_key)
+        if not target:
+            # If target missing, it's an error in logic or optional step skipped
+            # For now, just log and finish
+            print("   [SKIP] No target for CreateModifierStep")
+            return StepResult(is_finished=True)
+
+        # Resolve source card ID
+        card_id = self.source_card_id
+        if card_id is None and self.use_context_card:
+            card_id = context.get("current_card_id")
+
+        from goa2.engine.effect_manager import EffectManager
+        EffectManager.create_modifier(
+            state=state,
+            source_id=state.current_actor_id,
+            source_card_id=card_id,  # Link to card
+            target_id=target,
+            stat_type=self.stat_type,
+            value_mod=self.value_mod,
+            status_tag=self.status_tag,
+            duration=self.duration
+        )
+        
+        desc = f"{self.stat_type.name} {self.value_mod}" if self.stat_type else self.status_tag
+        print(f"   [EFFECT] Applied {desc} to {target} (Duration: {self.duration.name})")
+
+        return StepResult(is_finished=True)
+
+class CreateEffectStep(GameStep):
+    """Creates a spatial ActiveEffect in the game state."""
+    type: str = "create_effect"
+
+    effect_type: EffectType
+    scope: EffectScope
+    duration: DurationType = DurationType.THIS_TURN
+
+    restrictions: List[ActionType] = Field(default_factory=list)
+    stat_type: Optional[StatType] = None
+    stat_value: int = 0
+    max_value: Optional[int] = None
+
+    blocks_enemy_actors: bool = True
+    blocks_friendly_actors: bool = False
+    blocks_self: bool = False
+
+    # Card linkage (for card-based effects)
+    source_card_id: Optional[str] = None  # Explicit card ID
+    use_context_card: bool = True         # If True, use "current_card_id" from context
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Resolve source card ID
+        card_id = self.source_card_id
+        if card_id is None and self.use_context_card:
+            card_id = context.get("current_card_id")
+
+        from goa2.engine.effect_manager import EffectManager
+        EffectManager.create_effect(
+            state=state,
+            source_id=state.current_actor_id,
+            source_card_id=card_id,  # Link to card
+            effect_type=self.effect_type,
+            scope=self.scope,
+            duration=self.duration,
+            restrictions=self.restrictions,
+            stat_type=self.stat_type,
+            stat_value=self.stat_value,
+            max_value=self.max_value,
+            blocks_enemy_actors=self.blocks_enemy_actors,
+            blocks_friendly_actors=self.blocks_friendly_actors,
+            blocks_self=self.blocks_self
+        )
+        
+        print(f"   [EFFECT] Created {self.effect_type.value} from {state.current_actor_id}")
+
+        return StepResult(is_finished=True)
 
 class LogMessageStep(GameStep):
     """Debugging step to print messages."""
@@ -878,6 +981,10 @@ class ResolveCardTextStep(GameStep):
             return StepResult(is_finished=True)
             
         card = hero.current_turn_card
+        
+        # Set card ID in context for effect creation
+        context["current_card_id"] = card.id
+        
         print(f"   [SCRIPT] Executing logic for '{card.name}' (Effect: {card.effect_id})")
         
         from goa2.engine.effects import CardEffectRegistry

@@ -13,8 +13,8 @@
 | Phase 1: Foundation | ✅ Complete | 61 tests |
 | Phase 2: Effect Lifecycle | ✅ Complete | 15 tests |
 | Phase 3: Step Integration | ✅ Complete | 6 tests |
-| Phase 4: Effect Creation | 🔄 In Progress | - |
-| Phase 5: Filter Migration | ⏳ Pending | - |
+| Phase 4: Effect Creation | ✅ Complete | 3 tests |
+| Phase 5: Filter Migration | 🔄 In Progress | - |
 | Phase 6: Card Implementations | ⏳ Pending | - |
 
 ---
@@ -666,7 +666,7 @@ Before proceeding to Phase 4, verify:
 **Depends on:** 2.1 EffectManager
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_create_modifier_step_basic`
+- [x] **Test first:** `test_create_modifier_step_basic`
   ```python
   def test_create_modifier_step_basic(game_state):
       game_state.current_actor_id = "hero_1"
@@ -685,10 +685,10 @@ Before proceeding to Phase 4, verify:
       assert game_state.active_modifiers[0].source_card_id == "card_1"
   ```
 
-- [ ] **Test:** `test_create_modifier_step_uses_context_key`
-- [ ] **Test:** `test_create_modifier_step_skipped_when_no_target`
+- [x] **Test:** `test_create_modifier_step_uses_context_key`
+- [x] **Test:** `test_create_modifier_step_skipped_when_no_target`
 
-- [ ] **Implementation:** CreateModifierStep class per plan section 6.1
+- [x] **Implementation:** CreateModifierStep class per plan section 6.1
 
 ---
 
@@ -698,10 +698,10 @@ Before proceeding to Phase 4, verify:
 **Depends on:** 2.1 EffectManager
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_create_effect_step_basic`
-- [ ] **Test:** `test_create_effect_step_uses_context_card`
+- [x] **Test first:** `test_create_effect_step_basic`
+- [x] **Test:** `test_create_effect_step_uses_context_card`
 
-- [ ] **Implementation:** CreateEffectStep class per plan section 6.2
+- [x] **Implementation:** CreateEffectStep class per plan section 6.2
 
 ---
 
@@ -711,7 +711,7 @@ Before proceeding to Phase 4, verify:
 **Depends on:** 4.1, 4.2
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_resolve_card_sets_current_card_id`
+- [x] **Test first:** `test_resolve_card_sets_current_card_id`
   ```python
   def test_resolve_card_sets_current_card_id(game_state_with_hero):
       state = game_state_with_hero
@@ -728,7 +728,7 @@ Before proceeding to Phase 4, verify:
       assert context["current_card_id"] == card.id
   ```
 
-- [ ] **Implementation:** Add `context["current_card_id"] = card.id` to resolve()
+- [x] **Implementation:** Add `context["current_card_id"] = card.id` to resolve()
 
 ---
 
