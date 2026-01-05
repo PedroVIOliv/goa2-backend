@@ -1,5 +1,5 @@
 import pytest
-from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, CardState
+from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, CardState, Team, TeamColor
 from goa2.domain.types import HeroID
 from goa2.engine.steps import FinalizeHeroTurnStep
 from goa2.domain.state import GameState
@@ -14,6 +14,7 @@ def sample_card():
         color=CardColor.RED, 
         initiative=10, 
         primary_action=ActionType.ATTACK, 
+        primary_action_value=2,
         effect_id="e1", 
         effect_text="text"
     )
@@ -102,8 +103,8 @@ def test_retrieve_cards_full_reset(hero, sample_card):
     # c2: Unresolved (if we had 2 cards)
     # c3: Discarded
     
-    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.DEFENSE, effect_id="e", effect_text="t")
-    c3 = Card(id="c3", name="C3", tier=CardTier.I, color=CardColor.GREEN, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t")
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.DEFENSE, primary_action_value=2, effect_id="e", effect_text="t")
+    c3 = Card(id="c3", name="C3", tier=CardTier.I, color=CardColor.GREEN, initiative=5, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e", effect_text="t")
     
     hero.hand.extend([c2, c3])
     
@@ -142,8 +143,7 @@ def test_finalize_turn_step_integration(hero, sample_card):
     # Setup Engine Context
     state = GameState(board=Board(), teams={})
     # Mock finding hero
-    state.teams['mock_team'] = type("MockTeam", (), {"heroes": [hero]})()
-    state.teams['mock_team'].heroes = [hero] # Fix for real lookup
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[hero], minions=[])
     
     # Setup Hero State
     hero.play_card(sample_card)

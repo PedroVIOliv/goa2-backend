@@ -30,8 +30,8 @@ def test_phases_commit_and_revelation():
     state.teams[TeamColor.BLUE].heroes.append(h2)
     
     # Mock Cards
-    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
-    c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, initiative=20, tier=CardTier.I, effect_id="e2", effect_text="Test")
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, primary_action_value=2, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, primary_action_value=None, initiative=20, tier=CardTier.I, effect_id="e2", effect_text="Test")
     
     # Put cards in hand
     h1.hand.append(c1)
@@ -66,7 +66,7 @@ def test_phases_cannot_commit_card_not_in_hand():
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
     state.teams[TeamColor.RED].heroes.append(h1)
     
-    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, primary_action_value=2, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
     # Card is NOT in hand
     
     state.phase = GamePhase.PLANNING
@@ -86,7 +86,7 @@ def test_phases_pass_turn():
     state.phase = GamePhase.PLANNING
     
     # h1 Plays a card
-    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, primary_action_value=2, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
     h1.hand.append(c1)
     phases.commit_card(state, "h1", c1)
     
@@ -113,7 +113,7 @@ def test_phases_cannot_pass_with_cards():
     state.teams[TeamColor.RED].heroes.append(h1)
     
     # Give h1 a card in hand
-    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, primary_action_value=2, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
     h1.hand.append(c1)
     
     state.phase = GamePhase.PLANNING
@@ -130,8 +130,8 @@ def test_phases_process_queue_tie_handling():
     state = create_empty_state()
     state.phase = GamePhase.RESOLUTION
     
-    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
-    c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, initiative=10, tier=CardTier.I, effect_id="e2", effect_text="Test")
+    c1 = Card(id="c1", name="C1", color=CardColor.RED, primary_action=ActionType.ATTACK, primary_action_value=2, initiative=10, tier=CardTier.I, effect_id="e1", effect_text="Test")
+    c2 = Card(id="c2", name="C2", color=CardColor.BLUE, primary_action=ActionType.SKILL, primary_action_value=None, initiative=10, tier=CardTier.I, effect_id="e2", effect_text="Test")
     
     # Setup Heroes with cards
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])

@@ -41,7 +41,7 @@ def create_knight() -> Hero:
              initiative=10, 
              primary_action=ActionType.SKILL,
              # Skill value usually defined by effect, but let's say 2 for +2 Defense
-             primary_action_value=2,
+             primary_action_value=None,
              effect_id="knight_defend",
              effect_text="Gain +2 Defense this round.",
              secondary_actions={}

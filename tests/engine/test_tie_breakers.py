@@ -22,7 +22,7 @@ def complex_tie_state():
         tie_breaker_team=TeamColor.RED
     )
     
-    fake_card = Card(id="c1", name="C", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.SKILL, effect_id="e", effect_text="t", is_facedown=False)
+    fake_card = Card(id="c1", name="C", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e", effect_text="t", is_facedown=False)
     
     # Assign cards to heroes so ResolveCardStep works
     hero_a.current_turn_card = fake_card

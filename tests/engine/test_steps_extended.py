@@ -297,8 +297,9 @@ def test_reaction_window_full(steps_state):
     
     # Secondary defense
     sec_card = Card(
-        id="sec1", name="Blink", tier=CardTier.UNTIERED, color=CardColor.GOLD, 
-        primary_action=ActionType.MOVEMENT, secondary_actions={ActionType.DEFENSE: 2},
+        id="sec1", name="Blink", tier=CardTier.UNTIERED, color=CardColor.GOLD,
+        primary_action=ActionType.MOVEMENT, primary_action_value=3,
+        secondary_actions={ActionType.DEFENSE: 2},
         effect_id="none", effect_text="", initiative=1
     )
     h2.hand.append(sec_card)

@@ -45,6 +45,7 @@ def leap_state():
         color=CardColor.GREEN,
         initiative=4,
         primary_action=ActionType.SKILL,
+        primary_action_value=None,
         secondary_actions={},
         is_ranged=True,
         range_value=2,

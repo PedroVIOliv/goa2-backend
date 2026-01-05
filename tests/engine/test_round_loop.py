@@ -50,8 +50,8 @@ def test_planning_to_revelation():
     from goa2.engine.phases import commit_card
     
     # 1. Setup
-    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
-    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t")
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t")
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e", effect_text="t")
     
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[c1], hand=[c1])
     h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, deck=[c2], hand=[c2])

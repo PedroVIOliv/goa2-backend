@@ -172,3 +172,11 @@ class Card(GameEntity):
         if self.primary_action in self.secondary_actions:
             raise ValueError("Primary action cannot be in secondary actions.")
         return self
+    
+    @model_validator(mode='after')
+    def ensure_primary_action_has_value_if_not_skill(self) -> Card:
+        if self.primary_action != ActionType.SKILL and self.primary_action_value is None:
+            raise ValueError("Primary action must have a value if it is not a Skill.")
+        if self.primary_action == ActionType.SKILL and self.primary_action_value is not None:
+            raise ValueError("Skill primary action must have None as primary_action_value.")
+        return self

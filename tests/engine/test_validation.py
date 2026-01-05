@@ -39,6 +39,7 @@ def state_with_heroes():
         color=CardColor.RED,
         initiative=5,
         primary_action=ActionType.ATTACK,
+        primary_action_value=2,
         effect_id="e1",
         effect_text="Attack"
     )
@@ -49,6 +50,7 @@ def state_with_heroes():
         color=CardColor.BLUE,
         initiative=3,
         primary_action=ActionType.DEFENSE,
+        primary_action_value=2,
         effect_id="e2",
         effect_text="Defend"
     )

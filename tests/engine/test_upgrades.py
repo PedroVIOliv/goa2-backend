@@ -15,15 +15,15 @@ def upgrade_state():
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, level=1, gold=3, deck=[])
     
     # Card Pool for H1
-    r1 = Card(id="r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e1", effect_text="e1")
-    r2a = Card(id="r2a", name="Red II A", tier=CardTier.II, color=CardColor.RED, initiative=2, primary_action=ActionType.ATTACK, effect_id="e2", effect_text="e2", item=StatType.ATTACK)
-    r2b = Card(id="r2b", name="Red II B", tier=CardTier.II, color=CardColor.RED, initiative=3, primary_action=ActionType.ATTACK, effect_id="e3", effect_text="e3", item=StatType.DEFENSE)
+    r1 = Card(id="r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e1", effect_text="e1")
+    r2a = Card(id="r2a", name="Red II A", tier=CardTier.II, color=CardColor.RED, initiative=2, primary_action=ActionType.ATTACK, primary_action_value=3, effect_id="e2", effect_text="e2", item=StatType.ATTACK)
+    r2b = Card(id="r2b", name="Red II B", tier=CardTier.II, color=CardColor.RED, initiative=3, primary_action=ActionType.ATTACK, primary_action_value=3, effect_id="e3", effect_text="e3", item=StatType.DEFENSE)
     
-    b1 = Card(id="b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, effect_id="e4", effect_text="e4")
-    b2a = Card(id="b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, effect_id="e5", effect_text="e5", item=StatType.RANGE)
-    b2b = Card(id="b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, effect_id="e6", effect_text="e6", item=StatType.MOVEMENT)
+    b1 = Card(id="b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e4", effect_text="e4")
+    b2a = Card(id="b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e5", effect_text="e5", item=StatType.RANGE)
+    b2b = Card(id="b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e6", effect_text="e6", item=StatType.MOVEMENT)
 
-    g1 = Card(id="g1", name="Green I", tier=CardTier.I, color=CardColor.GREEN, initiative=1, primary_action=ActionType.MOVEMENT, effect_id="e7", effect_text="e7")
+    g1 = Card(id="g1", name="Green I", tier=CardTier.I, color=CardColor.GREEN, initiative=1, primary_action=ActionType.MOVEMENT, primary_action_value=3, effect_id="e7", effect_text="e7")
 
     h1.deck = [r1, r2a, r2b, b1, b2a, b2b, g1]
     h1.hand = [r1, b1, g1]
@@ -154,11 +154,11 @@ def test_simultaneous_multi_player_upgrades(upgrade_state):
     h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, level=1, gold=1, deck=[])
     
     # H2 Deck
-    b1 = Card(id="h2_b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, effect_id="e4", effect_text="e4")
-    b2a = Card(id="h2_b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, effect_id="e5", effect_text="e5", item=StatType.RANGE)
-    b2b = Card(id="h2_b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, effect_id="e6", effect_text="e6", item=StatType.MOVEMENT)
-    r1 = Card(id="h2_r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e1", effect_text="e1")
-    g1 = Card(id="h2_g1", name="Green I", tier=CardTier.I, color=CardColor.GREEN, initiative=1, primary_action=ActionType.MOVEMENT, effect_id="e7", effect_text="e7")
+    b1 = Card(id="h2_b1", name="Blue I", tier=CardTier.I, color=CardColor.BLUE, initiative=1, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e4", effect_text="e4")
+    b2a = Card(id="h2_b2a", name="Blue II A", tier=CardTier.II, color=CardColor.BLUE, initiative=2, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e5", effect_text="e5", item=StatType.RANGE)
+    b2b = Card(id="h2_b2b", name="Blue II B", tier=CardTier.II, color=CardColor.BLUE, initiative=3, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e6", effect_text="e6", item=StatType.MOVEMENT)
+    r1 = Card(id="h2_r1", name="Red I", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e1", effect_text="e1")
+    g1 = Card(id="h2_g1", name="Green I", tier=CardTier.I, color=CardColor.GREEN, initiative=1, primary_action=ActionType.MOVEMENT, primary_action_value=3, effect_id="e7", effect_text="e7")
 
     h2.deck = [b1, b2a, b2b, r1, g1]
     h2.hand = [b1, r1, g1]

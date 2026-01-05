@@ -11,6 +11,7 @@ def sample_card():
         color=CardColor.RED, 
         initiative=10, 
         primary_action=ActionType.ATTACK, 
+        primary_action_value=2,
         effect_id="e1", 
         effect_text="text"
     )

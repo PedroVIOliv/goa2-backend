@@ -260,6 +260,7 @@ class TestEffectManagerCleanupStale:
             id="card_1", name="Test Card", tier=CardTier.I,
             color=CardColor.RED, initiative=5,
             primary_action=ActionType.ATTACK,
+            primary_action_value=2,
             effect_id="test", effect_text="test"
         )
         hero.hand.append(card)

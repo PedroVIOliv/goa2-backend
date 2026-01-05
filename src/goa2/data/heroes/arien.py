@@ -38,6 +38,7 @@ def create_arien() -> Hero:
         color=CardColor.GREEN,
         initiative=3,
         primary_action=ActionType.SKILL,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 4,
             ActionType.MOVEMENT: 2
@@ -55,7 +56,7 @@ def create_arien() -> Hero:
         color=CardColor.GREEN,
         initiative=3,
         primary_action=ActionType.SKILL,
-        primary_action_value=3,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 4,
             ActionType.MOVEMENT: 2
@@ -143,7 +144,7 @@ def create_arien() -> Hero:
         color=CardColor.GREEN,
         initiative=4,
         primary_action=ActionType.SKILL,
-        primary_action_value=4,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 3,
             ActionType.MOVEMENT: 2
@@ -161,7 +162,7 @@ def create_arien() -> Hero:
         color=CardColor.GREEN,
         initiative=4,
         primary_action=ActionType.SKILL,
-        primary_action_value=3,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 3,
             ActionType.MOVEMENT: 2
@@ -247,7 +248,7 @@ def create_arien() -> Hero:
         color=CardColor.SILVER,
         initiative=13,
         primary_action=ActionType.SKILL,
-        primary_action_value=3,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 3
         },
@@ -306,7 +307,7 @@ def create_arien() -> Hero:
         color=CardColor.GREEN,
         initiative=4,
         primary_action=ActionType.SKILL,
-        primary_action_value=2,
+        primary_action_value=None,
         secondary_actions={
             ActionType.DEFENSE: 3,
             ActionType.MOVEMENT: 2

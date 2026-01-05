@@ -141,7 +141,7 @@ def test_awaiting_input_type():
 
 def test_hero_card_lifecycle():
     h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t")
     h1.hand.append(c1)
     
     # Planning
@@ -150,7 +150,7 @@ def test_hero_card_lifecycle():
 
 def test_retrieve_cards_logic():
     h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
     h1.discard_pile.append(c1)
     
     h1.retrieve_cards()
@@ -167,8 +167,8 @@ def test_awaiting_input_type():
 
 def test_hero_card_lifecycle():
     h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
-    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t")
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t")
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e", effect_text="t")
     
     h1.hand = [c1, c2]
     
@@ -198,8 +198,8 @@ def test_hero_card_lifecycle():
 
 def test_retrieve_cards_logic():
     h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
-    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, effect_id="e", effect_text="t", played_this_round=True, state=CardState.RESOLVED)
+    c1 = Card(id="c1", name="C1", tier=CardTier.I, color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t", played_this_round=True, state=CardState.DISCARD)
+    c2 = Card(id="c2", name="C2", tier=CardTier.I, color=CardColor.BLUE, initiative=5, primary_action=ActionType.SKILL, primary_action_value=None, effect_id="e", effect_text="t", played_this_round=True, state=CardState.RESOLVED)
     
     h1.discard_pile = [c1]
     h1.played_cards = [c2]

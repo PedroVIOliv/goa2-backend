@@ -5,7 +5,7 @@ from goa2.domain.types import HeroID
 @pytest.fixture
 def cards():
     return [
-        Card(id=f"c{i}", name=f"Card {i}", tier=CardTier.I, color=CardColor.RED, initiative=10+i, primary_action=ActionType.ATTACK, effect_id=f"e{i}", effect_text="text")
+        Card(id=f"c{i}", name=f"Card {i}", tier=CardTier.I, color=CardColor.RED, initiative=10+i, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id=f"e{i}", effect_text="text")
         for i in range(5)
     ]
 
@@ -111,7 +111,7 @@ def test_swap_within_same_list(hero, cards):
     assert hero.hand == [c1, c0]
 
 def test_swap_invalid_card(hero, cards):
-    external_card = Card(id="ext", name="Ext", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, effect_id="e", effect_text="t")
+    external_card = Card(id="ext", name="Ext", tier=CardTier.I, color=CardColor.RED, initiative=1, primary_action=ActionType.ATTACK, primary_action_value=2, effect_id="e", effect_text="t")
     
     with pytest.raises(ValueError, match="not found"):
         hero.swap_cards(cards[0], external_card)
