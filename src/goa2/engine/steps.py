@@ -226,6 +226,14 @@ class MoveUnitStep(GameStep):
         else:
             dest_hex = dest_val # Assume it is already a Hex
 
+        # Validation: Check Effects/Constraints
+        validation = state.validator.can_move(state, actor_id, self.range_val, context)
+        if not validation.allowed:
+            print(f"   [BLOCKED] MoveUnitStep: {validation.reason}")
+            if self.is_mandatory:
+                return StepResult(is_finished=True, abort_action=True)
+            return StepResult(is_finished=True)
+
         start_hex = state.entity_locations.get(actor_id)
         if not start_hex:
             print(f"   [ERROR] Unit {actor_id} has no location on board.")
@@ -263,6 +271,9 @@ class FastTravelStep(GameStep):
     unit_id: Optional[str] = None
     
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Fast Travel Validation could also be added here (can_perform_action(FAST_TRAVEL))
+        # But per instruction, focusing on Move/Push/Swap.
+        # Fast Travel is usually secondary/optional so failure -> finish.
         actor_id = self.unit_id if self.unit_id else state.current_actor_id
         if not actor_id: return StepResult(is_finished=True)
         
@@ -564,20 +575,21 @@ class PlaceUnitStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        actor_id = self.unit_id
-        if not actor_id and self.unit_key:
-            actor_id = context.get(self.unit_key)
+        # Resolve target unit (unit being placed)
+        target_unit_id = self.unit_id
+        if not target_unit_id and self.unit_key:
+            target_unit_id = context.get(self.unit_key)
             
-        if not actor_id:
-             actor_id = state.current_actor_id
+        if not target_unit_id:
+             target_unit_id = state.current_actor_id
         
         # Priority: explicit arg -> context
         dest_val = self.target_hex_arg
         if not dest_val:
             dest_val = context.get(self.destination_key)
         
-        if not actor_id:
-             print("   [ERROR] No actor for place.")
+        if not target_unit_id:
+             print("   [ERROR] No unit for place.")
              return StepResult(is_finished=True)
              
         if not dest_val:
@@ -589,13 +601,32 @@ class PlaceUnitStep(GameStep):
         else:
             dest_hex = dest_val # Assume it is already a Hex
 
+        # Validation: Check Occupancy
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied:
-             print(f"   [ERROR] Cannot place {actor_id} at {dest_hex}. Tile is occupied.")
+             print(f"   [ERROR] Cannot place {target_unit_id} at {dest_hex}. Tile is occupied.")
              return StepResult(is_finished=True)
 
-        print(f"   [LOGIC] Placing {actor_id} at {dest_hex}")
-        state.move_unit(actor_id, dest_hex)
+        # Validation: Check Effects/Constraints
+        # actor_id is the entity CAUSING the placement (current_actor)
+        actor_id = state.current_actor_id or target_unit_id
+        
+        validation = state.validator.can_be_placed(
+            state=state,
+            unit_id=target_unit_id,
+            actor_id=actor_id,
+            destination=dest_hex,
+            context=context
+        )
+        
+        if not validation.allowed:
+            print(f"   [BLOCKED] PlaceUnitStep: {validation.reason}")
+            if self.is_mandatory:
+                return StepResult(is_finished=True, abort_action=True)
+            return StepResult(is_finished=True)
+
+        print(f"   [LOGIC] Placing {target_unit_id} at {dest_hex}")
+        state.move_unit(target_unit_id, dest_hex)
         return StepResult(is_finished=True)
 
 class SwapUnitsStep(GameStep):
@@ -615,11 +646,23 @@ class SwapUnitsStep(GameStep):
             print(f"   [ERROR] Cannot swap {self.unit_a_id} and {self.unit_b_id}. Missing location(s).")
             return StepResult(is_finished=True)
 
+        # Validation
+        actor = state.current_actor_id
+        res_a = state.validator.can_be_swapped(state, self.unit_a_id, actor, context)
+        if not res_a.allowed:
+             print(f"   [BLOCKED] Swap prevented for {self.unit_a_id}: {res_a.reason}")
+             if self.is_mandatory: return StepResult(is_finished=True, abort_action=True)
+             return StepResult(is_finished=True)
+
+        res_b = state.validator.can_be_swapped(state, self.unit_b_id, actor, context)
+        if not res_b.allowed:
+             print(f"   [BLOCKED] Swap prevented for {self.unit_b_id}: {res_b.reason}")
+             if self.is_mandatory: return StepResult(is_finished=True, abort_action=True)
+             return StepResult(is_finished=True)
+
         print(f"   [LOGIC] Swapping {self.unit_a_id} at {loc_a} with {self.unit_b_id} at {loc_b}")
         
         # Safer Swap: Lift both, then place both.
-        # This avoids overwriting tile occupancy during the intermediate step
-        # and doesn't rely on place_entity's "only clear if self" logic.
         state.remove_entity(self.unit_a_id)
         state.remove_entity(self.unit_b_id)
         
@@ -656,10 +699,16 @@ class PushUnitStep(GameStep):
             print("   [ERROR] Cannot push from same hex.")
             return StepResult(is_finished=True)
 
+        # Validation
+        actor = state.current_actor_id
+        res = state.validator.can_be_pushed(state, self.target_id, actor, context)
+        if not res.allowed:
+             print(f"   [BLOCKED] Push prevented for {self.target_id}: {res.reason}")
+             if self.is_mandatory: return StepResult(is_finished=True, abort_action=True)
+             return StepResult(is_finished=True)
+
         direction_idx = src_hex.direction_to(target_loc)
         if direction_idx is None:
-            # Fallback: Just pick a direction? No, GoA2 pushes are vector-based.
-            # If not in straight line, we can't push "away" cleanly in a hex grid.
             print(f"   [ERROR] Push target {self.target_id} is not in a straight line from source.")
             return StepResult(is_finished=True)
 
@@ -1202,8 +1251,15 @@ class EndPhaseCleanupStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [CLEANUP] Processing End Phase Cleanup...")
-        from goa2.engine.phases import expire_modifiers
-        expire_modifiers(state, DurationType.THIS_ROUND)
+        from goa2.engine.effect_manager import EffectManager
+        
+        # Expire THIS_ROUND items
+        EffectManager.expire_modifiers(state, DurationType.THIS_ROUND)
+        EffectManager.expire_effects(state, DurationType.THIS_ROUND)
+        
+        # Cleanup stale items (lazy expiration for cards leaving play)
+        EffectManager.cleanup_stale_effects(state)
+
         self._retrieve_cards(state)
         self._clear_tokens(state)
         self._level_up(state)

@@ -6,6 +6,8 @@ from .team import Team
 from .token import Token
 from .marker import Marker
 from .spawn import SpawnType, SpawnPoint
+from .modifier import Modifier, DurationType
+from .effect import ActiveEffect, EffectType, EffectScope, Shape, AffectsFilter
 
 # Resolve Circular References
 Hero.model_rebuild()

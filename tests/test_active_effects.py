@@ -3,7 +3,8 @@ from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, Hero, StatType
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.engine import stats
-from goa2.engine.phases import end_turn, expire_modifiers
+from goa2.engine.phases import end_turn
+from goa2.engine.effect_manager import EffectManager
 
 def test_computed_stats_with_modifiers():
     # Setup
@@ -89,5 +90,5 @@ def test_modifier_expiry():
     assert state.active_modifiers[0].duration == DurationType.THIS_ROUND
     
     # End Round (Manually triggering the cleanup logic)
-    expire_modifiers(state, DurationType.THIS_ROUND)
+    EffectManager.expire_modifiers(state, DurationType.THIS_ROUND)
     assert len(state.active_modifiers) == 0

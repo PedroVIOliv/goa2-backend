@@ -159,19 +159,16 @@ def resolve_next_action(state: GameState):
         tied_hero_ids=tied_hero_ids
     ))
 
-def expire_modifiers(state: GameState, duration: DurationType):
-    """Removes active modifiers that have reached their expiration."""
-    state.active_modifiers = [m for m in state.active_modifiers if m.duration != duration]
-    print(f"   [Cleanup] Expired all {duration.name} modifiers.")
-
 def end_turn(state: GameState):
     """
     Called when all players have acted in the Resolution Phase.
     """
     print(f"   [Turn] End of Turn {state.turn}.")
-    
-    expire_modifiers(state, DurationType.THIS_TURN)
-    
+
+    from goa2.engine.effect_manager import EffectManager
+    EffectManager.expire_modifiers(state, DurationType.THIS_TURN)
+    EffectManager.expire_effects(state, DurationType.THIS_TURN)
+
     if state.turn < 4:
         state.turn += 1
         state.phase = GamePhase.PLANNING

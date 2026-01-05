@@ -1,7 +1,7 @@
 # Effect System Implementation Checklist
 
 **Source:** `docs/architecture-effect-system-plan.md`
-**Status:** Phase 1 Complete, Phase 2 In Progress
+**Status:** Phase 1 Complete, Phase 2 Complete, Phase 3 In Progress
 **Approach:** TDD - write tests first, then implementation
 
 ---
@@ -11,9 +11,9 @@
 | Phase | Status | Tests Added |
 |-------|--------|-------------|
 | Phase 1: Foundation | ✅ Complete | 61 tests |
-| Phase 2: Effect Lifecycle | 🔄 In Progress | - |
-| Phase 3: Step Integration | ⏳ Pending | - |
-| Phase 4: Effect Creation | ⏳ Pending | - |
+| Phase 2: Effect Lifecycle | ✅ Complete | 15 tests |
+| Phase 3: Step Integration | ✅ Complete | 6 tests |
+| Phase 4: Effect Creation | 🔄 In Progress | - |
 | Phase 5: Filter Migration | ⏳ Pending | - |
 | Phase 6: Card Implementations | ⏳ Pending | - |
 
@@ -166,13 +166,13 @@ Rationale:
 **Depends on:** Nothing
 **Test file:** `tests/domain/test_modifier.py`
 
-- [ ] **Test first:** `test_duration_type_has_next_turn`
+- [x] **Test first:** `test_duration_type_has_next_turn`
   ```python
   def test_duration_type_has_next_turn():
       assert DurationType.NEXT_TURN == "NEXT_TURN"
   ```
 
-- [ ] **Implementation:** Add `NEXT_TURN = "NEXT_TURN"` to DurationType enum
+- [x] **Implementation:** Add `NEXT_TURN = "NEXT_TURN"` to DurationType enum
 
 ---
 
@@ -182,7 +182,7 @@ Rationale:
 **Depends on:** 1.1 DurationType
 **Test file:** `tests/domain/test_modifier.py`
 
-- [ ] **Test first:** `test_modifier_has_source_card_id`
+- [x] **Test first:** `test_modifier_has_source_card_id`
   ```python
   def test_modifier_has_source_card_id():
       mod = Modifier(
@@ -198,7 +198,7 @@ Rationale:
       assert mod.source_card_id == "card_123"
   ```
 
-- [ ] **Implementation:** Add `source_card_id: Optional[str] = None` to Modifier
+- [x] **Implementation:** Add `source_card_id: Optional[str] = None` to Modifier
 
 ---
 
@@ -208,7 +208,7 @@ Rationale:
 **Depends on:** Nothing
 **Test file:** `tests/engine/test_validation.py` (NEW)
 
-- [ ] **Test first:** `test_validation_result_allow`
+- [x] **Test first:** `test_validation_result_allow`
   ```python
   def test_validation_result_allow():
       result = ValidationResult.allow()
@@ -216,7 +216,7 @@ Rationale:
       assert result.reason == ""
   ```
 
-- [ ] **Test:** `test_validation_result_deny`
+- [x] **Test:** `test_validation_result_deny`
   ```python
   def test_validation_result_deny():
       result = ValidationResult.deny(
@@ -229,7 +229,7 @@ Rationale:
       assert "mod_1" in result.blocking_modifier_ids
   ```
 
-- [ ] **Implementation:** Create ValidationResult class per plan section 3.4
+- [x] **Implementation:** Create ValidationResult class per plan section 3.4
 
 ---
 
@@ -239,14 +239,14 @@ Rationale:
 **Depends on:** 1.1 DurationType
 **Test file:** `tests/domain/test_effect.py` (NEW)
 
-- [ ] **Test first:** `test_effect_type_enum`
+- [x] **Test first:** `test_effect_type_enum`
   ```python
   def test_effect_type_enum():
       assert EffectType.PLACEMENT_PREVENTION == "placement_prevention"
       assert EffectType.MOVEMENT_ZONE == "movement_zone"
   ```
 
-- [ ] **Test:** `test_effect_scope_creation`
+- [x] **Test:** `test_effect_scope_creation`
   ```python
   def test_effect_scope_creation():
       scope = EffectScope(
@@ -259,7 +259,7 @@ Rationale:
       assert scope.range == 3
   ```
 
-- [ ] **Test:** `test_active_effect_creation`
+- [x] **Test:** `test_active_effect_creation`
   ```python
   def test_active_effect_creation():
       effect = ActiveEffect(
@@ -276,7 +276,7 @@ Rationale:
       assert effect.effect_type == EffectType.PLACEMENT_PREVENTION
   ```
 
-- [ ] **Implementation:** Create enums and models per plan section 3.3:
+- [x] **Implementation:** Create enums and models per plan section 3.3:
   - `EffectType` enum
   - `AffectsFilter` enum
   - `Shape` enum
@@ -293,7 +293,7 @@ Rationale:
 
 #### 1.5.1 Card State Check
 
-- [ ] **Test first:** `test_is_card_in_played_state_current_turn`
+- [x] **Test first:** `test_is_card_in_played_state_current_turn`
   ```python
   def test_is_card_in_played_state_current_turn(game_state_with_hero):
       state = game_state_with_hero
@@ -309,7 +309,7 @@ Rationale:
       assert validator._is_card_in_played_state(state, "hero_1", card.id) is True
   ```
 
-- [ ] **Test:** `test_is_card_in_played_state_resolved`
+- [x] **Test:** `test_is_card_in_played_state_resolved`
   ```python
   def test_is_card_in_played_state_resolved(game_state_with_hero):
       state = game_state_with_hero
@@ -323,11 +323,11 @@ Rationale:
       assert validator._is_card_in_played_state(state, "hero_1", card.id) is True
   ```
 
-- [ ] **Implementation:** `_is_card_in_played_state()` method
+- [x] **Implementation:** `_is_card_in_played_state()` method
 
 #### 1.5.2 Modifier Active Check
 
-- [ ] **Test first:** `test_modifier_active_passive_duration`
+- [x] **Test first:** `test_modifier_active_passive_duration`
   ```python
   def test_modifier_active_passive_duration(game_state):
       mod = Modifier(
@@ -339,7 +339,7 @@ Rationale:
       assert validator._is_modifier_active(mod, game_state) is True
   ```
 
-- [ ] **Test:** `test_modifier_inactive_when_card_not_played`
+- [x] **Test:** `test_modifier_inactive_when_card_not_played`
   ```python
   def test_modifier_inactive_when_card_not_played(game_state_with_hero):
       state = game_state_with_hero
@@ -357,16 +357,16 @@ Rationale:
       assert validator._is_modifier_active(mod, state) is False
   ```
 
-- [ ] **Test:** `test_modifier_active_this_turn`
-- [ ] **Test:** `test_modifier_inactive_wrong_turn`
-- [ ] **Test:** `test_modifier_next_turn_activates_correctly`
-- [ ] **Test:** `test_modifier_next_turn_turn4_never_activates`
+- [x] **Test:** `test_modifier_active_this_turn`
+- [x] **Test:** `test_modifier_inactive_wrong_turn`
+- [x] **Test:** `test_modifier_next_turn_activates_correctly`
+- [x] **Test:** `test_modifier_next_turn_turn4_never_activates`
 
-- [ ] **Implementation:** `_is_modifier_active()` method
+- [x] **Implementation:** `_is_modifier_active()` method
 
 #### 1.5.3 Can Perform Action
 
-- [ ] **Test first:** `test_can_perform_action_no_prevention`
+- [x] **Test first:** `test_can_perform_action_no_prevention`
   ```python
   def test_can_perform_action_no_prevention(game_state):
       validator = ValidationService()
@@ -376,7 +376,7 @@ Rationale:
       assert result.allowed is True
   ```
 
-- [ ] **Test:** `test_can_perform_action_prevented`
+- [x] **Test:** `test_can_perform_action_prevented`
   ```python
   def test_can_perform_action_prevented(game_state):
       game_state.active_modifiers.append(Modifier(
@@ -394,16 +394,16 @@ Rationale:
       assert "mod_1" in result.blocking_modifier_ids
   ```
 
-- [ ] **Implementation:** `can_perform_action()` method
+- [x] **Implementation:** `can_perform_action()` method
 
 #### 1.5.4 Can Be Placed
 
-- [ ] **Test first:** `test_can_be_placed_no_effects`
-- [ ] **Test:** `test_can_be_placed_blocked_by_status_tag`
-- [ ] **Test:** `test_can_be_placed_blocked_by_spatial_effect`
-- [ ] **Test:** `test_can_be_placed_friendly_not_blocked`
+- [x] **Test first:** `test_can_be_placed_no_effects`
+- [x] **Test:** `test_can_be_placed_blocked_by_status_tag`
+- [x] **Test:** `test_can_be_placed_blocked_by_spatial_effect`
+- [x] **Test:** `test_can_be_placed_friendly_not_blocked`
 
-- [ ] **Implementation:** `can_be_placed()` method with helper methods:
+- [x] **Implementation:** `can_be_placed()` method with helper methods:
   - `_is_in_scope()`
   - `_hex_in_scope()`
   - `_get_origin_hex()`
@@ -418,7 +418,7 @@ Rationale:
 **Depends on:** 1.5 ValidationService
 **Test file:** `tests/domain/test_state.py`
 
-- [ ] **Test first:** `test_game_state_has_active_effects`
+- [x] **Test first:** `test_game_state_has_active_effects`
   ```python
   def test_game_state_has_active_effects():
       state = GameState(...)
@@ -426,7 +426,7 @@ Rationale:
       assert state.active_effects == []
   ```
 
-- [ ] **Test:** `test_game_state_validator_property`
+- [x] **Test:** `test_game_state_validator_property`
   ```python
   def test_game_state_validator_property():
       state = GameState(...)
@@ -434,10 +434,10 @@ Rationale:
       assert isinstance(state.validator, ValidationService)
   ```
 
-- [ ] **Test:** `test_game_state_add_effect`
-- [ ] **Test:** `test_game_state_get_modifiers_on`
+- [x] **Test:** `test_game_state_add_effect`
+- [x] **Test:** `test_game_state_get_modifiers_on`
 
-- [ ] **Implementation:**
+- [x] **Implementation:**
   - Add `active_effects: List[ActiveEffect] = Field(default_factory=list)`
   - Add `_validator` private field and `validator` property
   - Add `add_effect()` method
@@ -449,25 +449,25 @@ Rationale:
 ## Phase 1 Checkpoint
 
 Before proceeding to Phase 2, verify:
-- [ ] All Phase 1 tests pass
-- [ ] `ValidationService.can_be_placed()` works correctly
-- [ ] `GameState.validator` property works
-- [ ] No regressions in existing tests: `PYTHONPATH=src uv run pytest tests/`
+- [x] All Phase 1 tests pass
+- [x] `ValidationService.can_be_placed()` works correctly
+- [x] `GameState.validator` property works
+- [x] No regressions in existing tests: `PYTHONPATH=src uv run pytest tests/`
 
 ---
 
-## Phase 2: Effect Lifecycle
+## Phase 2: Effect Lifecycle ✅ COMPLETE
 
 ### 2.1 Create EffectManager
 
-**File:** `src/goa2/engine/effects.py` (enhance existing)
+**File:** `src/goa2/engine/effect_manager.py` (New file)
 **Depends on:** Phase 1 complete
 **Test file:** `tests/engine/test_effect_manager.py` (NEW)
 
-- [ ] **Test first:** `test_create_modifier`
+- [x] **Test first:** `test_create_modifier`
   ```python
   def test_create_modifier(game_state):
-      from goa2.engine.effects import EffectManager
+      from goa2.engine.effect_manager import EffectManager
 
       mod = EffectManager.create_modifier(
           state=game_state,
@@ -482,12 +482,12 @@ Before proceeding to Phase 2, verify:
       assert mod.source_card_id == "card_1"
   ```
 
-- [ ] **Test:** `test_create_effect`
-- [ ] **Test:** `test_expire_by_card`
-- [ ] **Test:** `test_expire_modifiers_by_duration`
-- [ ] **Test:** `test_expire_by_source`
+- [x] **Test:** `test_create_effect`
+- [x] **Test:** `test_expire_by_card`
+- [x] **Test:** `test_expire_modifiers_by_duration`
+- [x] **Test:** `test_expire_by_source`
 
-- [ ] **Implementation:** EffectManager class with static methods per plan section 4.2
+- [x] **Implementation:** EffectManager class with static methods per plan section 4.2
 
 ---
 
@@ -497,7 +497,7 @@ Before proceeding to Phase 2, verify:
 **Depends on:** 2.1 EffectManager
 **Test file:** `tests/engine/test_phases.py`
 
-- [ ] **Test first:** `test_end_turn_expires_this_turn_modifiers`
+- [x] **Test first:** `test_end_turn_expires_this_turn_modifiers`
   ```python
   def test_end_turn_expires_this_turn_modifiers(game_state):
       game_state.active_modifiers.append(Modifier(
@@ -512,10 +512,10 @@ Before proceeding to Phase 2, verify:
       assert len(game_state.active_modifiers) == 0
   ```
 
-- [ ] **Test:** `test_end_round_expires_this_round_effects`
-- [ ] **Test:** `test_passive_effects_never_expire`
+- [x] **Test:** `test_end_round_expires_this_round_effects`
+- [x] **Test:** `test_passive_effects_never_expire`
 
-- [ ] **Implementation:** Update `end_turn()` and `end_round()` to call EffectManager
+- [x] **Implementation:** Update `end_turn()` and `end_round()` to call EffectManager
 
 ---
 
@@ -525,7 +525,7 @@ Before proceeding to Phase 2, verify:
 **Depends on:** 2.2
 **Test file:** `tests/engine/test_phases.py`
 
-- [ ] **Test first:** `test_end_round_cleans_stale_card_effects`
+- [x] **Test first:** `test_end_round_cleans_stale_card_effects`
   ```python
   def test_end_round_cleans_stale_card_effects(game_state_with_hero):
       state = game_state_with_hero
@@ -547,17 +547,17 @@ Before proceeding to Phase 2, verify:
       assert len(state.active_effects) == 0
   ```
 
-- [ ] **Implementation:** Add stale effect cleanup to `end_round()`
+- [x] **Implementation:** Add stale effect cleanup to `end_round()`
 
 ---
 
 ## Phase 2 Checkpoint
 
 Before proceeding to Phase 3, verify:
-- [ ] All Phase 2 tests pass
-- [ ] Effects expire correctly at turn/round boundaries
-- [ ] Stale effects (card not played) are cleaned up
-- [ ] No regressions: `PYTHONPATH=src uv run pytest tests/`
+- [x] All Phase 2 tests pass
+- [x] Effects expire correctly at turn/round boundaries
+- [x] Stale effects (card not played) are cleaned up
+- [x] No regressions: `PYTHONPATH=src uv run pytest tests/`
 
 ---
 
@@ -569,7 +569,7 @@ Before proceeding to Phase 3, verify:
 **Depends on:** Phase 2 complete
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_place_unit_step_blocked_by_effect`
+- [x] **Test first:** `test_place_unit_step_blocked_by_effect`
   ```python
   def test_place_unit_step_blocked_by_effect(game_state_with_heroes):
       state = game_state_with_heroes
@@ -607,10 +607,10 @@ Before proceeding to Phase 3, verify:
       assert result.abort_action is True
   ```
 
-- [ ] **Test:** `test_place_unit_step_succeeds_when_no_effect`
-- [ ] **Test:** `test_place_unit_step_optional_continues_when_blocked`
+- [x] **Test:** `test_place_unit_step_succeeds_when_no_effect`
+- [x] **Test:** `test_place_unit_step_optional_continues_when_blocked`
 
-- [ ] **Implementation:** Add validation call to PlaceUnitStep.resolve()
+- [x] **Implementation:** Add validation call to PlaceUnitStep.resolve()
 
 ---
 
@@ -620,8 +620,8 @@ Before proceeding to Phase 3, verify:
 **Depends on:** 3.1
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_swap_units_step_blocked_by_effect`
-- [ ] **Implementation:** Add `validator.can_be_swapped()` call
+- [x] **Test first:** `test_swap_units_step_blocked_by_effect`
+- [x] **Implementation:** Add `validator.can_be_swapped()` call
 
 ---
 
@@ -631,8 +631,8 @@ Before proceeding to Phase 3, verify:
 **Depends on:** 3.1
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_push_unit_step_blocked_by_effect`
-- [ ] **Implementation:** Add `validator.can_be_pushed()` call
+- [x] **Test first:** `test_push_unit_step_blocked_by_effect`
+- [x] **Implementation:** Add `validator.can_be_pushed()` call
 
 ---
 
@@ -642,19 +642,19 @@ Before proceeding to Phase 3, verify:
 **Depends on:** 3.1
 **Test file:** `tests/engine/test_steps.py`
 
-- [ ] **Test first:** `test_move_unit_step_blocked_by_prevention`
-- [ ] **Test:** `test_move_unit_step_capped_by_zone_effect`
-- [ ] **Implementation:** Add `validator.can_move()` call
+- [x] **Test first:** `test_move_unit_step_blocked_by_prevention`
+- [x] **Test:** `test_move_unit_step_capped_by_zone_effect`
+- [x] **Implementation:** Add `validator.can_move()` call
 
 ---
 
 ## Phase 3 Checkpoint
 
 Before proceeding to Phase 4, verify:
-- [ ] All movement/placement steps validate before executing
-- [ ] Mandatory steps abort when blocked
-- [ ] Optional steps continue when blocked
-- [ ] No regressions: `PYTHONPATH=src uv run pytest tests/`
+- [x] All movement/placement steps validate before executing
+- [x] Mandatory steps abort when blocked
+- [x] Optional steps continue when blocked
+- [x] No regressions: `PYTHONPATH=src uv run pytest tests/`
 
 ---
 
@@ -830,12 +830,13 @@ Before proceeding to Phase 6, verify:
 - `tests/engine/test_validation.py`
 - `tests/domain/test_effect.py`
 - `tests/engine/test_effect_manager.py`
+- `src/goa2/engine/effect_manager.py`
 
 ### Modified Files
 - `src/goa2/domain/models/modifier.py` - Add NEXT_TURN, source_card_id
 - `src/goa2/domain/models/__init__.py` - Export new models
 - `src/goa2/domain/state.py` - Add active_effects, validator
-- `src/goa2/engine/effects.py` - Add EffectManager
+- `src/goa2/engine/effects.py` - Add EffectManager (Note: implemented in separate file `effect_manager.py`)
 - `src/goa2/engine/steps.py` - Add validation, CreateModifierStep, CreateEffectStep
 - `src/goa2/engine/phases.py` - Add expiration calls
 - `src/goa2/engine/filters.py` - Add CanBePlacedByActorFilter
