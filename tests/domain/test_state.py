@@ -5,6 +5,11 @@ from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor,
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
 from goa2.domain.input import InputRequestType, InputRequest
+from goa2.domain.models.modifier import Modifier, DurationType
+from goa2.domain.models.effect import (
+    ActiveEffect, EffectType, EffectScope, Shape
+)
+from goa2.engine.validation import ValidationService
 
 @pytest.fixture
 def empty_state():
@@ -217,3 +222,69 @@ def test_retrieve_cards_logic():
     assert c1.played_this_round is False
     assert c2.state == CardState.HAND
     assert c2.played_this_round is False
+
+
+# --- Effect System Integration Tests ---
+
+def test_game_state_has_active_effects(empty_state):
+    """GameState has active_effects list."""
+    assert hasattr(empty_state, 'active_effects')
+    assert empty_state.active_effects == []
+
+
+def test_game_state_add_effect(empty_state):
+    """GameState can add effects to active_effects list."""
+    effect = ActiveEffect(
+        id="eff_1",
+        source_id="hero_1",
+        effect_type=EffectType.PLACEMENT_PREVENTION,
+        scope=EffectScope(shape=Shape.RADIUS, range=3),
+        duration=DurationType.THIS_TURN,
+        created_at_turn=1,
+        created_at_round=1
+    )
+
+    empty_state.add_effect(effect)
+
+    assert len(empty_state.active_effects) == 1
+    assert empty_state.active_effects[0].id == "eff_1"
+
+
+def test_game_state_validator_property(empty_state):
+    """GameState has validator property that returns ValidationService."""
+    assert empty_state.validator is not None
+    assert isinstance(empty_state.validator, ValidationService)
+
+
+def test_game_state_validator_is_cached(empty_state):
+    """GameState validator is cached (same instance on multiple accesses)."""
+    v1 = empty_state.validator
+    v2 = empty_state.validator
+    assert v1 is v2
+
+
+def test_game_state_get_modifiers_on(empty_state):
+    """GameState can get modifiers affecting a specific target."""
+    empty_state.active_modifiers.append(Modifier(
+        id="mod_1",
+        source_id="hero_1",
+        target_id="hero_2",
+        status_tag="PREVENT_MOVEMENT",
+        duration=DurationType.PASSIVE,
+        created_at_turn=1,
+        created_at_round=1
+    ))
+    empty_state.active_modifiers.append(Modifier(
+        id="mod_2",
+        source_id="hero_1",
+        target_id="hero_3",
+        status_tag="PREVENT_ATTACK",
+        duration=DurationType.PASSIVE,
+        created_at_turn=1,
+        created_at_round=1
+    ))
+
+    mods = empty_state.get_modifiers_on("hero_2")
+
+    assert len(mods) == 1
+    assert mods[0].id == "mod_1"

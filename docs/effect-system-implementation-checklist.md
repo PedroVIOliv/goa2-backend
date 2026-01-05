@@ -1,8 +1,21 @@
 # Effect System Implementation Checklist
 
 **Source:** `docs/architecture-effect-system-plan.md`
-**Status:** Ready for Implementation
+**Status:** Phase 1 Complete, Phase 2 In Progress
 **Approach:** TDD - write tests first, then implementation
+
+---
+
+## Progress Summary
+
+| Phase | Status | Tests Added |
+|-------|--------|-------------|
+| Phase 1: Foundation | ✅ Complete | 61 tests |
+| Phase 2: Effect Lifecycle | 🔄 In Progress | - |
+| Phase 3: Step Integration | ⏳ Pending | - |
+| Phase 4: Effect Creation | ⏳ Pending | - |
+| Phase 5: Filter Migration | ⏳ Pending | - |
+| Phase 6: Card Implementations | ⏳ Pending | - |
 
 ---
 
@@ -132,7 +145,20 @@ Rationale:
 
 ---
 
-## Phase 1: Foundation
+## Phase 1: Foundation ✅ COMPLETE
+
+**Completed:** 2026-01-04
+**Tests:** 61 new tests added (7 modifier, 22 effect, 27 validation, 5 state integration)
+**Files Created:**
+- `src/goa2/domain/models/effect.py`
+- `src/goa2/engine/validation.py`
+- `tests/domain/test_modifier.py`
+- `tests/domain/test_effect.py`
+- `tests/engine/test_validation.py`
+
+**Files Modified:**
+- `src/goa2/domain/models/modifier.py` (NEXT_TURN, source_card_id)
+- `src/goa2/domain/state.py` (active_effects, validator, add_effect, get_modifiers_on)
 
 ### 1.1 Enhance DurationType
 

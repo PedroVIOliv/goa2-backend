@@ -7,6 +7,7 @@ from goa2.domain.types import BoardEntityID
 
 class DurationType(str, Enum):
     THIS_TURN = "THIS_TURN"      # Expires at End of Turn
+    NEXT_TURN = "NEXT_TURN"      # Activates next turn, expires at end of that turn
     THIS_ROUND = "THIS_ROUND"    # Expires at End of Round
     PASSIVE = "PASSIVE"          # Permanent (until source is removed)
 
@@ -16,6 +17,7 @@ class Modifier(BaseModel):
     """
     id: str                      # Unique ID for this specific modifier instance
     source_id: str               # ID of the entity/card that created this (e.g., "living_tsunami")
+    source_card_id: Optional[str] = None  # Card ID if effect is card-based (for lifecycle tracking)
     target_id: BoardEntityID     # Who is being affected?
     
     # Payload: Either a numeric stat change...

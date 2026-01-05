@@ -6,6 +6,7 @@ from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Card, Hero, Unit, GamePhase, ResolutionStep
 from goa2.domain.models.modifier import Modifier
+from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.types import HeroID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 
@@ -64,10 +65,30 @@ class GameState(BaseModel):
     next_entity_id: int = 1
     
     active_modifiers: List[Modifier] = Field(default_factory=list)
+    active_effects: List[ActiveEffect] = Field(default_factory=list)
+
+    # Private field for cached validator (not serialized)
+    _validator: Optional[Any] = None
 
     def add_modifier(self, modifier: Modifier):
         """Adds a modifier to the active list."""
         self.active_modifiers.append(modifier)
+
+    def add_effect(self, effect: ActiveEffect):
+        """Adds a spatial/behavioral effect to the active list."""
+        self.active_effects.append(effect)
+
+    def get_modifiers_on(self, target_id: str) -> List[Modifier]:
+        """Get all modifiers affecting a specific target."""
+        return [m for m in self.active_modifiers if str(m.target_id) == str(target_id)]
+
+    @property
+    def validator(self) -> Any:
+        """Lazy-loaded validation service."""
+        if self._validator is None:
+            from goa2.engine.validation import ValidationService
+            self._validator = ValidationService()
+        return self._validator
 
     def create_entity_id(self, prefix: str) -> str:
         """
