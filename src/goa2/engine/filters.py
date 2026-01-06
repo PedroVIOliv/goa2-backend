@@ -325,21 +325,47 @@ class HasEmptyNeighborFilter(FilterCondition):
 class ForcedMovementByEnemyFilter(FilterCondition):
     """
     Checks if the candidate is protected from forced movement by enemies.
+    Delegates to ValidationService.
     """
     type: str = "forced_movement_by_enemy_filter"
+
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        # 1. Check Relation: Is actor an enemy of candidate?
+        if not isinstance(candidate, str):
+            return False
+
         actor_id = state.current_actor_id
-        if not actor_id: return True # Should not happen
-        actor = state.get_entity(actor_id)
-        target = state.get_entity(candidate) if isinstance(candidate, str) else None
-        if not actor or not target: return True
-        if not hasattr(actor, 'team') or not hasattr(target, 'team'): return True
-        is_enemy = (actor.team != target.team)
-        if not is_enemy:
-            return True # Filter passes if not an enemy (can move allies unless blocked by something else)
-        # 2. Check Status: Does candidate have 'PREVENT_ENEMY_DISPLACEMENT'?
-        from goa2.engine.stats import has_status
-        if has_status(state, candidate, "PREVENT_ENEMY_DISPLACEMENT"):
-            return False # Filter fails (cannot be selected)
-        return True
+        if not actor_id:
+            return True
+
+        result = state.validator.can_be_placed(
+            state=state,
+            unit_id=candidate,
+            actor_id=actor_id,
+            context=context
+        )
+
+        return result.allowed
+
+class CanBePlacedByActorFilter(FilterCondition):
+    """
+    Filters out units that cannot be placed by the current actor.
+    Delegates to ValidationService for actual logic.
+    """
+    type: str = "can_be_placed_filter"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return True  # No actor context, allow selection
+
+        result = state.validator.can_be_placed(
+            state=state,
+            unit_id=candidate,
+            actor_id=actor_id,
+            context=context
+        )
+
+        return result.allowed

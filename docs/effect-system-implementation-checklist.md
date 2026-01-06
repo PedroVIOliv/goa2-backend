@@ -14,8 +14,8 @@
 | Phase 2: Effect Lifecycle | ✅ Complete | 15 tests |
 | Phase 3: Step Integration | ✅ Complete | 6 tests |
 | Phase 4: Effect Creation | ✅ Complete | 3 tests |
-| Phase 5: Filter Migration | 🔄 In Progress | - |
-| Phase 6: Card Implementations | ⏳ Pending | - |
+| Phase 5: Filter Migration | ✅ Complete | 3 tests |
+| Phase 6: Card Implementations | ✅ Complete | 3 tests |
 
 ---
 
@@ -735,10 +735,10 @@ Before proceeding to Phase 4, verify:
 ## Phase 4 Checkpoint
 
 Before proceeding to Phase 5, verify:
-- [ ] CreateModifierStep creates modifiers with card linkage
-- [ ] CreateEffectStep creates effects with card linkage
-- [ ] ResolveCardTextStep sets current_card_id in context
-- [ ] No regressions: `PYTHONPATH=src uv run pytest tests/`
+- [x] CreateModifierStep creates modifiers with card linkage
+- [x] CreateEffectStep creates effects with card linkage
+- [x] ResolveCardTextStep sets current_card_id in context
+- [x] No regressions: `PYTHONPATH=src uv run pytest tests/`
 
 ---
 
