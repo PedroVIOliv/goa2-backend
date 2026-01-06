@@ -3,7 +3,6 @@ from goa2.domain.types import HeroID
 from .registry import HeroRegistry
 
 # Register effects
-import goa2.scripts.arien_effects
 
 def create_arien() -> Hero:
     """
