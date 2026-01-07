@@ -215,3 +215,46 @@ class RogueWaveEffect(CardEffect):
                 is_mandatory=False,
             ),
         ]
+
+
+@register_effect("tidal_blast")
+class TidalBlastEffect(CardEffect):
+    """
+    Card text: "Target a unit in range. After the attack: You may push an enemy unit
+    adjacent to you up to 3 spaces."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            # 1. Attack Sequence
+            AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
+            # 2. Select adjacent enemy to push
+            SelectStep(
+                target_type="UNIT",
+                prompt="Select an adjacent enemy to push (optional)",
+                output_key="push_target_id",
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(max_range=1),  # Adjacent
+                    TeamFilter(relation="ENEMY"),
+                    ImmunityFilter(),
+                ],
+            ),
+            # 3. Choose push distance (0-3)
+            SelectStep(
+                target_type="NUMBER",
+                prompt="Choose push distance (0-3)",
+                output_key="push_distance",
+                number_options=[0, 1, 2, 3],
+                active_if_key="push_target_id",
+            ),
+            # 4. Execute push
+            PushUnitStep(
+                target_key="push_target_id",
+                distance_key="push_distance",
+                active_if_key="push_target_id",
+                is_mandatory=False,
+            ),
+        ]
