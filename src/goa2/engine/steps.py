@@ -157,6 +157,7 @@ class CreateEffectStep(GameStep):
     stat_type: Optional[StatType] = None
     stat_value: int = 0
     max_value: Optional[int] = None
+    limit_actions_only: bool = False
 
     blocks_enemy_actors: bool = True
     blocks_friendly_actors: bool = False
@@ -190,6 +191,7 @@ class CreateEffectStep(GameStep):
             stat_type=self.stat_type,
             stat_value=self.stat_value,
             max_value=self.max_value,
+            limit_actions_only=self.limit_actions_only,
             blocks_enemy_actors=self.blocks_enemy_actors,
             blocks_friendly_actors=self.blocks_friendly_actors,
             blocks_self=self.blocks_self,
@@ -370,6 +372,7 @@ class MoveUnitStep(GameStep):
     unit_id: Optional[str] = None  # If None, uses current_actor
     destination_key: str = "target_hex"  # Where to look in context for destination
     range_val: int = 1
+    is_movement_action: bool = False  # Flag: Is this a formal "Movement Action"?
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = self.unit_id if self.unit_id else state.current_actor_id
@@ -389,7 +392,14 @@ class MoveUnitStep(GameStep):
             dest_hex = dest_val  # Assume it is already a Hex
 
         # Validation: Check Effects/Constraints
-        validation = state.validator.can_move(state, actor_id, self.range_val, context)
+        # Pass is_movement_action to validator
+        validation = state.validator.can_move(
+            state,
+            actor_id,
+            self.range_val,
+            context,
+            is_movement_action=self.is_movement_action,
+        )
         if not validation.allowed:
             print(f"   [BLOCKED] MoveUnitStep: {validation.reason}")
             if self.is_mandatory:
@@ -431,6 +441,8 @@ class MoveSequenceStep(GameStep):
     """
     Composite Step for Movement.
     Expands into: Select Destination Hex -> Move Unit.
+    Should ONLY be used for Movement Actions (primary or secondary).
+    For other movement purposes, use MoveUnitStep directly.
     """
 
     type: str = "move_sequence"
@@ -452,6 +464,7 @@ class MoveSequenceStep(GameStep):
                         destination_key=self.destination_key,
                         range_val=self.range_val,
                         is_mandatory=self.is_mandatory,
+                        is_movement_action=True,  # This IS a movement action
                     )
                 ],
             )
@@ -487,6 +500,7 @@ class MoveSequenceStep(GameStep):
                     destination_key=self.destination_key,
                     range_val=self.range_val,
                     is_mandatory=self.is_mandatory,
+                    is_movement_action=True,  # This IS a movement action
                 ),
             ],
         )

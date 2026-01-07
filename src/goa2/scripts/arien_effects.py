@@ -8,6 +8,8 @@ from goa2.engine.steps import (
     PlaceUnitStep,
     AttackSequenceStep,
     PushUnitStep,
+    CreateEffectStep,
+    MoveSequenceStep,
 )
 from goa2.engine.filters import (
     UnitTypeFilter,
@@ -23,6 +25,14 @@ from goa2.engine.filters import (
     ImmunityFilter,
 )
 from goa2.engine.stats import compute_card_stats
+from goa2.domain.models import (
+    EffectType,
+    EffectScope,
+    Shape,
+    AffectsFilter,
+    DurationType,
+    ActionType,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -257,4 +267,57 @@ class TidalBlastEffect(CardEffect):
                 active_if_key="push_target_id",
                 is_mandatory=False,
             ),
+        ]
+
+
+@register_effect("slippery_ground")
+class SlipperyGroundEffect(CardEffect):
+    """
+    Card text: "This turn: Enemy heroes adjacent to you cannot fast travel,
+    or move more than 1 space with a movement action."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.MOVEMENT_ZONE,
+                scope=EffectScope(
+                    shape=Shape.ADJACENT,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                max_value=1,
+                limit_actions_only=True,
+                restrictions=[ActionType.FAST_TRAVEL],
+            ),
+            MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
+        ]
+
+
+@register_effect("deluge")
+class DelugeEffect(CardEffect):
+    """
+    Card text: "This turn: Enemy heroes in radius cannot fast travel,
+    or move more than 1 space with a movement action."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.MOVEMENT_ZONE,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 1,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                max_value=1,
+                limit_actions_only=True,
+                restrictions=[ActionType.FAST_TRAVEL],
+            ),
+            MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
         ]

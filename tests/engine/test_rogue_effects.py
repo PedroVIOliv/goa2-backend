@@ -124,7 +124,7 @@ def test_slippery_ground_limits_movement(rogue_state):
         initiative=4,
         primary_action=ActionType.SKILL,
         primary_action_value=None,
-        effect_id="slippery_ground",
+        effect_id="rogue_slippery_ground",
         effect_text="This Turn: Adjacent enemies can only move up to 1 space.",
         is_facedown=False,
     )
@@ -152,7 +152,11 @@ def test_slippery_ground_limits_movement(rogue_state):
 
     rogue_state.current_actor_id = "victim"
     move_step = MoveUnitStep(
-        unit_id="victim", destination_key="target", range_val=2, is_mandatory=True
+        unit_id="victim",
+        destination_key="target",
+        range_val=2,
+        is_mandatory=True,
+        is_movement_action=True,
     )
     context = {"target": Hex(q=3, r=-1, s=-2)}
 
@@ -161,7 +165,11 @@ def test_slippery_ground_limits_movement(rogue_state):
 
     # Target 1 space away should be allowed
     move_step_1 = MoveUnitStep(
-        unit_id="victim", destination_key="target", range_val=1, is_mandatory=True
+        unit_id="victim",
+        destination_key="target",
+        range_val=1,
+        is_mandatory=True,
+        is_movement_action=True,
     )
     context_1 = {"target": Hex(q=2, r=0, s=-2)}
     res_1 = move_step_1.resolve(rogue_state, context_1)

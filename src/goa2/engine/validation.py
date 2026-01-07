@@ -95,6 +95,31 @@ class ValidationService:
                         source=mod.source_id,
                     )
 
+        # Check Active Effects (Zones/Auras) that restrict actions
+        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
+        if actor_loc:
+            actor_unit = state.get_unit(UnitID(actor_id))
+
+            for effect in state.active_effects:
+                if not self._is_effect_active(effect, state):
+                    continue
+
+                # Check if this action is restricted by the effect
+                if action_type not in effect.restrictions:
+                    continue
+
+                # Check spatial/relational scope (is actor inside zone?)
+                if not self._is_in_scope(effect, actor_id, actor_loc, state):
+                    continue
+
+                # Check if this actor is blocked by the effect
+                if self._actor_blocked_by_effect(effect, actor_unit, None, state):
+                    return ValidationResult.deny(
+                        reason=f"Action prevented by effect: {effect.effect_type.value}",
+                        effect_ids=[effect.id],
+                        source=effect.source_id,
+                    )
+
         return ValidationResult.allow()
 
     def can_fast_travel(
@@ -115,6 +140,7 @@ class ValidationService:
         unit_id: str,
         distance: int,
         context: Optional[Dict[str, Any]] = None,
+        is_movement_action: bool = False,
     ) -> ValidationResult:
         """
         Can unit move 'distance' spaces?
@@ -143,6 +169,10 @@ class ValidationService:
             if not self._is_effect_active(effect, state):
                 continue
             if not self._is_in_scope(effect, unit_id, unit_loc, state):
+                continue
+
+            # Logic: If effect caps ONLY actions, and this is NOT an action -> Skip
+            if effect.limit_actions_only and not is_movement_action:
                 continue
 
             if effect.max_value is not None and effect.max_value < max_allowed:

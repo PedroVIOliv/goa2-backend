@@ -64,7 +64,7 @@ class VenomStrikeEffect(CardEffect):
         ]
 
 
-@register_effect("slippery_ground")
+@register_effect("rogue_slippery_ground")
 class SlipperyGroundEffect(CardEffect):
     """
     Card Text: "This Turn: Adjacent enemies can only move up to 1 space."
