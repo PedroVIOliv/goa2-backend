@@ -150,6 +150,7 @@ def test_reaction_window_full(steps_state):
         effect_id="none",
         effect_text="",
         initiative=1,
+        is_facedown=False,
     )
     h2.hand = [def_card]
 
@@ -183,6 +184,7 @@ def test_reaction_window_full(steps_state):
         effect_id="none",
         effect_text="",
         initiative=1,
+        is_facedown=False,
     )
     h2.hand.append(sec_card)
     rw.pending_input = {"selected_card_id": "sec1"}

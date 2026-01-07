@@ -15,6 +15,7 @@ from goa2.domain.models import (
 from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
 from goa2.engine import rules  # For validation
+from goa2.engine.stats import get_computed_stat  # For stat calculation
 
 from goa2.domain.models.enums import StatType
 from goa2.domain.models.effect import EffectType, EffectScope
@@ -591,20 +592,22 @@ class ReactionWindowStep(GameStep):
                 selected_card = next(
                     (c for c in valid_defense_cards if c.id == card_id), None
                 )
-                if selected_card:
-                    if selected_card.primary_action == ActionType.DEFENSE:
-                        def_val = selected_card.primary_action_value or 0
-                    elif ActionType.DEFENSE in selected_card.secondary_actions:
-                        def_val = selected_card.secondary_actions[ActionType.DEFENSE]
 
-                # Fallback for demo if card not found in real object
-                if not selected_card:
-                    def_val = 5  # Mock default
+                # Get Base Value
+                if selected_card:
+                    def_val = selected_card.get_base_stat_value(StatType.DEFENSE)
+                elif not selected_card:
+                    raise ValueError("Selected card is not a valid defense card.")
+
+                # Compute Total Defense (Base + Items + Modifiers)
+                total_def = get_computed_stat(
+                    state, target_id, StatType.DEFENSE, def_val
+                )
 
                 print(
-                    f"   [REACTION] Player {target_id} defends with {card_id} (Value: {def_val})"
+                    f"   [REACTION] Player {target_id} defends with {card_id} (Value: {total_def} [Base: {def_val}])"
                 )
-                context["defense_value"] = def_val
+                context["defense_value"] = total_def
 
                 return StepResult(is_finished=True)
 
@@ -1193,13 +1196,32 @@ class ResolveCardTextStep(GameStep):
             f"            > No custom script found. Using standard {card.primary_action.name} logic."
         )
         new_steps = []
-        val = card.primary_action_value
 
         if card.primary_action == ActionType.MOVEMENT:
-            new_steps.append(MoveSequenceStep(unit_id=self.hero_id, range_val=val))
+            # MOVEMENT: Compute Total
+            base_val = card.get_base_stat_value(StatType.MOVEMENT)
+            total_val = get_computed_stat(
+                state, self.hero_id, StatType.MOVEMENT, base_val
+            )
+            new_steps.append(
+                MoveSequenceStep(unit_id=self.hero_id, range_val=total_val)
+            )
+
         elif card.primary_action == ActionType.ATTACK:
-            rng = card.range_value if card.range_value is not None else 1
-            new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
+            # ATTACK: Compute Damage & Range
+            base_dmg = card.get_base_stat_value(StatType.ATTACK)
+            total_dmg = get_computed_stat(
+                state, self.hero_id, StatType.ATTACK, base_dmg
+            )
+
+            base_rng = card.get_base_stat_value(StatType.RANGE)
+            # Default Range is 1 if not specified (and get_base_stat_value returns 0 if None)
+            if base_rng == 0:
+                base_rng = 1
+            total_rng = get_computed_stat(state, self.hero_id, StatType.RANGE, base_rng)
+
+            new_steps.append(AttackSequenceStep(damage=total_dmg, range_val=total_rng))
+
         elif card.primary_action == ActionType.DEFENSE:
             new_steps.append(
                 LogMessageStep(message=f"{self.hero_id} Defends (Primary).")
@@ -1247,28 +1269,57 @@ class ResolveCardStep(GameStep):
                     return False
             return True
 
+        # Helper to compute option values
+        def compute_option(
+            act_type: ActionType, base_val: Optional[int]
+        ) -> Tuple[int, str]:
+            # Default
+            final_val = base_val or 0
+            text_val = str(final_val) if base_val is not None else "-"
+
+            # Map Action to Stat
+            stat_type = None
+            if act_type == ActionType.MOVEMENT:
+                stat_type = StatType.MOVEMENT
+            elif act_type == ActionType.ATTACK:
+                stat_type = StatType.ATTACK
+            elif act_type == ActionType.DEFENSE:
+                stat_type = StatType.DEFENSE
+
+            if stat_type:
+                final_val = get_computed_stat(
+                    state, self.hero_id, stat_type, base_val or 0
+                )
+                text_val = str(final_val)
+
+            return final_val, text_val
+
         # Primary
         primary_action = card.current_primary_action
         if primary_action:
             if is_action_available(primary_action):
+                c_val, c_text = compute_option(
+                    primary_action, card.current_primary_action_value
+                )
                 options.append(
                     {
                         "id": primary_action.name,
                         "type": primary_action,
-                        "value": card.current_primary_action_value,
-                        "text": f"Primary: {primary_action.name} ({card.current_primary_action_value or '-'})",
+                        "value": c_val,
+                        "text": f"Primary: {primary_action.name} ({c_text})",
                     }
                 )
 
         # Secondaries
         for action_type, val in card.current_secondary_actions.items():
             if is_action_available(action_type):
+                c_val, c_text = compute_option(action_type, val)
                 options.append(
                     {
                         "id": action_type.name,
                         "type": action_type,
-                        "value": val,
-                        "text": f"Secondary: {action_type.name} ({val})",
+                        "value": c_val,
+                        "text": f"Secondary: {action_type.name} ({c_text})",
                     }
                 )
 
@@ -1302,8 +1353,18 @@ class ResolveCardStep(GameStep):
                         new_steps.append(FastTravelSequenceStep(unit_id=self.hero_id))
 
                     elif act_type == ActionType.ATTACK:
-                        rng = card.range_value if card.range_value is not None else 1
-                        new_steps.append(AttackSequenceStep(damage=val, range_val=rng))
+                        # Damage is already computed in 'val'
+                        # But Range is implicit, so compute it here
+                        base_rng = card.get_base_stat_value(StatType.RANGE)
+                        if base_rng == 0:
+                            base_rng = 1
+                        total_rng = get_computed_stat(
+                            state, self.hero_id, StatType.RANGE, base_rng
+                        )
+
+                        new_steps.append(
+                            AttackSequenceStep(damage=val, range_val=total_rng)
+                        )
 
                     elif act_type == ActionType.CLEAR:
                         new_steps.append(
