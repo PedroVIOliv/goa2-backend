@@ -1,7 +1,8 @@
 from typing import NewType
 
-HeroID = NewType('HeroID', str)
-CardID = NewType('CardID', str)
+BoardEntityID = NewType("BoardEntityID", str)
+UnitID = BoardEntityID
+HeroID = BoardEntityID
 
-UnitID = NewType('UnitID', str)
-BoardEntityID = NewType('BoardEntityID', str)
+CardID = NewType("CardID", str)
+ModifierID = NewType("ModifierID", str)

@@ -98,13 +98,14 @@ class NobleBladeEffect(CardEffect):
 @register_effect("arcane_whirlpool")
 class SwapEnemyMinionEffect(CardEffect):
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        range_val = card.range_value if card.range_value is not None else 0
         return [
             SelectStep(
                 target_type="UNIT",
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=card.range_value),
+                    RangeFilter(max_range=range_val),
                 ],
                 prompt="Select an enemy minion to swap with.",
                 output_key="swap_target_id",

@@ -78,6 +78,7 @@ class ValidationService:
             ActionType.ATTACK: "PREVENT_ATTACK",
             ActionType.SKILL: "PREVENT_SKILL",
             ActionType.DEFENSE: "PREVENT_DEFENSE",
+            ActionType.FAST_TRAVEL: "PREVENT_FAST_TRAVEL",
         }
 
         tag = prevention_tags.get(action_type)
@@ -95,6 +96,18 @@ class ValidationService:
                     )
 
         return ValidationResult.allow()
+
+    def can_fast_travel(
+        self,
+        state: "GameState",
+        unit_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ValidationResult:
+        """
+        Can unit perform Fast Travel?
+        Checks: PREVENT_FAST_TRAVEL status.
+        """
+        return self.can_perform_action(state, unit_id, ActionType.FAST_TRAVEL, context)
 
     def can_move(
         self,

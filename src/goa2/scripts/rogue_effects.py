@@ -1,7 +1,12 @@
 from __future__ import annotations
 from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import AttackSequenceStep, CreateModifierStep, CreateEffectStep
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CreateModifierStep,
+    CreateEffectStep,
+    GameStep,
+)
 from goa2.domain.models import (
     StatType,
     DurationType,
@@ -14,7 +19,7 @@ from goa2.domain.models import (
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card, GameStep
+    from goa2.domain.models import Hero, Card
 
 
 @register_effect("venom_strike")

@@ -41,7 +41,7 @@ class Card(GameEntity):
     # Item (Passive bonuses when equipped as item)
     item: Optional[StatType] = None
 
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     def __init__(self, **data):
         super().__init__(**data)

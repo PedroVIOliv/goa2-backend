@@ -1,10 +1,12 @@
 """EffectManager for creating and expiring effects/modifiers."""
+
 from __future__ import annotations
 from typing import Optional, TYPE_CHECKING
 
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.enums import StatType
 from goa2.domain.models.effect import ActiveEffect, EffectType, EffectScope
+from goa2.domain.types import BoardEntityID, CardID, ModifierID
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -25,20 +27,20 @@ class EffectManager:
         value_mod: int = 0,
         status_tag: Optional[str] = None,
         duration: DurationType = DurationType.THIS_TURN,
-        source_card_id: Optional[str] = None
+        source_card_id: Optional[str] = None,
     ) -> Modifier:
         """Create and register a new modifier."""
         modifier = Modifier(
-            id=f"mod_{state.create_entity_id('m')}",
-            source_id=source_id,
-            source_card_id=source_card_id,
-            target_id=target_id,
+            id=ModifierID(f"mod_{state.create_entity_id('m')}"),
+            source_id=BoardEntityID(source_id),
+            source_card_id=CardID(source_card_id) if source_card_id else None,
+            target_id=BoardEntityID(target_id),
             stat_type=stat_type,
             value_mod=value_mod,
             status_tag=status_tag,
             duration=duration,
             created_at_turn=state.turn,
-            created_at_round=state.round
+            created_at_round=state.round,
         )
         state.add_modifier(modifier)
         return modifier
@@ -51,7 +53,7 @@ class EffectManager:
         scope: EffectScope,
         duration: DurationType = DurationType.THIS_TURN,
         source_card_id: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> ActiveEffect:
         """Create and register a new spatial effect."""
         effect = ActiveEffect(
@@ -63,7 +65,7 @@ class EffectManager:
             duration=duration,
             created_at_turn=state.turn,
             created_at_round=state.round,
-            **kwargs
+            **kwargs,
         )
         state.add_effect(effect)
         return effect
@@ -72,40 +74,34 @@ class EffectManager:
     def expire_by_card(state: "GameState", card_id: str):
         """Remove all effects/modifiers linked to a specific card."""
         state.active_modifiers = [
-            m for m in state.active_modifiers
-            if m.source_card_id != card_id
+            m for m in state.active_modifiers if m.source_card_id != card_id
         ]
         state.active_effects = [
-            e for e in state.active_effects
-            if e.source_card_id != card_id
+            e for e in state.active_effects if e.source_card_id != card_id
         ]
 
     @staticmethod
     def expire_modifiers(state: "GameState", duration: DurationType):
         """Remove all modifiers matching duration type."""
         state.active_modifiers = [
-            m for m in state.active_modifiers
-            if m.duration != duration
+            m for m in state.active_modifiers if m.duration != duration
         ]
 
     @staticmethod
     def expire_effects(state: "GameState", duration: DurationType):
         """Remove all effects matching duration type."""
         state.active_effects = [
-            e for e in state.active_effects
-            if e.duration != duration
+            e for e in state.active_effects if e.duration != duration
         ]
 
     @staticmethod
     def expire_by_source(state: "GameState", source_id: str):
         """Remove all effects/modifiers from a specific source (e.g., defeated hero)."""
         state.active_modifiers = [
-            m for m in state.active_modifiers
-            if m.source_id != source_id
+            m for m in state.active_modifiers if m.source_id != source_id
         ]
         state.active_effects = [
-            e for e in state.active_effects
-            if e.source_id != source_id
+            e for e in state.active_effects if e.source_id != source_id
         ]
 
     @staticmethod
@@ -114,6 +110,7 @@ class EffectManager:
         Remove effects whose source card is no longer in played state.
         Called at round end for memory cleanup (lazy expiration).
         """
+
         def is_effect_valid(effect: ActiveEffect) -> bool:
             # Effects without card link are always valid
             if effect.source_card_id is None:
@@ -139,4 +136,6 @@ class EffectManager:
             )
 
         state.active_effects = [e for e in state.active_effects if is_effect_valid(e)]
-        state.active_modifiers = [m for m in state.active_modifiers if is_modifier_valid(m)]
+        state.active_modifiers = [
+            m for m in state.active_modifiers if is_modifier_valid(m)
+        ]

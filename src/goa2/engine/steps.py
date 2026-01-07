@@ -933,6 +933,7 @@ class SwapUnitsStep(GameStep):
 
         return StepResult(is_finished=True)
 
+
 class PushUnitStep(GameStep):
     """
     Pushes a unit away from a source location.
@@ -1415,7 +1416,7 @@ class ResolveDisplacementStep(GameStep):
         blue_units = []
 
         for uid, origin in self.displacements:
-            unit = state.get_unit(uid)
+            unit = state.get_unit(UnitID(uid))
             if unit:
                 if unit.team == TeamColor.RED:
                     red_units.append((uid, origin))
@@ -1594,6 +1595,10 @@ class LanePushStep(GameStep):
             print("   [ERROR] Could not determine next zone for push.")
             return StepResult(is_finished=True)
 
+        if not state.active_zone_id:
+            print("   [ERROR] No active zone for push.")
+            return StepResult(is_finished=True)
+
         current_zone = state.board.zones.get(state.active_zone_id)
 
         # Per rules: "Remove all Minions from old Battle Zone."
@@ -1605,7 +1610,7 @@ class LanePushStep(GameStep):
         if current_zone:
             for uid, loc in state.unit_locations.items():
                 if loc in current_zone.hexes:
-                    unit = state.get_unit(uid)
+                    unit = state.get_unit(UnitID(uid))
                     if hasattr(unit, "type") and hasattr(
                         unit, "value"
                     ):  # Duck typing Minion
@@ -1679,6 +1684,9 @@ class CheckLanePushStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import check_lane_push_trigger
+
+        if not state.active_zone_id:
+            return StepResult(is_finished=True)
 
         losing_team = check_lane_push_trigger(state, state.active_zone_id)
         if losing_team:
@@ -1785,9 +1793,10 @@ class EndPhaseStep(GameStep):
 
         from goa2.engine.map_logic import check_lane_push_trigger
 
-        losing_team = check_lane_push_trigger(state, state.active_zone_id)
-        if losing_team:
-            new_steps.append(LanePushStep(losing_team=losing_team))
+        if state.active_zone_id:
+            losing_team = check_lane_push_trigger(state, state.active_zone_id)
+            if losing_team:
+                new_steps.append(LanePushStep(losing_team=losing_team))
 
         new_steps.append(EndPhaseCleanupStep())
 
@@ -1810,8 +1819,8 @@ class EndPhaseStep(GameStep):
 
         for unit_id, loc in state.unit_locations.items():
             if loc in zone.hexes:
-                unit = state.get_unit(unit_id)
-                if hasattr(unit, "type") and hasattr(unit, "is_heavy"):
+                unit = state.get_unit(UnitID(unit_id))
+                if unit and hasattr(unit, "type") and hasattr(unit, "is_heavy"):
                     if unit.team == TeamColor.RED:
                         red_minions.append(unit)
                     elif unit.team == TeamColor.BLUE:
@@ -1847,7 +1856,7 @@ class ResolveTieBreakerStep(GameStep):
     """
 
     type: str = "resolve_tie_breaker"
-    tied_hero_ids: List[str]
+    tied_hero_ids: List[HeroID]
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if not self.tied_hero_ids:
@@ -1856,7 +1865,7 @@ class ResolveTieBreakerStep(GameStep):
         teams_represented: Dict[TeamColor, List[str]] = {}
         for h_id in self.tied_hero_ids:
             hero = state.get_hero(HeroID(h_id))
-            if hero:
+            if hero and hero.team:
                 teams_represented.setdefault(hero.team, []).append(h_id)
 
         winner_id = None
@@ -1921,6 +1930,9 @@ class ResolveTieBreakerStep(GameStep):
                 )
 
         # We have a winner!
+        if not winner_id:
+            raise ValueError("No winner identified in tie breaker.")
+
         winner_hero = state.get_hero(HeroID(winner_id))
         winner_card = winner_hero.current_turn_card if winner_hero else None
 
@@ -1928,7 +1940,7 @@ class ResolveTieBreakerStep(GameStep):
         if winner_id in state.unresolved_hero_ids:
             state.unresolved_hero_ids.remove(HeroID(winner_id))
 
-        state.current_actor_id = winner_id
+        state.current_actor_id = HeroID(winner_id)
 
         new_steps: List[GameStep] = []
         new_steps.append(ResolveCardStep(hero_id=winner_id))
@@ -1961,7 +1973,7 @@ class AttackSequenceStep(GameStep):
 
         key = self.target_id_key if self.target_id_key else "victim_id"
 
-        new_steps = []
+        new_steps: List[GameStep] = []
 
         # Only spawn selection if we don't have a pre-selected key
         if not self.target_id_key:
@@ -1996,7 +2008,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
     3. Tucks pair card as item.
     4. Decrements pending count.
     """
-    hero = state.get_hero(hero_id)
+    hero = state.get_hero(HeroID(hero_id))
     if not hero:
         return
 
@@ -2046,9 +2058,9 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
         pair_card.state = CardState.ITEM
 
     if hero_id in state.pending_upgrades:
-        state.pending_upgrades[hero_id] -= 1
-        if state.pending_upgrades[hero_id] <= 0:
-            del state.pending_upgrades[hero_id]
+        state.pending_upgrades[HeroID(hero_id)] -= 1
+        if state.pending_upgrades[HeroID(hero_id)] <= 0:
+            del state.pending_upgrades[HeroID(hero_id)]
 
 
 class RoundResetStep(GameStep):
