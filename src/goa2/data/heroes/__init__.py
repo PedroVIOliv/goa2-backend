@@ -3,3 +3,4 @@ from .registry import HeroRegistry
 from . import knight
 from . import rogue
 from . import arien
+from . import xargatha

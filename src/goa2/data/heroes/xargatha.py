@@ -1,0 +1,327 @@
+from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, StatType
+from goa2.domain.types import HeroID
+from .registry import HeroRegistry
+
+# Register effects
+
+def create_xargatha() -> Hero:
+    """
+    Xargatha The Changed
+    """
+    name = "Xargatha"
+    title = "The Changed"
+    deck = [
+    # =========================================================================
+    # TIER IV (Ultimate)
+    # =========================================================================
+    Card(
+        id="metamorphosis",
+        name="Metamorphosis",
+        tier=CardTier.IV,
+        color=CardColor.PURPLE,
+        initiative=0,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={},
+        effect_id="metamorphosis",
+        effect_text="Gain +1 :movement: Movement and +1 :initiative: Initiative for each enemy unit adjacent to you. You may move through obstacles."
+    ),
+
+    # =========================================================================
+    # TIER III
+    # =========================================================================
+    Card(
+        id="dominate",
+        name="Dominate",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=4,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=2,
+        secondary_actions={
+            ActionType.DEFENSE: 4
+        },
+        item=StatType.ATTACK,
+        radius_value=2,
+        effect_id="dominate",
+        effect_text="Before or after movement, you may move an enemy minion in radius up to 2 spaces; ignore heavy minion immunity."
+    ),
+    Card(
+        id="final_embrace",
+        name="Final Embrace",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=4,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 4,
+            ActionType.MOVEMENT: 2
+        },
+        item=StatType.INITIATIVE,
+        effect_id="final_embrace",
+        effect_text="End of round: Defeat an enemy melee or ranged minion adjacent to you."
+    ),
+    Card(
+        id="devoted_followers",
+        name="Devoted Followers",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 6,
+            ActionType.MOVEMENT: 3
+        },
+        item=StatType.RANGE,
+        effect_id="devoted_followers",
+        effect_text="If you are adjacent to an enemy unit, you may retrieve a discarded card."
+    ),
+    Card(
+        id="turn_into_statues",
+        name="Turn into Statues",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 6,
+            ActionType.MOVEMENT: 3
+        },
+        radius_value=4,
+        item=StatType.DEFENSE,
+        effect_id="turn_into_statues",
+        effect_text="Next turn: Enemy heroes in radius count as both heroes and terrain, and cannot perform movement actions."
+    ),
+    Card(
+        id="lethal_spin",
+        name="Lethal Spin",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=8,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
+        secondary_actions={
+            ActionType.DEFENSE: 7,
+            ActionType.MOVEMENT: 5
+        },
+        item=StatType.RADIUS,
+        effect_id="lethal_spin",
+        effect_text="Target a unit adjacent to you. +3 :attack: Attack for each other enemy unit adjacent to you."
+    ),
+    Card(
+        id="rapid_thrusts",
+        name="Rapid Thrusts",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=8,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        secondary_actions={
+            ActionType.DEFENSE: 4,
+            ActionType.MOVEMENT: 4
+        },
+        is_ranged=True,
+        range_value=1,
+        item=StatType.MOVEMENT,
+        effect_id="rapid_thrusts",
+        effect_text="Target a unit in range. +1 :range: Range for each enemy unit adjacent to you. May repeat once on a different enemy hero."
+    ),
+
+    # =========================================================================
+    # UNTIERED / TIER I
+    # =========================================================================
+    Card(
+        id="sirens_call",
+        name="Siren's Call",
+        tier=CardTier.UNTIERED,
+        color=CardColor.SILVER,
+        initiative=3,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.MOVEMENT: 3
+        },
+        is_ranged=True,
+        range_value=3,
+        effect_id="sirens_call",
+        effect_text="Target an enemy unit not adjacent to you and in range; if able, move the target up to 3 spaces to a space adjacent to you."
+    ),
+    Card(
+        id="cleave",
+        name="Cleave",
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=11,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        secondary_actions={
+            ActionType.DEFENSE: 1,
+            ActionType.MOVEMENT: 2
+        },
+        effect_id="cleave",
+        effect_text="Target a unit adjacent to you. After the attack: May repeat once on a different enemy hero. (You may repeat even if the original target was a minion.)"
+    ),
+    Card(
+        id="charm",
+        name="Charm",
+        tier=CardTier.I,
+        color=CardColor.GREEN,
+        initiative=5,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=2,
+        secondary_actions={
+            ActionType.DEFENSE: 3
+        },
+        radius_value=2,
+        effect_id="charm",
+        effect_text="Before or after movement, you may move an enemy ranged minion in radius up to 2 spaces."
+    ),
+    Card(
+        id="stone_gaze",
+        name="Stone Gaze",
+        tier=CardTier.I,
+        color=CardColor.BLUE,
+        initiative=9,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 5,
+            ActionType.MOVEMENT: 3
+        },
+        radius_value=2,
+        effect_id="stone_gaze",
+        effect_text="Next turn: Enemy heroes in radius count as both heroes and terrain, and cannot perform movement actions. (If you move, the radius \"moves\" with you.)"
+    ),
+    Card(
+        id="threatening_slash",
+        name="Threatening Slash",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=7,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
+        secondary_actions={
+            ActionType.DEFENSE: 6,
+            ActionType.MOVEMENT: 5
+        },
+        effect_id="threatening_slash",
+        effect_text="Target a unit adjacent to you. +1 :attack: Attack for each other enemy unit adjacent to you. (Do not count the target when calculating the attack bonus.)"
+    ),
+
+    # =========================================================================
+    # TIER II
+    # =========================================================================
+    Card(
+        id="long_thrust",
+        name="Long Thrust",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=8,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=3,
+        secondary_actions={
+            ActionType.DEFENSE: 4,
+            ActionType.MOVEMENT: 4
+        },
+        is_ranged=True,
+        range_value=1,
+        item=StatType.DEFENSE,
+        effect_id="long_thrust",
+        effect_text="Target a unit in range. +1 :range: Range for each enemy unit adjacent to you."
+    ),
+    Card(
+        id="deadly_swipe",
+        name="Deadly Swipe",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=8,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
+        secondary_actions={
+            ActionType.DEFENSE: 7,
+            ActionType.MOVEMENT: 5
+        },
+        item=StatType.INITIATIVE,
+        effect_id="deadly_swipe",
+        effect_text="Target a unit adjacent to you. +2 :attack: Attack for each other enemy unit adjacent to you."
+    ),
+    Card(
+        id="fresh_converts",
+        name="Fresh Converts",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 6,
+            ActionType.MOVEMENT: 3
+        },
+        item=StatType.ATTACK,
+        effect_id="fresh_converts",
+        effect_text="If you are adjacent to an enemy minion, you may retrieve a discarded card."
+    ),
+    Card(
+        id="petrifying_stare",
+        name="Petrifying Stare",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 6,
+            ActionType.MOVEMENT: 3
+        },
+        radius_value=3,
+        item=StatType.DEFENSE,
+        effect_id="petrifying_stare",
+        effect_text="Next turn: Enemy heroes in radius count as both heroes and terrain, and cannot perform movement actions."
+    ),
+    Card(
+        id="constrict",
+        name="Constrict",
+        tier=CardTier.II,
+        color=CardColor.GREEN,
+        initiative=4,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={
+            ActionType.DEFENSE: 3,
+            ActionType.MOVEMENT: 2
+        },
+        item=StatType.INITIATIVE,
+        effect_id="constrict",
+        effect_text="End of round: Defeat an enemy melee minion adjacent to you. (Before the end of round minion battle.)"
+    ),
+    Card(
+        id="control",
+        name="Control",
+        tier=CardTier.II,
+        color=CardColor.GREEN,
+        initiative=4,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=2,
+        secondary_actions={
+            ActionType.DEFENSE: 3
+        },
+        item=StatType.ATTACK,
+        radius_value=2,
+        effect_id="control",
+        effect_text="Before or after movement, you may move an enemy ranged or melee minion in radius up to 2 spaces."
+    ),
+    ]
+
+    h = Hero(
+        id=HeroID("hero_xargatha"),
+        name="Xargatha",
+        deck=deck,
+        hand=[],
+        items={}
+    )
+    return h
+
+HeroRegistry.register(create_xargatha())
