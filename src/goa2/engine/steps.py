@@ -915,55 +915,77 @@ class SwapUnitsStep(GameStep):
     """
     Swaps the positions of two units.
     Updates the board state directly.
+
+    Supports two modes:
+    - Direct: Provide unit_a_id and unit_b_id directly
+    - Context: Provide unit_a_key and/or unit_b_key to read from context
     """
 
     type: str = "swap_units"
-    unit_a_id: str
-    unit_b_id: str
+    unit_a_id: Optional[str] = None
+    unit_b_id: Optional[str] = None
+    unit_a_key: Optional[str] = None  # Read unit_a from context
+    unit_b_key: Optional[str] = None  # Read unit_b from context
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Resolve unit IDs from either direct or context
+        actual_unit_a = self.unit_a_id
+        if not actual_unit_a and self.unit_a_key:
+            actual_unit_a = context.get(self.unit_a_key)
+
+        actual_unit_b = self.unit_b_id
+        if not actual_unit_b and self.unit_b_key:
+            actual_unit_b = context.get(self.unit_b_key)
+
+        if not actual_unit_a or not actual_unit_b:
+            print("   [SKIP] SwapUnitsStep: Missing unit ID(s).")
+            return StepResult(is_finished=True)
+
         # Get current locations from Unified Dict
-        loc_a = state.entity_locations.get(BoardEntityID(self.unit_a_id))
-        loc_b = state.entity_locations.get(BoardEntityID(self.unit_b_id))
+        loc_a = state.entity_locations.get(BoardEntityID(actual_unit_a))
+        loc_b = state.entity_locations.get(BoardEntityID(actual_unit_b))
 
         if not loc_a or not loc_b:
             print(
-                f"   [ERROR] Cannot swap {self.unit_a_id} and {self.unit_b_id}. One is not on board."
+                f"   [ERROR] Cannot swap {actual_unit_a} and {actual_unit_b}. One is not on board."
             )
             return StepResult(is_finished=True)
 
         # Validation
         actor_id = state.current_actor_id
         res_a = state.validator.can_be_swapped(
-            state, self.unit_a_id, str(actor_id) if actor_id else "system", context
+            state, actual_unit_a, str(actor_id) if actor_id else "system", context
         )
         if not res_a.allowed:
-            print(f"   [BLOCKED] Swap prevented for {self.unit_a_id}: {res_a.reason}")
+            print(f"   [BLOCKED] Swap prevented for {actual_unit_a}: {res_a.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
         res_b = state.validator.can_be_swapped(
-            state, self.unit_b_id, str(actor_id) if actor_id else "system", context
+            state, actual_unit_b, str(actor_id) if actor_id else "system", context
         )
         if not res_b.allowed:
-            print(f"   [BLOCKED] Swap prevented for {self.unit_b_id}: {res_b.reason}")
+            print(f"   [BLOCKED] Swap prevented for {actual_unit_b}: {res_b.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
         print(
-            f"   [LOGIC] Swapping {self.unit_a_id} ({loc_a}) <-> {self.unit_b_id} ({loc_b})"
+            f"   [LOGIC] Swapping {actual_unit_a} ({loc_a}) <-> {actual_unit_b} ({loc_b})"
         )
 
         # Use Primitive operations to ensure cache consistency
         # 1. Remove both
-        state.remove_entity(BoardEntityID(self.unit_a_id))
-        state.remove_entity(BoardEntityID(self.unit_b_id))
+        state.remove_entity(BoardEntityID(actual_unit_a))
+        state.remove_entity(BoardEntityID(actual_unit_b))
 
         # 2. Place at swapped locations
-        state.place_entity(BoardEntityID(self.unit_a_id), loc_b)
-        state.place_entity(BoardEntityID(self.unit_b_id), loc_a)
+        state.place_entity(BoardEntityID(actual_unit_a), loc_b)
+        state.place_entity(BoardEntityID(actual_unit_b), loc_a)
 
         return StepResult(is_finished=True)
 

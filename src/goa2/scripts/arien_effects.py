@@ -1,9 +1,8 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     GameStep,
-    StepResult,
     SelectStep,
     SwapUnitsStep,
     PlaceUnitStep,
@@ -23,8 +22,7 @@ from goa2.engine.filters import (
     ForcedMovementByEnemyFilter,
     ImmunityFilter,
 )
-from goa2.engine.stats import get_computed_stat
-from goa2.domain.models import StatType
+from goa2.engine.stats import compute_card_stats
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -39,12 +37,7 @@ class NobleBladeEffect(CardEffect):
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        # Compute Damage using Stat System
-        from goa2.engine.stats import get_computed_stat
-        from goa2.domain.models import StatType
-
-        base_dmg = card.primary_action_value or 0
-        damage = get_computed_stat(state, hero.id, StatType.ATTACK, base_dmg)
+        stats = compute_card_stats(state, hero.id, card)
 
         return [
             # 1. Select Attack Target (Mandatory)
@@ -94,42 +87,36 @@ class NobleBladeEffect(CardEffect):
                 active_if_key="nudge_unit_id",
             ),
             # 5. Resolve Attack Sequence (Using pre-selected target)
-            AttackSequenceStep(damage=damage, target_id_key="victim_id", range_val=1),
+            # Note: range_val=1 is hardcoded as Noble Blade is adjacent-only (not buffable)
+            AttackSequenceStep(
+                damage=stats.primary_value, target_id_key="victim_id", range_val=1
+            ),
         ]
 
 
 @register_effect("arcane_whirlpool")
 class SwapEnemyMinionEffect(CardEffect):
+    """
+    Card text: "Swap with an enemy minion in range."
+    """
+
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        range_val = card.range_value if card.range_value is not None else 0
+        stats = compute_card_stats(state, hero.id, card)
+
         return [
             SelectStep(
                 target_type="UNIT",
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=range_val),
+                    RangeFilter(max_range=stats.range),
+                    ImmunityFilter(),
                 ],
                 prompt="Select an enemy minion to swap with.",
                 output_key="swap_target_id",
             ),
-            SwapWithSelectedStep(hero_id=hero.id),
+            SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target_id"),
         ]
-
-
-class SwapWithSelectedStep(GameStep):
-    type: str = "swap_with_selected"
-    hero_id: str
-
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        target_id = context.get("swap_target_id")
-        if target_id:
-            # SwapUnitsStep swaps unit_a and unit_b positions
-            return StepResult(
-                is_finished=True,
-                new_steps=[SwapUnitsStep(unit_a_id=self.hero_id, unit_b_id=target_id)],
-            )
-        return StepResult(is_finished=True)
 
 
 @register_effect("liquid_leap")
@@ -142,7 +129,7 @@ class TeleportStrictEffect(CardEffect):
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        range_val = card.range_value if card.range_value is not None else 0
+        stats = compute_card_stats(state, hero.id, card)
 
         return [
             SelectStep(
@@ -150,10 +137,36 @@ class TeleportStrictEffect(CardEffect):
                 prompt="Select destination for Teleport",
                 output_key="target_hex",
                 filters=[
-                    RangeFilter(max_range=range_val),
+                    RangeFilter(max_range=stats.range),
                     OccupiedFilter(is_occupied=False),
                     SpawnPointFilter(has_spawn_point=False),
                     AdjacentSpawnPointFilter(is_empty=True, must_not_have=True),
+                ],
+                is_mandatory=True,
+            ),
+            PlaceUnitStep(unit_id=hero.id, destination_key="target_hex"),
+        ]
+
+
+@register_effect("stranger_tide")
+class TeleportNoSpawnEffect(CardEffect):
+    """
+    Card text: "Place yourself into a space in range without a spawn point."
+    Used by: Stranger Tide
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            SelectStep(
+                target_type="HEX",
+                prompt="Select destination for Teleport",
+                output_key="target_hex",
+                filters=[
+                    RangeFilter(max_range=stats.range),
+                    OccupiedFilter(is_occupied=False),
+                    SpawnPointFilter(has_spawn_point=False),
                 ],
                 is_mandatory=True,
             ),
@@ -169,17 +182,11 @@ class RogueWaveEffect(CardEffect):
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        # Compute Attack Damage with buffs
-        base_dmg = card.primary_action_value or 0
-        damage = get_computed_stat(state, hero.id, StatType.ATTACK, base_dmg)
-
-        # Compute Range with buffs (card.range_value is 2 for rogue_wave)
-        base_range = card.range_value if card.range_value is not None else 1
-        total_range = get_computed_stat(state, hero.id, StatType.RANGE, base_range)
+        stats = compute_card_stats(state, hero.id, card)
 
         return [
             # 1. Attack Sequence (selects target, reaction, damage)
-            AttackSequenceStep(damage=damage, range_val=total_range),
+            AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
             # 2. Optional: Select enemy adjacent to push
             SelectStep(
                 target_type="UNIT",
@@ -192,7 +199,7 @@ class RogueWaveEffect(CardEffect):
                     ImmunityFilter(),  # Cannot push immune units
                 ],
             ),
-            # 3. Choose push distance (1 or 2) - only if target selected
+            # 3. Choose push distance (0, 1, or 2) - only if target selected
             SelectStep(
                 target_type="NUMBER",
                 prompt="Choose push distance (0-2)",
