@@ -6,6 +6,8 @@ from goa2.engine.steps import (
     CreateModifierStep,
     CreateEffectStep,
     GameStep,
+    SelectStep,
+    SwapCardStep,
 )
 from goa2.domain.models import (
     StatType,
@@ -115,5 +117,39 @@ class MagneticDaggerEffect(CardEffect):
                 blocks_enemy_actors=True,
                 blocks_friendly_actors=False,
                 blocks_self=False,
+            ),
+        ]
+
+
+@register_effect("rogue_skill_gold")
+class RogueSkillGoldEffect(CardEffect):
+    """
+    Card Text: "Swap target enemy's current turn card with a card from their Resolved pile."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        from goa2.engine.filters import TeamFilter
+
+        return [
+            # 1. Select Enemy Hero
+            SelectStep(
+                target_type="UNIT",
+                prompt="Select an Enemy Hero to sabotage.",
+                output_key="target_hero_id",
+                filters=[TeamFilter(relation="ENEMY")],
+                is_mandatory=True,
+            ),
+            # 2. Select Card from THAT Hero's Resolved pile
+            SelectStep(
+                target_type="CARD",
+                prompt="Select a Resolved card to swap in.",
+                output_key="swap_card_id",
+                context_hero_id_key="target_hero_id",
+                card_container="PLAYED",
+                is_mandatory=True,
+            ),
+            # 3. Perform Swap on THAT Hero
+            SwapCardStep(
+                target_card_key="swap_card_id", context_hero_id_key="target_hero_id"
             ),
         ]

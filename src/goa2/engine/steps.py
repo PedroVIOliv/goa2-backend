@@ -229,6 +229,10 @@ class SelectStep(GameStep):
     output_key: str = "selection"
     filters: List[FilterCondition] = Field(default_factory=list)
     auto_select_if_one: bool = False
+    context_hero_id_key: Optional[str] = (
+        None  # Key in context to find hero (for CARD/HAND selection)
+    )
+    card_container: str = "HAND"  # "HAND", "PLAYED", "DISCARD", "DECK"
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -250,6 +254,26 @@ class SelectStep(GameStep):
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
             candidates = list(state.board.tiles.keys())
+        elif self.target_type == "CARD":
+            target_id = actor_id
+            if self.context_hero_id_key:
+                found_id = context.get(self.context_hero_id_key)
+                if found_id:
+                    target_id = HeroID(str(found_id))
+
+            hero = state.get_hero(HeroID(str(target_id)))
+            if hero:
+                source_list = []
+                if self.card_container == "HAND":
+                    source_list = hero.hand
+                elif self.card_container == "PLAYED":
+                    source_list = hero.played_cards
+                elif self.card_container == "DISCARD":
+                    source_list = hero.discard_pile
+                elif self.card_container == "DECK":
+                    source_list = hero.deck
+
+                candidates = [c.id for c in source_list]
 
         valid_candidates = []
         for c in candidates:
@@ -929,6 +953,78 @@ class SwapUnitsStep(GameStep):
         # 2. Place at swapped locations
         state.place_entity(BoardEntityID(self.unit_a_id), loc_b)
         state.place_entity(BoardEntityID(self.unit_b_id), loc_a)
+
+        return StepResult(is_finished=True)
+
+
+class SwapCardStep(GameStep):
+    """
+    Swaps the Hero's current turn card with another card (specified by ID or key).
+    """
+
+    type: str = "swap_card"
+    target_card_id: Optional[str] = None
+    target_card_key: Optional[str] = None  # Key in context to find ID
+    context_hero_id_key: Optional[str] = None  # Key in context to find Hero ID
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero_id = state.current_actor_id
+
+        # Override hero if key provided
+        if self.context_hero_id_key:
+            h_val = context.get(self.context_hero_id_key)
+            if h_val:
+                hero_id = HeroID(str(h_val))
+
+        if not hero_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(hero_id)
+        if not hero or not hero.current_turn_card:
+            return StepResult(is_finished=True)
+
+        # Find target card ID
+        t_id = self.target_card_id
+        if not t_id and self.target_card_key:
+            t_id = context.get(self.target_card_key)
+
+        if not t_id:
+            print("   [SWAP] No target card specified for swap.")
+            return StepResult(is_finished=True)
+
+        # Find the card object
+        # We need to search Hand, Discard, Played
+        # Simplest is to check all or use a helper, but Hero methods work on objects.
+        target_card = None
+        # Check Hand
+        for c in hero.hand:
+            if c.id == t_id:
+                target_card = c
+                break
+        if not target_card:
+            for c in hero.discard_pile:
+                if c.id == t_id:
+                    target_card = c
+                    break
+        if not target_card:
+            for c in hero.played_cards:
+                if c.id == t_id:
+                    target_card = c
+                    break
+
+        if not target_card:
+            print(f"   [SWAP] Target card {t_id} not found in {hero_id}'s possession.")
+            return StepResult(is_finished=True)
+
+        print(
+            f"   [SWAP] Swapping {hero.id}'s current card {hero.current_turn_card.name} with {target_card.name}"
+        )
+        hero.swap_cards(hero.current_turn_card, target_card)
+
+        # NOTE: After swapping, the "current_turn_card" has changed!
+        # This might affect subsequent steps if they rely on "current_card_id" in context.
+        # But usually context has the old ID if it was set earlier.
+        # Ideally, we should update context if necessary, but "current_card_id" is usually set once at start of ResolveCardText.
 
         return StepResult(is_finished=True)
 
