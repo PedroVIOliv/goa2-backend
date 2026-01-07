@@ -215,7 +215,6 @@ class LogMessageStep(GameStep):
 
 
 from goa2.engine.filters import FilterCondition
-from goa2.domain.types import UnitID
 
 
 class SelectStep(GameStep):
@@ -1179,7 +1178,7 @@ class ResolveCardTextStep(GameStep):
 
         # Fallback to standard primary primitives if no specific script found
         if not card.primary_action:
-            print(f"            > No custom script found and no primary action.")
+            print("            > No custom script found and no primary action.")
             return StepResult(is_finished=True)
 
         print(

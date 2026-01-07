@@ -1,7 +1,7 @@
 """Validation service and result types for effect system."""
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, cast, Union
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 
 from pydantic import BaseModel, Field
 

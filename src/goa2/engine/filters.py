@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit
 from goa2.domain.hex import Hex
-from goa2.domain.types import BoardEntityID, UnitID, HeroID
+from goa2.domain.types import BoardEntityID, UnitID
 
 # -----------------------------------------------------------------------------
 # Base Filter
