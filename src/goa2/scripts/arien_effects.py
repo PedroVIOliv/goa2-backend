@@ -8,6 +8,7 @@ from goa2.engine.steps import (
     SwapUnitsStep,
     PlaceUnitStep,
     AttackSequenceStep,
+    PushUnitStep,
 )
 from goa2.engine.filters import (
     UnitTypeFilter,
@@ -22,6 +23,8 @@ from goa2.engine.filters import (
     ForcedMovementByEnemyFilter,
     ImmunityFilter,
 )
+from goa2.engine.stats import get_computed_stat
+from goa2.domain.models import StatType
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -158,27 +161,50 @@ class TeleportStrictEffect(CardEffect):
         ]
 
 
-@register_effect("stranger_tide")
-class TeleportNoSpawnEffect(CardEffect):
+@register_effect("rogue_wave")
+class RogueWaveEffect(CardEffect):
     """
-    Card text: "Place yourself into a space in range without a spawn point."
-    Used by: Stranger Tide
+    Card text: "Target a unit in range. After the attack: You may push an enemy unit
+    adjacent to you up to 2 spaces."
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        range_val = card.range_value if card.range_value is not None else 0
+        # Compute Attack Damage with buffs
+        base_dmg = card.primary_action_value or 0
+        damage = get_computed_stat(state, hero.id, StatType.ATTACK, base_dmg)
+
+        # Compute Range with buffs (card.range_value is 2 for rogue_wave)
+        base_range = card.range_value if card.range_value is not None else 1
+        total_range = get_computed_stat(state, hero.id, StatType.RANGE, base_range)
 
         return [
+            # 1. Attack Sequence (selects target, reaction, damage)
+            AttackSequenceStep(damage=damage, range_val=total_range),
+            # 2. Optional: Select enemy adjacent to push
             SelectStep(
-                target_type="HEX",
-                prompt="Select destination for Teleport",
-                output_key="target_hex",
+                target_type="UNIT",
+                prompt="Select an adjacent enemy to push (optional)",
+                output_key="push_target_id",
+                is_mandatory=False,
                 filters=[
-                    RangeFilter(max_range=range_val),
-                    OccupiedFilter(is_occupied=False),
-                    SpawnPointFilter(has_spawn_point=False),
+                    RangeFilter(max_range=1),  # Adjacent to Arien
+                    TeamFilter(relation="ENEMY"),
+                    ImmunityFilter(),  # Cannot push immune units
                 ],
-                is_mandatory=True,
             ),
-            PlaceUnitStep(unit_id=hero.id, destination_key="target_hex"),
+            # 3. Choose push distance (1 or 2) - only if target selected
+            SelectStep(
+                target_type="NUMBER",
+                prompt="Choose push distance (0-2)",
+                output_key="push_distance",
+                number_options=[0, 1, 2],
+                active_if_key="push_target_id",
+            ),
+            # 4. Execute push - reads target and distance from context
+            PushUnitStep(
+                target_key="push_target_id",
+                distance_key="push_distance",
+                active_if_key="push_target_id",
+                is_mandatory=False,
+            ),
         ]

@@ -221,10 +221,13 @@ class SelectStep(GameStep):
     """
     Unified selection step using the Filter System.
     Replaces SelectTargetStep and SelectHexStep.
+
+    Supports target types: "UNIT", "HEX", "CARD", "NUMBER"
+    For NUMBER type, use number_options to specify valid choices.
     """
 
     type: str = "select_step"
-    target_type: str  # "UNIT" or "HEX"
+    target_type: str  # "UNIT", "HEX", "CARD", "NUMBER"
     prompt: str
     output_key: str = "selection"
     filters: List[FilterCondition] = Field(default_factory=list)
@@ -233,6 +236,7 @@ class SelectStep(GameStep):
         None  # Key in context to find hero (for CARD/HAND selection)
     )
     card_container: str = "HAND"  # "HAND", "PLAYED", "DISCARD", "DECK"
+    number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -254,6 +258,9 @@ class SelectStep(GameStep):
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
             candidates = list(state.board.tiles.keys())
+        elif self.target_type == "NUMBER":
+            # Use number_options directly as candidates
+            candidates = list(self.number_options)
         elif self.target_type == "CARD":
             target_id = actor_id
             if self.context_hero_id_key:
@@ -313,6 +320,10 @@ class SelectStep(GameStep):
             # Type Conversion for Hex
             if self.target_type == "HEX" and isinstance(selection, dict):
                 selection = Hex(**selection)
+
+            # Type Conversion for NUMBER (ensure int comparison)
+            if self.target_type == "NUMBER" and selection is not None:
+                selection = int(selection)
 
             if selection in valid_candidates:
                 context[self.output_key] = selection
@@ -1033,16 +1044,40 @@ class PushUnitStep(GameStep):
     """
     Pushes a unit away from a source location.
     Stops at obstacles or board edge.
+
+    Supports two modes:
+    - Direct: Provide target_id and distance directly
+    - Context: Provide target_key and/or distance_key to read from context
     """
 
     type: str = "push_unit"
-    target_id: str
+    target_id: Optional[str] = None  # Direct target ID
+    target_key: Optional[str] = None  # Read target from context
     source_hex: Optional[Hex] = None  # If None, uses current actor's location
-    distance: int = 1
+    distance: int = 1  # Default/fallback distance
+    distance_key: Optional[str] = None  # Read distance from context
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        # Legacy accessor usage - convert target_id to UnitID if needed, but get returns Hex
-        target_loc = state.unit_locations.get(UnitID(self.target_id))
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Resolve target ID from either direct or context
+        actual_target_id = self.target_id
+        if not actual_target_id and self.target_key:
+            actual_target_id = context.get(self.target_key)
+
+        if not actual_target_id:
+            print("   [SKIP] PushUnitStep: No target specified or found in context.")
+            return StepResult(is_finished=True)
+
+        # Resolve distance from context or use default
+        actual_distance = self.distance
+        if self.distance_key:
+            ctx_dist = context.get(self.distance_key)
+            if ctx_dist is not None:
+                actual_distance = int(ctx_dist)
+
+        target_loc = state.unit_locations.get(UnitID(actual_target_id))
         if not target_loc:
             return StepResult(is_finished=True)
 
@@ -1063,13 +1098,11 @@ class PushUnitStep(GameStep):
 
         # Validation
         actor_id = state.current_actor_id
-        # Assuming validator handles string IDs gracefully or we need to cast if signature changed
-        # Previous edits suggest validator uses strings.
         res = state.validator.can_be_pushed(
-            state, self.target_id, str(actor_id) if actor_id else "system", context
+            state, actual_target_id, str(actor_id) if actor_id else "system", context
         )
         if not res.allowed:
-            print(f"   [BLOCKED] Push prevented for {self.target_id}: {res.reason}")
+            print(f"   [BLOCKED] Push prevented for {actual_target_id}: {res.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
@@ -1077,34 +1110,34 @@ class PushUnitStep(GameStep):
         direction_idx = src_hex.direction_to(target_loc)
         if direction_idx is None:
             print(
-                f"   [ERROR] Push target {self.target_id} is not in a straight line from source."
+                f"   [ERROR] Push target {actual_target_id} is not in a straight line from source."
             )
             return StepResult(is_finished=True)
 
         current_loc = target_loc
-        actual_dist = 0
-        for _ in range(self.distance):
+        pushed_dist = 0
+        for _ in range(actual_distance):
             next_hex = current_loc.neighbor(direction_idx)
 
             if next_hex not in state.board.tiles:
-                print(f"   [PUSH] {self.target_id} hit board edge at {current_loc}")
+                print(f"   [PUSH] {actual_target_id} hit board edge at {current_loc}")
                 break
 
             tile = state.board.get_tile(next_hex)
             if tile and tile.is_obstacle:
-                print(f"   [PUSH] {self.target_id} hit obstacle at {next_hex}")
+                print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
                 break
 
             current_loc = next_hex
-            actual_dist += 1
+            pushed_dist += 1
 
-        if actual_dist > 0:
+        if pushed_dist > 0:
             print(
-                f"   [LOGIC] Pushing {self.target_id} from {target_loc} to {current_loc} ({actual_dist} spaces)"
+                f"   [LOGIC] Pushing {actual_target_id} from {target_loc} to {current_loc} ({pushed_dist} spaces)"
             )
-            state.move_unit(UnitID(self.target_id), current_loc)
+            state.move_unit(UnitID(actual_target_id), current_loc)
         else:
-            print(f"   [LOGIC] Push had no effect for {self.target_id}")
+            print(f"   [LOGIC] Push had no effect for {actual_target_id}")
 
         return StepResult(is_finished=True)
 
