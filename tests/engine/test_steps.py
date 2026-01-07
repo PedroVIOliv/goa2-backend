@@ -8,7 +8,7 @@ from goa2.domain.hex import Hex
 from goa2.engine.steps import (
     LogMessageStep, SelectStep, 
     ReactionWindowStep, ResolveCombatStep, AttackSequenceStep,
-    MoveUnitStep, DamageStep
+    MoveUnitStep
 )
 from goa2.engine.handler import process_resolution_stack, push_steps
 
@@ -197,11 +197,6 @@ def test_move_unit_error_handling(empty_state):
     step2 = MoveUnitStep(unit_id="h1", destination_key="missing_key")
     res2 = step2.resolve(empty_state, {})
     assert res2.is_finished
-
-def test_damage_error_handling(empty_state):
-    step = DamageStep(amount=1, target_key="missing")
-    res = step.resolve(empty_state, {})
-    assert res.is_finished
 
 def test_log_message(empty_state):
     step = LogMessageStep(message="Hello {name}")

@@ -1,9 +1,11 @@
 """Validation service and result types for effect system."""
+
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, cast, Union
 
 from pydantic import BaseModel, Field
 
+from goa2.domain.types import BoardEntityID, UnitID, HeroID
 from goa2.domain.models.enums import ActionType
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape, AffectsFilter
@@ -18,6 +20,7 @@ class ValidationResult(BaseModel):
     Standardized result for all validation checks.
     Provides data for both execution logic and frontend previews.
     """
+
     allowed: bool
     reason: str = ""
     blocking_effect_ids: List[str] = Field(default_factory=list)
@@ -34,7 +37,7 @@ class ValidationResult(BaseModel):
         reason: str,
         effect_ids: Optional[List[str]] = None,
         modifier_ids: Optional[List[str]] = None,
-        source: Optional[str] = None
+        source: Optional[str] = None,
     ) -> "ValidationResult":
         """Create a result indicating the action is denied."""
         return ValidationResult(
@@ -42,7 +45,7 @@ class ValidationResult(BaseModel):
             reason=reason,
             blocking_effect_ids=effect_ids or [],
             blocking_modifier_ids=modifier_ids or [],
-            blocked_by_source=source
+            blocked_by_source=source,
         )
 
 
@@ -61,7 +64,7 @@ class ValidationService:
         state: "GameState",
         actor_id: str,
         action_type: ActionType,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ValidationResult:
         """
         Can actor perform this action type?
@@ -88,7 +91,7 @@ class ValidationService:
                     return ValidationResult.deny(
                         reason=f"Action prevented: {action_type.value}",
                         modifier_ids=[mod.id],
-                        source=mod.source_id
+                        source=mod.source_id,
                     )
 
         return ValidationResult.allow()
@@ -98,7 +101,7 @@ class ValidationService:
         state: "GameState",
         unit_id: str,
         distance: int,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ValidationResult:
         """
         Can unit move 'distance' spaces?
@@ -107,16 +110,18 @@ class ValidationService:
         context = context or {}
 
         # Check prevention first
-        action_result = self.can_perform_action(state, unit_id, ActionType.MOVEMENT, context)
+        action_result = self.can_perform_action(
+            state, unit_id, ActionType.MOVEMENT, context
+        )
         if not action_result.allowed:
             return action_result
 
         # Check movement cap effects
-        unit_loc = state.entity_locations.get(unit_id)
+        unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
         if not unit_loc:
             return ValidationResult.deny("Unit not on board")
 
-        max_allowed = float('inf')
+        max_allowed = float("inf")
         blocking_effect = None
 
         for effect in state.active_effects:
@@ -135,7 +140,7 @@ class ValidationService:
             return ValidationResult.deny(
                 reason=f"Movement limited to {max_allowed} (attempted {distance})",
                 effect_ids=[blocking_effect.id] if blocking_effect else [],
-                source=blocking_effect.source_id if blocking_effect else None
+                source=blocking_effect.source_id if blocking_effect else None,
             )
 
         return ValidationResult.allow()
@@ -146,7 +151,7 @@ class ValidationService:
         unit_id: str,
         actor_id: str,
         destination: Optional["Hex"] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ValidationResult:
         """
         Can unit_id be placed/teleported by actor_id?
@@ -159,8 +164,8 @@ class ValidationService:
         """
         context = context or {}
 
-        unit = state.get_unit(unit_id)
-        actor = state.get_unit(actor_id)
+        unit = state.get_unit(UnitID(unit_id))
+        actor = state.get_unit(UnitID(actor_id))
 
         if not unit:
             return ValidationResult.deny("Unit not found")
@@ -175,18 +180,21 @@ class ValidationService:
 
         # Check status-based prevention on the unit
         for mod in state.active_modifiers:
-            if str(mod.target_id) == str(unit_id) and mod.status_tag == "PREVENT_PLACEMENT":
+            if (
+                str(mod.target_id) == str(unit_id)
+                and mod.status_tag == "PREVENT_PLACEMENT"
+            ):
                 if self._is_modifier_active(mod, state):
                     # Check if actor is blocked by this modifier
                     if self._actor_blocked_by_modifier(mod, actor, unit, state):
                         return ValidationResult.deny(
                             reason="Unit cannot be placed",
                             modifier_ids=[mod.id],
-                            source=mod.source_id
+                            source=mod.source_id,
                         )
 
         # Check spatial placement prevention effects (ActiveEffects)
-        unit_loc = state.entity_locations.get(unit_id)
+        unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
         if not unit_loc:
             # Unit not on board - only check destination-based effects (future)
             return ValidationResult.allow()
@@ -204,7 +212,7 @@ class ValidationService:
                 return ValidationResult.deny(
                     reason="Placement prevented by area effect",
                     effect_ids=[effect.id],
-                    source=effect.source_id
+                    source=effect.source_id,
                 )
 
         return ValidationResult.allow()
@@ -214,7 +222,7 @@ class ValidationService:
         state: "GameState",
         unit_id: str,
         actor_id: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ValidationResult:
         """Can unit_id be pushed by actor_id?"""
         return self.can_be_placed(state, unit_id, actor_id, None, context)
@@ -224,7 +232,7 @@ class ValidationService:
         state: "GameState",
         unit_id: str,
         actor_id: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ValidationResult:
         """Can unit_id be swapped by actor_id?"""
         return self.can_be_placed(state, unit_id, actor_id, None, context)
@@ -233,7 +241,9 @@ class ValidationService:
     # Internal Helpers
     # -------------------------------------------------------------------------
 
-    def _is_modifier_active(self, mod: Modifier, state: "GameState") -> bool:
+    def _is_modifier_active(
+        self, mod: Union[Modifier, ActiveEffect], state: "GameState"
+    ) -> bool:
         """
         Check if modifier is currently active.
         Order matters: (1) Check PASSIVE first, (2) Card state, (3) Duration timing.
@@ -244,12 +254,17 @@ class ValidationService:
 
         # Card-based effects require source card to be in played state
         if mod.source_card_id:
-            if not self._is_card_in_played_state(state, mod.source_id, mod.source_card_id):
+            if not self._is_card_in_played_state(
+                state, mod.source_id, mod.source_card_id
+            ):
                 return False
 
         # Check temporal duration
         if mod.duration == DurationType.THIS_TURN:
-            return state.turn == mod.created_at_turn and state.round == mod.created_at_round
+            return (
+                state.turn == mod.created_at_turn
+                and state.round == mod.created_at_round
+            )
 
         if mod.duration == DurationType.NEXT_TURN:
             # Active on the turn AFTER creation (within same round only!)
@@ -269,16 +284,13 @@ class ValidationService:
         return self._is_modifier_active(effect, state)
 
     def _is_card_in_played_state(
-        self,
-        state: "GameState",
-        hero_id: str,
-        card_id: str
+        self, state: "GameState", hero_id: str, card_id: str
     ) -> bool:
         """
         Check if a card is currently in the hero's played state.
         A card is "played" if it's in hero.played_cards OR hero.current_turn_card.
         """
-        hero = state.get_hero(hero_id)
+        hero = state.get_hero(HeroID(hero_id))
         if not hero:
             return False
 
@@ -294,19 +306,15 @@ class ValidationService:
         return False
 
     def _actor_blocked_by_modifier(
-        self,
-        mod: Modifier,
-        actor: Any,
-        target: Any,
-        state: "GameState"
+        self, mod: Modifier, actor: Any, target: Any, state: "GameState"
     ) -> bool:
         """Determine if actor is blocked by this modifier."""
         # For now, modifiers on a target block all enemy actions
         if not actor or not target:
             return False
 
-        actor_team = getattr(actor, 'team', None)
-        target_team = getattr(target, 'team', None)
+        actor_team = getattr(actor, "team", None)
+        target_team = getattr(target, "team", None)
 
         if actor_team is None or target_team is None:
             return False
@@ -319,7 +327,7 @@ class ValidationService:
         effect: ActiveEffect,
         target_id: str,
         target_hex: "Hex",
-        state: "GameState"
+        state: "GameState",
     ) -> bool:
         """Check if target is within effect's spatial and relational scope."""
         # Check relational filter (enemy/friendly)
@@ -329,7 +337,9 @@ class ValidationService:
         # Check spatial shape
         return self._hex_in_scope(effect, target_hex, state)
 
-    def _hex_in_scope(self, effect: ActiveEffect, hex: "Hex", state: "GameState") -> bool:
+    def _hex_in_scope(
+        self, effect: ActiveEffect, hex: "Hex", state: "GameState"
+    ) -> bool:
         """Check if a hex is within effect's spatial scope."""
         scope = effect.scope
 
@@ -359,17 +369,21 @@ class ValidationService:
             # Check if both are in same zone
             origin_zone = self._get_zone_for_hex(origin, state)
             target_zone = self._get_zone_for_hex(hex, state)
-            return origin_zone and origin_zone == target_zone
+            if origin_zone is None or target_zone is None:
+                return False
+            return origin_zone == target_zone
 
         return False
 
-    def _get_origin_hex(self, effect: ActiveEffect, state: "GameState") -> Optional["Hex"]:
+    def _get_origin_hex(
+        self, effect: ActiveEffect, state: "GameState"
+    ) -> Optional["Hex"]:
         """Resolve origin point for spatial effects."""
         if effect.scope.origin_hex:
             return effect.scope.origin_hex
 
         origin_id = effect.scope.origin_id or effect.source_id
-        return state.entity_locations.get(origin_id)
+        return state.entity_locations.get(BoardEntityID(origin_id))
 
     def _get_zone_for_hex(self, hex: "Hex", state: "GameState") -> Optional[str]:
         """Get zone ID containing this hex."""
@@ -379,10 +393,7 @@ class ValidationService:
         return None
 
     def _matches_affects_filter(
-        self,
-        effect: ActiveEffect,
-        target_id: str,
-        state: "GameState"
+        self, effect: ActiveEffect, target_id: str, state: "GameState"
     ) -> bool:
         """Check if target matches the relational filter."""
         affects = effect.scope.affects
@@ -390,24 +401,25 @@ class ValidationService:
         if affects == AffectsFilter.ALL_UNITS:
             return True
 
-        source = state.get_entity(effect.source_id)
-        target = state.get_entity(target_id)
+        source = state.get_entity(BoardEntityID(effect.source_id))
+        target = state.get_entity(BoardEntityID(target_id))
 
         if not source or not target:
             return False
 
         # Get teams
-        source_team = getattr(source, 'team', None)
-        target_team = getattr(target, 'team', None)
+        source_team = getattr(source, "team", None)
+        target_team = getattr(target, "team", None)
 
         if source_team is None or target_team is None:
             return affects == AffectsFilter.ALL_UNITS
 
-        is_same_team = (source_team == target_team)
-        is_self = (effect.source_id == target_id)
+        is_same_team = source_team == target_team
+        is_self = effect.source_id == target_id
 
         # Check unit type
         from goa2.domain.models import Hero, Minion
+
         is_hero = isinstance(target, Hero)
         is_minion = isinstance(target, Minion)
 
@@ -429,31 +441,31 @@ class ValidationService:
         return False
 
     def _actor_blocked_by_effect(
-        self,
-        effect: ActiveEffect,
-        actor: Any,
-        target: Any,
-        state: "GameState"
+        self, effect: ActiveEffect, actor: Any, target: Any, state: "GameState"
     ) -> bool:
         """Determine if actor is blocked by this effect."""
         if not actor:
             return False
 
-        actor_team = getattr(actor, 'team', None)
-        source = state.get_entity(effect.source_id)
-        source_team = getattr(source, 'team', None) if source else None
+        actor_team = getattr(actor, "team", None)
+        source = state.get_entity(BoardEntityID(effect.source_id))
+        source_team = getattr(source, "team", None) if source else None
 
         if actor_team is None or source_team is None:
             return False
 
-        is_actor_enemy_of_source = (actor_team != source_team)
-        is_actor_self = (actor.id == effect.source_id)
+        is_actor_enemy_of_source = actor_team != source_team
+        is_actor_self = actor.id == effect.source_id
 
         if effect.blocks_self and is_actor_self:
             return True
         if effect.blocks_enemy_actors and is_actor_enemy_of_source:
             return True
-        if effect.blocks_friendly_actors and not is_actor_enemy_of_source and not is_actor_self:
+        if (
+            effect.blocks_friendly_actors
+            and not is_actor_enemy_of_source
+            and not is_actor_self
+        ):
             return True
 
         return False

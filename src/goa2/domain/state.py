@@ -210,8 +210,9 @@ class GameState(BaseModel):
         
         # 3. Update New Tile Cache
         target_tile = self.board.get_tile(target_hex)
-        if target_tile:
-            target_tile.occupant_id = entity_id
+        if not target_tile or target_tile.occupant_id:
+            raise ValueError(f"Cannot place entity {entity_id} at {target_hex}: Tile is occupied by {target_tile.occupant_id}")
+        target_tile.occupant_id = entity_id
 
     def remove_entity(self, entity_id: BoardEntityID):
         """

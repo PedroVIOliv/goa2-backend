@@ -98,3 +98,16 @@ def test_remove_unit_no_rewards(combat_state):
     
     # 2. Check Removal
     assert minion.id not in state.unit_locations
+
+def test_defeat_unknown_unit_raises_error():
+    state = GameState(
+        board=Board(),
+        teams={}
+    )
+    
+    # "Ghost" unit not in any team
+    step = DefeatUnitStep(victim_id="ghost_unit")
+    push_steps(state, [step])
+    
+    with pytest.raises(ValueError, match="Cannot defeat unknown unit: ghost_unit"):
+        process_resolution_stack(state)

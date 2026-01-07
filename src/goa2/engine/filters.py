@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit
 from goa2.domain.hex import Hex
+from goa2.domain.types import BoardEntityID, UnitID, HeroID
 
 # -----------------------------------------------------------------------------
 # Base Filter
@@ -94,7 +95,7 @@ class RangeFilter(FilterCondition):
             return False
 
         # Use Unified Location
-        origin_hex = state.entity_locations.get(origin_uid)
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
         if not origin_hex:
             return False
 
@@ -102,7 +103,7 @@ class RangeFilter(FilterCondition):
         if isinstance(candidate, Hex):
             target_hex = candidate
         elif isinstance(candidate, str):  # EntityID
-            target_hex = state.entity_locations.get(candidate)
+            target_hex = state.entity_locations.get(BoardEntityID(candidate))
 
         if not target_hex:
             return False
@@ -126,8 +127,12 @@ class TeamFilter(FilterCondition):
         if not actor_id:
             return False
 
-        actor = state.get_entity(actor_id)
-        target = state.get_entity(candidate) if isinstance(candidate, str) else None
+        actor = state.get_entity(BoardEntityID(actor_id))
+        target = (
+            state.get_entity(BoardEntityID(candidate))
+            if isinstance(candidate, str)
+            else None
+        )
 
         if not actor or not target:
             # Only warn if strict logic required. For now, fail silently (filter mismatch)
@@ -137,10 +142,17 @@ class TeamFilter(FilterCondition):
         if not hasattr(actor, "team") or not hasattr(target, "team"):
             return False
 
+        # Explicitly check if attributes are not None for Mypy
+        actor_team = getattr(actor, "team", None)
+        target_team = getattr(target, "team", None)
+
+        if actor_team is None or target_team is None:
+            return False
+
         if self.relation == "SELF":
             return actor.id == target.id
 
-        is_same_team = actor.team == target.team
+        is_same_team = actor_team == target_team
 
         if self.relation == "FRIENDLY":
             return is_same_team and (actor.id != target.id)
@@ -155,7 +167,11 @@ class UnitTypeFilter(FilterCondition):
     unit_type: Literal["HERO", "MINION"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        entity = state.get_entity(candidate) if isinstance(candidate, str) else None
+        entity = (
+            state.get_entity(BoardEntityID(candidate))
+            if isinstance(candidate, str)
+            else None
+        )
         if not entity:
             return False
 
@@ -180,7 +196,7 @@ class AdjacencyFilter(FilterCondition):
         if isinstance(candidate, Hex):
             cand_hex = candidate
         elif isinstance(candidate, str):
-            cand_hex = state.entity_locations.get(candidate)
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
 
         if not cand_hex:
             return False
@@ -198,19 +214,27 @@ class AdjacencyFilter(FilterCondition):
                 continue
 
             actor_id = state.current_actor_id
-            actor = state.get_entity(actor_id)
+            actor = state.get_entity(BoardEntityID(str(actor_id))) if actor_id else None
+
+            if not actor:
+                continue
 
             matches = True
             for tag in self.target_tags:
                 if tag == "FRIENDLY":
-                    if not hasattr(occupant, "team") or not hasattr(actor, "team"):
+                    # Mypy safety checks
+                    occ_team = getattr(occupant, "team", None)
+                    act_team = getattr(actor, "team", None)
+                    if occ_team is None or act_team is None:
                         matches = False
-                    elif occupant.team != actor.team or occupant.id == actor.id:
+                    elif occ_team != act_team or occupant.id == actor.id:
                         matches = False
                 elif tag == "ENEMY":
-                    if not hasattr(occupant, "team") or not hasattr(actor, "team"):
+                    occ_team = getattr(occupant, "team", None)
+                    act_team = getattr(actor, "team", None)
+                    if occ_team is None or act_team is None:
                         matches = False
-                    elif occupant.team == actor.team:
+                    elif occ_team == act_team:
                         matches = False
                 elif tag == "HERO":
                     if not isinstance(occupant, Hero):
@@ -235,7 +259,11 @@ class ImmunityFilter(FilterCondition):
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         from goa2.engine import rules  # Import inside to be safe
 
-        target = state.get_entity(candidate) if isinstance(candidate, str) else None
+        target = (
+            state.get_entity(BoardEntityID(candidate))
+            if isinstance(candidate, str)
+            else None
+        )
         if not target:
             return False
 
@@ -278,7 +306,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
         if isinstance(candidate, Hex):
             cand_hex = candidate
         elif isinstance(candidate, str):
-            cand_hex = state.entity_locations.get(candidate)
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
 
         if not cand_hex:
             return False
@@ -315,7 +343,7 @@ class AdjacencyToContextFilter(FilterCondition):
         if not target_id:
             return False
 
-        target_hex = state.entity_locations.get(target_id)
+        target_hex = state.entity_locations.get(BoardEntityID(target_id))
 
         if not target_hex:
             return False
@@ -325,7 +353,7 @@ class AdjacencyToContextFilter(FilterCondition):
         if isinstance(candidate, Hex):
             cand_hex = candidate
         elif isinstance(candidate, str):
-            cand_hex = state.entity_locations.get(candidate)
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
 
         if not cand_hex:
             return False
@@ -370,7 +398,7 @@ class HasEmptyNeighborFilter(FilterCondition):
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
         if isinstance(candidate, str):
-            cand_hex = state.entity_locations.get(candidate)
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
         elif isinstance(candidate, Hex):
             cand_hex = candidate
         if not cand_hex:
@@ -454,7 +482,7 @@ class MovementPathFilter(FilterCondition):
         if not uid:
             return False
 
-        start_hex = state.entity_locations.get(uid)
+        start_hex = state.entity_locations.get(BoardEntityID(str(uid)))
         if not start_hex:
             return False
 
@@ -493,11 +521,11 @@ class FastTravelDestinationFilter(FilterCondition):
         if not uid:
             return False
 
-        unit = state.get_unit(uid)
+        unit = state.get_unit(UnitID(str(uid)))
         if not unit:
             return False
 
-        current_hex = state.entity_locations.get(uid)
+        current_hex = state.entity_locations.get(BoardEntityID(str(uid)))
         if not current_hex:
             return False
 
@@ -506,6 +534,9 @@ class FastTravelDestinationFilter(FilterCondition):
             return False
 
         from goa2.engine.rules import get_safe_zones_for_fast_travel
+
+        if unit.team is None:
+            return False
 
         safe_zones = get_safe_zones_for_fast_travel(state, unit.team, current_zone_id)
 

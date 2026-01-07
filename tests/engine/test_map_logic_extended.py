@@ -92,6 +92,7 @@ def test_count_enemies_extended(map_state):
     assert count_enemies(map_state, "Mid", TeamColor.RED) == 1
     
     # Move h2 to Mid using Unified Placement
+    map_state.remove_entity("m1")
     map_state.place_entity("h2", Hex(q=1, r=0, s=-1)) # Note: This overwrites m1!
     
     # Wait, overwriting m1 means m1 is removed.

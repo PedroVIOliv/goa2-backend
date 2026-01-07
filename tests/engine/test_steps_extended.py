@@ -27,7 +27,6 @@ from goa2.engine.steps import (
     FinalizeHeroTurnStep,
     SelectStep,
     DrawCardStep,
-    DamageStep,
     FastTravelSequenceStep,
     PlaceUnitStep,
     SwapUnitsStep,
@@ -132,9 +131,6 @@ def test_misc_steps(steps_state):
 
     draw = DrawCardStep(hero_id="h1")
     assert draw.resolve(steps_state, {}).is_finished is True
-
-    dmg = DamageStep(target_key="missing", amount=1)
-    assert dmg.resolve(steps_state, {}).is_finished is True
 
 
 def test_reaction_window_full(steps_state):
@@ -293,9 +289,9 @@ def test_respawn_minion_variations(steps_state):
 
     # Error: Occupied
     rm.pending_input = {"spawn_hex": {"q": 1, "r": 0, "s": -1}}
-    steps_state.place_entity("blocker", Hex(q=1, r=0, s=-1))
     # m_red_1 is not on board yet (remove it)
     steps_state.remove_entity("m_red_1")
+    steps_state.place_entity("blocker", Hex(q=1, r=0, s=-1))
     assert rm.resolve(steps_state, {}).is_finished is True
     assert "m_red_1" not in steps_state.entity_locations
 

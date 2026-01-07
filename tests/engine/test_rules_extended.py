@@ -88,6 +88,7 @@ def test_is_immune_edge_cases(rules_state):
 
 def test_is_immune_success(rules_state):
     # Heavy minion check
+    rules_state.remove_entity("h1")
     m_heavy = Minion(id="m_heavy", name="Heavy", type=MinionType.HEAVY, team=TeamColor.RED, is_heavy=True)
     rules_state.teams[TeamColor.RED].minions.append(m_heavy)
     rules_state.place_entity("m_heavy", Hex(q=0, r=0, s=0))
