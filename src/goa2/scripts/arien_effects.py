@@ -28,6 +28,8 @@ from goa2.engine.filters import (
 )
 from goa2.engine.stats import compute_card_stats
 from goa2.domain.models import (
+    TargetType,
+    CardContainerType,
     EffectType,
     EffectScope,
     Shape,
@@ -39,7 +41,7 @@ from goa2.domain.models import (
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
+    from goa2.domain.models import TargetType, CardContainerType, Hero, Card
 
 
 @register_effect("spell_break")
@@ -80,7 +82,7 @@ class NobleBladeEffect(CardEffect):
         return [
             # 1. Select Attack Target (Mandatory)
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 prompt="Select target for Noble Blade attack",
                 output_key="victim_id",
                 filters=[
@@ -92,7 +94,7 @@ class NobleBladeEffect(CardEffect):
             ),
             # 2. Select Unit to Nudge (Optional)
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 prompt="Select adjacent unit to move 1 space (Optional)",
                 output_key="nudge_unit_id",
                 is_mandatory=False,
@@ -108,7 +110,7 @@ class NobleBladeEffect(CardEffect):
             ),
             # 3. Select Destination (Active If Nudge Selected)
             SelectStep(
-                target_type="HEX",
+                target_type=TargetType.HEX,
                 prompt="Select destination for move",
                 output_key="nudge_dest",
                 active_if_key="nudge_unit_id",
@@ -143,7 +145,7 @@ class SwapEnemyMinionEffect(CardEffect):
 
         return [
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
@@ -169,7 +171,7 @@ class EbbAndFlowEffect(CardEffect):
         return [
             # 1. Select First Target
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
@@ -193,7 +195,7 @@ class EbbAndFlowEffect(CardEffect):
                 active_if_key="can_repeat",
                 steps_template=[
                     SelectStep(
-                        target_type="UNIT",
+                        target_type=TargetType.UNIT,
                         filters=[
                             UnitTypeFilter(unit_type="MINION"),
                             TeamFilter(relation="ENEMY"),
@@ -233,7 +235,7 @@ class TeleportStrictEffect(CardEffect):
 
         return [
             SelectStep(
-                target_type="HEX",
+                target_type=TargetType.HEX,
                 prompt="Select destination for Teleport",
                 output_key="target_hex",
                 filters=[
@@ -260,7 +262,7 @@ class TeleportNoSpawnEffect(CardEffect):
 
         return [
             SelectStep(
-                target_type="HEX",
+                target_type=TargetType.HEX,
                 prompt="Select destination for Teleport",
                 output_key="target_hex",
                 filters=[
@@ -289,7 +291,7 @@ class RogueWaveEffect(CardEffect):
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
             # 2. Optional: Select enemy adjacent to push
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 prompt="Select an adjacent enemy to push (optional)",
                 output_key="push_target_id",
                 is_mandatory=False,
@@ -301,7 +303,7 @@ class RogueWaveEffect(CardEffect):
             ),
             # 3. Choose push distance (0, 1, or 2) - only if target selected
             SelectStep(
-                target_type="NUMBER",
+                target_type=TargetType.NUMBER,
                 prompt="Choose push distance (0-2)",
                 output_key="push_distance",
                 number_options=[0, 1, 2],
@@ -332,7 +334,7 @@ class TidalBlastEffect(CardEffect):
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
             # 2. Select adjacent enemy to push
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 prompt="Select an adjacent enemy to push (optional)",
                 output_key="push_target_id",
                 is_mandatory=False,
@@ -344,7 +346,7 @@ class TidalBlastEffect(CardEffect):
             ),
             # 3. Choose push distance (0-3)
             SelectStep(
-                target_type="NUMBER",
+                target_type=TargetType.NUMBER,
                 prompt="Choose push distance (0-3)",
                 output_key="push_distance",
                 number_options=[0, 1, 2, 3],

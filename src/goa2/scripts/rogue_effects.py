@@ -10,6 +10,8 @@ from goa2.engine.steps import (
     SwapCardStep,
 )
 from goa2.domain.models import (
+    TargetType,
+    CardContainerType,
     StatType,
     DurationType,
     EffectType,
@@ -21,7 +23,7 @@ from goa2.domain.models import (
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
+    from goa2.domain.models import TargetType, CardContainerType, Hero, Card
 
 
 @register_effect("venom_strike")
@@ -133,7 +135,7 @@ class RogueSkillGoldEffect(CardEffect):
         return [
             # 1. Select Enemy Hero
             SelectStep(
-                target_type="UNIT",
+                target_type=TargetType.UNIT,
                 prompt="Select an Enemy Hero to sabotage.",
                 output_key="target_hero_id",
                 filters=[TeamFilter(relation="ENEMY")],
@@ -141,11 +143,11 @@ class RogueSkillGoldEffect(CardEffect):
             ),
             # 2. Select Card from THAT Hero's Resolved pile
             SelectStep(
-                target_type="CARD",
+                target_type=TargetType.CARD,
                 prompt="Select a Resolved card to swap in.",
                 output_key="swap_card_id",
                 context_hero_id_key="target_hero_id",
-                card_container="PLAYED",
+                card_container=CardContainerType.PLAYED,
                 is_mandatory=True,
             ),
             # 3. Perform Swap on THAT Hero

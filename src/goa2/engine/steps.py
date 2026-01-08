@@ -13,6 +13,9 @@ from goa2.domain.models import (
     CardColor,
     CardState,
     GamePhase,
+    StepType,
+    TargetType,
+    CardContainerType,
 )
 from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
@@ -43,7 +46,7 @@ class GameStep(BaseModel, ABC):
     Each step performs a single logic unit and can manage its own state.
     """
 
-    type: str = "generic_step"
+    type: StepType = StepType.GENERIC
 
     # Unique ID for tracking this specific step instance (useful for input association)
     step_id: str = Field(default_factory=lambda: str(id(object())))
@@ -85,7 +88,7 @@ class GameStep(BaseModel, ABC):
 class CreateModifierStep(GameStep):
     """Creates a Modifier in the game state."""
 
-    type: str = "create_modifier"
+    type: StepType = StepType.CREATE_MODIFIER
 
     target_id: Optional[str] = None
     target_key: Optional[str] = None  # Read from context
@@ -148,7 +151,7 @@ class CreateModifierStep(GameStep):
 class CreateEffectStep(GameStep):
     """Creates a spatial ActiveEffect in the game state."""
 
-    type: str = "create_effect"
+    type: StepType = StepType.CREATE_EFFECT
 
     effect_type: EffectType
     scope: EffectScope
@@ -210,6 +213,7 @@ class CreateEffectStep(GameStep):
 class LogMessageStep(GameStep):
     """Debugging step to print messages."""
 
+    type: StepType = StepType.LOG_MESSAGE
     message: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -231,8 +235,8 @@ class SelectStep(GameStep):
     For NUMBER type, use number_options to specify valid choices.
     """
 
-    type: str = "select_step"
-    target_type: str  # "UNIT", "HEX", "CARD", "NUMBER"
+    type: StepType = StepType.SELECT
+    target_type: TargetType  # "UNIT", "HEX", "CARD", "NUMBER"
     prompt: str
     output_key: str = "selection"
     filters: List[FilterCondition] = Field(default_factory=list)
@@ -240,7 +244,7 @@ class SelectStep(GameStep):
     context_hero_id_key: Optional[str] = (
         None  # Key in context to find hero (for CARD/HAND selection)
     )
-    card_container: str = "HAND"  # "HAND", "PLAYED", "DISCARD", "DECK"
+    card_container: CardContainerType = CardContainerType.HAND  # "HAND", "PLAYED", "DISCARD", "DECK"
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -253,20 +257,20 @@ class SelectStep(GameStep):
         actor_id = state.current_actor_id
 
         candidates: List[Any] = []
-        if self.target_type == "UNIT":
+        if self.target_type == TargetType.UNIT:
             # Filter entity_locations for things that are actually Units
             all_entities = list(state.entity_locations.keys())
             candidates = [
                 eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
             ]
-        elif self.target_type == "HEX":
+        elif self.target_type == TargetType.HEX:
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
             candidates = list(state.board.tiles.keys())
-        elif self.target_type == "NUMBER":
+        elif self.target_type == TargetType.NUMBER:
             # Use number_options directly as candidates
             candidates = list(self.number_options)
-        elif self.target_type == "CARD":
+        elif self.target_type == TargetType.CARD:
             target_id = actor_id
             if self.context_hero_id_key:
                 found_id = context.get(self.context_hero_id_key)
@@ -276,13 +280,13 @@ class SelectStep(GameStep):
             hero = state.get_hero(HeroID(str(target_id)))
             if hero:
                 source_list = []
-                if self.card_container == "HAND":
+                if self.card_container == CardContainerType.HAND:
                     source_list = hero.hand
-                elif self.card_container == "PLAYED":
+                elif self.card_container == CardContainerType.PLAYED:
                     source_list = hero.played_cards
-                elif self.card_container == "DISCARD":
+                elif self.card_container == CardContainerType.DISCARD:
                     source_list = hero.discard_pile
-                elif self.card_container == "DECK":
+                elif self.card_container == CardContainerType.DECK:
                     source_list = hero.deck
 
                 candidates = [c.id for c in source_list]
@@ -290,7 +294,7 @@ class SelectStep(GameStep):
         valid_candidates = []
         for c in candidates:
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
-            if self.target_type == "UNIT" and actor_id:
+            if self.target_type == TargetType.UNIT and actor_id:
                 val_res = state.validator.can_be_targeted(
                     state, str(actor_id), str(c), context
                 )
@@ -331,11 +335,11 @@ class SelectStep(GameStep):
                 return StepResult(is_finished=True)
 
             # Type Conversion for Hex
-            if self.target_type == "HEX" and isinstance(selection, dict):
+            if self.target_type == TargetType.HEX and isinstance(selection, dict):
                 selection = Hex(**selection)
 
             # Type Conversion for NUMBER (ensure int comparison)
-            if self.target_type == "NUMBER" and selection is not None:
+            if self.target_type == TargetType.NUMBER and selection is not None:
                 selection = int(selection)
 
             if selection in valid_candidates:
@@ -349,7 +353,7 @@ class SelectStep(GameStep):
         return StepResult(
             requires_input=True,
             input_request={
-                "type": f"SELECT_{self.target_type}",
+                "type": f"SELECT_{self.target_type.value}",
                 "prompt": self.prompt,
                 "player_id": actor_id,
                 "valid_options": valid_candidates,
@@ -359,7 +363,7 @@ class SelectStep(GameStep):
 
 
 class DrawCardStep(GameStep):
-    type: str = "draw_card"
+    type: StepType = StepType.DRAW_CARD
     hero_id: str
     amount: int = 1
 
@@ -379,7 +383,7 @@ class MoveUnitStep(GameStep):
     Includes Pathfinding validation if destination is selected.
     """
 
-    type: str = "move_unit"
+    type: StepType = StepType.MOVE_UNIT
     unit_id: Optional[str] = None  # If None, uses current_actor
     destination_key: str = "target_hex"  # Where to look in context for destination
     range_val: int = 1
@@ -456,7 +460,7 @@ class MoveSequenceStep(GameStep):
     For other movement purposes, use MoveUnitStep directly.
     """
 
-    type: str = "move_sequence"
+    type: StepType = StepType.MOVE_SEQUENCE
     unit_id: Optional[str] = None
     range_val: int = 1
     destination_key: str = "target_hex"
@@ -500,7 +504,7 @@ class MoveSequenceStep(GameStep):
             is_finished=True,
             new_steps=[
                 SelectStep(
-                    target_type="HEX",
+                    target_type=TargetType.HEX,
                     prompt=f"Select Movement Destination (Range {self.range_val})",
                     output_key=self.destination_key,
                     filters=filters,
@@ -523,7 +527,7 @@ class FastTravelStep(GameStep):
     Execution step for Fast Travel.
     """
 
-    type: str = "fast_travel"
+    type: StepType = StepType.FAST_TRAVEL
     unit_id: Optional[str] = None
     destination_key: str = "target_hex"
 
@@ -547,7 +551,7 @@ class FastTravelSequenceStep(GameStep):
     Expands into: Select Destination Hex -> Place Unit.
     """
 
-    type: str = "fast_travel_sequence"
+    type: StepType = StepType.FAST_TRAVEL_SEQUENCE
     unit_id: Optional[str] = None
     destination_key: str = "target_hex"
 
@@ -574,7 +578,7 @@ class FastTravelSequenceStep(GameStep):
             is_finished=True,
             new_steps=[
                 SelectStep(
-                    target_type="HEX",
+                    target_type=TargetType.HEX,
                     prompt="Select Fast Travel Destination",
                     output_key=self.destination_key,
                     filters=[FastTravelDestinationFilter(unit_id=actor_id)],
@@ -595,7 +599,7 @@ class ReactionWindowStep(GameStep):
     Validates that the chosen card actually HAS a Defense action.
     """
 
-    type: str = "reaction_window"
+    type: StepType = StepType.REACTION_WINDOW
     target_player_key: str = "target_id"  # The player being attacked
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -672,7 +676,7 @@ class RemoveUnitStep(GameStep):
     Does NOT grant rewards. Used by 'Remove' effects and as a sub-step of Defeat.
     """
 
-    type: str = "remove_unit"
+    type: StepType = StepType.REMOVE_UNIT
     unit_id: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -689,7 +693,7 @@ class DefeatUnitStep(GameStep):
     3. Spawns RemoveUnitStep.
     """
 
-    type: str = "defeat_unit"
+    type: StepType = StepType.DEFEAT_UNIT
     victim_id: str
     killer_id: Optional[str] = None
 
@@ -786,7 +790,7 @@ class FindNextActorStep(GameStep):
     Used to chain turns together.
     """
 
-    type: str = "find_next_actor"
+    type: StepType = StepType.FIND_NEXT_ACTOR
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         # Import internally to avoid circular dependency (steps <-> phases)
@@ -803,7 +807,7 @@ class ResolveCombatStep(GameStep):
     Logic: If Defense >= Attack -> Blocked. Else -> Defeated.
     """
 
-    type: str = "resolve_combat"
+    type: StepType = StepType.RESOLVE_COMBAT
     damage: int  # Base attack value from the card
     target_key: str = "victim_id"
 
@@ -845,7 +849,7 @@ class FinalizeHeroTurnStep(GameStep):
     Clears the actor context.
     """
 
-    type: str = "finalize_hero_turn"
+    type: StepType = StepType.FINALIZE_HERO_TURN
     hero_id: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -869,7 +873,7 @@ class PlaceUnitStep(GameStep):
     No pathfinding validation. Used for respawns, swaps, and forced placements.
     """
 
-    type: str = "place_unit"
+    type: StepType = StepType.PLACE_UNIT
     unit_id: Optional[str] = None  # If None, checks unit_key, then current_actor
     unit_key: Optional[str] = None  # Look up unit_id in context
     destination_key: str = "target_hex"  # Where to look in context
@@ -946,7 +950,7 @@ class SwapUnitsStep(GameStep):
     - Context: Provide unit_a_key and/or unit_b_key to read from context
     """
 
-    type: str = "swap_units"
+    type: StepType = StepType.SWAP_UNITS
     unit_a_id: Optional[str] = None
     unit_b_id: Optional[str] = None
     unit_a_key: Optional[str] = None  # Read unit_a from context
@@ -1020,7 +1024,7 @@ class SwapCardStep(GameStep):
     Swaps the Hero's current turn card with another card (specified by ID or key).
     """
 
-    type: str = "swap_card"
+    type: StepType = StepType.SWAP_CARD
     target_card_id: Optional[str] = None
     target_card_key: Optional[str] = None  # Key in context to find ID
     context_hero_id_key: Optional[str] = None  # Key in context to find Hero ID
@@ -1097,7 +1101,7 @@ class PushUnitStep(GameStep):
     - Context: Provide target_key and/or distance_key to read from context
     """
 
-    type: str = "push_unit"
+    type: StepType = StepType.PUSH_UNIT
     target_id: Optional[str] = None  # Direct target ID
     target_key: Optional[str] = None  # Read target from context
     source_hex: Optional[Hex] = None  # If None, uses current actor's location
@@ -1195,7 +1199,7 @@ class RespawnHeroStep(GameStep):
     If Hero is defeated, requests player input: Respawn or Pass.
     """
 
-    type: str = "respawn_hero"
+    type: StepType = StepType.RESPAWN_HERO
     hero_id: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -1252,7 +1256,7 @@ class RespawnMinionStep(GameStep):
     Respawns a minion of a certain type/team in the active zone.
     """
 
-    type: str = "respawn_minion"
+    type: StepType = StepType.RESPAWN_MINION
     team: TeamColor
     minion_type: Any  # MinionType enum
 
@@ -1325,7 +1329,7 @@ class ResolveCardTextStep(GameStep):
     and execute the specific function/class for that card.
     """
 
-    type: str = "resolve_card_text"
+    type: StepType = StepType.RESOLVE_CARD_TEXT
     card_id: str
     hero_id: str
 
@@ -1409,7 +1413,7 @@ class ResolveCardStep(GameStep):
     Spawns the appropriate logic steps based on the choice.
     """
 
-    type: str = "resolve_card"
+    type: StepType = StepType.RESOLVE_CARD
     hero_id: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -1587,7 +1591,7 @@ class ResolveDisplacementStep(GameStep):
     Uses BFS to find nearest empty hexes and prompts team if multiple options exist.
     """
 
-    type: str = "resolve_displacement"
+    type: StepType = StepType.RESOLVE_DISPLACEMENT
     # List of (UnitID, OriginalHex)
     displacements: List[Tuple[str, Hex]] = Field(default_factory=list)
 
@@ -1735,7 +1739,7 @@ class LanePushStep(GameStep):
     5. Checks Victory Conditions (Throne or Last Push).
     """
 
-    type: str = "lane_push"
+    type: StepType = StepType.LANE_PUSH
     losing_team: TeamColor
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -1863,7 +1867,7 @@ class AskConfirmationStep(GameStep):
     Useful for optional repeats or effects.
     """
 
-    type: str = "ask_confirmation"
+    type: StepType = StepType.ASK_CONFIRMATION
     prompt: str
     output_key: str = "confirmation"
     player_id: Optional[str] = None
@@ -1900,7 +1904,7 @@ class RecordTargetStep(GameStep):
     Used to track history for 'different target' filters.
     """
 
-    type: str = "record_target"
+    type: StepType = StepType.RECORD_TARGET
     input_key: str  # The key holding the current target ID
     output_list_key: str  # The key for the list of IDs
 
@@ -1921,7 +1925,7 @@ class MayRepeatOnceStep(GameStep):
     Checks ValidationService.can_repeat_action() before asking.
     """
 
-    type: str = "may_repeat_once"
+    type: StepType = StepType.MAY_REPEAT_ONCE
     steps_template: List["GameStep"] = Field(
         default_factory=list
     )
@@ -1977,7 +1981,7 @@ class ValidateRepeatStep(GameStep):
     Can optionally AND the result with an existing context flag.
     """
 
-    type: str = "validate_repeat"
+    type: StepType = StepType.VALIDATE_REPEAT
     actor_id: Optional[str] = None
     and_with_key: Optional[str] = None  # If set, combines with this boolean key
     output_key: str = "can_repeat"
@@ -2010,7 +2014,7 @@ class CheckAdjacencyStep(GameStep):
     Used for conditional effects (e.g. Ebb and Flow).
     """
 
-    type: str = "check_adjacency"
+    type: StepType = StepType.CHECK_ADJACENCY
     unit_a_id: Optional[str] = None
     unit_b_id: Optional[str] = None
     unit_a_key: Optional[str] = None
@@ -2050,7 +2054,7 @@ class CheckLanePushStep(GameStep):
     If so, spawns a LanePushStep.
     """
 
-    type: str = "check_lane_push"
+    type: StepType = StepType.CHECK_LANE_PUSH
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import check_lane_push_trigger
@@ -2074,7 +2078,7 @@ class EndPhaseCleanupStep(GameStep):
     Retrieve Cards, Clear Tokens, Level Up, Round Reset.
     """
 
-    type: str = "end_phase_cleanup"
+    type: StepType = StepType.END_PHASE_CLEANUP
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [CLEANUP] Processing End Phase Cleanup...")
@@ -2152,7 +2156,7 @@ class EndPhaseStep(GameStep):
     Executes Minion Battle, checks for Lane Push, then queues Cleanup.
     """
 
-    type: str = "end_phase"
+    type: StepType = StepType.END_PHASE
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [ROUND END] Processing End Phase (Battle)...")
@@ -2225,7 +2229,7 @@ class ResolveTieBreakerStep(GameStep):
     3. Pushes remaining players back via another TieBreakerStep.
     """
 
-    type: str = "resolve_tie_breaker"
+    type: StepType = StepType.RESOLVE_TIE_BREAKER
     tied_hero_ids: List[HeroID]
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -2327,7 +2331,7 @@ class AttackSequenceStep(GameStep):
     If target_id_key is provided, assumes target is already selected in context and skips selection.
     """
 
-    type: str = "attack_sequence"
+    type: StepType = StepType.ATTACK_SEQUENCE
     damage: int
     range_val: int = 1
     target_id_key: Optional[str] = (
@@ -2349,7 +2353,7 @@ class AttackSequenceStep(GameStep):
         if not self.target_id_key:
             new_steps.append(
                 SelectStep(
-                    target_type="UNIT",
+                    target_type=TargetType.UNIT,
                     prompt="Select Attack Target",
                     output_key=key,
                     filters=[
@@ -2436,7 +2440,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
 class RoundResetStep(GameStep):
     """Resets round state and transitions to Planning."""
 
-    type: str = "round_reset"
+    type: StepType = StepType.ROUND_RESET
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         state.round += 1
@@ -2452,7 +2456,7 @@ class ResolveUpgradesStep(GameStep):
     Waits for players to finish their pending upgrades.
     """
 
-    type: str = "resolve_upgrades"
+    type: StepType = StepType.RESOLVE_UPGRADES
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if not state.pending_upgrades:
@@ -2532,7 +2536,7 @@ class TriggerGameOverStep(GameStep):
     3. PURGES execution and input stacks to stop all gameplay.
     """
 
-    type: str = "trigger_game_over"
+    type: StepType = StepType.TRIGGER_GAME_OVER
     winner: TeamColor
     condition: str
 

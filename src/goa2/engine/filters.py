@@ -4,7 +4,7 @@ from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
 from goa2.domain.state import GameState
-from goa2.domain.models import Minion, Hero, Unit
+from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID, UnitID
 
@@ -34,7 +34,7 @@ class FilterCondition(BaseModel, ABC):
 
 
 class OccupiedFilter(FilterCondition):
-    type: str = "occupied_filter"
+    type: FilterType = FilterType.OCCUPIED
     is_occupied: bool = False  # False = Must be empty, True = Must be occupied
     exclude_id: Optional[str] = (
         None  # If set, ignore this entity when checking occupancy
@@ -56,7 +56,7 @@ class OccupiedFilter(FilterCondition):
 
 
 class TerrainFilter(FilterCondition):
-    type: str = "terrain_filter"
+    type: FilterType = FilterType.TERRAIN
     is_terrain: bool = True
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -74,7 +74,7 @@ class RangeFilter(FilterCondition):
     Origin is usually the current actor, but can be customized.
     """
 
-    type: str = "range_filter"
+    type: FilterType = FilterType.RANGE
     max_range: int
     min_range: int = 0
     origin_id: Optional[str] = None  # Literal ID
@@ -118,7 +118,7 @@ class RangeFilter(FilterCondition):
 
 
 class TeamFilter(FilterCondition):
-    type: str = "team_filter"
+    type: FilterType = FilterType.TEAM
     relation: Literal["FRIENDLY", "ENEMY", "SELF"]
     # RELATIVE to the actor executing the step
 
@@ -163,7 +163,7 @@ class TeamFilter(FilterCondition):
 
 
 class UnitTypeFilter(FilterCondition):
-    type: str = "unit_type_filter"
+    type: FilterType = FilterType.UNIT_TYPE
     unit_type: Literal["HERO", "MINION"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -188,7 +188,7 @@ class AdjacencyFilter(FilterCondition):
     E.g. "Adjacent to a Friendly Hero"
     """
 
-    type: str = "adjacency_filter"
+    type: FilterType = FilterType.ADJACENCY
     target_tags: List[str]  # ["FRIENDLY", "HERO"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -254,7 +254,7 @@ class ImmunityFilter(FilterCondition):
     Filters out candidates that are Immune.
     """
 
-    type: str = "immunity_filter"
+    type: FilterType = FilterType.IMMUNITY
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         from goa2.engine import rules  # Import inside to be safe
@@ -278,7 +278,7 @@ class SpawnPointFilter(FilterCondition):
     Filters hexes based on whether they have a spawn point.
     """
 
-    type: str = "spawn_point_filter"
+    type: FilterType = FilterType.SPAWN_POINT
     has_spawn_point: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -295,7 +295,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
     Filters hexes based on proximity to spawn points.
     """
 
-    type: str = "adjacent_spawn_point_filter"
+    type: FilterType = FilterType.ADJACENT_SPAWN_POINT
     is_empty: bool = True
     must_not_have: bool = (
         True  # True means "not adjacent to", False means "must be adjacent to"
@@ -334,7 +334,7 @@ class AdjacencyToContextFilter(FilterCondition):
     Selects units adjacent to the entity ID stored in a context variable.
     """
 
-    type: str = "adjacency_to_context_filter"
+    type: FilterType = FilterType.ADJACENCY_TO_CONTEXT
     target_key: str
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -370,7 +370,7 @@ class ExcludeIdentityFilter(FilterCondition):
     Can exclude self and/or IDs found in context keys.
     """
 
-    type: str = "exclude_identity_filter"
+    type: FilterType = FilterType.EXCLUDE_IDENTITY
     exclude_self: bool = True
     exclude_keys: List[str] = []
 
@@ -398,7 +398,7 @@ class HasEmptyNeighborFilter(FilterCondition):
     Prevents selecting 'trapped' units for movement effects.
     """
 
-    type: str = "has_empty_neighbor_filter"
+    type: FilterType = FilterType.HAS_EMPTY_NEIGHBOR
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
@@ -423,7 +423,7 @@ class ForcedMovementByEnemyFilter(FilterCondition):
     Delegates to ValidationService.
     """
 
-    type: str = "forced_movement_by_enemy_filter"
+    type: FilterType = FilterType.FORCED_MOVEMENT_BY_ENEMY
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
@@ -446,7 +446,7 @@ class CanBePlacedByActorFilter(FilterCondition):
     Delegates to ValidationService for actual logic.
     """
 
-    type: str = "can_be_placed_filter"
+    type: FilterType = FilterType.CAN_BE_PLACED_BY_ACTOR
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
@@ -468,7 +468,7 @@ class MovementPathFilter(FilterCondition):
     Filters hexes to only those reachable via valid movement path.
     """
 
-    type: str = "movement_path_filter"
+    type: FilterType = FilterType.MOVEMENT_PATH
     range_val: int
     unit_id: Optional[str] = None
     unit_key: Optional[str] = None
@@ -515,7 +515,7 @@ class FastTravelDestinationFilter(FilterCondition):
     - Destination must be empty
     """
 
-    type: str = "fast_travel_destination_filter"
+    type: FilterType = FilterType.FAST_TRAVEL_DESTINATION
     unit_id: Optional[str] = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
