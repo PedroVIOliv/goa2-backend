@@ -289,6 +289,14 @@ class SelectStep(GameStep):
 
         valid_candidates = []
         for c in candidates:
+            # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
+            if self.target_type == "UNIT" and actor_id:
+                val_res = state.validator.can_be_targeted(
+                    state, str(actor_id), str(c), context
+                )
+                if not val_res.allowed:
+                    continue
+
             is_valid = True
             for f in self.filters:
                 if not f.apply(c, state, context):
@@ -1914,9 +1922,9 @@ class MayRepeatOnceStep(GameStep):
     """
 
     type: str = "may_repeat_once"
-    steps_template: List[Any] = Field(
+    steps_template: List["GameStep"] = Field(
         default_factory=list
-    )  # List[GameStep], typed Any to avoid recursion issues
+    )
     prompt: str = "Repeat action?"
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -2542,3 +2550,7 @@ class TriggerGameOverStep(GameStep):
         state.input_stack.clear()
 
         return StepResult(is_finished=True)
+
+
+# Rebuild recursive models
+MayRepeatOnceStep.model_rebuild()

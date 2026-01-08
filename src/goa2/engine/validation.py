@@ -1,19 +1,32 @@
 """Validation service and result types for effect system."""
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union, TypedDict
 
 from pydantic import BaseModel, Field
 
 from goa2.domain.types import BoardEntityID, UnitID, HeroID
 from goa2.domain.models import Card
-from goa2.domain.models.enums import ActionType
+from goa2.domain.models.enums import ActionType, CardColor
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape, AffectsFilter
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.hex import Hex
+
+
+class ValidationContext(TypedDict, total=False):
+    """Context data passed to validation service."""
+    card: Optional[Card]
+    current_card_id: Optional[str]
+    defense_value: Optional[int]
+    skipped_respawn: Optional[bool]
+    selection: Any  # Default output for SelectStep
+    confirmation: Optional[bool]  # Default output for AskConfirmationStep
+    # Allow arbitrary keys for now to maintain compatibility with legacy dicts
+    # until strict typing is enforced everywhere
+    __extra_items__: Any 
 
 
 class ValidationResult(BaseModel):
@@ -65,7 +78,7 @@ class ValidationService:
         state: "GameState",
         actor_id: str,
         action_type: ActionType,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[Union[Dict[str, Any], ValidationContext]] = None,
     ) -> ValidationResult:
         """
         Can actor perform this action type?
@@ -86,10 +99,25 @@ class ValidationService:
         if not tag:
             return ValidationResult.allow()
 
+        # Helper to check exceptions
+        def matches_exception(exceptions: List[CardColor]) -> bool:
+            if not exceptions:
+                return False
+            # Check context for card
+            card_obj = context.get("card")
+            if card_obj and isinstance(card_obj, Card):
+                return card_obj.current_color in exceptions
+            return False
+
         # Check modifiers on actor
         for mod in state.active_modifiers:
             if str(mod.target_id) == str(actor_id) and mod.status_tag == tag:
                 if self._is_modifier_active(mod, state):
+                    
+                    # Check exceptions (e.g. "Except on Gold cards")
+                    if matches_exception(mod.except_card_colors):
+                        continue
+
                     return ValidationResult.deny(
                         reason=f"Action prevented: {action_type.value}",
                         modifier_ids=[mod.id],
@@ -109,25 +137,9 @@ class ValidationService:
                 if action_type not in effect.restrictions:
                     continue
 
-                # Check for Color Exception (e.g. Spell Break: "except on Gold cards")
-                if effect.except_card_colors:
-                    card_obj: Optional[Card] = context.get("card")
-                    # Also try to find card by ID if provided
-                    if not card_obj and context.get("current_card_id"):
-                        # We'd need to find the card object.
-                        # Since we don't have a direct card lookup in state (only in heroes/hands),
-                        # we rely on the caller providing the "card" object in context or relying on actor lookup
-                        # But for now, let's assume "card" object is passed for efficiency in ResolveCardStep
-                        pass
-
-                    if card_obj:
-                        color = card_obj.current_color
-                        # If color is None (facedown?) or matches exception
-                        # (Note: Silver/Gold cards usually have visible color even if facedown logic isn't perfect in all implementations,
-                        # but standard rules say revealed cards have colors).
-                        if color in effect.except_card_colors:
-                            # Exception met: This effect does NOT block this action
-                            continue
+                # Check for Color Exception
+                if matches_exception(effect.except_card_colors):
+                    continue
 
                 # Check spatial/relational scope (is actor inside zone?)
                 if not self._is_in_scope(effect, actor_id, actor_loc, state):
@@ -229,6 +241,54 @@ class ValidationService:
                 effect_ids=[blocking_effect.id] if blocking_effect else [],
                 source=blocking_effect.source_id if blocking_effect else None,
             )
+
+        return ValidationResult.allow()
+
+    def can_be_targeted(
+        self,
+        state: "GameState",
+        actor_id: str,
+        target_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ValidationResult:
+        """
+        Can actor target target_id?
+        Checks: Line of Sight (Smoke Bomb), Invisibility (Future), etc.
+        """
+        if not actor_id or not target_id:
+            return ValidationResult.deny("Invalid actor or target")
+
+        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
+        target_loc = state.entity_locations.get(BoardEntityID(target_id))
+
+        if not actor_loc or not target_loc:
+            # If not on board, targeting is usually impossible unless global effect
+            return ValidationResult.deny("Actor or target not on board")
+
+        # Check LOS Blockers (Smoke Bomb)
+        # Iterate all active effects of type LOS_BLOCKER
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.LOS_BLOCKER:
+                continue
+            if not self._is_effect_active(effect, state):
+                continue
+
+            # Check if this effect acts as a blocker
+            # Origin of the effect (e.g. the Smoke Bomb token hex)
+            blocker_hex = self._get_origin_hex(effect, state)
+            if not blocker_hex:
+                continue
+
+            # Is the blocker on the segment between actor and target?
+            # exclusive=True means the blocker cannot be ON the actor or ON the target
+            # (though normally tokens share space, Smoke Bomb on self doesn't block self-targeting usually,
+            # but standard rule: "between that enemy hero and their target")
+            if blocker_hex.is_on_segment(actor_loc, target_loc, exclusive=True):
+                return ValidationResult.deny(
+                    reason="Line of sight blocked",
+                    effect_ids=[effect.id],
+                    source=effect.source_id,
+                )
 
         return ValidationResult.allow()
 

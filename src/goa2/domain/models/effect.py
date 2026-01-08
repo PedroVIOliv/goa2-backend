@@ -15,7 +15,8 @@ class EffectType(str, Enum):
 
     PLACEMENT_PREVENTION = "placement_prevention"  # Magnetic Dagger
     MOVEMENT_ZONE = "movement_zone"  # Slippery Ground
-    TARGET_PREVENTION = "target_prevention"  # Smoke Bomb
+    TARGET_PREVENTION = "target_prevention"  # Smoke Bomb (General)
+    LOS_BLOCKER = "los_blocker"  # Physical obstacle for targeting
     AREA_STAT_MODIFIER = "area_stat_modifier"  # Aura effects
 
 

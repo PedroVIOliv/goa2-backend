@@ -1,8 +1,8 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional
-from pydantic import BaseModel
-from goa2.domain.models.enums import StatType
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from goa2.domain.models.enums import StatType, CardColor
 from goa2.domain.types import BoardEntityID
 
 class DurationType(str, Enum):
@@ -26,6 +26,9 @@ class Modifier(BaseModel):
     
     # ...or a boolean rule override (status tag)
     status_tag: Optional[str] = None
+
+    # Exceptions (e.g., Spell Break "except on Gold cards")
+    except_card_colors: List[CardColor] = Field(default_factory=list)
     
     # Lifecycle
     duration: DurationType

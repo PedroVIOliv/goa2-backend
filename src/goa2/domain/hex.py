@@ -3,16 +3,19 @@ from enum import Enum
 from pydantic import BaseModel, field_validator, ConfigDict, model_validator
 from typing import List, Optional, Any
 
+
 class HexDirection(int, Enum):
     """
     Clockwise order starting from Top-Right.
     """
+
     NE = 0
     E = 1
     SE = 2
     SW = 3
     W = 4
     NW = 5
+
 
 def parse_hex_key(v: Any) -> Any:
     """Parses string representation back to dict for Hex initialization."""
@@ -24,25 +27,29 @@ def parse_hex_key(v: Any) -> Any:
             return {"q": int(parts[0]), "r": int(parts[1]), "s": int(parts[2])}
     return v
 
+
 class Hex(BaseModel):
     """
     Cube Coordinates for a Hexagonal Grid.
     Constraint: q + r + s == 0
     """
+
     model_config = ConfigDict(frozen=True)
 
     q: int
     r: int
     s: int
 
-    @field_validator('s')
+    @field_validator("s")
     @classmethod
     def validate_sum(cls, s: int, info) -> int:
         """Ensures the cube coordinate invariant holds."""
         values = info.data
-        if 'q' in values and 'r' in values:
-            if values['q'] + values['r'] + s != 0:
-                raise ValueError(f"Hex coordinates ({values['q']}, {values['r']}, {s}) must sum to 0")
+        if "q" in values and "r" in values:
+            if values["q"] + values["r"] + s != 0:
+                raise ValueError(
+                    f"Hex coordinates ({values['q']}, {values['r']}, {s}) must sum to 0"
+                )
         return s
 
     def __add__(self, other: Hex) -> Hex:
@@ -50,7 +57,7 @@ class Hex(BaseModel):
 
     def __sub__(self, other: Hex) -> Hex:
         return Hex(q=self.q - other.q, r=self.r - other.r, s=self.s - other.s)
-    
+
     def __str__(self) -> str:
         return f"({self.q}, {self.r}, {self.s})"
 
@@ -61,12 +68,12 @@ class Hex(BaseModel):
     # but putting it on the model ensures it works generally.
     # Actually, Pydantic 2.0+ handles `Dict[Hex, ...]` by calling `str(Hex)` for keys.
     # We just need to handle the input parsing side.
-    
+
     # We inject a validator that runs BEFORE the model fields are processed.
     # If input is a string, we parse it to a dict.
     # But wait, @model_validator(mode='before') on the class works best.
-    
-    @model_validator(mode='before')
+
+    @model_validator(mode="before")
     @classmethod
     def parse_string_input(cls, v: Any) -> Any:
         if isinstance(v, str):
@@ -78,7 +85,7 @@ class Hex(BaseModel):
 
     def length(self) -> int:
         """Distance from center (0,0,0)."""
-        return max(abs(self.q), abs(self.r), abs(self.s)) 
+        return max(abs(self.q), abs(self.r), abs(self.s))
 
     def distance(self, other: Hex) -> int:
         """
@@ -94,54 +101,83 @@ class Hex(BaseModel):
     def neighbor(self, direction_index: int) -> Hex:
         """Returns the neighbor in a specific direction index (0-5)."""
         vectors = [
-            Hex(q=1, r=0, s=-1), Hex(q=1, r=-1, s=0), Hex(q=0, r=-1, s=1),
-            Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
+            Hex(q=1, r=0, s=-1),
+            Hex(q=1, r=-1, s=0),
+            Hex(q=0, r=-1, s=1),
+            Hex(q=-1, r=0, s=1),
+            Hex(q=-1, r=1, s=0),
+            Hex(q=0, r=1, s=-1),
         ]
         return self + vectors[direction_index % 6]
 
     def neighbors(self) -> List[Hex]:
         """Returns the 6 adjacent hexes."""
         vectors = [
-            Hex(q=1, r=0, s=-1), Hex(q=1, r=-1, s=0), Hex(q=0, r=-1, s=1),
-            Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
+            Hex(q=1, r=0, s=-1),
+            Hex(q=1, r=-1, s=0),
+            Hex(q=0, r=-1, s=1),
+            Hex(q=-1, r=0, s=1),
+            Hex(q=-1, r=1, s=0),
+            Hex(q=0, r=1, s=-1),
         ]
         return [self + v for v in vectors]
-    
+
     def ring(self, radius: int) -> List[Hex]:
         """
         Returns all hexes in the ring at exact distance 'radius'.
         """
         if radius <= 0:
             return [self] if radius == 0 else []
-        
+
         results = []
         # Start at direction 4 (West) scaled by radius
         # Note: vectors definition in neighbors/neighbor matches HexDirection:
         # 0=NE, 1=E, 2=SE, 3=SW, 4=W, 5=NW
-        
+
         # Directions vectors again for reference or reuse
-        # We need a predictable starting vector. 
+        # We need a predictable starting vector.
         # Using the logic provided: start = center + direction(4) * radius
-        
+
         # Direction 4 (W) vector: (-1, 1, 0)
-        start_dir_vec = Hex(q=-1, r=1, s=0) 
+        start_dir_vec = Hex(q=-1, r=1, s=0)
         hex_cursor = self + start_dir_vec.scale(radius)
-        
+
         for i in range(6):
             for _ in range(radius):
                 results.append(hex_cursor)
                 hex_cursor = hex_cursor.neighbor(i)
-                
+
         return results
 
     def is_straight_line(self, other: Hex) -> bool:
         """
         Rule: "Two units are in a straight line if... you can draw a straight
         line of spaces through spaces occupied by both." [cite: 952]
-        
+
         In Cube coords, a straight line exists if any of the 3 coordinates match.
         """
         return (self.q == other.q) or (self.r == other.r) or (self.s == other.s)
+
+    def is_on_segment(self, start: Hex, end: Hex, exclusive: bool = True) -> bool:
+        """
+        Checks if this hex is on the straight line segment between start and end.
+        exclusive=True means strictly BETWEEN (not equal to start or end).
+        """
+        if not start.is_straight_line(end):
+            return False
+
+        # Triangle inequality equality holds for points on a segment in metric space
+        d_start_end = start.distance(end)
+        d_start_self = start.distance(self)
+        d_self_end = self.distance(end)
+
+        if d_start_self + d_self_end != d_start_end:
+            return False
+
+        if exclusive:
+            return self != start and self != end
+
+        return True
 
     def line_to(self, other: Hex) -> List[Hex]:
         """
@@ -150,8 +186,8 @@ class Hex(BaseModel):
         If they are NOT in a straight line, this raises ValueError (fail fast).
         """
         if not self.is_straight_line(other):
-             # You might want to handle this differently depending on game logic, 
-             # but for GoA2 Pushes, this is usually an illegal state.
+            # You might want to handle this differently depending on game logic,
+            # but for GoA2 Pushes, this is usually an illegal state.
             raise ValueError("Cannot trace path: Hexes are not in a straight line.")
 
         N = self.distance(other)
@@ -163,13 +199,13 @@ class Hex(BaseModel):
         dq = (other.q - self.q) // N
         dr = (other.r - self.r) // N
         ds = (other.s - self.s) // N
-        
+
         results = []
         current = self
         for _ in range(N):
             current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
             results.append(current)
-            
+
         return results
 
     def direction_to(self, other: Hex) -> Optional[int]:
@@ -177,9 +213,11 @@ class Hex(BaseModel):
         Returns the direction index (0-5) from self to other.
         Returns None if not in a straight line or same hex.
         """
-        if self == other: return None
-        if not self.is_straight_line(other): return None
-        
+        if self == other:
+            return None
+        if not self.is_straight_line(other):
+            return None
+
         diff = other - self
         # We need to map diff vector to one of the 6 neighbor vectors.
         # But 'other' might be far away. We need the UNIT vector.
@@ -188,14 +226,18 @@ class Hex(BaseModel):
         unit_q = diff.q // dist
         unit_r = diff.r // dist
         unit_s = diff.s // dist
-        
+
         unit_vec = Hex(q=unit_q, r=unit_r, s=unit_s)
-        
+
         vectors = [
-            Hex(q=1, r=0, s=-1), Hex(q=1, r=-1, s=0), Hex(q=0, r=-1, s=1),
-            Hex(q=-1, r=0, s=1), Hex(q=-1, r=1, s=0), Hex(q=0, r=1, s=-1)
+            Hex(q=1, r=0, s=-1),
+            Hex(q=1, r=-1, s=0),
+            Hex(q=0, r=-1, s=1),
+            Hex(q=-1, r=0, s=1),
+            Hex(q=-1, r=1, s=0),
+            Hex(q=0, r=1, s=-1),
         ]
-        
+
         try:
             return vectors.index(unit_vec)
         except ValueError:

@@ -16,14 +16,20 @@ from goa2.engine.handler import process_resolution_stack, push_steps
 
 @pytest.fixture
 def empty_state():
-    return GameState(
-        board=Board(),
+    board = Board()
+    hero_red = Hero(id='hero_red', name='Red Hero', team=TeamColor.RED, deck=[])
+    state = GameState(
+        board=board,
         teams={
-            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero_red], minions=[]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
         },
         current_actor_id="hero_red"
     )
+    actor_hex = Hex(q=2, r=0, s=-2)
+    board.tiles[actor_hex] = board.get_tile(actor_hex)
+    state.place_entity('hero_red', actor_hex)
+    return state
 
 @pytest.fixture
 def populated_state():

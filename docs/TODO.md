@@ -7,18 +7,18 @@ Outstanding features and extensions needed to support the full card library.
 ## Priority 1: Core Extensions
 
 ### 1.1 May Repeat Once Pattern
-**Status:** Not Started  
+**Status:** Done  
 **Effort:** Medium (3-5 days)  
 **Cards:** Seismic Slam, Backstab with Ballista, many others
 
 Implement `MayRepeatOnceStep` to handle "May repeat once on a different target" patterns.
 
 **Requirements:**
-- [ ] `MayRepeatOnceStep` - wraps effect steps, asks player to confirm repeat
-- [ ] `RecordTargetStep` - tracks selected targets in execution context
-- [ ] `AskRepeatStep` - confirmation input request
-- [ ] `ExcludeIDsFilter` - filter out previously targeted entities
-- [ ] `PREVENT_ACTION_REPEAT` modifier support in ValidationService
+- [x] `MayRepeatOnceStep` - wraps effect steps, asks player to confirm repeat
+- [x] `RecordTargetStep` - tracks selected targets in execution context
+- [x] `AskRepeatStep` - confirmation input request (implemented as `AskConfirmationStep`)
+- [x] `ExcludeIDsFilter` - filter out previously targeted entities (via `ExcludeIdentityFilter`)
+- [x] `PREVENT_ACTION_REPEAT` modifier support in ValidationService
 
 **Design:**
 ```python
@@ -32,44 +32,44 @@ MayRepeatOnceStep(
 ---
 
 ### 1.2 Targeting Prevention (Smoke Bomb)
-**Status:** Not Started  
-**Effort:** Medium (3-5 days)  
+**Status:** Done
+**Effort:** Medium (3-5 days)
 **Cards:** Smoke Bomb, concealment effects
 
 Implement line-of-sight blocking for targeting.
 
 **Requirements:**
-- [ ] `ValidationService.can_be_targeted(state, attacker_id, target_id)` method
-- [ ] `TARGET_PREVENTION` effect type with line-of-sight check
-- [ ] Hex geometry: `is_on_line_between(hex_a, hex_b, blocking_hex)` utility
-- [ ] Token-based blocking (Smoke Bomb token on straight line)
+- [x] `ValidationService.can_be_targeted(state, attacker_id, target_id)` method
+- [x] `LOS_BLOCKER` effect type with line-of-sight check
+- [x] Hex geometry: `is_on_segment(start, end)` utility
+- [x] Token-based blocking (via ActiveEffect at location)
 
 ---
 
-### 1.3 Card Tier Exception for Prevention
-**Status:** Not Started  
+### 1.3 Card Color/Tier Exception for Prevention
+**Status:** Done  
 **Effort:** Small (1 day)  
 **Cards:** Spell Break ("except on gold cards")
 
-Allow prevention effects to have exceptions based on card tier.
+Allow prevention effects to have exceptions based on card properties.
 
 **Requirements:**
-- [ ] Add `except_card_tiers: List[CardTier] = []` to Modifier model
-- [ ] Update ValidationService to check current card tier against exceptions
-- [ ] Pass `current_card_tier` in context during card resolution
+- [x] Add `except_card_colors` to Modifier/Effect model
+- [x] Update ValidationService to check current card color against exceptions
+- [x] Pass `card` object in context during card resolution
 
 ---
 
 ### 1.4 Fast Travel Prevention
-**Status:** Partially Done  
+**Status:** Done  
 **Effort:** Small (1 day)  
 **Cards:** Slippery Ground, Deluge, Grasping Roots, etc.
 
 Complete fast travel prevention validation.
 
 **Requirements:**
-- [ ] `ValidationService.can_fast_travel()` method (in plan but not implemented)
-- [ ] Check in `FastTravelStep` before allowing travel
+- [x] `ValidationService.can_fast_travel()` method
+- [x] Check in `FastTravelStep` before allowing travel (via validation check)
 - [x] `PREVENT_FAST_TRAVEL` status tag defined
 
 ---
@@ -264,6 +264,12 @@ Swap cards between hand/resolved/unresolved states.
 - [x] MOVEMENT_ZONE (Slippery Ground)
 - [x] CreateModifierStep / CreateEffectStep
 - [x] CanBePlacedByActorFilter
+- [x] MayRepeatOnceStep (Priority 1.1)
+- [x] Spell Break Prevention / Card Color Exceptions (Priority 1.3)
+- [x] Fast Travel Prevention (Priority 1.4)
+- [x] ValidationService PREVENT_ACTION_REPEAT
+- [x] Targeting Prevention / Line of Sight (Priority 1.2)
+
 
 ---
 
