@@ -10,6 +10,8 @@ from goa2.engine.steps import (
     PushUnitStep,
     CreateEffectStep,
     MoveSequenceStep,
+    CheckAdjacencyStep,
+    MayRepeatOnceStep,
 )
 from goa2.engine.filters import (
     UnitTypeFilter,
@@ -32,11 +34,37 @@ from goa2.domain.models import (
     AffectsFilter,
     DurationType,
     ActionType,
+    CardColor,
 )
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
+
+
+@register_effect("spell_break")
+class SpellBreakEffect(CardEffect):
+    """
+    Card text: "This turn: Enemy heroes in radius cannot perform skill actions,
+    except on gold cards."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.TARGET_PREVENTION,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 3,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                restrictions=[ActionType.SKILL],
+                except_card_colors=[CardColor.GOLD],
+            ),
+        ]
 
 
 @register_effect("noble_blade")
@@ -126,6 +154,68 @@ class SwapEnemyMinionEffect(CardEffect):
                 output_key="swap_target_id",
             ),
             SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target_id"),
+        ]
+
+
+@register_effect("ebb_and_flow")
+class EbbAndFlowEffect(CardEffect):
+    """
+    Card text: "Swap with an enemy minion in range; if it was adjacent to you, may repeat once."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            # 1. Select First Target
+            SelectStep(
+                target_type="UNIT",
+                filters=[
+                    UnitTypeFilter(unit_type="MINION"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range),
+                    ImmunityFilter(),
+                ],
+                prompt="Select an enemy minion to swap with.",
+                output_key="swap_target_1",
+                is_mandatory=True,
+            ),
+            # 2. Check Adjacency (Before Swap)
+            CheckAdjacencyStep(
+                unit_a_id=hero.id,
+                unit_b_key="swap_target_1",
+                output_key="can_repeat",
+            ),
+            # 2. Swap 1
+            SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target_1"),
+            # 3. May Repeat
+            MayRepeatOnceStep(
+                active_if_key="can_repeat",
+                steps_template=[
+                    SelectStep(
+                        target_type="UNIT",
+                        filters=[
+                            UnitTypeFilter(unit_type="MINION"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(
+                                max_range=stats.range
+                            ),  # Range from NEW position
+                            ImmunityFilter(),
+                            ExcludeIdentityFilter(
+                                exclude_self=True, exclude_keys=["swap_target_1"]
+                            ),
+                        ],
+                        prompt="Select another enemy minion to swap with (Repeat)",
+                        output_key="swap_target_2",
+                        is_mandatory=False,
+                    ),
+                    SwapUnitsStep(
+                        unit_a_id=hero.id,
+                        unit_b_key="swap_target_2",
+                        active_if_key="swap_target_2",  # Only if selected
+                    ),
+                ],
+            ),
         ]
 
 

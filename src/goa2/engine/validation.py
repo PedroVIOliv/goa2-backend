@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 from pydantic import BaseModel, Field
 
 from goa2.domain.types import BoardEntityID, UnitID, HeroID
+from goa2.domain.models import Card
 from goa2.domain.models.enums import ActionType
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape, AffectsFilter
@@ -108,6 +109,26 @@ class ValidationService:
                 if action_type not in effect.restrictions:
                     continue
 
+                # Check for Color Exception (e.g. Spell Break: "except on Gold cards")
+                if effect.except_card_colors:
+                    card_obj: Optional[Card] = context.get("card")
+                    # Also try to find card by ID if provided
+                    if not card_obj and context.get("current_card_id"):
+                        # We'd need to find the card object.
+                        # Since we don't have a direct card lookup in state (only in heroes/hands),
+                        # we rely on the caller providing the "card" object in context or relying on actor lookup
+                        # But for now, let's assume "card" object is passed for efficiency in ResolveCardStep
+                        pass
+
+                    if card_obj:
+                        color = card_obj.current_color
+                        # If color is None (facedown?) or matches exception
+                        # (Note: Silver/Gold cards usually have visible color even if facedown logic isn't perfect in all implementations,
+                        # but standard rules say revealed cards have colors).
+                        if color in effect.except_card_colors:
+                            # Exception met: This effect does NOT block this action
+                            continue
+
                 # Check spatial/relational scope (is actor inside zone?)
                 if not self._is_in_scope(effect, actor_id, actor_loc, state):
                     continue
@@ -133,6 +154,29 @@ class ValidationService:
         Checks: PREVENT_FAST_TRAVEL status.
         """
         return self.can_perform_action(state, unit_id, ActionType.FAST_TRAVEL, context)
+
+    def can_repeat_action(
+        self,
+        state: "GameState",
+        actor_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ValidationResult:
+        """
+        Can actor repeat an action?
+        Checks: PREVENT_ACTION_REPEAT status.
+        """
+        # We manually check for the specific status tag since REPEAT isn't an ActionType
+        tag = "PREVENT_ACTION_REPEAT"
+
+        for mod in state.active_modifiers:
+            if str(mod.target_id) == str(actor_id) and mod.status_tag == tag:
+                if self._is_modifier_active(mod, state):
+                    return ValidationResult.deny(
+                        reason="Action repeat prevented",
+                        modifier_ids=[mod.id],
+                        source=mod.source_id,
+                    )
+        return ValidationResult.allow()
 
     def can_move(
         self,

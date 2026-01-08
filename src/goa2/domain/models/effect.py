@@ -6,7 +6,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from goa2.domain.models.modifier import DurationType
-from goa2.domain.models.enums import ActionType, StatType
+from goa2.domain.models.enums import ActionType, StatType, CardColor, CardColor
 from goa2.domain.hex import Hex
 
 
@@ -73,6 +73,9 @@ class ActiveEffect(BaseModel):
     restrictions: List[ActionType] = Field(
         default_factory=list
     )  # For prevention effects
+    except_card_colors: List[CardColor] = Field(
+        default_factory=list
+    )  # Exceptions to prevention (e.g. "except on Gold cards")
     stat_type: Optional[StatType] = None  # For AREA_STAT_MODIFIER
     stat_value: int = 0  # Modifier amount
     max_value: Optional[int] = None  # For movement caps

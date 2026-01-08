@@ -1,7 +1,7 @@
 """EffectManager for creating and expiring effects/modifiers."""
 
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List
 
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.enums import StatType
@@ -53,6 +53,7 @@ class EffectManager:
         scope: EffectScope,
         duration: DurationType = DurationType.THIS_TURN,
         source_card_id: Optional[str] = None,
+        except_card_colors: Optional[List] = None,
         **kwargs,
     ) -> ActiveEffect:
         """Create and register a new spatial effect."""
@@ -65,6 +66,7 @@ class EffectManager:
             duration=duration,
             created_at_turn=state.turn,
             created_at_round=state.round,
+            except_card_colors=except_card_colors or [],
             **kwargs,
         )
         state.add_effect(effect)

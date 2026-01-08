@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 from typing import Optional, Dict, Any, List, Tuple, Sequence, cast
+import copy
 from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
@@ -154,6 +155,7 @@ class CreateEffectStep(GameStep):
     duration: DurationType = DurationType.THIS_TURN
 
     restrictions: List[ActionType] = Field(default_factory=list)
+    except_card_colors: List[CardColor] = Field(default_factory=list)
     stat_type: Optional[StatType] = None
     stat_value: int = 0
     max_value: Optional[int] = None
@@ -188,6 +190,7 @@ class CreateEffectStep(GameStep):
             scope=self.scope,
             duration=self.duration,
             restrictions=self.restrictions,
+            except_card_colors=self.except_card_colors,
             stat_type=self.stat_type,
             stat_value=self.stat_value,
             max_value=self.max_value,
@@ -1413,6 +1416,14 @@ class ResolveCardStep(GameStep):
         from goa2.engine.rules import get_safe_zones_for_fast_travel
 
         def is_action_available(act_type: ActionType) -> bool:
+            # 1. Check Global/Effect Validation (e.g. Spell Break prevention)
+            # We pass the 'card' object in context so validation can check exceptions (color).
+            val_res = state.validator.can_perform_action(
+                state, self.hero_id, act_type, context={"card": card}
+            )
+            if not val_res.allowed:
+                return False
+
             if act_type == ActionType.FAST_TRAVEL:
                 u_loc = state.unit_locations.get(UnitID(self.hero_id))
                 if not u_loc:
@@ -1834,6 +1845,193 @@ class LanePushStep(GameStep):
                     )
                 ],
             )
+
+        return StepResult(is_finished=True)
+
+
+class AskConfirmationStep(GameStep):
+    """
+    Prompts the player for a Yes/No confirmation.
+    Useful for optional repeats or effects.
+    """
+
+    type: str = "ask_confirmation"
+    prompt: str
+    output_key: str = "confirmation"
+    player_id: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        actor_id = self.player_id or state.current_actor_id
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            # Logic: "YES" = True, "NO" = False
+            context[self.output_key] = selection == "YES"
+            print(f"   [INPUT] {actor_id} chose {selection} for '{self.prompt}'")
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_OPTION",  # Frontend maps this to Buttons
+                "prompt": self.prompt,
+                "player_id": actor_id,
+                "options": [
+                    {"id": "YES", "text": "Yes"},
+                    {"id": "NO", "text": "No"},
+                ],
+            },
+        )
+
+
+class RecordTargetStep(GameStep):
+    """
+    Appends a target ID (from context) to a list (in context).
+    Used to track history for 'different target' filters.
+    """
+
+    type: str = "record_target"
+    input_key: str  # The key holding the current target ID
+    output_list_key: str  # The key for the list of IDs
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        target_id = context.get(self.input_key)
+        if target_id:
+            if self.output_list_key not in context:
+                context[self.output_list_key] = []
+            if isinstance(context[self.output_list_key], list):
+                context[self.output_list_key].append(target_id)
+                print(f"   [LOGIC] Recorded {target_id} to {self.output_list_key}")
+        return StepResult(is_finished=True)
+
+
+class MayRepeatOnceStep(GameStep):
+    """
+    Wraps a sequence of steps that can be repeated once upon player confirmation.
+    Checks ValidationService.can_repeat_action() before asking.
+    """
+
+    type: str = "may_repeat_once"
+    steps_template: List[Any] = Field(
+        default_factory=list
+    )  # List[GameStep], typed Any to avoid recursion issues
+    prompt: str = "Repeat action?"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        # 1. Validation Check (Early exit if blocked)
+        res = state.validator.can_repeat_action(state, str(actor_id), context)
+        if not res.allowed:
+            print(f"   [REPEAT] Blocked by validation: {res.reason}")
+            return StepResult(is_finished=True)
+
+        # 2. Input Handling
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if selection == "YES":
+                print(
+                    f"   [REPEAT] Confirmed. Spawning {len(self.steps_template)} steps."
+                )
+                # Deepcopy to ensure fresh state for the new steps
+                new_steps = [copy.deepcopy(s) for s in self.steps_template]
+                return StepResult(is_finished=True, new_steps=new_steps)
+            else:
+                print("   [REPEAT] Declined.")
+                return StepResult(is_finished=True)
+
+        # 3. Request Input
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_OPTION",
+                "prompt": self.prompt,
+                "player_id": actor_id,
+                "options": [
+                    {"id": "YES", "text": "Yes"},
+                    {"id": "NO", "text": "No"},
+                ],
+            },
+        )
+
+
+class ValidateRepeatStep(GameStep):
+    """
+    Checks if the actor is allowed to repeat an action.
+    Consults ValidationService.can_repeat_action().
+    Can optionally AND the result with an existing context flag.
+    """
+
+    type: str = "validate_repeat"
+    actor_id: Optional[str] = None
+    and_with_key: Optional[str] = None  # If set, combines with this boolean key
+    output_key: str = "can_repeat"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        act_id = self.actor_id or state.current_actor_id
+        if not act_id:
+            context[self.output_key] = False
+            return StepResult(is_finished=True)
+
+        res = state.validator.can_repeat_action(state, str(act_id), context)
+        val = res.allowed
+
+        if self.and_with_key:
+            prev_val = context.get(self.and_with_key, False)
+            val = val and prev_val
+            print(
+                f"   [CHECK] Repeat Validation: Validator={res.allowed}, Context({self.and_with_key})={prev_val} -> Result={val}"
+            )
+        else:
+            print(f"   [CHECK] Repeat Validation: Result={val}")
+
+        context[self.output_key] = val
+        return StepResult(is_finished=True)
+
+
+class CheckAdjacencyStep(GameStep):
+    """
+    Checks if two units are adjacent and sets a context flag.
+    Used for conditional effects (e.g. Ebb and Flow).
+    """
+
+    type: str = "check_adjacency"
+    unit_a_id: Optional[str] = None
+    unit_b_id: Optional[str] = None
+    unit_a_key: Optional[str] = None
+    unit_b_key: Optional[str] = None
+    output_key: str = "is_adjacent"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        u_a = self.unit_a_id
+        if not u_a and self.unit_a_key:
+            u_a = context.get(self.unit_a_key)
+
+        u_b = self.unit_b_id
+        if not u_b and self.unit_b_key:
+            u_b = context.get(self.unit_b_key)
+
+        if not u_a or not u_b:
+            context[self.output_key] = False
+            return StepResult(is_finished=True)
+
+        loc_a = state.entity_locations.get(BoardEntityID(u_a))
+        loc_b = state.entity_locations.get(BoardEntityID(u_b))
+
+        if not loc_a or not loc_b:
+            context[self.output_key] = False
+            return StepResult(is_finished=True)
+
+        dist = loc_a.distance(loc_b)
+        context[self.output_key] = dist == 1
+        print(f"   [CHECK] Adjacency between {u_a} and {u_b}: {dist == 1}")
 
         return StepResult(is_finished=True)
 

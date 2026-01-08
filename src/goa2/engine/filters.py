@@ -382,7 +382,12 @@ class ExcludeIdentityFilter(FilterCondition):
                 return False
         for key in self.exclude_keys:
             val = context.get(key)
-            if val == candidate:
+            if val is None:
+                continue
+            if isinstance(val, list):
+                if candidate in val:
+                    return False
+            elif val == candidate:
                 return False
         return True
 
