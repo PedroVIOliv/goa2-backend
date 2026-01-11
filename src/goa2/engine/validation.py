@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.types import BoardEntityID, UnitID, HeroID
 from goa2.domain.models import Card
-from goa2.domain.models.enums import ActionType, CardColor
+from goa2.domain.models.enums import ActionType, CardColor, CardState
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape, AffectsFilter
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 class ValidationContext(TypedDict, total=False):
     """Context data passed to validation service."""
+
     card: Optional[Card]
     current_card_id: Optional[str]
     defense_value: Optional[int]
@@ -26,7 +27,7 @@ class ValidationContext(TypedDict, total=False):
     confirmation: Optional[bool]  # Default output for AskConfirmationStep
     # Allow arbitrary keys for now to maintain compatibility with legacy dicts
     # until strict typing is enforced everywhere
-    __extra_items__: Any 
+    __extra_items__: Any
 
 
 class ValidationResult(BaseModel):
@@ -113,7 +114,6 @@ class ValidationService:
         for mod in state.active_modifiers:
             if str(mod.target_id) == str(actor_id) and mod.status_tag == tag:
                 if self._is_modifier_active(mod, state):
-                    
                     # Check exceptions (e.g. "Except on Gold cards")
                     if matches_exception(mod.except_card_colors):
                         continue
@@ -393,17 +393,16 @@ class ValidationService:
     ) -> bool:
         """
         Check if modifier is currently active.
-        Order matters: (1) Check PASSIVE first, (2) Card state, (3) Duration timing.
+        Order matters: (1) Check PASSIVE first, (2) is_active flag, (3) Duration timing.
         """
-        # PASSIVE effects are ALWAYS active
+        # PASSIVE effects are ALWAYS active (no is_active check needed)
         if mod.duration == DurationType.PASSIVE:
             return True
 
-        # Card-based effects require source card to be in played state
+        # Card-based effects use explicit is_active flag
+        # This flag is set to True when card resolves, False when card leaves play or goes facedown
         if mod.source_card_id:
-            if not self._is_card_in_played_state(
-                state, mod.source_id, mod.source_card_id
-            ):
+            if not mod.is_active:
                 return False
 
         # Check temporal duration
@@ -434,21 +433,25 @@ class ValidationService:
         self, state: "GameState", hero_id: str, card_id: str
     ) -> bool:
         """
-        Check if a card is currently in the hero's played state.
-        A card is "played" if it's in hero.played_cards OR hero.current_turn_card.
+        Check if a card's active effects should be active.
+
+        Per game rules, active effects are cancelled when:
+        - The card leaves the played area (state != RESOLVED)
+        - The card is turned facedown
+
+        Effects are created during card resolution (UNRESOLVED state) but only
+        become active once the card moves to RESOLVED at turn end. This works
+        because effects only matter starting from the next player's turn.
         """
         hero = state.get_hero(HeroID(hero_id))
         if not hero:
             return False
 
-        # Check current turn card (UNRESOLVED)
-        if hero.current_turn_card and hero.current_turn_card.id == card_id:
-            return True
-
-        # Check played cards (RESOLVED)
+        # Find the card in played_cards (the only place RESOLVED cards live)
         for card in hero.played_cards:
             if card.id == card_id:
-                return True
+                # Card must be RESOLVED and face-up for effects to be active
+                return card.state == CardState.RESOLVED and not card.is_facedown
 
         return False
 

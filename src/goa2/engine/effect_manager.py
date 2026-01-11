@@ -28,6 +28,7 @@ class EffectManager:
         status_tag: Optional[str] = None,
         duration: DurationType = DurationType.THIS_TURN,
         source_card_id: Optional[str] = None,
+        is_active: bool = False,
     ) -> Modifier:
         """Create and register a new modifier."""
         modifier = Modifier(
@@ -41,6 +42,7 @@ class EffectManager:
             duration=duration,
             created_at_turn=state.turn,
             created_at_round=state.round,
+            is_active=is_active,
         )
         state.add_modifier(modifier)
         return modifier
@@ -54,6 +56,7 @@ class EffectManager:
         duration: DurationType = DurationType.THIS_TURN,
         source_card_id: Optional[str] = None,
         except_card_colors: Optional[List] = None,
+        is_active: bool = False,
         **kwargs,
     ) -> ActiveEffect:
         """Create and register a new spatial effect."""
@@ -67,6 +70,7 @@ class EffectManager:
             created_at_turn=state.turn,
             created_at_round=state.round,
             except_card_colors=except_card_colors or [],
+            is_active=is_active,
             **kwargs,
         )
         state.add_effect(effect)
@@ -106,36 +110,90 @@ class EffectManager:
             e for e in state.active_effects if e.source_id != source_id
         ]
 
+    # -------------------------------------------------------------------------
+    # Activation / Deactivation
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def activate_effects_by_card(state: "GameState", card_id: str):
+        """
+        Activate all effects/modifiers linked to a specific card.
+        Called when a card becomes RESOLVED (after hero's turn completes).
+        """
+        for mod in state.active_modifiers:
+            if mod.source_card_id == card_id:
+                mod.is_active = True
+        for effect in state.active_effects:
+            if effect.source_card_id == card_id:
+                effect.is_active = True
+
+    @staticmethod
+    def deactivate_effects_by_card(state: "GameState", card_id: str):
+        """
+        Deactivate all effects/modifiers linked to a specific card.
+        Called when a card leaves played state or is turned facedown.
+        """
+        for mod in state.active_modifiers:
+            if mod.source_card_id == card_id:
+                mod.is_active = False
+        for effect in state.active_effects:
+            if effect.source_card_id == card_id:
+                effect.is_active = False
+
+    @staticmethod
+    def activate_effect_by_id(state: "GameState", effect_id: str):
+        """Explicitly activate a specific effect by ID (for card abilities that reactivate)."""
+        for effect in state.active_effects:
+            if effect.id == effect_id:
+                effect.is_active = True
+                return
+        for mod in state.active_modifiers:
+            if mod.id == effect_id:
+                mod.is_active = True
+                return
+
+    @staticmethod
+    def deactivate_effect_by_id(state: "GameState", effect_id: str):
+        """Explicitly deactivate a specific effect by ID."""
+        for effect in state.active_effects:
+            if effect.id == effect_id:
+                effect.is_active = False
+                return
+        for mod in state.active_modifiers:
+            if mod.id == effect_id:
+                mod.is_active = False
+                return
+
     @staticmethod
     def cleanup_stale_effects(state: "GameState"):
         """
-        Remove effects whose source card is no longer in played state.
-        Called at round end for memory cleanup (lazy expiration).
+        Remove effects that are no longer active and have expired.
+        Called at round end for memory cleanup.
+
+        Effects are removed if:
+        - They have a source card AND is_active is False (card left play/went facedown)
+        - AND they're not PASSIVE (PASSIVE effects persist)
         """
 
         def is_effect_valid(effect: ActiveEffect) -> bool:
-            # Effects without card link are always valid
+            # Effects without card link are always valid (cleaned by duration)
             if effect.source_card_id is None:
                 return True
             # PASSIVE effects are always valid
             if effect.duration == DurationType.PASSIVE:
                 return True
-            # Check if card is still in played state
-            return state.validator._is_card_in_played_state(
-                state, effect.source_id, effect.source_card_id
-            )
+            # Card-based effects are valid if still active
+            return effect.is_active
 
         def is_modifier_valid(mod: Modifier) -> bool:
-            # Modifiers without card link are always valid
+            # Modifiers without card link are always valid (cleaned by duration)
             if mod.source_card_id is None:
                 return True
             # PASSIVE modifiers are always valid
             if mod.duration == DurationType.PASSIVE:
                 return True
-            # Check if card is still in played state
-            return state.validator._is_card_in_played_state(
-                state, mod.source_id, mod.source_card_id
-            )
+            # Card-based modifiers are valid if still active
+            return mod.is_active
 
         state.active_effects = [e for e in state.active_effects if is_effect_valid(e)]
         state.active_modifiers = [

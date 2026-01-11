@@ -21,6 +21,7 @@ from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.stats import get_computed_stat
+from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.rogue_effects  # Register rogue effects
 
 
@@ -147,6 +148,13 @@ def test_slippery_ground_limits_movement(rogue_state):
     assert len(rogue_state.active_effects) == 1
     assert rogue_state.active_effects[0].effect_type == EffectType.MOVEMENT_ZONE
 
+    # 5b. Finalize the hero's turn to move card to RESOLVED state
+    # This is required because active effects only become active when the source card is RESOLVED
+    hero = rogue_state.get_hero("rogue")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(rogue_state, card_id)
+
     # 6. Use MoveUnitStep to verify it blocks
     from goa2.engine.steps import MoveUnitStep
 
@@ -220,6 +228,13 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
         e.effect_type == EffectType.PLACEMENT_PREVENTION
         for e in rogue_state.active_effects
     )
+
+    # 7b. Finalize the hero's turn to move card to RESOLVED state
+    # This is required because active effects only become active when the source card is RESOLVED
+    hero = rogue_state.get_hero("rogue")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(rogue_state, card_id)
 
     # Re-place victim
     rogue_state.place_entity("victim", Hex(q=1, r=0, s=-1))

@@ -87,6 +87,11 @@ class ActiveEffect(BaseModel):
     created_at_turn: int
     created_at_round: int
 
+    # Activation state - set to True when source card resolves,
+    # set to False when card leaves play or is turned facedown.
+    # This prevents accidental re-activation and allows explicit reactivation.
+    is_active: bool = False
+
     # Actor restriction: whose actions are blocked?
     blocks_enemy_actors: bool = True  # True = enemy actions blocked
     blocks_friendly_actors: bool = False  # True = friendly actions blocked

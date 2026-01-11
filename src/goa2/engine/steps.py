@@ -24,6 +24,7 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 
 from goa2.domain.models.enums import StatType
 from goa2.domain.models.effect import EffectType, EffectScope
+from goa2.engine.effect_manager import EffectManager
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -97,6 +98,7 @@ class CreateModifierStep(GameStep):
     value_mod: int = 0
     status_tag: Optional[str] = None
     duration: DurationType = DurationType.THIS_TURN
+    is_active: bool = False  # Override default dormant state if True
 
     # Card linkage (for card-based effects)
     source_card_id: Optional[str] = None  # Explicit card ID
@@ -134,6 +136,7 @@ class CreateModifierStep(GameStep):
             value_mod=self.value_mod,
             status_tag=self.status_tag,
             duration=self.duration,
+            is_active=self.is_active,
         )
 
         desc = (
@@ -167,6 +170,7 @@ class CreateEffectStep(GameStep):
     blocks_enemy_actors: bool = True
     blocks_friendly_actors: bool = False
     blocks_self: bool = False
+    is_active: bool = False  # Override default dormant state if True
 
     # Card linkage (for card-based effects)
     source_card_id: Optional[str] = None  # Explicit card ID
@@ -188,7 +192,7 @@ class CreateEffectStep(GameStep):
             source_id=str(state.current_actor_id)
             if state.current_actor_id
             else "system",
-            source_card_id=card_id,  # Link to card
+            source_card_id=card_id,
             effect_type=self.effect_type,
             scope=self.scope,
             duration=self.duration,
@@ -201,6 +205,7 @@ class CreateEffectStep(GameStep):
             blocks_enemy_actors=self.blocks_enemy_actors,
             blocks_friendly_actors=self.blocks_friendly_actors,
             blocks_self=self.blocks_self,
+            is_active=self.is_active,
         )
 
         print(
@@ -1026,7 +1031,7 @@ class ResolveCombatStep(GameStep):
 class FinalizeHeroTurnStep(GameStep):
     """
     Finalizes a hero's turn by moving their current card to the resolved dashboard.
-    Clears the actor context.
+    Activates any effects created by this card and clears the actor context.
     """
 
     type: StepType = StepType.FINALIZE_HERO_TURN
@@ -1034,11 +1039,15 @@ class FinalizeHeroTurnStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         hero = state.get_hero(HeroID(self.hero_id))
-        if hero:
+        if hero and hero.current_turn_card:
+            card_id = hero.current_turn_card.id
             print(
                 f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved."
             )
             hero.resolve_current_card()
+
+            # Activate all effects created by this card
+            EffectManager.activate_effects_by_card(state, card_id)
 
         # Clear transient context for the next actor
         context.clear()
@@ -1726,7 +1735,10 @@ class ResolveCardStep(GameStep):
                 # Determine if primary by checking the card itself
                 is_primary = act_type == primary_action
                 # DEFENSE_SKILL played as SKILL still uses primary effect
-                if card.primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL:
+                if (
+                    card.primary_action == ActionType.DEFENSE_SKILL
+                    and act_type == ActionType.SKILL
+                ):
                     is_primary = True
 
                 print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
@@ -2314,6 +2326,13 @@ class EndPhaseCleanupStep(GameStep):
     def _retrieve_cards(self, state: GameState):
         for team in state.teams.values():
             for hero in team.heroes:
+                # Deactivate effects from all cards before retrieval
+                for card in hero.played_cards:
+                    EffectManager.deactivate_effects_by_card(state, card.id)
+                if hero.current_turn_card:
+                    EffectManager.deactivate_effects_by_card(
+                        state, hero.current_turn_card.id
+                    )
                 hero.retrieve_cards()
 
     def _clear_tokens(self, state: GameState):

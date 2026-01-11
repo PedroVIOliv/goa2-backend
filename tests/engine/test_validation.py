@@ -1,20 +1,32 @@
 """Tests for ValidationService and ValidationResult."""
+
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.tile import Tile
 from goa2.domain.models import (
-    Team, TeamColor, Card, CardTier, CardColor, ActionType, Hero
+    Team,
+    TeamColor,
+    Card,
+    CardTier,
+    CardColor,
+    ActionType,
+    Hero,
 )
 from goa2.domain.hex import Hex
 from goa2.domain.models.modifier import Modifier, DurationType
 from goa2.domain.models.effect import (
-    ActiveEffect, EffectType, EffectScope, Shape, AffectsFilter
+    ActiveEffect,
+    EffectType,
+    EffectScope,
+    Shape,
+    AffectsFilter,
 )
 from goa2.engine.validation import ValidationResult, ValidationService
 
 
 # --- Fixtures ---
+
 
 @pytest.fixture
 def empty_state():
@@ -23,8 +35,8 @@ def empty_state():
         board=Board(),
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
-            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
-        }
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+        },
     )
 
 
@@ -41,7 +53,7 @@ def state_with_heroes():
         primary_action=ActionType.ATTACK,
         primary_action_value=2,
         effect_id="e1",
-        effect_text="Attack"
+        effect_text="Attack",
     )
     blue_card = Card(
         id="blue_card_1",
@@ -52,22 +64,14 @@ def state_with_heroes():
         primary_action=ActionType.DEFENSE,
         primary_action_value=2,
         effect_id="e2",
-        effect_text="Defend"
+        effect_text="Defend",
     )
 
-    red_hero = Hero(
-        id="red_hero",
-        name="Red Hero",
-        team=TeamColor.RED,
-        deck=[red_card]
-    )
+    red_hero = Hero(id="red_hero", name="Red Hero", team=TeamColor.RED, deck=[red_card])
     red_hero.hand.append(red_card)
 
     blue_hero = Hero(
-        id="blue_hero",
-        name="Blue Hero",
-        team=TeamColor.BLUE,
-        deck=[blue_card]
+        id="blue_hero", name="Blue Hero", team=TeamColor.BLUE, deck=[blue_card]
     )
     blue_hero.hand.append(blue_card)
 
@@ -84,10 +88,10 @@ def state_with_heroes():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[red_hero], minions=[]),
-            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[blue_hero], minions=[])
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[blue_hero], minions=[]),
         },
         turn=1,
-        round=1
+        round=1,
     )
 
     # Place heroes on board
@@ -117,8 +121,7 @@ class TestValidationResult:
     def test_validation_result_deny_with_modifier_ids(self):
         """deny() can include blocking modifier IDs."""
         result = ValidationResult.deny(
-            reason="Action blocked",
-            modifier_ids=["mod_1", "mod_2"]
+            reason="Action blocked", modifier_ids=["mod_1", "mod_2"]
         )
         assert result.allowed is False
         assert "mod_1" in result.blocking_modifier_ids
@@ -126,19 +129,13 @@ class TestValidationResult:
 
     def test_validation_result_deny_with_effect_ids(self):
         """deny() can include blocking effect IDs."""
-        result = ValidationResult.deny(
-            reason="Placement blocked",
-            effect_ids=["eff_1"]
-        )
+        result = ValidationResult.deny(reason="Placement blocked", effect_ids=["eff_1"])
         assert result.allowed is False
         assert "eff_1" in result.blocking_effect_ids
 
     def test_validation_result_deny_with_source(self):
         """deny() can include the source that caused the block."""
-        result = ValidationResult.deny(
-            reason="Blocked by enemy",
-            source="enemy_hero"
-        )
+        result = ValidationResult.deny(reason="Blocked by enemy", source="enemy_hero")
         assert result.allowed is False
         assert result.blocked_by_source == "enemy_hero"
 
@@ -148,7 +145,7 @@ class TestValidationResult:
             reason="Cannot be placed",
             effect_ids=["eff_1"],
             modifier_ids=["mod_1"],
-            source="wasp"
+            source="wasp",
         )
         assert result.allowed is False
         assert result.reason == "Cannot be placed"
@@ -170,29 +167,53 @@ class TestValidationServiceCardState:
         assert validator._is_card_in_played_state(state, "red_hero", card.id) is False
 
     def test_is_card_in_played_state_current_turn_card(self, state_with_heroes):
-        """Card that is current_turn_card is in played state."""
+        """Card that is current_turn_card (UNRESOLVED) is NOT in active played state.
+
+        Per game rules, active effects only become active once the card is RESOLVED
+        (after the hero's turn completes). During resolution, the card is still
+        UNRESOLVED and its effects shouldn't be active yet.
+        """
         state = state_with_heroes
         hero = state.get_hero("red_hero")
         card = hero.hand[0]
 
-        # Play the card
+        # Play the card (UNRESOLVED state)
         hero.play_card(card)
 
         validator = ValidationService()
-        assert validator._is_card_in_played_state(state, "red_hero", card.id) is True
+        # UNRESOLVED cards should NOT have active effects
+        assert validator._is_card_in_played_state(state, "red_hero", card.id) is False
 
     def test_is_card_in_played_state_resolved(self, state_with_heroes):
-        """Card in played_cards (resolved) is in played state."""
+        """Card in played_cards (RESOLVED + face-up) is in active played state."""
         state = state_with_heroes
         hero = state.get_hero("red_hero")
         card = hero.hand[0]
 
-        # Play and resolve
+        # Play, reveal (face-up), and resolve
         hero.play_card(card)
+        card.is_facedown = False  # Revelation phase flips card face-up
         hero.resolve_current_card()
 
         validator = ValidationService()
         assert validator._is_card_in_played_state(state, "red_hero", card.id) is True
+
+    def test_is_card_in_played_state_resolved_but_facedown(self, state_with_heroes):
+        """Card that is RESOLVED but facedown should NOT have active effects.
+
+        Per game rules, active effects are cancelled when the card is turned facedown.
+        """
+        state = state_with_heroes
+        hero = state.get_hero("red_hero")
+        card = hero.hand[0]
+
+        # Play and resolve without revealing (edge case)
+        hero.play_card(card)
+        hero.resolve_current_card()
+        # Card is still facedown
+
+        validator = ValidationService()
+        assert validator._is_card_in_played_state(state, "red_hero", card.id) is False
 
     def test_is_card_in_played_state_after_retrieval(self, state_with_heroes):
         """Card retrieved to hand is not in played state."""
@@ -221,7 +242,7 @@ class TestValidationServiceModifierActive:
             status_tag="BONUS",
             duration=DurationType.PASSIVE,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -241,20 +262,21 @@ class TestValidationServiceModifierActive:
             status_tag="PREVENT_MOVEMENT",
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
         assert validator._is_modifier_active(mod, state) is False
 
     def test_modifier_active_when_card_played(self, state_with_heroes):
-        """Modifier with source_card_id is active when card is played."""
+        """Modifier with source_card_id is active when card is RESOLVED and face-up."""
         state = state_with_heroes
         hero = state.get_hero("blue_hero")
         card = hero.hand[0]
 
-        # Play the card
+        # Play, reveal, and resolve the card
         hero.play_card(card)
+        card.is_facedown = False  # Revelation phase flips card face-up
         hero.resolve_current_card()
 
         mod = Modifier(
@@ -265,11 +287,40 @@ class TestValidationServiceModifierActive:
             status_tag="PREVENT_MOVEMENT",
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
+            is_active=True,  # Explicitly activated (normally done by FinalizeHeroTurnStep)
         )
 
         validator = ValidationService()
         assert validator._is_modifier_active(mod, state) is True
+
+    def test_modifier_inactive_when_not_activated(self, state_with_heroes):
+        """Modifier with source_card_id is inactive if is_active=False, even if card is resolved."""
+        state = state_with_heroes
+        hero = state.get_hero("blue_hero")
+        card = hero.hand[0]
+
+        # Play, reveal, and resolve the card
+        hero.play_card(card)
+        card.is_facedown = False
+        hero.resolve_current_card()
+
+        # Create modifier WITHOUT setting is_active=True
+        mod = Modifier(
+            id="mod_1",
+            source_id="blue_hero",
+            source_card_id=card.id,
+            target_id="red_hero",
+            status_tag="PREVENT_MOVEMENT",
+            duration=DurationType.THIS_TURN,
+            created_at_turn=1,
+            created_at_round=1,
+            # is_active defaults to False
+        )
+
+        validator = ValidationService()
+        # Should be inactive because is_active=False
+        assert validator._is_modifier_active(mod, state) is False
 
     def test_modifier_this_turn_correct_turn(self, empty_state):
         """THIS_TURN modifier is active on same turn."""
@@ -283,7 +334,7 @@ class TestValidationServiceModifierActive:
             status_tag="BONUS",
             duration=DurationType.THIS_TURN,
             created_at_turn=2,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -301,7 +352,7 @@ class TestValidationServiceModifierActive:
             status_tag="BONUS",
             duration=DurationType.THIS_TURN,
             created_at_turn=2,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -319,7 +370,7 @@ class TestValidationServiceModifierActive:
             status_tag="BONUS",
             duration=DurationType.THIS_ROUND,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -337,7 +388,7 @@ class TestValidationServiceModifierActive:
             status_tag="BONUS",
             duration=DurationType.THIS_ROUND,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -355,7 +406,7 @@ class TestValidationServiceModifierActive:
             status_tag="PREVENT_ATTACK",
             duration=DurationType.NEXT_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -373,7 +424,7 @@ class TestValidationServiceModifierActive:
             status_tag="PREVENT_ATTACK",
             duration=DurationType.NEXT_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -392,7 +443,7 @@ class TestValidationServiceModifierActive:
             status_tag="PREVENT_MOVEMENT",
             duration=DurationType.NEXT_TURN,
             created_at_turn=4,
-            created_at_round=1
+            created_at_round=1,
         )
 
         validator = ValidationService()
@@ -413,15 +464,17 @@ class TestValidationServiceCanPerformAction:
 
     def test_can_perform_action_movement_prevented(self, empty_state):
         """Movement blocked by PREVENT_MOVEMENT status tag."""
-        empty_state.active_modifiers.append(Modifier(
-            id="mod_1",
-            source_id="enemy",
-            target_id="hero_1",
-            status_tag="PREVENT_MOVEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1
-        ))
+        empty_state.active_modifiers.append(
+            Modifier(
+                id="mod_1",
+                source_id="enemy",
+                target_id="hero_1",
+                status_tag="PREVENT_MOVEMENT",
+                duration=DurationType.PASSIVE,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
 
         validator = ValidationService()
         result = validator.can_perform_action(
@@ -432,33 +485,35 @@ class TestValidationServiceCanPerformAction:
 
     def test_can_perform_action_attack_prevented(self, empty_state):
         """Attack blocked by PREVENT_ATTACK status tag."""
-        empty_state.active_modifiers.append(Modifier(
-            id="mod_1",
-            source_id="enemy",
-            target_id="hero_1",
-            status_tag="PREVENT_ATTACK",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1
-        ))
+        empty_state.active_modifiers.append(
+            Modifier(
+                id="mod_1",
+                source_id="enemy",
+                target_id="hero_1",
+                status_tag="PREVENT_ATTACK",
+                duration=DurationType.PASSIVE,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
 
         validator = ValidationService()
-        result = validator.can_perform_action(
-            empty_state, "hero_1", ActionType.ATTACK
-        )
+        result = validator.can_perform_action(empty_state, "hero_1", ActionType.ATTACK)
         assert result.allowed is False
 
     def test_can_perform_action_other_hero_not_affected(self, empty_state):
         """Prevention on hero_1 doesn't affect hero_2."""
-        empty_state.active_modifiers.append(Modifier(
-            id="mod_1",
-            source_id="enemy",
-            target_id="hero_1",
-            status_tag="PREVENT_MOVEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1
-        ))
+        empty_state.active_modifiers.append(
+            Modifier(
+                id="mod_1",
+                source_id="enemy",
+                target_id="hero_1",
+                status_tag="PREVENT_MOVEMENT",
+                duration=DurationType.PASSIVE,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
 
         validator = ValidationService()
         result = validator.can_perform_action(
@@ -472,15 +527,17 @@ class TestValidationServiceCanPerformAction:
         empty_state.round = 1
 
         # Modifier from turn 1, now turn 2
-        empty_state.active_modifiers.append(Modifier(
-            id="mod_1",
-            source_id="enemy",
-            target_id="hero_1",
-            status_tag="PREVENT_MOVEMENT",
-            duration=DurationType.THIS_TURN,
-            created_at_turn=1,
-            created_at_round=1
-        ))
+        empty_state.active_modifiers.append(
+            Modifier(
+                id="mod_1",
+                source_id="enemy",
+                target_id="hero_1",
+                status_tag="PREVENT_MOVEMENT",
+                duration=DurationType.THIS_TURN,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
 
         validator = ValidationService()
         result = validator.can_perform_action(
@@ -502,7 +559,7 @@ class TestValidationServiceCanBePlaced:
             state,
             unit_id="red_hero",
             actor_id="red_hero",
-            destination=Hex(q=1, r=0, s=-1)
+            destination=Hex(q=1, r=0, s=-1),
         )
         assert result.allowed is True
 
@@ -511,22 +568,24 @@ class TestValidationServiceCanBePlaced:
         state = state_with_heroes
 
         # Add prevention modifier on red_hero
-        state.active_modifiers.append(Modifier(
-            id="mod_1",
-            source_id="blue_hero",
-            target_id="red_hero",
-            status_tag="PREVENT_PLACEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1
-        ))
+        state.active_modifiers.append(
+            Modifier(
+                id="mod_1",
+                source_id="blue_hero",
+                target_id="red_hero",
+                status_tag="PREVENT_PLACEMENT",
+                duration=DurationType.PASSIVE,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
 
         validator = ValidationService()
         result = validator.can_be_placed(
             state,
             unit_id="red_hero",
             actor_id="blue_hero",  # Enemy trying to place
-            destination=Hex(q=1, r=0, s=-1)
+            destination=Hex(q=1, r=0, s=-1),
         )
         assert result.allowed is False
         assert "mod_1" in result.blocking_modifier_ids

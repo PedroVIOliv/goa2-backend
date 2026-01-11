@@ -15,6 +15,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.arien_effects
 
 
@@ -102,6 +103,13 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
     # Verify effect created
     assert len(slippery_state.active_effects) == 1
 
+    # Finalize the hero's turn to move card to RESOLVED state
+    # This is required because active effects only become active when the source card is RESOLVED
+    hero = slippery_state.get_hero("arien")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(slippery_state, card_id)
+
     # 2. Adjacent Enemy (e1) tries to Fast Travel
     res = slippery_state.validator.can_fast_travel(slippery_state, "e1")
     assert res.allowed == False, "Fast Travel should be blocked for adjacent enemy"
@@ -128,6 +136,13 @@ def test_slippery_ground_movement_limited(slippery_state):
 
     while slippery_state.execution_stack:
         process_resolution_stack(slippery_state)
+
+    # Finalize the hero's turn to move card to RESOLVED state
+    # This is required because active effects only become active when the source card is RESOLVED
+    hero = slippery_state.get_hero("arien")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(slippery_state, card_id)
 
     # 2. Adjacent Enemy (e1) tries to move 2 spaces via Movement Action
     res = slippery_state.validator.can_move(
