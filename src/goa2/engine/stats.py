@@ -143,7 +143,7 @@ def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardSta
         result.primary_value = get_computed_stat(
             state, hero_id, StatType.MOVEMENT, base_value
         )
-    elif card.primary_action == ActionType.DEFENSE:
+    elif card.primary_action in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL):
         result.primary_value = get_computed_stat(
             state, hero_id, StatType.DEFENSE, base_value
         )

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
+from typing import List, Dict, Any, TYPE_CHECKING, Optional
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     GameStep,
@@ -12,6 +12,7 @@ from goa2.engine.steps import (
     MoveSequenceStep,
     CheckAdjacencyStep,
     MayRepeatOnceStep,
+    SetContextFlagStep,
 )
 from goa2.engine.filters import (
     UnitTypeFilter,
@@ -413,3 +414,22 @@ class DelugeEffect(CardEffect):
             ),
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
         ]
+
+
+@register_effect("aspiring_duelist")
+class AspiringDuelistEffect(CardEffect):
+    """
+    Card text: "Ignore all minion defense modifiers."
+
+    This is a primary DEFENSE card. The effect triggers when used to defend.
+    Sets a context flag that ResolveCombatStep checks to skip minion modifier calculation.
+    """
+
+    def get_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return [SetContextFlagStep(key="ignore_minion_defense", value=True)]

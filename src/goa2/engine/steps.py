@@ -223,6 +223,26 @@ class LogMessageStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class SetContextFlagStep(GameStep):
+    """
+    Utility step that sets a flag/value in the execution context.
+
+    Used by defense effects to communicate with combat resolution:
+    - auto_block: Block succeeds regardless of values (e.g., stop_projectiles)
+    - defense_invalid: Defense fails entirely (e.g., stop_projectiles vs melee)
+    - ignore_minion_defense: Skip minion modifier calculation (e.g., aspiring_duelist)
+    """
+
+    type: StepType = StepType.SET_CONTEXT_FLAG
+    key: str
+    value: Any = True
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        context[self.key] = self.value
+        print(f"   [CONTEXT] Set {self.key} = {self.value}")
+        return StepResult(is_finished=True)
+
+
 from goa2.engine.filters import FilterCondition
 
 
@@ -244,7 +264,9 @@ class SelectStep(GameStep):
     context_hero_id_key: Optional[str] = (
         None  # Key in context to find hero (for CARD/HAND selection)
     )
-    card_container: CardContainerType = CardContainerType.HAND  # "HAND", "PLAYED", "DISCARD", "DECK"
+    card_container: CardContainerType = (
+        CardContainerType.HAND
+    )  # "HAND", "PLAYED", "DISCARD", "DECK"
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -597,6 +619,11 @@ class ReactionWindowStep(GameStep):
     """
     Gives a target player a chance to react (Play Defense Card).
     Validates that the chosen card actually HAS a Defense action.
+
+    Stores in context for defense effect resolution:
+    - defense_card_id: The card used for defense (or None if passed)
+    - defender_id: The defending hero's ID
+    - is_primary_defense: True if the card's primary action is DEFENSE
     """
 
     type: StepType = StepType.REACTION_WINDOW
@@ -613,12 +640,16 @@ class ReactionWindowStep(GameStep):
         if not target_hero:
             print(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
             context["defense_value"] = 0
+            context["defense_card_id"] = None
+            context["defender_id"] = str(target_id)
+            context["is_primary_defense"] = False
             return StepResult(is_finished=True)
 
         valid_defense_cards = []
         for card in target_hero.hand:
             if (
                 card.primary_action == ActionType.DEFENSE
+                or card.primary_action == ActionType.DEFENSE_SKILL
                 or ActionType.DEFENSE in card.secondary_actions
             ):
                 valid_defense_cards.append(card)
@@ -632,6 +663,9 @@ class ReactionWindowStep(GameStep):
             if card_id == "PASS":
                 print(f"   [REACTION] Player {target_id} Passed (No Defense).")
                 context["defense_value"] = 0
+                context["defense_card_id"] = None
+                context["defender_id"] = str(target_id)
+                context["is_primary_defense"] = False
                 return StepResult(is_finished=True)
 
             # Case B: Selected Card
@@ -652,10 +686,22 @@ class ReactionWindowStep(GameStep):
                     state, target_id, StatType.DEFENSE, def_val
                 )
 
-                print(
-                    f"   [REACTION] Player {target_id} defends with {card_id} (Value: {total_def} [Base: {def_val}])"
+                # Determine if primary defense (triggers effect text)
+                is_primary = selected_card.primary_action in (
+                    ActionType.DEFENSE,
+                    ActionType.DEFENSE_SKILL,
                 )
+
+                print(
+                    f"   [REACTION] Player {target_id} defends with {card_id} "
+                    f"(Value: {total_def} [Base: {def_val}], Primary: {is_primary})"
+                )
+
+                # Store context for defense effect resolution
                 context["defense_value"] = total_def
+                context["defense_card_id"] = card_id
+                context["defender_id"] = str(target_id)
+                context["is_primary_defense"] = is_primary
 
                 return StepResult(is_finished=True)
 
@@ -668,6 +714,109 @@ class ReactionWindowStep(GameStep):
                 "options": valid_ids + ["PASS"],
             },
         )
+
+
+class ResolveDefenseTextStep(GameStep):
+    """
+    Resolves defense card effect text for primary DEFENSE cards.
+    Analogous to ResolveCardTextStep for offense.
+
+    Only triggers for cards where primary_action == DEFENSE.
+    For DEFENSE_SKILL cards, falls back to get_steps() if get_defense_steps() returns None.
+    """
+
+    type: StepType = StepType.RESOLVE_DEFENSE_TEXT
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        card_id = context.get("defense_card_id")
+        defender_id = context.get("defender_id")
+        is_primary = context.get("is_primary_defense", False)
+
+        # Only trigger effects for primary DEFENSE
+        if not card_id or not is_primary or not defender_id:
+            print("   [DEFENSE] No primary defense card - skipping effect resolution.")
+            return StepResult(is_finished=True)
+
+        defender = state.get_hero(HeroID(str(defender_id)))
+        if not defender:
+            return StepResult(is_finished=True)
+
+        # Find the card in defender's hand
+        card = next((c for c in defender.hand if c.id == card_id), None)
+
+        if not card or not card.effect_id:
+            print(
+                f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense."
+            )
+            return StepResult(is_finished=True)
+
+        from goa2.engine.effects import CardEffectRegistry
+
+        effect = CardEffectRegistry.get(card.effect_id)
+        if effect:
+            # Try defense-specific steps first
+            defense_steps = effect.get_defense_steps(state, defender, card, context)
+
+            # If None, fall back to get_steps() (for DEFENSE_SKILL cards)
+            if defense_steps is None:
+                print(f"   [DEFENSE] Using get_steps() fallback for {card.effect_id}")
+                defense_steps = effect.get_steps(state, defender, card)
+
+            if defense_steps:
+                print(
+                    f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.effect_id}"
+                )
+                return StepResult(is_finished=True, new_steps=defense_steps)
+
+        return StepResult(is_finished=True)
+
+
+class ResolveOnBlockEffectStep(GameStep):
+    """
+    Runs 'if you do' effects after a successful block.
+    Only called if the defense succeeded (block_succeeded=True in context).
+
+    Example: Wasp's Reflect Projectiles - "if you do, enemy hero discards"
+    """
+
+    type: StepType = StepType.RESOLVE_ON_BLOCK_EFFECT
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if not context.get("block_succeeded"):
+            print("   [ON_BLOCK] Block did not succeed - skipping on_block effects.")
+            return StepResult(is_finished=True)
+
+        card_id = context.get("defense_card_id")
+        defender_id = context.get("defender_id")
+        is_primary = context.get("is_primary_defense", False)
+
+        if not card_id or not is_primary or not defender_id:
+            return StepResult(is_finished=True)
+
+        defender = state.get_hero(HeroID(str(defender_id)))
+        if not defender:
+            return StepResult(is_finished=True)
+
+        # Card may have been discarded, check hand first then discard pile
+        card = next((c for c in defender.hand if c.id == card_id), None)
+        if not card:
+            card = next((c for c in defender.discard_pile if c.id == card_id), None)
+
+        if not card or not card.effect_id:
+            return StepResult(is_finished=True)
+
+        from goa2.engine.effects import CardEffectRegistry
+
+        effect = CardEffectRegistry.get(card.effect_id)
+        if effect:
+            on_block_steps = effect.get_on_block_steps(state, defender, card, context)
+            if on_block_steps:
+                print(
+                    f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.effect_id}"
+                )
+                return StepResult(is_finished=True, new_steps=on_block_steps)
+
+        return StepResult(is_finished=True)
 
 
 class RemoveUnitStep(GameStep):
@@ -804,7 +953,14 @@ class FindNextActorStep(GameStep):
 class ResolveCombatStep(GameStep):
     """
     Compares Attack vs Defense and applies results.
-    Logic: If Defense >= Attack -> Blocked. Else -> Defeated.
+
+    Checks context flags from defense effects:
+    - defense_invalid: Defense fails entirely (e.g., stop_projectiles vs melee)
+    - auto_block: Block succeeds regardless of values (e.g., stop_projectiles vs ranged)
+    - ignore_minion_defense: Skip minion modifier calculation (e.g., aspiring_duelist)
+
+    Sets context flag for on_block effects:
+    - block_succeeded: True if the attack was blocked
     """
 
     type: StepType = StepType.RESOLVE_COMBAT
@@ -815,16 +971,38 @@ class ResolveCombatStep(GameStep):
         target_id = context.get(self.target_key)
         if not target_id:
             print("   [COMBAT] No target selected. Combat cancelled.")
+            context["block_succeeded"] = False
             return StepResult(is_finished=True)
 
         defense_card_val = context.get("defense_value", 0)
         attack_val = self.damage
         actor_id = state.current_actor_id
 
-        # Calculate Passive Modifiers
+        # Check for defense_invalid (e.g., stop_projectiles vs melee attack)
+        if context.get("defense_invalid"):
+            print(
+                f"   [COMBAT] Defense is invalid (conditions not met) - treating as no defense."
+            )
+            context["block_succeeded"] = False
+            return StepResult(
+                is_finished=True,
+                new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
+            )
+
+        # Check for auto_block (e.g., stop_projectiles vs ranged attack)
+        if context.get("auto_block"):
+            print(f"   [COMBAT] Auto-block triggered! {target_id} is safe.")
+            context["block_succeeded"] = True
+            return StepResult(is_finished=True)
+
+        # Calculate Passive Modifiers (unless ignored by defense effect)
         from goa2.engine.stats import calculate_minion_defense_modifier
 
-        mod_val = calculate_minion_defense_modifier(state, target_id)
+        if context.get("ignore_minion_defense"):
+            mod_val = 0
+            print("   [COMBAT] Ignoring minion defense modifiers (effect active).")
+        else:
+            mod_val = calculate_minion_defense_modifier(state, target_id)
 
         total_defense = defense_card_val + mod_val
 
@@ -834,9 +1012,11 @@ class ResolveCombatStep(GameStep):
 
         if total_defense >= attack_val:
             print(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
+            context["block_succeeded"] = True
             return StepResult(is_finished=True)
         else:
             print(f"   [RESULT] Attack HITS! {target_id} is DEFEATED!")
+            context["block_succeeded"] = False
             return StepResult(
                 is_finished=True,
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
@@ -1473,6 +1653,10 @@ class ResolveCardStep(GameStep):
                 stat_type = StatType.ATTACK
             elif act_type == ActionType.DEFENSE:
                 stat_type = StatType.DEFENSE
+            elif act_type == ActionType.DEFENSE_SKILL:
+                stat_type = StatType.DEFENSE
+            elif act_type == ActionType.DEFENSE_SKILL:
+                stat_type = StatType.DEFENSE
 
             if stat_type:
                 final_val = get_computed_stat(
@@ -1482,9 +1666,13 @@ class ResolveCardStep(GameStep):
 
             return final_val, text_val
 
-        # Primary
+        # Primary - DEFENSE cannot be chosen as an active action on your turn
+        # DEFENSE_SKILL is shown as SKILL option
         primary_action = card.current_primary_action
-        if primary_action:
+        if primary_action and primary_action not in (
+            ActionType.DEFENSE,
+            ActionType.DEFENSE_SKILL,
+        ):
             if is_action_available(primary_action):
                 c_val, c_text = compute_option(
                     primary_action, card.current_primary_action_value
@@ -1497,9 +1685,25 @@ class ResolveCardStep(GameStep):
                         "text": f"Primary: {primary_action.name} ({c_text})",
                     }
                 )
+        # DEFENSE_SKILL is shown as SKILL option
+        elif primary_action == ActionType.DEFENSE_SKILL:
+            if is_action_available(ActionType.SKILL):
+                c_val, c_text = compute_option(
+                    ActionType.SKILL, card.current_primary_action_value
+                )
+                options.append(
+                    {
+                        "id": ActionType.SKILL.name,
+                        "type": ActionType.SKILL,
+                        "value": c_val,
+                        "text": f"Primary: SKILL ({c_text})",
+                    }
+                )
 
-        # Secondaries
+        # Secondaries - DEFENSE cannot be chosen as an active action on your turn
         for action_type, val in card.current_secondary_actions.items():
+            if action_type == ActionType.DEFENSE:
+                continue  # Skip DEFENSE - it can only be used during reaction window
             if is_action_available(action_type):
                 c_val, c_text = compute_option(action_type, val)
                 options.append(
@@ -1521,6 +1725,9 @@ class ResolveCardStep(GameStep):
                 val = cast(int, selected_opt["value"])
                 # Determine if primary by checking the card itself
                 is_primary = act_type == primary_action
+                # DEFENSE_SKILL played as SKILL still uses primary effect
+                if card.primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL:
+                    is_primary = True
 
                 print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
 
@@ -1926,9 +2133,7 @@ class MayRepeatOnceStep(GameStep):
     """
 
     type: StepType = StepType.MAY_REPEAT_ONCE
-    steps_template: List["GameStep"] = Field(
-        default_factory=list
-    )
+    steps_template: List["GameStep"] = Field(default_factory=list)
     prompt: str = "Repeat action?"
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -2327,7 +2532,12 @@ class ResolveTieBreakerStep(GameStep):
 class AttackSequenceStep(GameStep):
     """
     Composite Step.
-    Expands into: Select Target -> Reaction Window -> Resolve Combat.
+    Expands into: Select Target -> Reaction Window -> Defense Effect -> Resolve Combat -> On Block Effect.
+
+    Stores in context for defense effect resolution:
+    - attack_is_ranged: True if range_val > 1
+    - attacker_id: The ID of the attacking unit
+
     If target_id_key is provided, assumes target is already selected in context and skips selection.
     """
 
@@ -2346,6 +2556,12 @@ class AttackSequenceStep(GameStep):
         from goa2.engine.filters import RangeFilter, TeamFilter, ImmunityFilter
 
         key = self.target_id_key if self.target_id_key else "victim_id"
+
+        # Store attack context for defense effect resolution
+        context["attack_is_ranged"] = self.range_val > 1
+        context["attacker_id"] = (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
 
         new_steps: List[GameStep] = []
 
@@ -2367,7 +2583,9 @@ class AttackSequenceStep(GameStep):
         new_steps.extend(
             [
                 ReactionWindowStep(target_player_key=key),
+                ResolveDefenseTextStep(),  # NEW: Process defense card effects
                 ResolveCombatStep(damage=self.damage, target_key=key),
+                ResolveOnBlockEffectStep(),  # NEW: Process 'if you do' effects
             ]
         )
 

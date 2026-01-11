@@ -1,13 +1,16 @@
 from enum import Enum
 
+
 class TeamColor(str, Enum):
     RED = "RED"
     BLUE = "BLUE"
+
 
 class MinionType(str, Enum):
     MELEE = "MELEE"
     RANGED = "RANGED"
     HEAVY = "HEAVY"
+
 
 class CardTier(str, Enum):
     I = "I"
@@ -16,22 +19,28 @@ class CardTier(str, Enum):
     IV = "IV"
     UNTIERED = "UNTIERED"
 
+
 class CardColor(str, Enum):
-    GOLD = "GOLD"     # Basic
-    SILVER = "SILVER" # Basic
-    RED = "RED"       # Attack focus
-    BLUE = "BLUE"     # Skill focus
-    GREEN = "GREEN"   # Utility focus
-    PURPLE = "PURPLE" # Ultimate
+    GOLD = "GOLD"  # Basic
+    SILVER = "SILVER"  # Basic
+    RED = "RED"  # Attack focus
+    BLUE = "BLUE"  # Skill focus
+    GREEN = "GREEN"  # Utility focus
+    PURPLE = "PURPLE"  # Ultimate
+
 
 class ActionType(str, Enum):
     MOVEMENT = "MOVEMENT"
     ATTACK = "ATTACK"
     SKILL = "SKILL"
     DEFENSE = "DEFENSE"
+    DEFENSE_SKILL = (
+        "DEFENSE_SKILL"  # Can be used as SKILL on turn or DEFENSE in reaction
+    )
     HOLD = "HOLD"  # Secondary
-    CLEAR = "CLEAR" # Replaces Attack
-    FAST_TRAVEL = "FAST_TRAVEL" # Replaces Movement
+    CLEAR = "CLEAR"  # Replaces Attack
+    FAST_TRAVEL = "FAST_TRAVEL"  # Replaces Movement
+
 
 class StatType(str, Enum):
     ATTACK = "ATTACK"
@@ -40,6 +49,7 @@ class StatType(str, Enum):
     INITIATIVE = "INITIATIVE"
     RANGE = "RANGE"
     RADIUS = "RADIUS"
+
 
 class CardState(str, Enum):
     HAND = "HAND"
@@ -51,19 +61,22 @@ class CardState(str, Enum):
     PASSIVE = "PASSIVE"
     RETIRED = "RETIRED"
 
+
 class GamePhase(str, Enum):
     SETUP = "SETUP"
-    PLANNING = "PLANNING"      # Card Selection
+    PLANNING = "PLANNING"  # Card Selection
     REVELATION = "REVELATION"  # Reveal cards
     RESOLUTION = "RESOLUTION"  # Acting order
-    CLEANUP = "CLEANUP"        # Round/Turn end
-    LEVEL_UP = "LEVEL_UP"      # Mandatory upgrading
-    GAME_OVER = "GAME_OVER"    # Game has ended
+    CLEANUP = "CLEANUP"  # Round/Turn end
+    LEVEL_UP = "LEVEL_UP"  # Mandatory upgrading
+    GAME_OVER = "GAME_OVER"  # Game has ended
+
 
 class ResolutionStep(str, Enum):
     NONE = "NONE"
     ACTING = "ACTING"
     WAITING_FOR_INPUT = "WAITING_FOR_INPUT"
+
 
 class StepType(str, Enum):
     GENERIC = "generic_step"
@@ -105,6 +118,10 @@ class StepType(str, Enum):
     ROUND_RESET = "round_reset"
     RESOLVE_UPGRADES = "resolve_upgrades"
     TRIGGER_GAME_OVER = "trigger_game_over"
+    SET_CONTEXT_FLAG = "set_context_flag"
+    RESOLVE_DEFENSE_TEXT = "resolve_defense_text"
+    RESOLVE_ON_BLOCK_EFFECT = "resolve_on_block_effect"
+
 
 class FilterType(str, Enum):
     OCCUPIED = "occupied_filter"
@@ -124,11 +141,13 @@ class FilterType(str, Enum):
     MOVEMENT_PATH = "movement_path_filter"
     FAST_TRAVEL_DESTINATION = "fast_travel_destination_filter"
 
+
 class TargetType(str, Enum):
     UNIT = "UNIT"
     HEX = "HEX"
     CARD = "CARD"
     NUMBER = "NUMBER"
+
 
 class CardContainerType(str, Enum):
     HAND = "HAND"

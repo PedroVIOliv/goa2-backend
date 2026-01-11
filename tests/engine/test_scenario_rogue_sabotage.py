@@ -69,18 +69,18 @@ def sabotage_state():
         hand=[],
         items={},
     )
-    # Give Hero3 a card with Initiative 7
+    # Give Hero3 a card with Initiative 7 (using SKILL as primary, not DEFENSE)
     card_hero3 = Card(
         id="hero3_card",
         name="Average Speed",
         tier=CardTier.UNTIERED,
         color=CardColor.GOLD,
         initiative=7,
-        primary_action=ActionType.DEFENSE,
-        primary_action_value=1,
+        primary_action=ActionType.SKILL,  # Changed from DEFENSE - DEFENSE cannot be chosen as active action
+        primary_action_value=None,
         effect_id="none",
         effect_text="None",
-        secondary_actions={},
+        secondary_actions={ActionType.DEFENSE: 1},
     )
     hero3.hand.append(card_hero3)
 
@@ -252,22 +252,16 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     assert state.current_actor_id == hero3.id
 
     # Execute Hero3 Turn (Simple Resolve)
-    # Hero 3 card is "Average Speed" - Defense card.
-    # It will prompt for CHOOSE_ACTION (Defense usually primary, but here we forced it).
-    # Wait, created card with Primary Action DEFENSE.
-    # ResolveCardStep -> Choose Action
+    # Hero 3 card is "Average Speed" - SKILL card with DEFENSE secondary.
+    # Since primary is SKILL, it will prompt for CHOOSE_ACTION.
 
-    # 1. Choose Action
+    # 1. Choose Action - SKILL (primary)
     req = process_resolution_stack(state)  # Choose Action for Hero 3
     if req and req["type"] == "CHOOSE_ACTION":
-        state.execution_stack[-1].pending_input = {"choice_id": "DEFENSE"}
+        state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
         process_resolution_stack(state)
 
-    # Defense typically just sets a modifier or waits for reaction window (active defense).
-    # Actually DEFENSE as Primary Action usually adds armor for round.
-    # Let's assume it finishes or prompts for something simple.
-    # If prompted, we skip or finish.
-
+    # SKILL with no effect just logs and finishes.
     # Process until Hero3 done
     # Loop until actor changes
     while state.current_actor_id == hero3.id:
@@ -276,7 +270,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
             break
         # If input needed, provide default or skip
         if req["type"] == "CHOOSE_ACTION":
-            state.execution_stack[-1].pending_input = {"choice_id": "DEFENSE"}
+            state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
         else:
             # Try to provide dummy input to break loop if stuck?
             # For SELECT_HEX, pick something valid

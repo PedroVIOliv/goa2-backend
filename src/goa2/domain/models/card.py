@@ -198,9 +198,10 @@ class Card(GameEntity):
             ActionType.SKILL,
             ActionType.MOVEMENT,
             ActionType.DEFENSE,
+            ActionType.DEFENSE_SKILL,
         ):
             raise ValueError(
-                "Primary action must be Attack, Skill, Movement, or Defense."
+                "Primary action must be Attack, Skill, Movement, Defense, or Defense_Skill."
             )
         return self
 
@@ -213,10 +214,13 @@ class Card(GameEntity):
     @model_validator(mode="after")
     def ensure_primary_action_has_value_if_not_skill(self) -> Card:
         if (
-            self.primary_action != ActionType.SKILL
+            self.primary_action
+            not in (ActionType.SKILL, ActionType.DEFENSE_SKILL, ActionType.DEFENSE)
             and self.primary_action_value is None
         ):
-            raise ValueError("Primary action must have a value if it is not a Skill.")
+            raise ValueError(
+                "Primary action must have a value if it is not a Skill, Defense_Skill, or Defense."
+            )
         if (
             self.primary_action == ActionType.SKILL
             and self.primary_action_value is not None
@@ -249,8 +253,14 @@ class Card(GameEntity):
             target_action = ActionType.DEFENSE
 
         if target_action:
-            # Check Primary
+            # Check Primary (including DEFENSE_SKILL for DEFENSE stat)
             if self.current_primary_action == target_action:
+                return self.current_primary_action_value or 0
+            # Special case: DEFENSE stat also checks DEFENSE_SKILL
+            if (
+                stat_type == StatType.DEFENSE
+                and self.current_primary_action == ActionType.DEFENSE_SKILL
+            ):
                 return self.current_primary_action_value or 0
 
             # Check Secondary
