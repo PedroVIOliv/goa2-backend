@@ -3,9 +3,9 @@ from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
-    CreateModifierStep,
     CreateEffectStep,
     GameStep,
+    PlaceMarkerStep,
     SelectStep,
     SwapCardStep,
 )
@@ -19,6 +19,7 @@ from goa2.domain.models import (
     Shape,
     AffectsFilter,
     ActionType,
+    MarkerType,
 )
 
 if TYPE_CHECKING:
@@ -30,12 +31,12 @@ if TYPE_CHECKING:
 class VenomStrikeEffect(CardEffect):
     """
     Card Text: "Attack. This Round: Target has -1 Attack, -1 Defense, -1 Initiative."
+
+    Now uses the Venom marker system instead of individual modifiers.
+    The marker applies stat debuffs via get_computed_stat() reading markers.
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        # Skill primary_action_value must be None per pydantic validation,
-        # so we either use a fixed value or metadata/radius_value if we want it dynamic.
-        # For Rogue's Venom Strike, it's typically 2.
         from goa2.engine.stats import get_computed_stat
 
         base_dmg = 2
@@ -44,24 +45,11 @@ class VenomStrikeEffect(CardEffect):
         return [
             # 1. Resolve Attack Sequence
             AttackSequenceStep(damage=damage, range_val=1),
-            # 2. Apply venom debuffs to the victim
-            CreateModifierStep(
+            # 2. Place Venom marker on victim (-1 to all stats)
+            PlaceMarkerStep(
+                marker_type=MarkerType.VENOM,
                 target_key="victim_id",
-                stat_type=StatType.ATTACK,
-                value_mod=-1,
-                duration=DurationType.THIS_ROUND,
-            ),
-            CreateModifierStep(
-                target_key="victim_id",
-                stat_type=StatType.DEFENSE,
-                value_mod=-1,
-                duration=DurationType.THIS_ROUND,
-            ),
-            CreateModifierStep(
-                target_key="victim_id",
-                stat_type=StatType.INITIATIVE,
-                value_mod=-1,
-                duration=DurationType.THIS_ROUND,
+                value=-1,
             ),
         ]
 

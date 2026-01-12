@@ -8,8 +8,13 @@ from pydantic import BaseModel, Field
 from goa2.domain.types import BoardEntityID, UnitID, HeroID
 from goa2.domain.models import Card
 from goa2.domain.models.enums import ActionType, CardColor, CardState
-from goa2.domain.models.modifier import Modifier, DurationType
-from goa2.domain.models.effect import ActiveEffect, EffectType, Shape, AffectsFilter
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    EffectType,
+    Shape,
+    AffectsFilter,
+    DurationType,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -87,19 +92,6 @@ class ValidationService:
         """
         context = context or {}
 
-        # Map action type to status tag
-        prevention_tags = {
-            ActionType.MOVEMENT: "PREVENT_MOVEMENT",
-            ActionType.ATTACK: "PREVENT_ATTACK",
-            ActionType.SKILL: "PREVENT_SKILL",
-            ActionType.DEFENSE: "PREVENT_DEFENSE",
-            ActionType.FAST_TRAVEL: "PREVENT_FAST_TRAVEL",
-        }
-
-        tag = prevention_tags.get(action_type)
-        if not tag:
-            return ValidationResult.allow()
-
         # Helper to check exceptions
         def matches_exception(exceptions: List[CardColor]) -> bool:
             if not exceptions:
@@ -109,20 +101,6 @@ class ValidationService:
             if card_obj and isinstance(card_obj, Card):
                 return card_obj.current_color in exceptions
             return False
-
-        # Check modifiers on actor
-        for mod in state.active_modifiers:
-            if str(mod.target_id) == str(actor_id) and mod.status_tag == tag:
-                if self._is_modifier_active(mod, state):
-                    # Check exceptions (e.g. "Except on Gold cards")
-                    if matches_exception(mod.except_card_colors):
-                        continue
-
-                    return ValidationResult.deny(
-                        reason=f"Action prevented: {action_type.value}",
-                        modifier_ids=[mod.id],
-                        source=mod.source_id,
-                    )
 
         # Check Active Effects (Zones/Auras) that restrict actions
         actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
@@ -175,18 +153,25 @@ class ValidationService:
     ) -> ValidationResult:
         """
         Can actor repeat an action?
-        Checks: PREVENT_ACTION_REPEAT status.
+        Checks: PREVENT_ACTION_REPEAT effects.
         """
-        # We manually check for the specific status tag since REPEAT isn't an ActionType
-        tag = "PREVENT_ACTION_REPEAT"
-
-        for mod in state.active_modifiers:
-            if str(mod.target_id) == str(actor_id) and mod.status_tag == tag:
-                if self._is_modifier_active(mod, state):
+        # Check for repeat prevention via ActiveEffects
+        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
+        if actor_loc:
+            actor_unit = state.get_unit(UnitID(actor_id))
+            for effect in state.active_effects:
+                if not self._is_effect_active(effect, state):
+                    continue
+                if ActionType.SKILL not in effect.restrictions:
+                    # SKILL is a proxy for action repeat prevention
+                    continue
+                if not self._is_in_scope(effect, actor_id, actor_loc, state):
+                    continue
+                if self._actor_blocked_by_effect(effect, actor_unit, None, state):
                     return ValidationResult.deny(
                         reason="Action repeat prevented",
-                        modifier_ids=[mod.id],
-                        source=mod.source_id,
+                        effect_ids=[effect.id],
+                        source=effect.source_id,
                     )
         return ValidationResult.allow()
 
@@ -325,21 +310,6 @@ class ValidationService:
             if tile.is_occupied:
                 return ValidationResult.deny("Destination occupied")
 
-        # Check status-based prevention on the unit
-        for mod in state.active_modifiers:
-            if (
-                str(mod.target_id) == str(unit_id)
-                and mod.status_tag == "PREVENT_PLACEMENT"
-            ):
-                if self._is_modifier_active(mod, state):
-                    # Check if actor is blocked by this modifier
-                    if self._actor_blocked_by_modifier(mod, actor, unit, state):
-                        return ValidationResult.deny(
-                            reason="Unit cannot be placed",
-                            modifier_ids=[mod.id],
-                            source=mod.source_id,
-                        )
-
         # Check spatial placement prevention effects (ActiveEffects)
         unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
         if not unit_loc:
@@ -388,46 +358,38 @@ class ValidationService:
     # Internal Helpers
     # -------------------------------------------------------------------------
 
-    def _is_modifier_active(
-        self, mod: Union[Modifier, ActiveEffect], state: "GameState"
-    ) -> bool:
+    def _is_effect_active(self, effect: ActiveEffect, state: "GameState") -> bool:
         """
-        Check if modifier is currently active.
+        Check if effect is currently active.
         Order matters: (1) Check PASSIVE first, (2) is_active flag, (3) Duration timing.
         """
         # PASSIVE effects are ALWAYS active (no is_active check needed)
-        if mod.duration == DurationType.PASSIVE:
+        if effect.duration == DurationType.PASSIVE:
             return True
 
         # Card-based effects use explicit is_active flag
         # This flag is set to True when card resolves, False when card leaves play or goes facedown
-        if mod.source_card_id:
-            if not mod.is_active:
+        if effect.source_card_id:
+            if not effect.is_active:
                 return False
 
         # Check temporal duration
-        if mod.duration == DurationType.THIS_TURN:
+        if effect.duration == DurationType.THIS_TURN:
             return (
-                state.turn == mod.created_at_turn
-                and state.round == mod.created_at_round
+                state.turn == effect.created_at_turn
+                and state.round == effect.created_at_round
             )
 
-        if mod.duration == DurationType.NEXT_TURN:
+        if effect.duration == DurationType.NEXT_TURN:
             # Active on the turn AFTER creation (within same round only!)
-            if state.round == mod.created_at_round:
-                return state.turn == mod.created_at_turn + 1
+            if state.round == effect.created_at_round:
+                return state.turn == effect.created_at_turn + 1
             return False  # Cross-round NEXT_TURN never activates
 
-        if mod.duration == DurationType.THIS_ROUND:
-            return state.round == mod.created_at_round
+        if effect.duration == DurationType.THIS_ROUND:
+            return state.round == effect.created_at_round
 
         return False
-
-    def _is_effect_active(self, effect: ActiveEffect, state: "GameState") -> bool:
-        """Check if effect is currently active based on card state and duration."""
-        # Reuse modifier logic as fields are compatible/similar for activation
-        # Cast to Any to bypass type checker if needed, but structure is same
-        return self._is_modifier_active(effect, state)
 
     def _is_card_in_played_state(
         self, state: "GameState", hero_id: str, card_id: str
@@ -454,23 +416,6 @@ class ValidationService:
                 return card.state == CardState.RESOLVED and not card.is_facedown
 
         return False
-
-    def _actor_blocked_by_modifier(
-        self, mod: Modifier, actor: Any, target: Any, state: "GameState"
-    ) -> bool:
-        """Determine if actor is blocked by this modifier."""
-        # For now, modifiers on a target block all enemy actions
-        if not actor or not target:
-            return False
-
-        actor_team = getattr(actor, "team", None)
-        target_team = getattr(target, "team", None)
-
-        if actor_team is None or target_team is None:
-            return False
-
-        # Enemy trying to displace protected unit
-        return actor_team != target_team
 
     def _is_in_scope(
         self,

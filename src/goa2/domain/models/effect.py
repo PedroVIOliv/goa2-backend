@@ -5,9 +5,16 @@ from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
-from goa2.domain.models.modifier import DurationType
-from goa2.domain.models.enums import ActionType, StatType, CardColor, CardColor
+from goa2.domain.models.enums import ActionType, StatType, CardColor
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
+
+
+class DurationType(str, Enum):
+    THIS_TURN = "THIS_TURN"  # Expires at End of Turn
+    NEXT_TURN = "NEXT_TURN"  # Activates next turn, expires at end of that turn
+    THIS_ROUND = "THIS_ROUND"  # Expires at End of Round
+    PASSIVE = "PASSIVE"  # Permanent (until source is removed)
 
 
 class EffectType(str, Enum):
@@ -96,3 +103,6 @@ class ActiveEffect(BaseModel):
     blocks_enemy_actors: bool = True  # True = enemy actions blocked
     blocks_friendly_actors: bool = False  # True = friendly actions blocked
     blocks_self: bool = False  # True = source's own actions blocked
+
+    # Marker linkage - if this effect was created by a marker
+    marker_type: Optional[MarkerType] = None

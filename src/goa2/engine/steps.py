@@ -17,7 +17,8 @@ from goa2.domain.models import (
     TargetType,
     CardContainerType,
 )
-from goa2.domain.models.modifier import DurationType
+from goa2.domain.models.effect import DurationType
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
 from goa2.engine import rules  # For validation
 from goa2.engine.stats import get_computed_stat  # For stat calculation
@@ -86,71 +87,6 @@ class GameStep(BaseModel, ABC):
 # -----------------------------------------------------------------------------
 
 
-class CreateModifierStep(GameStep):
-    """Creates a Modifier in the game state."""
-
-    type: StepType = StepType.CREATE_MODIFIER
-
-    target_id: Optional[str] = None
-    target_key: Optional[str] = None  # Read from context
-
-    stat_type: Optional[StatType] = None
-    value_mod: int = 0
-    status_tag: Optional[str] = None
-    duration: DurationType = DurationType.THIS_TURN
-    is_active: bool = False  # Override default dormant state if True
-
-    # Card linkage (for card-based effects)
-    source_card_id: Optional[str] = None  # Explicit card ID
-    use_context_card: bool = True  # If True, use "current_card_id" from context
-
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        if self.should_skip(context):
-            return StepResult(is_finished=True)
-
-        target = self.target_id
-        if not target and self.target_key:
-            target = context.get(self.target_key)
-
-        if not target:
-            # If target missing, it's an error in logic or optional step skipped
-            # For now, just log and finish
-            print("   [SKIP] No target for CreateModifierStep")
-            return StepResult(is_finished=True)
-
-        # Resolve source card ID
-        card_id = self.source_card_id
-        if card_id is None and self.use_context_card:
-            card_id = context.get("current_card_id")
-
-        from goa2.engine.effect_manager import EffectManager
-
-        EffectManager.create_modifier(
-            state=state,
-            source_id=str(state.current_actor_id)
-            if state.current_actor_id
-            else "system",
-            source_card_id=card_id,  # Link to card
-            target_id=BoardEntityID(target),
-            stat_type=self.stat_type,
-            value_mod=self.value_mod,
-            status_tag=self.status_tag,
-            duration=self.duration,
-            is_active=self.is_active,
-        )
-
-        desc = (
-            f"{self.stat_type.name} {self.value_mod}"
-            if self.stat_type
-            else self.status_tag
-        )
-        print(
-            f"   [EFFECT] Applied {desc} to {target} (Duration: {self.duration.name})"
-        )
-
-        return StepResult(is_finished=True)
-
-
 class CreateEffectStep(GameStep):
     """Creates a spatial ActiveEffect in the game state."""
 
@@ -211,6 +147,85 @@ class CreateEffectStep(GameStep):
         print(
             f"   [EFFECT] Created {self.effect_type.value} from {state.current_actor_id}"
         )
+
+        return StepResult(is_finished=True)
+
+
+class PlaceMarkerStep(GameStep):
+    """
+    Places a marker on a target hero.
+
+    Markers are singletons - placing on a new target automatically removes
+    from the previous target. The marker's effects are applied via
+    get_computed_stat() which reads markers directly.
+
+    Usage:
+        PlaceMarkerStep(
+            marker_type=MarkerType.VENOM,
+            target_key="victim_id",
+            value=-1,
+        )
+    """
+
+    type: StepType = StepType.GENERIC
+    marker_type: MarkerType
+    target_id: Optional[str] = None  # Direct target ID
+    target_key: Optional[str] = None  # Context key for target ID
+    value: int = 0  # Effect magnitude (e.g., -1 or -2 for Venom)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Resolve target
+        target = self.target_id
+        if not target and self.target_key:
+            target = context.get(self.target_key)
+
+        if not target:
+            print(f"   [SKIP] No target for PlaceMarkerStep ({self.marker_type.value})")
+            return StepResult(is_finished=True)
+
+        # Get source (current actor)
+        source_id = str(state.current_actor_id) if state.current_actor_id else "system"
+
+        # Place the marker
+        marker = state.place_marker(
+            marker_type=self.marker_type,
+            target_id=target,
+            value=self.value,
+            source_id=source_id,
+        )
+
+        print(
+            f"   [MARKER] Placed {self.marker_type.value} on {target} "
+            f"(value={self.value}, source={source_id})"
+        )
+
+        return StepResult(is_finished=True)
+
+
+class RemoveMarkerStep(GameStep):
+    """
+    Removes a marker, returning it to supply.
+
+    Usage:
+        RemoveMarkerStep(marker_type=MarkerType.VENOM)
+    """
+
+    type: StepType = StepType.GENERIC
+    marker_type: MarkerType
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        marker = state.remove_marker(self.marker_type)
+
+        if marker:
+            print(f"   [MARKER] Removed {self.marker_type.value} from play")
+        else:
+            print(f"   [MARKER] {self.marker_type.value} not in play")
 
         return StepResult(is_finished=True)
 
@@ -844,7 +859,8 @@ class DefeatUnitStep(GameStep):
     Processes the defeat of a unit (Combat/Skill Kill):
     1. Awards Gold (Killer + Assists).
     2. Updates Life Counters (if Hero).
-    3. Spawns RemoveUnitStep.
+    3. Returns markers from/to the defeated unit.
+    4. Spawns RemoveUnitStep.
     """
 
     type: StepType = StepType.DEFEAT_UNIT
@@ -859,6 +875,20 @@ class DefeatUnitStep(GameStep):
             raise ValueError(f"Cannot defeat unknown unit: {self.victim_id}")
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
+
+        # Return markers from the defeated hero
+        markers_from = state.return_markers_from_hero(self.victim_id)
+        if markers_from:
+            print(
+                f"   [DEATH] Returned {len(markers_from)} marker(s) from defeated {self.victim_id}"
+            )
+
+        # Return markers placed by the defeated hero
+        markers_by = state.return_markers_by_source(self.victim_id)
+        if markers_by:
+            print(
+                f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {self.victim_id}"
+            )
 
         if hasattr(victim, "level"):  # Is Hero
             level = getattr(victim, "level", 1)
@@ -986,7 +1016,7 @@ class ResolveCombatStep(GameStep):
         # Check for defense_invalid (e.g., stop_projectiles vs melee attack)
         if context.get("defense_invalid"):
             print(
-                f"   [COMBAT] Defense is invalid (conditions not met) - treating as no defense."
+                "   [COMBAT] Defense is invalid (conditions not met) - treating as no defense."
             )
             context["block_succeeded"] = False
             return StepResult(
@@ -2302,8 +2332,11 @@ class EndPhaseCleanupStep(GameStep):
         from goa2.engine.effect_manager import EffectManager
 
         # Expire THIS_ROUND items
-        EffectManager.expire_modifiers(state, DurationType.THIS_ROUND)
         EffectManager.expire_effects(state, DurationType.THIS_ROUND)
+
+        # Return all markers to supply (per board game rules)
+        state.return_all_markers()
+        print("   [CLEANUP] All markers returned to supply")
 
         # Cleanup stale items (lazy expiration for cards leaving play)
         EffectManager.cleanup_stale_effects(state)

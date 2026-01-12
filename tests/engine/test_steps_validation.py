@@ -8,16 +8,17 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     Hero,
+)
+from goa2.domain.models.effect import (
     ActiveEffect,
     EffectType,
     EffectScope,
     Shape,
     AffectsFilter,
     DurationType,
-    Modifier,
 )
 from goa2.domain.hex import Hex
-from goa2.engine.steps import PlaceUnitStep, MoveUnitStep, PushUnitStep, SwapUnitsStep
+from goa2.engine.steps import PlaceUnitStep, MoveUnitStep
 
 
 @pytest.fixture
@@ -109,36 +110,6 @@ def test_place_unit_step_succeeds_when_no_effect(game_state_with_heroes):
     assert state.entity_locations["red_hero"] == target
 
 
-def test_move_unit_step_blocked_by_prevention(game_state_with_heroes):
-    """MoveUnitStep blocked by PREVENT_MOVEMENT status."""
-    state = game_state_with_heroes
-    state.entity_locations["red_hero"] = Hex(q=0, r=0, s=0)
-    state.current_actor_id = "red_hero"
-
-    # Add prevention modifier
-    state.active_modifiers.append(
-        Modifier(
-            id="mod_1",
-            source_id="enemy",
-            target_id="red_hero",
-            status_tag="PREVENT_MOVEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1,
-        )
-    )
-
-    step = MoveUnitStep(
-        unit_id="red_hero", destination_key="target", range_val=1, is_mandatory=True
-    )
-
-    context = {"target": Hex(q=1, r=0, s=-1)}
-    result = step.resolve(state, context)
-
-    assert result.abort_action is True
-    assert state.entity_locations["red_hero"] == Hex(q=0, r=0, s=0)
-
-
 def test_move_unit_step_capped_by_zone_effect(game_state_with_heroes):
     """MoveUnitStep blocked if distance exceeds max_value from effect."""
     state = game_state_with_heroes
@@ -176,61 +147,3 @@ def test_move_unit_step_capped_by_zone_effect(game_state_with_heroes):
 
     assert result.abort_action is True
     assert state.entity_locations["red_hero"] == Hex(q=0, r=0, s=0)
-
-
-def test_push_unit_step_blocked_by_prevention(game_state_with_heroes):
-    """PushUnitStep blocked by PREVENT_PLACEMENT (via can_be_pushed)."""
-    state = game_state_with_heroes
-    state.entity_locations["red_hero"] = Hex(q=0, r=0, s=0)
-    state.entity_locations["blue_hero"] = Hex(q=1, r=0, s=-1)  # Pusher
-    state.current_actor_id = "blue_hero"
-
-    # Red hero protected from placement/displacement
-    state.active_modifiers.append(
-        Modifier(
-            id="mod_1",
-            source_id="red_hero",
-            target_id="red_hero",
-            status_tag="PREVENT_PLACEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1,
-        )
-    )
-
-    step = PushUnitStep(target_id="red_hero", distance=1, is_mandatory=True)
-
-    result = step.resolve(state, {})
-
-    assert result.abort_action is True
-    assert state.entity_locations["red_hero"] == Hex(q=0, r=0, s=0)
-
-
-def test_swap_units_step_blocked_by_prevention(game_state_with_heroes):
-    """SwapUnitsStep blocked if either unit cannot be placed."""
-    state = game_state_with_heroes
-    state.entity_locations["red_hero"] = Hex(q=0, r=0, s=0)
-    state.entity_locations["blue_hero"] = Hex(q=1, r=0, s=-1)
-    state.current_actor_id = "blue_hero"
-
-    # Red hero protected
-    state.active_modifiers.append(
-        Modifier(
-            id="mod_1",
-            source_id="red_hero",
-            target_id="red_hero",
-            status_tag="PREVENT_PLACEMENT",
-            duration=DurationType.PASSIVE,
-            created_at_turn=1,
-            created_at_round=1,
-        )
-    )
-
-    step = SwapUnitsStep(unit_a_id="blue_hero", unit_b_id="red_hero", is_mandatory=True)
-
-    result = step.resolve(state, {})
-
-    assert result.abort_action is True
-    # Verify no swap
-    assert state.entity_locations["red_hero"] == Hex(q=0, r=0, s=0)
-    assert state.entity_locations["blue_hero"] == Hex(q=1, r=0, s=-1)

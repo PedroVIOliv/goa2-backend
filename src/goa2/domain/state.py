@@ -13,8 +13,8 @@ from goa2.domain.models import (
     GamePhase,
     ResolutionStep,
 )
-from goa2.domain.models.modifier import Modifier
 from goa2.domain.models.effect import ActiveEffect
+from goa2.domain.models.marker import Marker, MarkerType
 from goa2.domain.types import HeroID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
 
@@ -88,23 +88,81 @@ class GameState(BaseModel):
 
     next_entity_id: int = 1
 
-    active_modifiers: List[Modifier] = Field(default_factory=list)
     active_effects: List[ActiveEffect] = Field(default_factory=list)
+
+    # Singleton markers - each MarkerType has exactly one Marker instance
+    markers: Dict[MarkerType, Marker] = Field(default_factory=dict)
 
     # Private field for cached validator (not serialized)
     _validator: Optional[Any] = None
-
-    def add_modifier(self, modifier: Modifier):
-        """Adds a modifier to the active list."""
-        self.active_modifiers.append(modifier)
 
     def add_effect(self, effect: ActiveEffect):
         """Adds a spatial/behavioral effect to the active list."""
         self.active_effects.append(effect)
 
-    def get_modifiers_on(self, target_id: str) -> List[Modifier]:
-        """Get all modifiers affecting a specific target."""
-        return [m for m in self.active_modifiers if str(m.target_id) == str(target_id)]
+    def get_marker(self, marker_type: MarkerType) -> Marker:
+        """
+        Get or create a marker of the given type.
+        Markers are singletons - this creates one if it doesn't exist.
+        """
+        if marker_type not in self.markers:
+            self.markers[marker_type] = Marker(type=marker_type)
+        return self.markers[marker_type]
+
+    def place_marker(
+        self, marker_type: MarkerType, target_id: str, value: int, source_id: str
+    ) -> Marker:
+        """
+        Place a marker on a target hero.
+        If marker was on another hero, it automatically leaves them (singleton).
+        """
+        marker = self.get_marker(marker_type)
+        marker.place(target_id=target_id, value=value, source_id=source_id)
+        return marker
+
+    def remove_marker(self, marker_type: MarkerType) -> Optional[Marker]:
+        """
+        Return a marker to supply (remove from its current target).
+        Returns the marker if it existed, None otherwise.
+        """
+        if marker_type in self.markers:
+            marker = self.markers[marker_type]
+            marker.remove()
+            return marker
+        return None
+
+    def get_markers_on_hero(self, hero_id: str) -> List[Marker]:
+        """Get all markers currently placed on a specific hero."""
+        return [m for m in self.markers.values() if m.target_id == hero_id]
+
+    def return_all_markers(self) -> None:
+        """Return all markers to supply. Called at end of round."""
+        for marker in self.markers.values():
+            marker.remove()
+
+    def return_markers_from_hero(self, hero_id: str) -> List[Marker]:
+        """
+        Return all markers from a specific hero (e.g., on defeat).
+        Returns list of markers that were removed.
+        """
+        removed = []
+        for marker in self.markers.values():
+            if marker.target_id == hero_id:
+                marker.remove()
+                removed.append(marker)
+        return removed
+
+    def return_markers_by_source(self, source_id: str) -> List[Marker]:
+        """
+        Return all markers placed by a specific source (e.g., on source defeat).
+        Returns list of markers that were removed.
+        """
+        removed = []
+        for marker in self.markers.values():
+            if marker.source_id == source_id:
+                marker.remove()
+                removed.append(marker)
+        return removed
 
     @property
     def validator(self) -> Any:

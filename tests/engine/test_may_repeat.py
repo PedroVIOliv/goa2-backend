@@ -1,8 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Modifier, DurationType
-from goa2.domain.types import BoardEntityID, ModifierID
+from goa2.domain.models import Team, TeamColor
 from goa2.engine.steps import MayRepeatOnceStep, LogMessageStep, StepResult
 
 
@@ -42,28 +41,3 @@ def test_may_repeat_flow(empty_state: GameState):
     res = step.resolve(state, state.execution_context)
     assert res.is_finished is True
     assert len(res.new_steps) == 0
-
-
-def test_may_repeat_prevention(empty_state: GameState):
-    state = empty_state
-    actor_id = "hero_1"
-
-    # Add PREVENT_ACTION_REPEAT
-    mod = Modifier(
-        id=ModifierID("mod_prevent"),
-        source_id=BoardEntityID("source"),
-        target_id=BoardEntityID(actor_id),
-        status_tag="PREVENT_ACTION_REPEAT",
-        duration=DurationType.THIS_TURN,
-        created_at_turn=state.turn,
-        created_at_round=state.round,
-    )
-    state.add_modifier(mod)
-
-    step = MayRepeatOnceStep(steps_template=[LogMessageStep(message="Blocked")])
-
-    # Execution -> Should finish immediately (blocked)
-    res = step.resolve(state, state.execution_context)
-    assert res.is_finished is True
-    assert len(res.new_steps) == 0
-    # Ideally check stdout for "Blocked by validation" but implicit check via new_steps=0 is fine

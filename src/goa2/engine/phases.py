@@ -2,7 +2,7 @@ from typing import List, Tuple
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase, Card
 from goa2.domain.types import HeroID
-from goa2.domain.models.modifier import DurationType
+from goa2.domain.models.effect import DurationType
 from goa2.engine.handler import push_steps
 from goa2.engine.steps import ResolveTieBreakerStep
 
@@ -184,7 +184,6 @@ def end_turn(state: GameState):
 
     from goa2.engine.effect_manager import EffectManager
 
-    EffectManager.expire_modifiers(state, DurationType.THIS_TURN)
     EffectManager.expire_effects(state, DurationType.THIS_TURN)
 
     if state.turn < 4:

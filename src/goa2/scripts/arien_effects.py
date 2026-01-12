@@ -30,7 +30,6 @@ from goa2.engine.filters import (
 from goa2.engine.stats import compute_card_stats
 from goa2.domain.models import (
     TargetType,
-    CardContainerType,
     EffectType,
     EffectScope,
     Shape,
@@ -42,7 +41,7 @@ from goa2.domain.models import (
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
-    from goa2.domain.models import TargetType, CardContainerType, Hero, Card
+    from goa2.domain.models import TargetType, Hero, Card
 
 
 @register_effect("spell_break")

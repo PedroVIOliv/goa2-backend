@@ -1,4 +1,5 @@
 """Tests for ActiveEffect model and related enums."""
+
 import pytest
 from goa2.domain.models.effect import (
     EffectType,
@@ -6,9 +7,26 @@ from goa2.domain.models.effect import (
     Shape,
     EffectScope,
     ActiveEffect,
+    DurationType,
 )
-from goa2.domain.models.modifier import DurationType
 from goa2.domain.hex import Hex
+
+
+class TestDurationType:
+    """Tests for DurationType enum."""
+
+    def test_duration_type_has_this_turn(self):
+        assert DurationType.THIS_TURN == "THIS_TURN"
+
+    def test_duration_type_has_this_round(self):
+        assert DurationType.THIS_ROUND == "THIS_ROUND"
+
+    def test_duration_type_has_passive(self):
+        assert DurationType.PASSIVE == "PASSIVE"
+
+    def test_duration_type_has_next_turn(self):
+        """NEXT_TURN duration for effects that activate on the following turn."""
+        assert DurationType.NEXT_TURN == "NEXT_TURN"
 
 
 class TestEffectType:
@@ -81,7 +99,7 @@ class TestEffectScope:
             shape=Shape.RADIUS,
             range=3,
             origin_id="hero_1",
-            affects=AffectsFilter.ENEMY_UNITS
+            affects=AffectsFilter.ENEMY_UNITS,
         )
         assert scope.shape == Shape.RADIUS
         assert scope.range == 3
@@ -91,11 +109,7 @@ class TestEffectScope:
     def test_effect_scope_with_fixed_origin(self):
         """EffectScope can use a fixed hex as origin."""
         origin = Hex(q=1, r=2, s=-3)
-        scope = EffectScope(
-            shape=Shape.RADIUS,
-            range=2,
-            origin_hex=origin
-        )
+        scope = EffectScope(shape=Shape.RADIUS, range=2, origin_hex=origin)
         assert scope.origin_hex == origin
         assert scope.origin_id is None
 
@@ -112,7 +126,7 @@ class TestActiveEffect:
             scope=EffectScope(shape=Shape.RADIUS, range=3),
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
         assert effect.id == "eff_1"
         assert effect.source_id == "hero_1"
@@ -130,7 +144,7 @@ class TestActiveEffect:
             scope=EffectScope(shape=Shape.RADIUS, range=3),
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
         assert effect.source_card_id == "magnetic_dagger_1"
 
@@ -143,7 +157,7 @@ class TestActiveEffect:
             scope=EffectScope(shape=Shape.GLOBAL),
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
         assert effect.blocks_enemy_actors is True
         assert effect.blocks_friendly_actors is False
@@ -159,7 +173,7 @@ class TestActiveEffect:
             duration=DurationType.THIS_TURN,
             created_at_turn=1,
             created_at_round=1,
-            max_value=1  # Can only move 1 space
+            max_value=1,  # Can only move 1 space
         )
         assert effect.max_value == 1
 
@@ -172,6 +186,6 @@ class TestActiveEffect:
             scope=EffectScope(shape=Shape.ADJACENT),
             duration=DurationType.PASSIVE,
             created_at_turn=1,
-            created_at_round=1
+            created_at_round=1,
         )
         assert effect.source_card_id is None
