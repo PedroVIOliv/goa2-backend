@@ -121,6 +121,8 @@ class StepType(str, Enum):
     SET_CONTEXT_FLAG = "set_context_flag"
     RESOLVE_DEFENSE_TEXT = "resolve_defense_text"
     RESOLVE_ON_BLOCK_EFFECT = "resolve_on_block_effect"
+    CANCEL_EFFECTS = "cancel_effects"
+    RESTORE_ACTION_TYPE = "restore_action_type"
 
 
 class FilterType(str, Enum):

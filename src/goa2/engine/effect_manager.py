@@ -9,6 +9,7 @@ from goa2.domain.models.effect import (
     EffectScope,
     DurationType,
 )
+from goa2.domain.models.enums import ActionType
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -30,6 +31,7 @@ class EffectManager:
         source_card_id: Optional[str] = None,
         except_card_colors: Optional[List] = None,
         is_active: bool = False,
+        origin_action_type: Optional["ActionType"] = None,
         **kwargs,
     ) -> ActiveEffect:
         """Create and register a new spatial effect."""
@@ -44,6 +46,7 @@ class EffectManager:
             created_at_round=state.round,
             except_card_colors=except_card_colors or [],
             is_active=is_active,
+            origin_action_type=origin_action_type,
             **kwargs,
         )
         state.add_effect(effect)

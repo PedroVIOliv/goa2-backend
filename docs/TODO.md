@@ -77,16 +77,16 @@ Complete fast travel prevention validation.
 ## Priority 2: Medium Extensions
 
 ### 2.1 Cancel Active Effects
-**Status:** Not Started  
+**Status:** Done  
 **Effort:** Medium (2-3 days)  
 **Cards:** Disruptor Pulse, Disruptor Grid
 
 Cancel (remove) effects from enemy units.
 
 **Requirements:**
-- [ ] `CancelEffectsStep` - removes effects matching criteria
-- [ ] Track which effects came from which action type (skill vs attack)
-- [ ] Filter by source team, effect type, or specific source_id
+- [x] `CancelEffectsStep` - removes effects matching criteria
+- [x] Track which effects came from which action type (skill vs attack)
+- [x] Filter by source team, effect type, or specific source_id
 
 ---
 
@@ -269,6 +269,7 @@ Swap cards between hand/resolved/unresolved states.
 - [x] Fast Travel Prevention (Priority 1.4)
 - [x] ValidationService PREVENT_ACTION_REPEAT
 - [x] Targeting Prevention / Line of Sight (Priority 1.2)
+- [x] CancelEffectsStep (Priority 2.1)
 
 
 ---

@@ -17,14 +17,19 @@ from goa2.domain.models import (
     TargetType,
     CardContainerType,
 )
-from goa2.domain.models.effect import DurationType
+from goa2.domain.models.effect import (
+    DurationType,
+    EffectType,
+    EffectScope,
+    Shape,
+    ActiveEffect,
+)
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
 from goa2.engine import rules  # For validation
 from goa2.engine.stats import get_computed_stat  # For stat calculation
 
 from goa2.domain.models.enums import StatType
-from goa2.domain.models.effect import EffectType, EffectScope
 from goa2.engine.effect_manager import EffectManager
 
 # -----------------------------------------------------------------------------
@@ -112,6 +117,9 @@ class CreateEffectStep(GameStep):
     source_card_id: Optional[str] = None  # Explicit card ID
     use_context_card: bool = True  # If True, use "current_card_id" from context
 
+    # Origin action type - tracks whether effect came from skill or attack
+    origin_action_type: Optional[ActionType] = None
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -120,6 +128,11 @@ class CreateEffectStep(GameStep):
         card_id = self.source_card_id
         if card_id is None and self.use_context_card:
             card_id = context.get("current_card_id")
+
+        # Resolve origin action type: use explicit value or fall back to context
+        action_type = self.origin_action_type
+        if action_type is None:
+            action_type = context.get("current_action_type")
 
         from goa2.engine.effect_manager import EffectManager
 
@@ -142,6 +155,7 @@ class CreateEffectStep(GameStep):
             blocks_friendly_actors=self.blocks_friendly_actors,
             blocks_self=self.blocks_self,
             is_active=self.is_active,
+            origin_action_type=action_type,
         )
 
         print(
@@ -260,6 +274,25 @@ class SetContextFlagStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         context[self.key] = self.value
         print(f"   [CONTEXT] Set {self.key} = {self.value}")
+        return StepResult(is_finished=True)
+
+
+class RestoreActionTypeStep(GameStep):
+    """
+    Restores the previous action type from the stack after defense resolution.
+
+    Used after defense effects complete to restore the original action type
+    (e.g., ATTACK) so that any subsequent effects are correctly attributed.
+    """
+
+    type: StepType = StepType.RESTORE_ACTION_TYPE
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        stack = context.get("action_type_stack", [])
+        if stack:
+            previous_type = stack.pop()
+            context["current_action_type"] = previous_type
+            print(f"   [CONTEXT] Restored action type to {previous_type.name}")
         return StepResult(is_finished=True)
 
 
@@ -722,6 +755,13 @@ class ReactionWindowStep(GameStep):
                 context["defense_card_id"] = card_id
                 context["defender_id"] = str(target_id)
                 context["is_primary_defense"] = is_primary
+
+                # Save current action type to stack and set DEFENSE for effect tracking
+                action_stack = context.setdefault("action_type_stack", [])
+                current_action = context.get("current_action_type")
+                if current_action:
+                    action_stack.append(current_action)
+                context["current_action_type"] = ActionType.DEFENSE
 
                 return StepResult(is_finished=True)
 
@@ -1773,6 +1813,9 @@ class ResolveCardStep(GameStep):
 
                 print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
 
+                # Track current action type for effect origin tracking
+                context["current_action_type"] = act_type
+
                 # NOTE: Renamed local variable to avoid shadowing re-declaration if any
                 steps_list: List[GameStep] = []
 
@@ -2638,6 +2681,7 @@ class AttackSequenceStep(GameStep):
                 ResolveDefenseTextStep(),  # NEW: Process defense card effects
                 ResolveCombatStep(damage=self.damage, target_key=key),
                 ResolveOnBlockEffectStep(),  # NEW: Process 'if you do' effects
+                RestoreActionTypeStep(),  # Restore action type after defense resolution
             ]
         )
 
@@ -2824,6 +2868,126 @@ class TriggerGameOverStep(GameStep):
         state.input_stack.clear()
 
         return StepResult(is_finished=True)
+
+
+class CancelEffectsStep(GameStep):
+    """
+    Cancels (removes) active effects matching specified criteria.
+
+    Usage:
+        CancelEffectsStep(
+            effect_types=[EffectType.TARGET_PREVENTION],
+            origin_action_types=[ActionType.SKILL],
+            source_team=TeamColor.RED,
+            scope=EffectScope(shape=Shape.RADIUS, range=3, origin_id="turret_1"),
+        )
+    """
+
+    type: StepType = StepType.CANCEL_EFFECTS
+
+    effect_types: List[EffectType] = Field(default_factory=list)
+    origin_action_types: List[ActionType] = Field(default_factory=list)
+    source_team: Optional[TeamColor] = None
+    source_ids: List[str] = Field(default_factory=list)
+    scope: Optional[EffectScope] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        def effect_matches(effect: ActiveEffect) -> bool:
+            if self.effect_types and effect.effect_type not in self.effect_types:
+                return False
+
+            if (
+                self.origin_action_types
+                and effect.origin_action_type not in self.origin_action_types
+            ):
+                return False
+
+            if self.source_ids and effect.source_id not in self.source_ids:
+                return False
+
+            if self.source_team:
+                source_entity = state.get_entity(BoardEntityID(effect.source_id))
+                if source_entity is None:
+                    return False
+                source_team_color = getattr(source_entity, "team", None)
+                if source_team_color != self.source_team:
+                    return False
+
+            if self.scope:
+                effect_origin = self._get_effect_origin(effect, state)
+                scope_origin = self._get_scope_origin(state)
+                if not effect_origin or not scope_origin:
+                    return False
+                if not self._hex_in_scope(effect_origin, scope_origin, state):
+                    return False
+
+            return True
+
+        initial_count = len(state.active_effects)
+        state.active_effects = [
+            e for e in state.active_effects if not effect_matches(e)
+        ]
+        cancelled_count = initial_count - len(state.active_effects)
+
+        if cancelled_count > 0:
+            print(f"   [EFFECT] Cancelled {cancelled_count} active effect(s)")
+
+        return StepResult(is_finished=True)
+
+    def _get_effect_origin(
+        self, effect: ActiveEffect, state: GameState
+    ) -> Optional["Hex"]:
+        if effect.scope.origin_hex:
+            return effect.scope.origin_hex
+        origin_id = effect.scope.origin_id or effect.source_id
+        return state.entity_locations.get(BoardEntityID(origin_id))
+
+    def _get_scope_origin(self, state: GameState) -> Optional["Hex"]:
+        if not self.scope:
+            return None
+        if self.scope.origin_hex:
+            return self.scope.origin_hex
+        if self.scope.origin_id:
+            return state.entity_locations.get(BoardEntityID(self.scope.origin_id))
+        return None
+
+    def _hex_in_scope(self, hex: "Hex", origin: "Hex", state: GameState) -> bool:
+        if not origin:
+            return False
+        if self.scope is None:
+            return False
+        shape = self.scope.shape
+        if shape == Shape.GLOBAL:
+            return True
+        if shape == Shape.POINT:
+            return hex == origin
+        if shape == Shape.ADJACENT:
+            return origin.distance(hex) == 1
+        if shape == Shape.RADIUS:
+            return origin.distance(hex) <= self.scope.range
+        if shape == Shape.LINE:
+            if self.scope.direction is None:
+                return False
+            return (
+                origin.is_straight_line(hex)
+                and origin.distance(hex) <= self.scope.range
+            )
+        if shape == Shape.ZONE:
+            origin_zone = self._get_zone_for_hex(origin, state)
+            target_zone = self._get_zone_for_hex(hex, state)
+            if origin_zone is None or target_zone is None:
+                return False
+            return origin_zone == target_zone
+        return False
+
+    def _get_zone_for_hex(self, hex: "Hex", state: GameState) -> Optional[str]:
+        for zone_id, zone in state.board.zones.items():
+            if hex in zone.hexes:
+                return zone_id
+        return None
 
 
 # Rebuild recursive models

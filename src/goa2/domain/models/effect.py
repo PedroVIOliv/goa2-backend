@@ -106,3 +106,7 @@ class ActiveEffect(BaseModel):
 
     # Marker linkage - if this effect was created by a marker
     marker_type: Optional[MarkerType] = None
+
+    # Origin action type - tracks whether effect came from skill or attack
+    # Used for cancelling effects by type (e.g., "cancel skill effects")
+    origin_action_type: Optional[ActionType] = None

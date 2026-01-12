@@ -85,6 +85,7 @@ def test_game_over_purges_remaining_action_steps(game_state):
         ResolveCombatStep,
         ResolveDefenseTextStep,
         ResolveOnBlockEffectStep,
+        RestoreActionTypeStep,
     )
 
     # 1. INITIAL STATE
@@ -104,13 +105,14 @@ def test_game_over_purges_remaining_action_steps(game_state):
     result = step.resolve(game_state, game_state.execution_context)
     game_state.execution_stack.extend(reversed(result.new_steps))
 
-    # Stack should now have: [Move, OnBlock, Combat, DefenseText, Reaction, Select]
-    assert len(game_state.execution_stack) == 6
-    assert isinstance(game_state.execution_stack[5], SelectStep)
-    assert isinstance(game_state.execution_stack[4], ReactionWindowStep)
-    assert isinstance(game_state.execution_stack[3], ResolveDefenseTextStep)
-    assert isinstance(game_state.execution_stack[2], ResolveCombatStep)
-    assert isinstance(game_state.execution_stack[1], ResolveOnBlockEffectStep)
+    # Stack should now have: [Move, Restore, OnBlock, Combat, DefenseText, Reaction, Select]
+    assert len(game_state.execution_stack) == 7
+    assert isinstance(game_state.execution_stack[6], SelectStep)
+    assert isinstance(game_state.execution_stack[5], ReactionWindowStep)
+    assert isinstance(game_state.execution_stack[4], ResolveDefenseTextStep)
+    assert isinstance(game_state.execution_stack[3], ResolveCombatStep)
+    assert isinstance(game_state.execution_stack[2], ResolveOnBlockEffectStep)
+    assert isinstance(game_state.execution_stack[1], RestoreActionTypeStep)
     assert isinstance(game_state.execution_stack[0], MoveUnitStep)
 
     # 3. RESOLVE SELECTION
@@ -120,8 +122,8 @@ def test_game_over_purges_remaining_action_steps(game_state):
     # SelectStep returns is_finished=True and no new steps
     assert result.is_finished is True
 
-    assert len(game_state.execution_stack) == 5
-    assert isinstance(game_state.execution_stack[4], ReactionWindowStep)
+    assert len(game_state.execution_stack) == 6
+    assert isinstance(game_state.execution_stack[5], ReactionWindowStep)
 
     # 4. RESOLVE REACTION
     step = game_state.execution_stack.pop()
@@ -130,24 +132,25 @@ def test_game_over_purges_remaining_action_steps(game_state):
     assert result.is_finished is True
 
     # 5. RESOLVE DEFENSE TEXT (no primary defense selected, so just passes through)
-    assert len(game_state.execution_stack) == 4
+    assert len(game_state.execution_stack) == 5
     step = game_state.execution_stack.pop()
     assert isinstance(step, ResolveDefenseTextStep)
     result = step.resolve(game_state, game_state.execution_context)
     assert result.is_finished is True
 
-    assert len(game_state.execution_stack) == 3
-    assert isinstance(game_state.execution_stack[2], ResolveCombatStep)
+    assert len(game_state.execution_stack) == 4
+    assert isinstance(game_state.execution_stack[3], ResolveCombatStep)
 
     # 6. RESOLVE COMBAT -> SPAWNS DEFEAT
     step = game_state.execution_stack.pop()
     result = step.resolve(game_state, game_state.execution_context)
     game_state.execution_stack.extend(reversed(result.new_steps))
 
-    # Stack now has: [Move, OnBlock, Defeat]
-    assert len(game_state.execution_stack) == 3
-    assert isinstance(game_state.execution_stack[2], DefeatUnitStep)
-    assert isinstance(game_state.execution_stack[1], ResolveOnBlockEffectStep)
+    # Stack now has: [Move, Restore, OnBlock, Defeat]
+    assert len(game_state.execution_stack) == 4
+    assert isinstance(game_state.execution_stack[3], DefeatUnitStep)
+    assert isinstance(game_state.execution_stack[2], ResolveOnBlockEffectStep)
+    assert isinstance(game_state.execution_stack[1], RestoreActionTypeStep)
     assert isinstance(game_state.execution_stack[0], MoveUnitStep)
 
     # 7. RESOLVE DEFEAT -> SPAWNS REMOVE & TRIGGER
@@ -155,11 +158,12 @@ def test_game_over_purges_remaining_action_steps(game_state):
     result = step.resolve(game_state, game_state.execution_context)
     game_state.execution_stack.extend(reversed(result.new_steps))
 
-    # Order: [Move, OnBlock, Trigger, Remove]
-    assert len(game_state.execution_stack) == 4
-    assert isinstance(game_state.execution_stack[3], RemoveUnitStep)
-    assert isinstance(game_state.execution_stack[2], TriggerGameOverStep)
-    assert isinstance(game_state.execution_stack[1], ResolveOnBlockEffectStep)
+    # Order: [Move, Restore, OnBlock, Trigger, Remove]
+    assert len(game_state.execution_stack) == 5
+    assert isinstance(game_state.execution_stack[4], RemoveUnitStep)
+    assert isinstance(game_state.execution_stack[3], TriggerGameOverStep)
+    assert isinstance(game_state.execution_stack[2], ResolveOnBlockEffectStep)
+    assert isinstance(game_state.execution_stack[1], RestoreActionTypeStep)
     assert isinstance(game_state.execution_stack[0], MoveUnitStep)
 
     # 8. RESOLVE REMOVE
@@ -167,8 +171,8 @@ def test_game_over_purges_remaining_action_steps(game_state):
     result = step.resolve(game_state, game_state.execution_context)
     assert "hero_red" not in game_state.entity_locations
 
-    assert len(game_state.execution_stack) == 3
-    assert isinstance(game_state.execution_stack[2], TriggerGameOverStep)
+    assert len(game_state.execution_stack) == 4
+    assert isinstance(game_state.execution_stack[3], TriggerGameOverStep)
 
     # 9. RESOLVE TRIGGER (THE PURGE)
     step = game_state.execution_stack.pop()
