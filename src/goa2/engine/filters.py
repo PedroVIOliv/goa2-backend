@@ -252,12 +252,18 @@ class AdjacencyFilter(FilterCondition):
 class ImmunityFilter(FilterCondition):
     """
     Filters out candidates that are Immune.
+
+    Checks two sources of immunity:
+    1. Standard minion immunity (Heavy minions with friendly support)
+    2. ATTACK_IMMUNITY effects (e.g., Expert Duelist - immune to attacks except from specific attacker)
     """
 
     type: FilterType = FilterType.IMMUNITY
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         from goa2.engine import rules  # Import inside to be safe
+        from goa2.domain.models.effect import EffectType
+        from goa2.domain.models.enums import ActionType
 
         target = (
             state.get_entity(BoardEntityID(candidate))
@@ -267,10 +273,38 @@ class ImmunityFilter(FilterCondition):
         if not target:
             return False
 
-        # If Immune, it fails the filter (returns False)
+        # Check 1: Standard minion immunity (Heavy with support)
         if isinstance(target, Unit):
-            return not rules.is_immune(target, state)
-        return True  # Non-units (Tokens) typically don't have "Immunity" logic yet, so pass default.
+            if rules.is_immune(target, state):
+                return False  # Immune = fails filter
+
+        # Check 2: ATTACK_IMMUNITY effects
+        # Only applies when current action is ATTACK
+        current_action = context.get("current_action_type")
+        if current_action == ActionType.ATTACK:
+            current_actor_id = (
+                str(state.current_actor_id) if state.current_actor_id else None
+            )
+
+            # Look for ATTACK_IMMUNITY effects where target is the protected unit
+            for effect in state.active_effects:
+                if effect.effect_type != EffectType.ATTACK_IMMUNITY:
+                    continue
+                if not effect.is_active:
+                    continue
+
+                # The effect protects its source_id (the hero who played the defense card)
+                if effect.source_id != candidate:
+                    continue
+
+                # Check if current attacker is in the exception list
+                if current_actor_id and current_actor_id in effect.except_attacker_ids:
+                    continue  # This attacker is allowed to target
+
+                # Target is immune to this attack
+                return False
+
+        return True  # Passes filter (not immune)
 
 
 class SpawnPointFilter(FilterCondition):

@@ -25,6 +25,7 @@ class EffectType(str, Enum):
     TARGET_PREVENTION = "target_prevention"  # Smoke Bomb (General)
     LOS_BLOCKER = "los_blocker"  # Physical obstacle for targeting
     AREA_STAT_MODIFIER = "area_stat_modifier"  # Aura effects
+    ATTACK_IMMUNITY = "attack_immunity"  # Expert Duelist - immune to attacks except from specific attacker
 
 
 class AffectsFilter(str, Enum):
@@ -84,6 +85,9 @@ class ActiveEffect(BaseModel):
     except_card_colors: List[CardColor] = Field(
         default_factory=list
     )  # Exceptions to prevention (e.g. "except on Gold cards")
+    except_attacker_ids: List[str] = Field(
+        default_factory=list
+    )  # Attackers who bypass ATTACK_IMMUNITY (e.g. "except this attacker")
     stat_type: Optional[StatType] = None  # For AREA_STAT_MODIFIER
     stat_value: int = 0  # Modifier amount
     max_value: Optional[int] = None  # For movement caps

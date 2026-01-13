@@ -103,6 +103,10 @@ class CreateEffectStep(GameStep):
 
     restrictions: List[ActionType] = Field(default_factory=list)
     except_card_colors: List[CardColor] = Field(default_factory=list)
+    except_attacker_ids: List[str] = Field(
+        default_factory=list
+    )  # Direct list of attacker IDs
+    except_attacker_key: Optional[str] = None  # Context key to read attacker ID from
     stat_type: Optional[StatType] = None
     stat_value: int = 0
     max_value: Optional[int] = None
@@ -134,6 +138,16 @@ class CreateEffectStep(GameStep):
         if action_type is None:
             action_type = context.get("current_action_type")
 
+        # Resolve except_attacker_ids: combine direct list with context key
+        resolved_except_attackers = list(self.except_attacker_ids)
+        if self.except_attacker_key:
+            attacker_from_context = context.get(self.except_attacker_key)
+            if (
+                attacker_from_context
+                and attacker_from_context not in resolved_except_attackers
+            ):
+                resolved_except_attackers.append(attacker_from_context)
+
         from goa2.engine.effect_manager import EffectManager
 
         EffectManager.create_effect(
@@ -147,6 +161,7 @@ class CreateEffectStep(GameStep):
             duration=self.duration,
             restrictions=self.restrictions,
             except_card_colors=self.except_card_colors,
+            except_attacker_ids=resolved_except_attackers,
             stat_type=self.stat_type,
             stat_value=self.stat_value,
             max_value=self.max_value,

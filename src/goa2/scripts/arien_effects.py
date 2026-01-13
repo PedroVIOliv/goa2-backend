@@ -432,3 +432,75 @@ class AspiringDuelistEffect(CardEffect):
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
         return [SetContextFlagStep(key="ignore_minion_defense", value=True)]
+
+
+@register_effect("expert_duelist")
+class ExpertDuelistEffect(CardEffect):
+    """
+    Card text: "Ignore all minion defense modifiers. This turn: You are immune to
+    attack actions of all enemy heroes, except this attacker."
+
+    This is a primary DEFENSE card (Tier II upgrade of Aspiring Duelist).
+    Two effects:
+    1. Sets ignore_minion_defense flag (same as Aspiring Duelist)
+    2. Creates ATTACK_IMMUNITY effect on self, with current attacker exempted
+    """
+
+    def get_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return [
+            # Effect 1: Ignore minion defense modifiers
+            SetContextFlagStep(key="ignore_minion_defense", value=True),
+            # Effect 2: Immune to attacks from other enemy heroes this turn
+            CreateEffectStep(
+                effect_type=EffectType.ATTACK_IMMUNITY,
+                scope=EffectScope(
+                    shape=Shape.POINT,
+                    origin_id=defender.id,
+                    affects=AffectsFilter.SELF,
+                ),
+                duration=DurationType.THIS_TURN,
+                except_attacker_key="attacker_id",  # Read current attacker from context
+                is_active=True,  # Immediately active (defense effect)
+            ),
+        ]
+
+
+@register_effect("master_duelist")
+class MasterDuelistEffect(CardEffect):
+    """
+    Card text: "Ignore all minion defense modifiers. This round: You are immune to
+    attack actions of all enemy heroes, except this attacker."
+
+    This is a primary DEFENSE card (Tier III upgrade of Expert Duelist).
+    Same as Expert Duelist but immunity lasts THIS_ROUND instead of THIS_TURN.
+    """
+
+    def get_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return [
+            # Effect 1: Ignore minion defense modifiers
+            SetContextFlagStep(key="ignore_minion_defense", value=True),
+            # Effect 2: Immune to attacks from other enemy heroes this ROUND
+            CreateEffectStep(
+                effect_type=EffectType.ATTACK_IMMUNITY,
+                scope=EffectScope(
+                    shape=Shape.POINT,
+                    origin_id=defender.id,
+                    affects=AffectsFilter.SELF,
+                ),
+                duration=DurationType.THIS_ROUND,  # Lasts entire round
+                except_attacker_key="attacker_id",  # Read current attacker from context
+                is_active=True,  # Immediately active (defense effect)
+            ),
+        ]
