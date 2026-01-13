@@ -25,7 +25,6 @@ from goa2.engine.filters import (
     ExcludeIdentityFilter,
     HasEmptyNeighborFilter,
     ForcedMovementByEnemyFilter,
-    ImmunityFilter,
 )
 from goa2.engine.stats import compute_card_stats
 from goa2.domain.models import (
@@ -88,7 +87,6 @@ class NobleBladeEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=1),
                     TeamFilter(relation="ENEMY"),
-                    ImmunityFilter(),  # Standard attack immunity check
                 ],
                 is_mandatory=True,
             ),
@@ -103,7 +101,6 @@ class NobleBladeEffect(CardEffect):
                     ExcludeIdentityFilter(
                         exclude_self=True, exclude_keys=["victim_id"]
                     ),
-                    ImmunityFilter(),  # Cannot move immune units
                     HasEmptyNeighborFilter(),  # Must have somewhere to go
                     ForcedMovementByEnemyFilter(),  # Cannot move if protected
                 ],
@@ -150,7 +147,6 @@ class SwapEnemyMinionEffect(CardEffect):
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range),
-                    ImmunityFilter(),
                 ],
                 prompt="Select an enemy minion to swap with.",
                 output_key="swap_target_id",
@@ -176,7 +172,6 @@ class EbbAndFlowEffect(CardEffect):
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range),
-                    ImmunityFilter(),
                 ],
                 prompt="Select an enemy minion to swap with.",
                 output_key="swap_target_1",
@@ -202,7 +197,6 @@ class EbbAndFlowEffect(CardEffect):
                             RangeFilter(
                                 max_range=stats.range
                             ),  # Range from NEW position
-                            ImmunityFilter(),
                             ExcludeIdentityFilter(
                                 exclude_self=True, exclude_keys=["swap_target_1"]
                             ),
@@ -298,7 +292,6 @@ class RogueWaveEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=1),  # Adjacent to Arien
                     TeamFilter(relation="ENEMY"),
-                    ImmunityFilter(),  # Cannot push immune units
                 ],
             ),
             # 3. Choose push distance (0, 1, or 2) - only if target selected
@@ -341,7 +334,6 @@ class TidalBlastEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=1),  # Adjacent
                     TeamFilter(relation="ENEMY"),
-                    ImmunityFilter(),
                 ],
             ),
             # 3. Choose push distance (0-3)

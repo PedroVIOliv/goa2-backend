@@ -321,6 +321,9 @@ class SelectStep(GameStep):
 
     Supports target types: "UNIT", "HEX", "CARD", "NUMBER"
     For NUMBER type, use number_options to specify valid choices.
+
+    Note: For UNIT selections, ImmunityFilter is automatically applied unless
+    skip_immunity_filter=True is set.
     """
 
     type: StepType = StepType.SELECT
@@ -336,6 +339,25 @@ class SelectStep(GameStep):
         CardContainerType.HAND
     )  # "HAND", "PLAYED", "DISCARD", "DECK"
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
+    skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
+
+    def _get_effective_filters(self) -> List[FilterCondition]:
+        """
+        Returns the effective filter list, adding ImmunityFilter for UNIT selections
+        unless skip_immunity_filter is True or ImmunityFilter is already present.
+        """
+        from goa2.engine.filters import ImmunityFilter, FilterCondition
+
+        effective = list(self.filters)
+
+        # Auto-add ImmunityFilter for UNIT selections
+        if self.target_type == TargetType.UNIT and not self.skip_immunity_filter:
+            # Check if ImmunityFilter is already in the list
+            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
+            if not has_immunity:
+                effective.append(ImmunityFilter())
+
+        return effective
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -382,6 +404,7 @@ class SelectStep(GameStep):
                 candidates = [c.id for c in source_list]
 
         valid_candidates = []
+        effective_filters = self._get_effective_filters()
         for c in candidates:
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
             if self.target_type == TargetType.UNIT and actor_id:
@@ -392,7 +415,7 @@ class SelectStep(GameStep):
                     continue
 
             is_valid = True
-            for f in self.filters:
+            for f in effective_filters:
                 if not f.apply(c, state, context):
                     is_valid = False
                     break
@@ -2685,7 +2708,6 @@ class AttackSequenceStep(GameStep):
                     filters=[
                         RangeFilter(max_range=self.range_val),
                         TeamFilter(relation="ENEMY"),
-                        ImmunityFilter(),
                     ],
                 )
             )
