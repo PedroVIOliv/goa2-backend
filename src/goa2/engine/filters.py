@@ -540,6 +540,66 @@ class MovementPathFilter(FilterCondition):
         )
 
 
+class LineBehindTargetFilter(FilterCondition):
+    """
+    Selects hexes (or units on hexes) that are in a straight line directly BEHIND a target.
+    Direction is defined by Origin -> Target.
+    """
+
+    type: FilterType = FilterType.LINE_BEHIND_TARGET
+    target_key: str
+    length: int = 1
+    origin_id: Optional[str] = None
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # Resolve Target Location
+        target_id = context.get(self.target_key)
+        if not target_id:
+            return False
+
+        target_hex = state.entity_locations.get(BoardEntityID(target_id))
+        if not target_hex:
+            return False
+
+        # Resolve Origin Location
+        origin_uid = self.origin_id or state.current_actor_id
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        # Resolve Candidate Location
+        cand_hex = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+
+        if not cand_hex:
+            return False
+
+        # Logic:
+        # 1. Origin and Target must be in straight line to establish direction.
+        direction_idx = origin_hex.direction_to(target_hex)
+        if direction_idx is None:
+            return False
+
+        # 2. Target and Candidate must be in same direction from Target
+        # Note: Candidate must be strictly BEHIND target, not AT target.
+        if cand_hex == target_hex:
+            return False
+
+        cand_dir = target_hex.direction_to(cand_hex)
+        if cand_dir != direction_idx:
+            return False
+
+        # 3. Distance check
+        dist = target_hex.distance(cand_hex)
+        return dist <= self.length
+
+
 class FastTravelDestinationFilter(FilterCondition):
     """
     Filters hexes to only valid Fast Travel destinations.

@@ -142,6 +142,7 @@ class FilterType(str, Enum):
     CAN_BE_PLACED_BY_ACTOR = "can_be_placed_filter"
     MOVEMENT_PATH = "movement_path_filter"
     FAST_TRAVEL_DESTINATION = "fast_travel_destination_filter"
+    LINE_BEHIND_TARGET = "line_behind_target_filter"
 
 
 class TargetType(str, Enum):

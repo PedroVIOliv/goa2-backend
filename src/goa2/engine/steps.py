@@ -340,6 +340,9 @@ class SelectStep(GameStep):
     )  # "HAND", "PLAYED", "DISCARD", "DECK"
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
+    override_player_id_key: Optional[str] = (
+        None  # Key in context to find player ID who provides input
+    )
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """
@@ -367,6 +370,10 @@ class SelectStep(GameStep):
             return StepResult(is_finished=True)
 
         actor_id = state.current_actor_id
+        if self.override_player_id_key:
+            found = context.get(self.override_player_id_key)
+            if found:
+                actor_id = HeroID(str(found))
 
         candidates: List[Any] = []
         if self.target_type == TargetType.UNIT:
@@ -488,6 +495,133 @@ class DrawCardStep(GameStep):
 # -----------------------------------------------------------------------------
 # Complex Primitives (Move, Attack, Reaction)
 # -----------------------------------------------------------------------------
+
+
+class DiscardCardStep(GameStep):
+    """
+    Forces a specific card to be discarded.
+    """
+
+    type: StepType = StepType.GENERIC
+    card_id: Optional[str] = None
+    card_key: Optional[str] = None
+    hero_id: Optional[str] = None
+    hero_key: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Resolve Hero
+        h_id = self.hero_id
+        if not h_id and self.hero_key:
+            h_id = context.get(self.hero_key)
+
+        if not h_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(h_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Resolve Card
+        c_id = self.card_id
+        if not c_id and self.card_key:
+            c_id = context.get(self.card_key)
+
+        if not c_id:
+            return StepResult(is_finished=True)
+
+        # Find card object in hand
+        target_card = next((c for c in hero.hand if c.id == c_id), None)
+        if not target_card:
+            print(f"   [DISCARD] Card {c_id} not found in {h_id}'s hand.")
+            return StepResult(is_finished=True)
+
+        print(f"   [DISCARD] {h_id} discards {target_card.name}")
+        hero.discard_card(target_card, from_hand=True)
+        return StepResult(is_finished=True)
+
+
+class ForceDiscardStep(GameStep):
+    """
+    Checks if a victim has cards.
+    If YES: Spawns a SelectStep (for victim to choose) + DiscardCardStep.
+    If NO: Completes successfully (no penalty).
+    """
+
+    type: StepType = StepType.GENERIC
+    victim_key: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        victim_id = context.get(self.victim_key)
+        if not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        if not victim.hand:
+            print(f"   [EFFECT] {victim_id} has no cards to discard (Safe).")
+            return StepResult(is_finished=True)
+
+        # Has cards -> Force Discard
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                SelectStep(
+                    target_type=TargetType.CARD,
+                    prompt=f"{victim_id}, select a card to discard.",
+                    output_key="card_to_discard",
+                    card_container=CardContainerType.HAND,
+                    context_hero_id_key=self.victim_key,  # Look at victim's hand
+                    override_player_id_key=self.victim_key,  # Victim chooses
+                    is_mandatory=True,
+                ),
+                DiscardCardStep(card_key="card_to_discard", hero_key=self.victim_key),
+            ],
+        )
+
+
+class ForceDiscardOrDefeatStep(GameStep):
+    """
+    Checks if a victim has cards.
+    If YES: Spawns a SelectStep (for victim to choose) + DiscardCardStep.
+    If NO: Spawns DefeatUnitStep (the penalty for not discarding).
+    """
+
+    type: StepType = StepType.GENERIC
+    victim_key: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        victim_id = context.get(self.victim_key)
+        if not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        if not victim.hand:
+            print(f"   [EFFECT] {victim_id} has no cards to discard! DEFEATED!")
+            return StepResult(
+                is_finished=True, new_steps=[DefeatUnitStep(victim_id=str(victim_id))]
+            )
+
+        # Has cards -> Force Discard
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                SelectStep(
+                    target_type=TargetType.CARD,
+                    prompt=f"{victim_id}, select a card to discard (or be Defeated).",
+                    output_key="card_to_discard",
+                    card_container=CardContainerType.HAND,
+                    context_hero_id_key=self.victim_key,  # Look at victim's hand
+                    override_player_id_key=self.victim_key,  # Victim chooses
+                    is_mandatory=True,
+                ),
+                DiscardCardStep(card_key="card_to_discard", hero_key=self.victim_key),
+            ],
+        )
 
 
 class MoveUnitStep(GameStep):

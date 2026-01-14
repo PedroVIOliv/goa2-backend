@@ -13,11 +13,13 @@ from goa2.engine.steps import (
     CheckAdjacencyStep,
     MayRepeatOnceStep,
     SetContextFlagStep,
+    ForceDiscardOrDefeatStep,
 )
 from goa2.engine.filters import (
     UnitTypeFilter,
     TeamFilter,
     RangeFilter,
+    LineBehindTargetFilter,
     OccupiedFilter,
     SpawnPointFilter,
     AdjacentSpawnPointFilter,
@@ -211,6 +213,52 @@ class EbbAndFlowEffect(CardEffect):
                         active_if_key="swap_target_2",  # Only if selected
                     ),
                 ],
+            ),
+        ]
+
+
+@register_effect("dangerous_current")
+class DangerousCurrentEffect(CardEffect):
+    """
+    Card text: "Target a unit adjacent to you. Before the attack: Up to 1 enemy hero
+    in any of the 2 spaces in a straight line directly behind the target
+    discards a card, or is defeated."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            # 1. Select Attack Target (Mandatory)
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select target for Dangerous Current attack",
+                output_key="victim_id",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                ],
+                is_mandatory=True,
+            ),
+            # 2. Select "Backstab" Victim (Optional - Up to 1)
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero behind target to discard/defeat (optional)",
+                output_key="backstab_victim_id",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    LineBehindTargetFilter(target_key="victim_id", length=2),
+                ],
+            ),
+            # 3. Resolve Discard/Defeat Logic
+            ForceDiscardOrDefeatStep(
+                victim_key="backstab_victim_id",
+            ),
+            # 4. Resolve Attack Sequence
+            AttackSequenceStep(
+                damage=stats.primary_value, target_id_key="victim_id", range_val=1
             ),
         ]
 
