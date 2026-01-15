@@ -263,6 +263,128 @@ class DangerousCurrentEffect(CardEffect):
         ]
 
 
+@register_effect("raging_stream")
+class RagingStreamEffect(CardEffect):
+    """
+    Card text: "Target a unit adjacent to you. Before the attack: Up to 1 enemy hero
+    in any of the 3 spaces in a straight line directly behind the target
+    discards a card, or is defeated."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select target for Raging Stream attack",
+                output_key="victim_id",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                ],
+                is_mandatory=True,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero behind target to discard/defeat (optional)",
+                output_key="backstab_victim_id",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    LineBehindTargetFilter(target_key="victim_id", length=3),
+                ],
+            ),
+            ForceDiscardOrDefeatStep(
+                victim_key="backstab_victim_id",
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value, target_id_key="victim_id", range_val=1
+            ),
+        ]
+
+
+@register_effect("violent_torrent")
+class ViolentTorrentEffect(CardEffect):
+    """
+    Card text: "Target a unit adjacent to you. Before the attack: Up to 1 enemy hero
+    in any of the 5 spaces in a straight line directly behind the target
+    discards a card, or is defeated. May repeat once on a different unit."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        attack_steps = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select target for Violent Torrent attack",
+                output_key="victim_id_1",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                ],
+                is_mandatory=True,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero behind target to discard/defeat (optional)",
+                output_key="backstab_victim_id_1",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    LineBehindTargetFilter(target_key="victim_id_1", length=5),
+                ],
+            ),
+            ForceDiscardOrDefeatStep(
+                victim_key="backstab_victim_id_1",
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value, target_id_key="victim_id_1", range_val=1
+            ),
+        ]
+
+        repeat_steps_template = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select second target for Violent Torrent (optional)",
+                output_key="victim_id_2",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    ExcludeIdentityFilter(exclude_keys=["victim_id_1"]),
+                ],
+                is_mandatory=False,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero behind second target to discard/defeat (optional)",
+                output_key="backstab_victim_id_2",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    LineBehindTargetFilter(target_key="victim_id_2", length=5),
+                ],
+            ),
+            ForceDiscardOrDefeatStep(
+                victim_key="backstab_victim_id_2",
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value, target_id_key="victim_id_2", range_val=1
+            ),
+        ]
+
+        return attack_steps + [
+            MayRepeatOnceStep(
+                active_if_key="victim_id_1",
+                steps_template=repeat_steps_template,
+            ),
+        ]
+
+
 @register_effect("liquid_leap")
 @register_effect("magical_current")
 class TeleportStrictEffect(CardEffect):
