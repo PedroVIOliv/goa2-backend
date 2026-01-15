@@ -12,6 +12,7 @@ from .enums import (
     FilterType,
     TargetType,
     CardContainerType,
+    PassiveTrigger,
 )
 from .base import BoardEntity, GameEntity
 from .unit import Unit, Hero, Minion

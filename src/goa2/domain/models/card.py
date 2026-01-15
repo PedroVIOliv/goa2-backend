@@ -41,6 +41,9 @@ class Card(GameEntity):
     # Item (Passive bonuses when equipped as item)
     item: Optional[StatType] = None
 
+    # Passive ability usage tracking (reset at turn end)
+    passive_uses_this_turn: int = 0
+
     metadata: Optional[Dict[str, Any]] = None
 
     def __init__(self, **data):

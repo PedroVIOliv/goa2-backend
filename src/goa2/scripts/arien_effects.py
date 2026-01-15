@@ -43,6 +43,8 @@ from goa2.domain.models import (
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import TargetType, Hero, Card
+    from goa2.domain.models.enums import PassiveTrigger
+    from goa2.engine.effects import PassiveConfig
 
 
 @register_effect("spell_break")
@@ -665,4 +667,55 @@ class MasterDuelistEffect(CardEffect):
                 except_attacker_key="attacker_id",  # Read current attacker from context
                 is_active=True,  # Immediately active (defense effect)
             ),
+        ]
+
+
+# =============================================================================
+# ULTIMATE (Purple/Tier IV) - Passive Ability
+# =============================================================================
+
+
+@register_effect("living_tsunami")
+class LivingTsunamiEffect(CardEffect):
+    """
+    Ultimate (Purple) - Arien
+
+    Card text: "Once per turn, before performing an Attack action,
+    you may move 1 space."
+
+    This is a passive ability that triggers BEFORE_ATTACK.
+    As an ultimate, it's always active once the hero reaches Level 8.
+    """
+
+    def get_passive_config(self) -> Optional["PassiveConfig"]:
+        from goa2.engine.effects import PassiveConfig
+        from goa2.domain.models.enums import PassiveTrigger
+
+        return PassiveConfig(
+            trigger=PassiveTrigger.BEFORE_ATTACK,
+            uses_per_turn=1,
+            is_optional=True,
+            prompt="Living Tsunami: Move 1 space before attacking?",
+        )
+
+    def get_passive_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: "PassiveTrigger",
+        context: Dict[str, Any],
+    ) -> List[GameStep]:
+        from goa2.domain.models.enums import PassiveTrigger
+
+        # Only respond to BEFORE_ATTACK trigger
+        if trigger != PassiveTrigger.BEFORE_ATTACK:
+            return []
+
+        return [
+            MoveSequenceStep(
+                unit_id=hero.id,
+                range_val=1,
+                is_mandatory=False,  # "you may move" - can choose to stay
+            )
         ]

@@ -1,11 +1,34 @@
 from __future__ import annotations
 from abc import ABC
 from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from goa2.engine.steps import GameStep
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
+    from goa2.domain.models.enums import PassiveTrigger
+
+
+class PassiveConfig(BaseModel):
+    """
+    Configuration for a card's passive ability.
+
+    Passive abilities are persistent effects that trigger during specific game events
+    (e.g., before attacking, before moving). They differ from active effects which
+    only trigger once when the card is played.
+
+    Attributes:
+        trigger: When the passive activates (BEFORE_ATTACK, BEFORE_MOVEMENT, etc.)
+        uses_per_turn: Maximum uses per turn. -1 means unlimited.
+        is_optional: If True, player is prompted "you may". If False, auto-executes.
+        prompt: Custom UI prompt for optional passives.
+    """
+
+    trigger: "PassiveTrigger"
+    uses_per_turn: int = 1
+    is_optional: bool = True
+    prompt: str = ""
 
 
 class CardEffect(ABC):
@@ -80,6 +103,46 @@ class CardEffect(ABC):
 
         Returns:
             List of steps to execute after the block, or empty list.
+        """
+        return []
+
+    def get_passive_config(self) -> Optional[PassiveConfig]:
+        """
+        Returns passive configuration if this card has a passive ability.
+
+        Passive abilities are persistent effects that trigger during specific game
+        events while the card is active (RESOLVED + face-up for regular cards,
+        or hero level >= 8 for ultimates).
+
+        Override in subclasses that have passive abilities.
+
+        Returns:
+            PassiveConfig describing the passive, or None if no passive ability.
+        """
+        return None
+
+    def get_passive_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: "PassiveTrigger",
+        context: Dict[str, Any],
+    ) -> List["GameStep"]:
+        """
+        Returns steps to execute when this passive ability triggers.
+
+        Only called if get_passive_config() returns a config with a matching trigger.
+
+        Args:
+            state: Current game state.
+            hero: The hero who owns the passive ability.
+            card: The card providing the passive ability.
+            trigger: The trigger point (BEFORE_ATTACK, BEFORE_MOVEMENT, etc.)
+            context: Execution context with current action information.
+
+        Returns:
+            List of steps to execute for the passive effect.
         """
         return []
 

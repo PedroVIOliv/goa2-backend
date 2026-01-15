@@ -43,6 +43,10 @@ class Hero(Unit):
     items: Dict[StatType, int] = Field(
         default_factory=dict
     )  # Items (Passive Stat Bonuses)
+    ultimate_card: Optional[Card] = Field(
+        default=None,
+        description="Ultimate (Purple/Tier IV) card. Active when level >= 8.",
+    )
     team_obj: Optional["Team"] = Field(
         default=None, exclude=True
     )  # Circular reference to parent Team

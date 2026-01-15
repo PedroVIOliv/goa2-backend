@@ -8,6 +8,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import UnitID, HeroID, BoardEntityID
 from goa2.domain.models import (
     ActionType,
+    Card,
     TeamColor,
     CardTier,
     CardColor,
@@ -311,6 +312,187 @@ class RestoreActionTypeStep(GameStep):
         return StepResult(is_finished=True)
 
 
+# -----------------------------------------------------------------------------
+# Passive Ability Steps
+# -----------------------------------------------------------------------------
+
+
+class CheckPassiveAbilitiesStep(GameStep):
+    """
+    Checks for passive abilities that trigger at the specified point.
+    For each eligible passive, spawns an OfferPassiveStep.
+
+    Scans two sources:
+    1. Regular cards in played_cards (RESOLVED + face-up)
+    2. Ultimate card (if hero.level >= 8)
+    """
+
+    type: StepType = StepType.CHECK_PASSIVE_ABILITIES
+    trigger: str  # PassiveTrigger value as string for serialization
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.domain.models.enums import PassiveTrigger
+
+        hero = state.get_hero(HeroID(str(state.current_actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        trigger_enum = PassiveTrigger(self.trigger)
+        offer_steps: List[GameStep] = []
+
+        def check_card_for_passive(card: Card) -> None:
+            """Helper to check a card for matching passive ability."""
+            if not card.effect_id:
+                return
+
+            effect = CardEffectRegistry.get(card.effect_id)
+            if not effect:
+                return
+
+            config = effect.get_passive_config()
+            if not config or config.trigger != trigger_enum:
+                return
+
+            # Check usage limit
+            if config.uses_per_turn > 0:
+                if card.passive_uses_this_turn >= config.uses_per_turn:
+                    print(
+                        f"   [PASSIVE] {card.name} already used {card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
+                    )
+                    return
+
+            # Spawn offer step for this passive
+            offer_steps.append(
+                OfferPassiveStep(
+                    card_id=card.id,
+                    trigger=self.trigger,
+                    is_optional=config.is_optional,
+                    prompt=config.prompt or f"Use {card.name} passive ability?",
+                )
+            )
+
+        # 1. Check regular cards: must be RESOLVED and face-up
+        for card in hero.played_cards:
+            if card.state == CardState.RESOLVED and not card.is_facedown:
+                check_card_for_passive(card)
+
+        # 2. Check ultimate card: active if level >= 8
+        if hero.level >= 8 and hero.ultimate_card:
+            check_card_for_passive(hero.ultimate_card)
+
+        if offer_steps:
+            print(
+                f"   [PASSIVE] Found {len(offer_steps)} passive(s) for trigger {trigger_enum.value}"
+            )
+
+        return StepResult(is_finished=True, new_steps=offer_steps)
+
+
+class OfferPassiveStep(GameStep):
+    """
+    Offers player a choice to use an optional passive ability.
+    If mandatory or accepted, spawns the passive steps.
+    """
+
+    type: StepType = StepType.OFFER_PASSIVE
+    card_id: str
+    trigger: str  # PassiveTrigger value as string
+    is_optional: bool = True
+    prompt: str = ""
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.domain.models.enums import PassiveTrigger
+
+        hero = state.get_hero(HeroID(str(state.current_actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Find the card (could be in played_cards or ultimate_card)
+        card = next((c for c in hero.played_cards if c.id == self.card_id), None)
+        if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
+            card = hero.ultimate_card
+
+        if not card:
+            print(f"   [PASSIVE] Card {self.card_id} not found")
+            return StepResult(is_finished=True)
+
+        effect = CardEffectRegistry.get(card.effect_id)
+        if not effect:
+            return StepResult(is_finished=True)
+
+        trigger_enum = PassiveTrigger(self.trigger)
+
+        def execute_passive() -> StepResult:
+            """Helper to spawn the passive steps and mark used."""
+            passive_steps = effect.get_passive_steps(
+                state, hero, card, trigger_enum, context
+            )
+            if passive_steps:
+                print(
+                    f"   [PASSIVE] Activating {card.name}: {len(passive_steps)} step(s)"
+                )
+                # Add MarkPassiveUsedStep after the passive steps
+                return StepResult(
+                    is_finished=True,
+                    new_steps=passive_steps
+                    + [MarkPassiveUsedStep(card_id=self.card_id)],
+                )
+            return StepResult(is_finished=True)
+
+        # If not optional, auto-execute
+        if not self.is_optional:
+            return execute_passive()
+
+        # Handle player input for optional passives
+        if self.pending_input:
+            choice = self.pending_input.get("choice")
+            if choice == "YES":
+                return execute_passive()
+            else:  # "NO" or "SKIP"
+                print(f"   [PASSIVE] Player declined {card.name} passive")
+                return StepResult(is_finished=True)
+
+        # Request input from player
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "CONFIRM_PASSIVE",
+                "prompt": self.prompt,
+                "player_id": state.current_actor_id,
+                "card_id": self.card_id,
+                "card_name": card.name,
+                "options": ["YES", "NO"],
+            },
+        )
+
+
+class MarkPassiveUsedStep(GameStep):
+    """Marks a passive ability as used for this turn."""
+
+    type: StepType = StepType.MARK_PASSIVE_USED
+    card_id: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero = state.get_hero(HeroID(str(state.current_actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Find the card (could be in played_cards or ultimate_card)
+        card = next((c for c in hero.played_cards if c.id == self.card_id), None)
+        if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
+            card = hero.ultimate_card
+
+        if card:
+            card.passive_uses_this_turn += 1
+            print(
+                f"   [PASSIVE] {card.name} used ({card.passive_uses_this_turn} time(s) this turn)"
+            )
+
+        return StepResult(is_finished=True)
+
+
 from goa2.engine.filters import FilterCondition
 
 
@@ -349,7 +531,7 @@ class SelectStep(GameStep):
         Returns the effective filter list, adding ImmunityFilter for UNIT selections
         unless skip_immunity_filter is True or ImmunityFilter is already present.
         """
-        from goa2.engine.filters import ImmunityFilter, FilterCondition
+        from goa2.engine.filters import ImmunityFilter
 
         effective = list(self.filters)
 
@@ -1291,6 +1473,15 @@ class FinalizeHeroTurnStep(GameStep):
             # Activate all effects created by this card
             EffectManager.activate_effects_by_card(state, card_id)
 
+        # Reset passive usage counters for all cards (they reset each turn)
+        if hero:
+            for card in hero.played_cards:
+                if card.passive_uses_this_turn > 0:
+                    card.passive_uses_this_turn = 0
+            # Also reset ultimate card if present
+            if hero.ultimate_card and hero.ultimate_card.passive_uses_this_turn > 0:
+                hero.ultimate_card.passive_uses_this_turn = 0
+
         # Clear transient context for the next actor
         context.clear()
         state.current_actor_id = None
@@ -1991,6 +2182,22 @@ class ResolveCardStep(GameStep):
                 # NOTE: Renamed local variable to avoid shadowing re-declaration if any
                 steps_list: List[GameStep] = []
 
+                # Check for BEFORE_* passive abilities based on action type
+                from goa2.domain.models.enums import PassiveTrigger
+
+                passive_trigger = None
+                if act_type == ActionType.ATTACK:
+                    passive_trigger = PassiveTrigger.BEFORE_ATTACK
+                elif act_type == ActionType.MOVEMENT:
+                    passive_trigger = PassiveTrigger.BEFORE_MOVEMENT
+                elif act_type == ActionType.SKILL:
+                    passive_trigger = PassiveTrigger.BEFORE_SKILL
+
+                if passive_trigger:
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(trigger=passive_trigger.value)
+                    )
+
                 if is_primary:
                     # User Mandate: Primary actions apply custom script.
                     steps_list.append(
@@ -2590,6 +2797,9 @@ class EndPhaseCleanupStep(GameStep):
         """
         Calculates gold spending and level increments.
         Rule 3.1: Costs follow cumulative table. Mandatory purchase.
+
+        Note: Level 8 unlocks the ultimate card automatically (no upgrade choice).
+        Only levels 2-7 count as pending upgrades requiring card selection.
         """
         LEVEL_COSTS = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7}
         any_level_ups = False
@@ -2597,22 +2807,37 @@ class EndPhaseCleanupStep(GameStep):
         for team in state.teams.values():
             for hero in team.heroes:
                 upgrades_this_round = 0
+                unlocked_ultimate = False
                 while hero.level < 8:
                     next_level = hero.level + 1
                     cost = LEVEL_COSTS[next_level]
                     if hero.gold >= cost:
                         hero.gold -= cost
                         hero.level = next_level
-                        upgrades_this_round += 1
                         any_level_ups = True
-                        print(f"   [LEVEL] {hero.id} reached Level {hero.level}!")
+
+                        if next_level == 8:
+                            # Level 8: Ultimate unlocks automatically (no upgrade choice)
+                            unlocked_ultimate = True
+                            if hero.ultimate_card:
+                                print(
+                                    f"   [ULTIMATE UNLOCKED] {hero.id} reached Level 8! "
+                                    f"'{hero.ultimate_card.name}' is now active!"
+                                )
+                            else:
+                                print(f"   [LEVEL] {hero.id} reached Level 8!")
+                        else:
+                            # Levels 2-7: Count as pending upgrade (requires card choice)
+                            upgrades_this_round += 1
+                            print(f"   [LEVEL] {hero.id} reached Level {hero.level}!")
                     else:
                         break
 
                 if upgrades_this_round > 0:
                     state.pending_upgrades[hero.id] = upgrades_this_round
-                else:
+                elif not unlocked_ultimate:
                     # Pity Coin: Players who did not Level Up gain 1 Gold.
+                    # (Don't give pity coin if they unlocked ultimate)
                     hero.gold += 1
                     print(
                         f"   [ECONOMY] {hero.id} did not level up. Gains 1 Pity Gold. (Gold: {hero.gold})"
@@ -2820,7 +3045,7 @@ class AttackSequenceStep(GameStep):
             f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})"
         )
 
-        from goa2.engine.filters import RangeFilter, TeamFilter, ImmunityFilter
+        from goa2.engine.filters import RangeFilter, TeamFilter
 
         key = self.target_id_key if self.target_id_key else "victim_id"
 
@@ -2963,6 +3188,12 @@ class ResolveUpgradesStep(GameStep):
         )
 
     def _get_upgrade_options(self, state: GameState, hero_id: str):
+        """
+        Returns upgrade options for a hero.
+
+        Note: Ultimate cards (Tier IV) are handled separately - they unlock
+        automatically at level 8, so they should never appear as upgrade options.
+        """
         hero = state.get_hero(HeroID(hero_id))
         if not hero:
             return []
@@ -2974,15 +3205,10 @@ class ResolveUpgradesStep(GameStep):
         tier_map = {CardTier.I: 1, CardTier.II: 2, CardTier.III: 3}
         min_tier_val = min(tier_map.get(c.tier, 99) for c in hand_non_basics)
 
+        # If all cards are Tier III, there are no upgrade options.
+        # Ultimate cards auto-activate at level 8 (handled in _level_up).
         if min_tier_val == 3:
-            ultimates = [c for c in hero.deck if c.tier == CardTier.IV]
-            return [
-                {
-                    "type": "ULTIMATE",
-                    "cards": [c.id for c in ultimates],
-                    "card_details": [c.model_dump() for c in ultimates],
-                }
-            ]
+            return []
 
         eligible_colors = [
             c.color for c in hand_non_basics if tier_map.get(c.tier) == min_tier_val

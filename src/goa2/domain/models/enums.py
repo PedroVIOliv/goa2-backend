@@ -123,6 +123,9 @@ class StepType(str, Enum):
     RESOLVE_ON_BLOCK_EFFECT = "resolve_on_block_effect"
     CANCEL_EFFECTS = "cancel_effects"
     RESTORE_ACTION_TYPE = "restore_action_type"
+    CHECK_PASSIVE_ABILITIES = "check_passive_abilities"
+    OFFER_PASSIVE = "offer_passive"
+    MARK_PASSIVE_USED = "mark_passive_used"
 
 
 class FilterType(str, Enum):
@@ -157,3 +160,11 @@ class CardContainerType(str, Enum):
     PLAYED = "PLAYED"
     DISCARD = "DISCARD"
     DECK = "DECK"
+
+
+class PassiveTrigger(str, Enum):
+    """When passive abilities activate."""
+
+    BEFORE_ATTACK = "before_attack"
+    BEFORE_MOVEMENT = "before_movement"
+    BEFORE_SKILL = "before_skill"
