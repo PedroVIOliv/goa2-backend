@@ -8,6 +8,8 @@ Guards of Atlantis II (GoA2) backend - a deterministic, stack-based game engine 
 
 **Core Philosophy:** "Logic as Data" - uses atomic game steps pushed onto a LIFO execution stack instead of nested function calls, enabling pauseable mid-action gameplay with input requests.
 
+For detailed architecture, module guide, and data flows, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
+
 ## Development Commands
 
 ```bash
