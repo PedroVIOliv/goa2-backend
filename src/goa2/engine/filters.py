@@ -7,6 +7,7 @@ from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID, UnitID
+from goa2.engine.topology import get_topology_service
 
 # -----------------------------------------------------------------------------
 # Base Filter
@@ -108,7 +109,9 @@ class RangeFilter(FilterCondition):
         if not target_hex:
             return False
 
-        dist = origin_hex.distance(target_hex)
+        # Use topology-aware distance (respects reality splits)
+        topology = get_topology_service()
+        dist = topology.distance(origin_hex, target_hex, state)
         return self.min_range <= dist <= self.max_range
 
 
@@ -201,7 +204,9 @@ class AdjacencyFilter(FilterCondition):
         if not cand_hex:
             return False
 
-        neighbors = cand_hex.neighbors()
+        # Use topology-aware neighbors (respects reality splits)
+        topology = get_topology_service()
+        neighbors = topology.get_connected_neighbors(cand_hex, state)
 
         for n in neighbors:
             tile = state.board.get_tile(n)
@@ -345,7 +350,9 @@ class AdjacentSpawnPointFilter(FilterCondition):
         if not cand_hex:
             return False
 
-        neighbors = cand_hex.neighbors()
+        # Use topology-aware neighbors (respects reality splits)
+        topology = get_topology_service()
+        neighbors = topology.get_connected_neighbors(cand_hex, state)
         has_adj = False
         for n in neighbors:
             tile = state.board.get_tile(n)
@@ -395,7 +402,9 @@ class AdjacencyToContextFilter(FilterCondition):
         # "Check via tile": Ensure both are valid board positions
         if not state.board.is_on_map(target_hex) or not state.board.is_on_map(cand_hex):
             return False
-        return cand_hex.distance(target_hex) == 1
+        # Use topology-aware adjacency (respects reality splits)
+        topology = get_topology_service()
+        return topology.are_adjacent(cand_hex, target_hex, state)
 
 
 class ExcludeIdentityFilter(FilterCondition):
@@ -442,7 +451,9 @@ class HasEmptyNeighborFilter(FilterCondition):
             cand_hex = candidate
         if not cand_hex:
             return False
-        neighbors = cand_hex.neighbors()
+        # Use topology-aware neighbors (respects reality splits)
+        topology = get_topology_service()
+        neighbors = topology.get_connected_neighbors(cand_hex, state)
         for n in neighbors:
             # Check if hex exists on board
             tile = state.board.get_tile(n)
@@ -595,8 +606,9 @@ class LineBehindTargetFilter(FilterCondition):
         if cand_dir != direction_idx:
             return False
 
-        # 3. Distance check
-        dist = target_hex.distance(cand_hex)
+        # 3. Distance check (topology-aware)
+        topology = get_topology_service()
+        dist = topology.distance(target_hex, cand_hex, state)
         return dist <= self.length
 
 

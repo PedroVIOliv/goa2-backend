@@ -27,6 +27,14 @@ class EffectType(str, Enum):
     AREA_STAT_MODIFIER = "area_stat_modifier"  # Aura effects
     ATTACK_IMMUNITY = "attack_immunity"  # Expert Duelist - immune to attacks except from specific attacker
 
+    # Topology constraints (Nebkher)
+    TOPOLOGY_SPLIT = (
+        "topology_split"  # Tier 2: Crack in Reality - splits board into regions
+    )
+    TOPOLOGY_ISOLATION = (
+        "topology_isolation"  # Tier 3: Shift Reality - split + isolate caster
+    )
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""
@@ -114,3 +122,13 @@ class ActiveEffect(BaseModel):
     # Origin action type - tracks whether effect came from skill or attack
     # Used for cancelling effects by type (e.g., "cancel skill effects")
     origin_action_type: Optional[ActionType] = None
+
+    # Topology constraint fields (for TOPOLOGY_SPLIT / TOPOLOGY_ISOLATION)
+    # Used by Nebkher's Crack in Reality / Shift Reality
+    split_axis: Optional[str] = (
+        None  # "q", "r", or "s" - which coordinate defines the split line
+    )
+    split_value: int = 0  # The coordinate value of the dividing line
+    isolated_hex: Optional[Hex] = (
+        None  # For Tier 3 - the specific hex that is isolated (Nebkher's position)
+    )

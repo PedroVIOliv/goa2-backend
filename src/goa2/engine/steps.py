@@ -32,6 +32,7 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 
 from goa2.domain.models.enums import StatType
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.topology import get_topology_service, are_connected
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -662,6 +663,7 @@ class SelectStep(GameStep):
                 "can_skip": not self.is_mandatory,
             },
         )
+
 
 # -----------------------------------------------------------------------------
 # Complex Primitives (Move, Attack, Reaction)
@@ -1785,6 +1787,13 @@ class PushUnitStep(GameStep):
                 print(f"   [PUSH] {actual_target_id} hit board edge at {current_loc}")
                 break
 
+            # Check topology (Crack in Reality)
+            if not are_connected(current_loc, next_hex, state):
+                print(
+                    f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
+                )
+                break
+
             tile = state.board.get_tile(next_hex)
             if tile and tile.is_obstacle:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
@@ -2033,7 +2042,7 @@ class ResolveCardStep(GameStep):
             return StepResult(is_finished=True)
 
         card = hero.current_turn_card
-        
+
         context["current_card_id"] = card.id
         options = []
 
@@ -2698,9 +2707,11 @@ class CheckAdjacencyStep(GameStep):
             context[self.output_key] = False
             return StepResult(is_finished=True)
 
-        dist = loc_a.distance(loc_b)
-        context[self.output_key] = dist == 1
-        print(f"   [CHECK] Adjacency between {u_a} and {u_b}: {dist == 1}")
+        # Use topology-aware adjacency (respects reality splits)
+        topology = get_topology_service()
+        is_adjacent = topology.are_adjacent(loc_a, loc_b, state)
+        context[self.output_key] = is_adjacent
+        print(f"   [CHECK] Adjacency between {u_a} and {u_b}: {is_adjacent}")
 
         return StepResult(is_finished=True)
 
@@ -3344,29 +3355,17 @@ class CancelEffectsStep(GameStep):
             return False
         if self.scope is None:
             return False
-        shape = self.scope.shape
-        if shape == Shape.GLOBAL:
-            return True
-        if shape == Shape.POINT:
-            return hex == origin
-        if shape == Shape.ADJACENT:
-            return origin.distance(hex) == 1
-        if shape == Shape.RADIUS:
-            return origin.distance(hex) <= self.scope.range
-        if shape == Shape.LINE:
-            if self.scope.direction is None:
-                return False
-            return (
-                origin.is_straight_line(hex)
-                and origin.distance(hex) <= self.scope.range
-            )
-        if shape == Shape.ZONE:
-            origin_zone = self._get_zone_for_hex(origin, state)
-            target_zone = self._get_zone_for_hex(hex, state)
-            if origin_zone is None or target_zone is None:
-                return False
-            return origin_zone == target_zone
-        return False
+
+        # Use TopologyService for consolidated, topology-aware scope checking
+        topology = get_topology_service()
+        return topology.hex_in_scope(
+            origin,
+            hex,
+            self.scope.shape,
+            self.scope.range,
+            state,
+            self.scope.direction,
+        )
 
     def _get_zone_for_hex(self, hex: "Hex", state: GameState) -> Optional[str]:
         for zone_id, zone in state.board.zones.items():

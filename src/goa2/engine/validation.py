@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.hex import Hex
 
+from goa2.engine.topology import get_topology_service
+
 
 class ValidationContext(TypedDict, total=False):
     """Context data passed to validation service."""
@@ -435,40 +437,23 @@ class ValidationService:
     def _hex_in_scope(
         self, effect: ActiveEffect, hex: "Hex", state: "GameState"
     ) -> bool:
-        """Check if a hex is within effect's spatial scope."""
+        """Check if a hex is within effect's spatial scope (topology-aware)."""
         scope = effect.scope
 
-        if scope.shape == Shape.GLOBAL:
-            return True
-
         origin = self._get_origin_hex(effect, state)
-        if not origin:
+        if not origin and scope.shape != Shape.GLOBAL:
             return False
 
-        if scope.shape == Shape.POINT:
-            return hex == origin
-
-        if scope.shape == Shape.ADJACENT:
-            return origin.distance(hex) == 1
-
-        if scope.shape == Shape.RADIUS:
-            return origin.distance(hex) <= scope.range
-
-        if scope.shape == Shape.LINE:
-            # Check if hex is on the line from origin in specified direction
-            if scope.direction is None:
-                return False
-            return origin.is_straight_line(hex) and origin.distance(hex) <= scope.range
-
-        if scope.shape == Shape.ZONE:
-            # Check if both are in same zone
-            origin_zone = self._get_zone_for_hex(origin, state)
-            target_zone = self._get_zone_for_hex(hex, state)
-            if origin_zone is None or target_zone is None:
-                return False
-            return origin_zone == target_zone
-
-        return False
+        # Use TopologyService for consolidated, topology-aware scope checking
+        topology = get_topology_service()
+        return topology.hex_in_scope(
+            origin if origin else hex,  # For GLOBAL, origin doesn't matter
+            hex,
+            scope.shape,
+            scope.range,
+            state,
+            scope.direction,
+        )
 
     def _get_origin_hex(
         self, effect: ActiveEffect, state: "GameState"

@@ -5,6 +5,7 @@ from goa2.domain.board import Board
 from goa2.domain.state import GameState
 from goa2.domain.models import ActionType, Minion, TeamColor
 from goa2.domain.models.unit import Unit
+from goa2.engine.topology import get_topology_service
 
 
 def validate_movement_path(
@@ -14,6 +15,7 @@ def validate_movement_path(
     max_steps: int,
     ignore_obstacles: bool = False,
     active_zone_id: Optional[str] = None,
+    state: Optional[GameState] = None,
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -21,6 +23,7 @@ def validate_movement_path(
     - Cannot move through Obstacles (Static or Units).
     - Cannot end on Obstacle.
     - Path length <= max_steps.
+    - Respects topology constraints (reality splits) if state is provided.
     """
     if max_steps <= 0:
         return False
@@ -36,6 +39,9 @@ def validate_movement_path(
     queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
     visited: Set[Hex] = {start}
 
+    # Use topology service if state is available for topology-aware pathfinding
+    topology = get_topology_service() if state else None
+
     while queue:
         current, dist = queue.popleft()
 
@@ -45,11 +51,18 @@ def validate_movement_path(
         if dist >= max_steps:
             continue
 
-        for neighbor in board.get_neighbors(current):
+        # Get neighbors - topology-aware if state provided, otherwise geometric
+        if topology and state:
+            neighbors = topology.get_traversable_neighbors(current, state, end)
+        else:
+            neighbors = board.get_neighbors(current)
+
+        for neighbor in neighbors:
             if neighbor not in visited:
-                # Note: Virtual tiles are handled in the loop via get_tile(neighbor).is_obstacle
-                if board.get_tile(neighbor).is_obstacle and neighbor != end:
-                    continue
+                # Skip obstacles (unless using topology which already filters)
+                if not (topology and state):
+                    if board.get_tile(neighbor).is_obstacle and neighbor != end:
+                        continue
 
                 visited.add(neighbor)
                 queue.append((neighbor, dist + 1))
@@ -124,7 +137,9 @@ def validate_target(
         if not s_loc.is_straight_line(t_loc):
             return False
 
-    dist = s_loc.distance(t_loc)
+    # Use topology-aware distance (respects reality splits)
+    topology = get_topology_service()
+    dist = topology.distance(s_loc, t_loc, state)
     if dist > range_val:
         return False
 
@@ -161,12 +176,18 @@ def validate_attack_target(
             requires_straight_line=requires_straight_line,
         )
 
-    # Legacy Fallback (Geometry Only)
+    # Legacy Fallback (Geometry Only - no topology without state)
+    # Note: This branch cannot use topology since state is not available
     if requires_straight_line:
         if not attacker_pos.is_straight_line(target_pos):
             return False
 
-    dist = attacker_pos.distance(target_pos)
+    # Use topology if state is available, otherwise pure geometry
+    if state:
+        topology = get_topology_service()
+        dist = topology.distance(attacker_pos, target_pos, state)
+    else:
+        dist = attacker_pos.distance(target_pos)
     if dist > range_val:
         return False
 

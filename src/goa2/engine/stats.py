@@ -13,6 +13,10 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.types import UnitID, BoardEntityID
 from goa2.domain.hex import Hex
+from goa2.engine.topology import (
+    get_connected_ring,
+    hex_in_scope as topology_hex_in_scope,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card
@@ -59,44 +63,22 @@ def _get_origin_hex(effect: ActiveEffect, state: GameState) -> Optional[Hex]:
 
 
 def _hex_in_scope(effect: ActiveEffect, hex: Hex, state: GameState) -> bool:
-    """Check if a hex is within effect's spatial scope."""
+    """Check if a hex is within effect's spatial scope (topology-aware)."""
     scope = effect.scope
 
-    if scope.shape == Shape.GLOBAL:
-        return True
-
     origin = _get_origin_hex(effect, state)
-    if not origin:
+    if not origin and scope.shape != Shape.GLOBAL:
         return False
 
-    if scope.shape == Shape.POINT:
-        return hex == origin
-
-    if scope.shape == Shape.ADJACENT:
-        return origin.distance(hex) == 1
-
-    if scope.shape == Shape.RADIUS:
-        return origin.distance(hex) <= scope.range
-
-    if scope.shape == Shape.LINE:
-        if scope.direction is None:
-            return False
-        return origin.is_straight_line(hex) and origin.distance(hex) <= scope.range
-
-    if scope.shape == Shape.ZONE:
-        # Check if both are in same zone
-        origin_zone = None
-        target_zone = None
-        for zone_id, zone in state.board.zones.items():
-            if origin in zone.hexes:
-                origin_zone = zone_id
-            if hex in zone.hexes:
-                target_zone = zone_id
-        if origin_zone is None or target_zone is None:
-            return False
-        return origin_zone == target_zone
-
-    return False
+    # Use TopologyService for consolidated, topology-aware scope checking
+    return topology_hex_in_scope(
+        origin if origin else hex,  # For GLOBAL, origin doesn't matter
+        hex,
+        scope.shape,
+        scope.range,
+        state,
+        scope.direction,
+    )
 
 
 def _matches_affects_filter(
@@ -200,6 +182,7 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
     """
     Calculates the cumulative defense modifier provided by nearby minions.
     Uses Hex.ring for optimized spatial lookups.
+    Respects topology constraints (reality splits).
     """
     target_loc = state.unit_locations.get(target_unit_id)
     if not target_loc:
@@ -219,7 +202,7 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
         return None
 
     # --- RANGE 1 (Ring 1) ---
-    for hex_coord in state.board.get_ring(target_loc, 1):
+    for hex_coord in get_connected_ring(target_loc, 1, state):
         unit = get_unit_at(hex_coord)
         if not unit or not isinstance(unit, Minion):
             continue
@@ -231,7 +214,7 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
             total_mod -= 1
 
     # --- RANGE 2 (Ring 2) ---
-    for hex_coord in state.board.get_ring(target_loc, 2):
+    for hex_coord in get_connected_ring(target_loc, 2, state):
         unit = get_unit_at(hex_coord)
         if not unit or not isinstance(unit, Minion):
             continue
