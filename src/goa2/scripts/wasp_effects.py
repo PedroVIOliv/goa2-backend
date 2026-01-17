@@ -9,18 +9,30 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.models.enums import ActionType, StatType
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.stats import compute_card_stats
 from goa2.engine.steps import (
     AttackSequenceStep,
     CreateEffectStep,
+    ForceDiscardStep,
+    ForceDiscardOrDefeatStep,
     GameStep,
+    PlaceUnitStep,
+    SelectStep,
     SetContextFlagStep,
+    TargetType,
 )
-from goa2.engine.filters import NotInStraightLineFilter
+from goa2.engine.filters import (
+    ExcludeIdentityFilter,
+    NotInStraightLineFilter,
+    OccupiedFilter,
+    RangeFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
+    from goa2.engine.stats import CardStats
 
 
 @register_effect("stop_projectiles")
@@ -33,11 +45,12 @@ class StopProjectilesEffect(CardEffect):
     - If attack is melee: defense_invalid = True (defense fails entirely)
     """
 
-    def get_defense_steps(
+    def build_defense_steps(
         self,
         state: GameState,
         defender: Hero,
         card: Card,
+        stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
         if context.get("attack_is_ranged"):
@@ -53,9 +66,9 @@ class MagneticDaggerEffect(CardEffect):
     placed or swapped by enemy actions."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Standard attack
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
@@ -88,9 +101,9 @@ class ChargedBoomerangEffect(CardEffect):
     - Adjacent units are implicitly in a straight line
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,

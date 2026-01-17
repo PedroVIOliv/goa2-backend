@@ -19,7 +19,7 @@ Wasp is a telekinetic hero with 18 cards focusing on:
 | Magnetic Dagger | Gold | Gold | ATTACK | Done | Simple |
 | Shock | I | Red | ATTACK | TODO | Simple |
 | Lift Up | I | Blue | SKILL | TODO | Moderate |
-| Charged Boomerang | II | Red | ATTACK | TODO | Trivial |
+| Charged Boomerang | II | Red | ATTACK | Done | Trivial |
 | Telekinesis | II | Green | SKILL | TODO | Simple |
 | Deflect Projectiles | II | Green | DEFENSE | TODO | Simple |
 | Kinetic Repulse | II | Blue | SKILL | TODO | Complex |

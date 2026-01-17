@@ -287,9 +287,15 @@ class TestExpertDuelistDefenseSteps:
 
         arien = duelist_state.get_hero("hero_arien")
 
-        # Mock card object (minimal)
+        # Mock card object (needs card stats attributes for compute_card_stats)
         class MockCard:
             id = "expert_duelist_card"
+            primary_action = ActionType.DEFENSE
+            primary_action_value = 6
+            secondary_actions = {}
+            range_value = None
+            radius_value = None
+            is_ranged = False
 
         context = {"attacker_id": "h_enemy1"}
         steps = effect.get_defense_steps(duelist_state, arien, MockCard(), context)
@@ -325,8 +331,15 @@ class TestMasterDuelistDefenseSteps:
 
         arien = duelist_state.get_hero("hero_arien")
 
+        # Mock card object (needs card stats attributes for compute_card_stats)
         class MockCard:
             id = "master_duelist_card"
+            primary_action = ActionType.DEFENSE
+            primary_action_value = 6
+            secondary_actions = {}
+            range_value = None
+            radius_value = None
+            is_ranged = False
 
         context = {"attacker_id": "h_enemy1"}
         steps = effect.get_defense_steps(duelist_state, arien, MockCard(), context)

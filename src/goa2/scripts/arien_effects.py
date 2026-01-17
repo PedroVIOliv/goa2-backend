@@ -28,7 +28,6 @@ from goa2.engine.filters import (
     HasEmptyNeighborFilter,
     ForcedMovementByEnemyFilter,
 )
-from goa2.engine.stats import compute_card_stats
 from goa2.domain.models import (
     TargetType,
     EffectType,
@@ -45,6 +44,7 @@ if TYPE_CHECKING:
     from goa2.domain.models import TargetType, Hero, Card
     from goa2.domain.models.enums import PassiveTrigger
     from goa2.engine.effects import PassiveConfig
+    from goa2.engine.stats import CardStats
 
 
 @register_effect("spell_break")
@@ -54,8 +54,9 @@ class SpellBreakEffect(CardEffect):
     except on gold cards."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.TARGET_PREVENTION,
@@ -79,9 +80,9 @@ class NobleBladeEffect(CardEffect):
     that is adjacent to the target 1 space."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Select Attack Target (Mandatory)
             SelectStep(
@@ -141,9 +142,9 @@ class SwapEnemyMinionEffect(CardEffect):
     Card text: "Swap with an enemy minion in range."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -165,9 +166,9 @@ class EbbAndFlowEffect(CardEffect):
     Card text: "Swap with an enemy minion in range; if it was adjacent to you, may repeat once."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Select First Target
             SelectStep(
@@ -227,9 +228,9 @@ class DangerousCurrentEffect(CardEffect):
     discards a card, or is defeated."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Select Attack Target (Mandatory)
             SelectStep(
@@ -273,9 +274,9 @@ class RagingStreamEffect(CardEffect):
     discards a card, or is defeated."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -315,9 +316,9 @@ class ViolentTorrentEffect(CardEffect):
     discards a card, or is defeated. May repeat once on a different unit."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         attack_steps = [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -396,9 +397,9 @@ class TeleportStrictEffect(CardEffect):
     Used by: Liquid Leap, Magical Current
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -423,9 +424,9 @@ class TeleportNoSpawnEffect(CardEffect):
     Used by: Stranger Tide
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -449,9 +450,9 @@ class RogueWaveEffect(CardEffect):
     adjacent to you up to 2 spaces."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Attack Sequence (selects target, reaction, damage)
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
@@ -491,9 +492,9 @@ class TidalBlastEffect(CardEffect):
     adjacent to you up to 3 spaces."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Attack Sequence
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
@@ -533,8 +534,9 @@ class SlipperyGroundEffect(CardEffect):
     or move more than 1 space with a movement action."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -559,8 +561,9 @@ class DelugeEffect(CardEffect):
     or move more than 1 space with a movement action."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        stats = compute_card_stats(state, hero.id, card)
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -588,11 +591,12 @@ class AspiringDuelistEffect(CardEffect):
     Sets a context flag that ResolveCombatStep checks to skip minion modifier calculation.
     """
 
-    def get_defense_steps(
+    def build_defense_steps(
         self,
         state: GameState,
         defender: Hero,
         card: Card,
+        stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
         return [SetContextFlagStep(key="ignore_minion_defense", value=True)]
@@ -610,11 +614,12 @@ class ExpertDuelistEffect(CardEffect):
     2. Creates ATTACK_IMMUNITY effect on self, with current attacker exempted
     """
 
-    def get_defense_steps(
+    def build_defense_steps(
         self,
         state: GameState,
         defender: Hero,
         card: Card,
+        stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
         return [
@@ -645,11 +650,12 @@ class MasterDuelistEffect(CardEffect):
     Same as Expert Duelist but immunity lasts THIS_ROUND instead of THIS_TURN.
     """
 
-    def get_defense_steps(
+    def build_defense_steps(
         self,
         state: GameState,
         defender: Hero,
         card: Card,
+        stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
         return [

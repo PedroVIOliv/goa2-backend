@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
     from goa2.domain.models.enums import PassiveTrigger
+    from goa2.engine.stats import CardStats
 
 
 class PassiveConfig(BaseModel):
@@ -36,75 +37,157 @@ class CardEffect(ABC):
     Base class for custom card logic.
     Primary actions on cards delegate their execution to these effects.
 
-    Methods:
+    Public API (called by engine):
         get_steps: Steps for primary action on your turn (ATTACK/SKILL/MOVEMENT).
         get_defense_steps: Steps when used as primary DEFENSE in reaction.
         get_on_block_steps: Steps after successful block ('if you do' effects).
+
+    Override in subclasses (stats pre-computed):
+        build_steps: Implement primary action logic with pre-computed stats.
+        build_defense_steps: Implement defense logic with pre-computed stats.
+        build_on_block_steps: Implement on-block logic with pre-computed stats.
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    # -------------------------------------------------------------------------
+    # Public API - Called by engine. Computes stats and delegates to build_*.
+    # -------------------------------------------------------------------------
+
+    def get_steps(
+        self, state: "GameState", hero: "Hero", card: "Card"
+    ) -> List["GameStep"]:
         """
         Returns steps for the card's primary action on your turn.
 
-        For most cards: implements the primary ATTACK/SKILL/MOVEMENT effect.
-        For DEFENSE_SKILL cards: also used when defending (same logic applies).
-
-        Default: empty list (for pure DEFENSE-only cards like Wasp's projectile blockers).
+        Computes card stats and delegates to build_steps().
+        Override build_steps() in subclasses, not this method.
         """
-        return []
+        from goa2.engine.stats import compute_card_stats
+
+        stats = compute_card_stats(state, hero.id, card)
+        return self.build_steps(state, hero, card, stats)
 
     def get_defense_steps(
         self,
-        state: GameState,
-        defender: Hero,
-        card: Card,
+        state: "GameState",
+        defender: "Hero",
+        card: "Card",
         context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+    ) -> Optional[List["GameStep"]]:
         """
         Returns steps when used as primary DEFENSE in reaction.
+
+        Computes card stats and delegates to build_defense_steps().
+        Override build_defense_steps() in subclasses, not this method.
+
+        Returns:
+            List of steps to execute, or None to fall back to get_steps().
+        """
+        from goa2.engine.stats import compute_card_stats
+
+        stats = compute_card_stats(state, defender.id, card)
+        return self.build_defense_steps(state, defender, card, stats, context)
+
+    def get_on_block_steps(
+        self,
+        state: "GameState",
+        defender: "Hero",
+        card: "Card",
+        context: Dict[str, Any],
+    ) -> List["GameStep"]:
+        """
+        Returns steps to run after a successful block ('if you do' effects).
+
+        Computes card stats and delegates to build_on_block_steps().
+        Override build_on_block_steps() in subclasses, not this method.
+        """
+        from goa2.engine.stats import compute_card_stats
+
+        stats = compute_card_stats(state, defender.id, card)
+        return self.build_on_block_steps(state, defender, card, stats, context)
+
+    # -------------------------------------------------------------------------
+    # Override these in subclasses - stats are pre-computed
+    # -------------------------------------------------------------------------
+
+    def build_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        stats: "CardStats",
+    ) -> List["GameStep"]:
+        """
+        Returns steps for the card's primary action on your turn.
+
+        Override this method in subclasses. Stats are pre-computed.
+
+        Args:
+            state: Current game state.
+            hero: The hero playing the card.
+            card: The card being played.
+            stats: Pre-computed card stats (attack, defense, range, radius, etc.)
+
+        Returns:
+            List of steps to execute.
+        """
+        return []
+
+    def build_defense_steps(
+        self,
+        state: "GameState",
+        defender: "Hero",
+        card: "Card",
+        stats: "CardStats",
+        context: Dict[str, Any],
+    ) -> Optional[List["GameStep"]]:
+        """
+        Returns steps when used as primary DEFENSE in reaction.
+
+        Override this method in subclasses. Stats are pre-computed.
 
         Args:
             state: Current game state.
             defender: The hero defending (being attacked).
             card: The defense card being played.
+            stats: Pre-computed card stats.
             context: Contains attack information:
                 - attack_is_ranged: bool - True if the attack is ranged
                 - attacker_id: str - ID of the attacking unit
-                - defender_id: str - ID of the defending hero (same as defender.id)
+                - defender_id: str - ID of the defending hero
 
         Returns:
-            List of steps to execute, or None to fall back to get_steps().
-
-        Note:
-            Return None for DEFENSE_SKILL cards where the same effect applies
-            in both offense and defense contexts. The engine will use get_steps().
+            List of steps to execute, or None to fall back to build_steps().
         """
         return None
 
-    def get_on_block_steps(
+    def build_on_block_steps(
         self,
-        state: GameState,
-        defender: Hero,
-        card: Card,
+        state: "GameState",
+        defender: "Hero",
+        card: "Card",
+        stats: "CardStats",
         context: Dict[str, Any],
-    ) -> List[GameStep]:
+    ) -> List["GameStep"]:
         """
         Returns steps to run after a successful block ('if you do' effects).
 
-        Only called if the defense succeeded (context['block_succeeded'] == True).
-
-        Example: Wasp's Reflect Projectiles - "if you do, enemy hero discards"
+        Override this method in subclasses. Stats are pre-computed.
 
         Args:
             state: Current game state.
             defender: The hero who successfully blocked.
             card: The defense card that was used.
+            stats: Pre-computed card stats.
             context: Contains combat result information including block_succeeded.
 
         Returns:
             List of steps to execute after the block, or empty list.
         """
         return []
+
+    # -------------------------------------------------------------------------
+    # Passive ability methods (unchanged)
+    # -------------------------------------------------------------------------
 
     def get_passive_config(self) -> Optional[PassiveConfig]:
         """
