@@ -16,6 +16,7 @@ from goa2.engine.steps import (
     GameStep,
     SetContextFlagStep,
 )
+from goa2.engine.filters import NotInStraightLineFilter
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -72,5 +73,28 @@ class MagneticDaggerEffect(CardEffect):
                 blocks_enemy_actors=True,
                 blocks_friendly_actors=False,
                 blocks_self=False,
+            ),
+        ]
+
+
+@register_effect("charged_boomerang")
+class ChargedBoomerangEffect(CardEffect):
+    """
+    Card Text: "Target a unit in range and not in a straight line.
+    (Units adjacent to you are in a straight line from you.)"
+
+    This is a ranged attack with a targeting restriction:
+    - Cannot target units in a straight line from Wasp
+    - Adjacent units are implicitly in a straight line
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                target_filters=[NotInStraightLineFilter()],
             ),
         ]

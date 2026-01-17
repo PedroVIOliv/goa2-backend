@@ -146,6 +146,7 @@ class FilterType(str, Enum):
     MOVEMENT_PATH = "movement_path_filter"
     FAST_TRAVEL_DESTINATION = "fast_travel_destination_filter"
     LINE_BEHIND_TARGET = "line_behind_target_filter"
+    NOT_IN_STRAIGHT_LINE = "not_in_straight_line_filter"
 
 
 class TargetType(str, Enum):

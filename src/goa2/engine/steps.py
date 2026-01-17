@@ -3037,6 +3037,7 @@ class AttackSequenceStep(GameStep):
     - attacker_id: The ID of the attacking unit
 
     If target_id_key is provided, assumes target is already selected in context and skips selection.
+    If target_filters is provided, adds those filters to the target selection.
     """
 
     type: StepType = StepType.ATTACK_SEQUENCE
@@ -3045,6 +3046,9 @@ class AttackSequenceStep(GameStep):
     target_id_key: Optional[str] = (
         None  # Optional: Use existing context key instead of selecting
     )
+    target_filters: List[FilterCondition] = Field(
+        default_factory=list
+    )  # Additional filters for target selection
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print(
@@ -3065,15 +3069,19 @@ class AttackSequenceStep(GameStep):
 
         # Only spawn selection if we don't have a pre-selected key
         if not self.target_id_key:
+            # Base filters + any custom target_filters
+            all_filters: List[FilterCondition] = [
+                RangeFilter(max_range=self.range_val),
+                TeamFilter(relation="ENEMY"),
+            ]
+            all_filters.extend(self.target_filters)
+
             new_steps.append(
                 SelectStep(
                     target_type=TargetType.UNIT,
                     prompt="Select Attack Target",
                     output_key=key,
-                    filters=[
-                        RangeFilter(max_range=self.range_val),
-                        TeamFilter(relation="ENEMY"),
-                    ],
+                    filters=all_filters,
                 )
             )
 
