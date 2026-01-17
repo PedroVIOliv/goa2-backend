@@ -227,7 +227,7 @@ def test_reaction_window_minion_skip(combat_state):
     
     # Assertions
     assert req is None  # Should not request input
-    assert combat_state.execution_context.get("defense_value") == 0 # Defense forced to 0
+    assert combat_state.execution_context.get("defense_value") is None 
     assert not combat_state.execution_stack # Stack should be empty
 
 def test_reaction_window_hero_prompt(combat_state):

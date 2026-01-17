@@ -147,12 +147,12 @@ def test_reaction_window_full(steps_state):
     # Not a hero skip
     ctx_minion = {"target_id": "m_blue_1"}
     assert rw.resolve(steps_state, ctx_minion).is_finished is True
-    assert ctx_minion["defense_value"] == 0
+    assert ctx_minion["defense_value"] is None
 
     # Pass
     rw.pending_input = {"selected_card_id": "PASS"}
     res_pass = rw.resolve(steps_state, ctx)
-    assert ctx["defense_value"] == 0
+    assert ctx["defense_value"] is None
 
     # Use Primary Defense
     rw.pending_input = {"selected_card_id": "def1"}

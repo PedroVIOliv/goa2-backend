@@ -1037,7 +1037,7 @@ class ReactionWindowStep(GameStep):
         # Optimization: Minions/Non-Heroes cannot react.
         if not target_hero:
             print(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
-            context["defense_value"] = 0
+            context["defense_value"] = None
             context["defense_card_id"] = None
             context["defender_id"] = str(target_id)
             context["is_primary_defense"] = False
@@ -1060,7 +1060,7 @@ class ReactionWindowStep(GameStep):
             # Case A: PASS
             if card_id == "PASS":
                 print(f"   [REACTION] Player {target_id} Passed (No Defense).")
-                context["defense_value"] = 0
+                context["defense_value"] = None
                 context["defense_card_id"] = None
                 context["defender_id"] = str(target_id)
                 context["is_primary_defense"] = False
@@ -1394,7 +1394,7 @@ class ResolveCombatStep(GameStep):
             context["block_succeeded"] = False
             return StepResult(is_finished=True)
 
-        defense_card_val = context.get("defense_value", 0)
+        defense_card_val = context.get("defense_value", None)
         attack_val = self.damage
         actor_id = state.current_actor_id
 
@@ -1423,7 +1423,14 @@ class ResolveCombatStep(GameStep):
             print("   [COMBAT] Ignoring minion defense modifiers (effect active).")
         else:
             mod_val = calculate_minion_defense_modifier(state, target_id)
-
+        if defense_card_val is None:
+            # No defense played (minion or passed) - unit is defeated
+            print(f"   [RESULT] No defense! {target_id} is DEFEATED!")
+            context["block_succeeded"] = False
+            return StepResult(
+                is_finished=True,
+                new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
+            )
         total_defense = defense_card_val + mod_val
 
         print(
