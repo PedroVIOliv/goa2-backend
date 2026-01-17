@@ -4,3 +4,4 @@ from . import knight
 from . import rogue
 from . import arien
 from . import xargatha
+from . import wasp

@@ -23,6 +23,8 @@ from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.rogue_effects  # Register rogue effects
+import goa2.scripts.wasp_effects  # Register Wasp effects for shared effect testing
+import goa2.scripts.wasp_effects  # Register Wasp effects for shared effect testing
 
 
 @pytest.fixture
@@ -189,15 +191,17 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     card = Card(
         id="magnetic_dagger",
         name="Magnetic Dagger",
-        tier=CardTier.I,
-        color=CardColor.RED,
-        initiative=5,
-        primary_action=ActionType.SKILL,
-        primary_action_value=None,
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=12,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=3,
+        radius_value=3,
         effect_id="magnetic_dagger",
-        effect_text="Attack. This Turn: Enemy heroes in Radius 3 cannot be placed or swapped by enemy actions.",
+        effect_text="Target a unit adjacent to you. After the attack: This turn: Enemy units in radius cannot be swapped or placed by themselves or by enemy heroes.",
         is_facedown=False,
     )
+
     rogue_state.get_hero("rogue").current_turn_card = card
 
     # 1. Start ResolveCardStep
@@ -207,8 +211,8 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     req = process_resolution_stack(rogue_state)
     assert req["type"] == "CHOOSE_ACTION"
 
-    # 3. Select SKILL (Magnetic Dagger)
-    rogue_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    # 3. Select ATTACK (Magnetic Dagger)
+    rogue_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
 
     # 4. Resolve steps until SELECT_UNIT (Attack Target)
     req = process_resolution_stack(rogue_state)

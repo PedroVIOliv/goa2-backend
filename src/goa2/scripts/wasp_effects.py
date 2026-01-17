@@ -1,7 +1,18 @@
 from __future__ import annotations
 from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.models.enums import ActionType, StatType
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.stats import compute_card_stats
 from goa2.engine.steps import (
+    AttackSequenceStep,
+    CreateEffectStep,
     GameStep,
     SetContextFlagStep,
 )
@@ -32,3 +43,34 @@ class StopProjectilesEffect(CardEffect):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
             return [SetContextFlagStep(key="defense_invalid", value=True)]
+
+
+@register_effect("magnetic_dagger")
+class MagneticDaggerEffect(CardEffect):
+    """
+    Card Text: "Attack. This Turn: Enemy heroes in Radius 3 cannot be
+    placed or swapped by enemy actions."
+    """
+
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+        stats = compute_card_stats(state, hero.id, card)
+
+        return [
+            # 1. Standard attack
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            # 2. Create placement prevention effect
+            CreateEffectStep(
+                effect_type=EffectType.PLACEMENT_PREVENTION,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                restrictions=[ActionType.MOVEMENT],
+                blocks_enemy_actors=True,
+                blocks_friendly_actors=False,
+                blocks_self=False,
+            ),
+        ]

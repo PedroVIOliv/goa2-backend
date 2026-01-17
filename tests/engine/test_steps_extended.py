@@ -26,7 +26,6 @@ from goa2.engine.steps import (
     LogMessageStep,
     FinalizeHeroTurnStep,
     SelectStep,
-    DrawCardStep,
     FastTravelSequenceStep,
     PlaceUnitStep,
     SwapUnitsStep,
@@ -123,14 +122,6 @@ def test_fast_travel_step_scenarios(steps_state):
     assert res_auto is not None
     assert len(res_auto["valid_options"]) == 1
     assert res_auto["valid_options"][0] == Hex(q=1, r=0, s=-1)
-
-
-def test_misc_steps(steps_state):
-    log = LogMessageStep(message="Hello {name}")
-    assert log.resolve(steps_state, {"name": "World"}).is_finished is True
-
-    draw = DrawCardStep(hero_id="h1")
-    assert draw.resolve(steps_state, {}).is_finished is True
 
 
 def test_reaction_window_full(steps_state):

@@ -75,42 +75,6 @@ class SlipperyGroundEffect(CardEffect):
         ]
 
 
-@register_effect("magnetic_dagger")
-class MagneticDaggerEffect(CardEffect):
-    """
-    Card Text: "Attack. This Turn: Enemy heroes in Radius 3 cannot be
-    placed or swapped by enemy actions."
-    """
-
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        from goa2.engine.stats import get_computed_stat
-
-        base_dmg = 2  # Rogue's standard damage
-        damage = get_computed_stat(state, hero.id, StatType.ATTACK, base_dmg)
-
-        radius = 3
-
-        return [
-            # 1. Standard attack
-            AttackSequenceStep(damage=damage, range_val=1),
-            # 2. Create placement prevention effect
-            CreateEffectStep(
-                effect_type=EffectType.PLACEMENT_PREVENTION,
-                scope=EffectScope(
-                    shape=Shape.RADIUS,
-                    range=radius,
-                    origin_id=hero.id,
-                    affects=AffectsFilter.ENEMY_HEROES,
-                ),
-                duration=DurationType.THIS_TURN,
-                restrictions=[ActionType.MOVEMENT],
-                blocks_enemy_actors=True,
-                blocks_friendly_actors=False,
-                blocks_self=False,
-            ),
-        ]
-
-
 @register_effect("rogue_skill_gold")
 class RogueSkillGoldEffect(CardEffect):
     """

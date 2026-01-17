@@ -1,4 +1,5 @@
 from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, StatType
+from goa2.domain.models.enums import CardState
 from goa2.domain.types import HeroID
 from .registry import HeroRegistry
 
@@ -128,19 +129,6 @@ def create_wasp() -> Hero:
             effect_text="Target a unit adjacent to you. After the attack: An enemy hero in radius and not adjacent to you discards a card, or is defeated.",
         ),
         Card(
-            id="high_voltage",
-            name="High Voltage",
-            tier=CardTier.IV,
-            color=CardColor.PURPLE,
-            initiative=0,
-            primary_action=ActionType.SKILL,
-            primary_action_value=None,
-            secondary_actions={},
-            radius_value=3,
-            effect_id="high_voltage",
-            effect_text="Each time after you perform a basic skill, you may defeat an enemy minion in radius; an enemy hero who was adjacent to that minion discards a card, if able.",
-        ),
-        Card(
             id="control_gravity",
             name="Control Gravity",
             tier=CardTier.II,
@@ -264,8 +252,25 @@ def create_wasp() -> Hero:
             effect_text="Target a unit adjacent to you. After the attack: An enemy hero in radius and not adjacent to you discards a card, if able.",
         ),
     ]
+    
+    ultimate = Card(
+            id="high_voltage",
+            name="High Voltage",
+            tier=CardTier.IV,
+            color=CardColor.PURPLE,
+            initiative=0,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={},
+            radius_value=3,
+            effect_id="high_voltage",
+            effect_text="Each time after you perform a basic skill, you may defeat an enemy minion in radius; an enemy hero who was adjacent to that minion discards a card, if able.",
+    )
 
-    h = Hero(id=HeroID("hero_wasp"), name="Wasp", deck=deck, hand=[], items={})
+    ultimate.is_facedown = False
+    ultimate.state = CardState.PASSIVE
+
+    h = Hero(id=HeroID("hero_wasp"), name="Wasp", deck=deck, hand=[], items={}, ultimate_card=ultimate)
     return h
 
 

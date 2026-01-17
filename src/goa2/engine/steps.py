@@ -663,17 +663,6 @@ class SelectStep(GameStep):
             },
         )
 
-
-class DrawCardStep(GameStep):
-    type: StepType = StepType.DRAW_CARD
-    hero_id: str
-    amount: int = 1
-
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print(f"   [LOGIC] {self.hero_id} draws {self.amount} card(s).")
-        return StepResult(is_finished=True)
-
-
 # -----------------------------------------------------------------------------
 # Complex Primitives (Move, Attack, Reaction)
 # -----------------------------------------------------------------------------
@@ -2044,7 +2033,8 @@ class ResolveCardStep(GameStep):
             return StepResult(is_finished=True)
 
         card = hero.current_turn_card
-
+        
+        context["current_card_id"] = card.id
         options = []
 
         from goa2.engine.rules import get_safe_zones_for_fast_travel
@@ -2094,8 +2084,6 @@ class ResolveCardStep(GameStep):
             elif act_type == ActionType.ATTACK:
                 stat_type = StatType.ATTACK
             elif act_type == ActionType.DEFENSE:
-                stat_type = StatType.DEFENSE
-            elif act_type == ActionType.DEFENSE_SKILL:
                 stat_type = StatType.DEFENSE
             elif act_type == ActionType.DEFENSE_SKILL:
                 stat_type = StatType.DEFENSE
