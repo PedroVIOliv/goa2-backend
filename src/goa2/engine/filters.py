@@ -1,3 +1,4 @@
+# Just updated filters.py to add PreserveDistanceFilter
 from __future__ import annotations
 from abc import ABC
 from typing import Optional, List, Any, Literal
@@ -19,7 +20,7 @@ class FilterCondition(BaseModel, ABC):
     Base class for all selection filters.
     """
 
-    type: str
+    type: FilterType
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         """
@@ -285,7 +286,9 @@ class ImmunityFilter(FilterCondition):
 
         # Check 2: ATTACK_IMMUNITY effects
         # Only applies when current action is ATTACK
-        current_action = context.get("current_action_type") # TODO: this is wrong, we should check if the current selection is for an attack, as before or after attack effects could still select units who are immune to attack actions.
+        current_action = context.get(
+            "current_action_type"
+        )  # TODO: this is wrong, we should check if the current selection is for an attack, as before or after attack effects could still select units who are immune to attack actions.
         if current_action == ActionType.ATTACK:
             current_actor_id = (
                 str(state.current_actor_id) if state.current_actor_id else None
@@ -720,3 +723,49 @@ class FastTravelDestinationFilter(FilterCondition):
             return False
 
         return True
+
+
+class PreserveDistanceFilter(FilterCondition):
+    """
+    Ensures that the candidate hex is at the same distance from the origin
+    as a reference unit (specified by target_key) is from the origin.
+
+    Used for "Orbit" mechanics (move without moving closer or further).
+    """
+
+    type: FilterType = FilterType.PRESERVE_DISTANCE
+    target_key: str
+    origin_id: Optional[str] = None  # Literal ID
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # 1. Resolve Origin
+        origin_uid = self.origin_id or state.current_actor_id
+        if not origin_uid:
+            return False
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        # 2. Resolve Reference Unit
+        ref_uid = context.get(self.target_key)
+        if not ref_uid:
+            return False
+        ref_hex = state.entity_locations.get(BoardEntityID(str(ref_uid)))
+        if not ref_hex:
+            return False
+
+        # 3. Resolve Candidate Hex
+        cand_hex = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+        if not cand_hex:
+            return False
+
+        # 4. Compare Distances
+        topology = get_topology_service()
+        current_dist = topology.distance(origin_hex, ref_hex, state)
+        new_dist = topology.distance(origin_hex, cand_hex, state)
+
+        return current_dist == new_dist

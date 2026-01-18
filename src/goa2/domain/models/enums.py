@@ -147,6 +147,7 @@ class FilterType(str, Enum):
     FAST_TRAVEL_DESTINATION = "fast_travel_destination_filter"
     LINE_BEHIND_TARGET = "line_behind_target_filter"
     NOT_IN_STRAIGHT_LINE = "not_in_straight_line_filter"
+    PRESERVE_DISTANCE = "preserve_distance_filter"
 
 
 class TargetType(str, Enum):
@@ -156,6 +157,7 @@ class TargetType(str, Enum):
     CARD = "CARD"
     NUMBER = "NUMBER"
     UNIT_OR_TOKEN = "UNIT_OR_TOKEN"
+
 
 class CardContainerType(str, Enum):
     HAND = "HAND"

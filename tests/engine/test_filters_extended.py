@@ -1,4 +1,5 @@
 import pytest
+from goa2.domain.models.enums import FilterType
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.tile import Tile
@@ -65,7 +66,7 @@ def test_filter_condition_base():
     class DummyFilter(FilterCondition):
         pass
     
-    f = DummyFilter(type="dummy")
+    f = DummyFilter(type=FilterType.OCCUPIED)
     with pytest.raises(NotImplementedError):
         f.apply(None, None, {})
 

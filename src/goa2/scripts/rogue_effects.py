@@ -18,7 +18,6 @@ from goa2.domain.models import (
     EffectScope,
     Shape,
     AffectsFilter,
-    ActionType,
     MarkerType,
 )
 

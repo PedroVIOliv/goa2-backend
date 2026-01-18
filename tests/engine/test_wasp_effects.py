@@ -5,9 +5,11 @@ Cards covered:
 - Shock: Attack + discard in radius (not adjacent)
 - Electrocute: Same as Shock with larger radius
 - Telekinesis: Place unit not in straight line
+- Mass Telekinesis: Telekinesis + May Repeat Once
 - Electroblast: Attack + discard OR defeat
 - Reflect Projectiles: Block ranged + on_block discard
 - Deflect Projectiles: Block ranged + on_block discard (exclude attacker)
+- Lift Up: Orbit movement (radius preserved)
 """
 
 import pytest
@@ -24,7 +26,12 @@ from goa2.domain.models import (
     ActionType,
 )
 from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep, SelectStep, PlaceUnitStep
+from goa2.engine.steps import (
+    ResolveCardStep,
+    SelectStep,
+    PlaceUnitStep,
+    MayRepeatOnceStep,
+)
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 
@@ -135,6 +142,24 @@ def make_telekinesis_card():
     )
 
 
+def make_mass_telekinesis_card():
+    """Create a Mass Telekinesis card (Tier III Green Skill with range 3)."""
+    return Card(
+        id="mass_telekinesis",
+        name="Mass Telekinesis",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=2,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        is_ranged=False,
+        range_value=3,
+        effect_id="mass_telekinesis",
+        effect_text="Place a unit or a token in range, which is not in a straight line, into a space adjacent to you. May repeat once.",
+        is_facedown=False,
+    )
+
+
 def make_electroblast_card():
     """Create an Electroblast card (Tier III Red Attack with radius 3)."""
     return Card(
@@ -185,6 +210,23 @@ def make_deflect_projectiles_card():
         range_value=2,
         effect_id="deflect_projectiles",
         effect_text="Block a ranged attack; if you do, an enemy hero in range, other than the attacker, discards a card, if able.",
+        is_facedown=False,
+    )
+
+
+def make_lift_up_card():
+    """Create a Lift Up card (Tier I Blue Skill with radius 2)."""
+    return Card(
+        id="lift_up",
+        name="Lift Up",
+        tier=CardTier.I,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        radius_value=2,
+        effect_id="lift_up",
+        effect_text="Move a unit, or a token, in radius 1 space, without moving it away from you or closer to you. May repeat once on the same target.",
         is_facedown=False,
     )
 
@@ -351,6 +393,74 @@ class TestTelekinesisEffect:
 
 
 # =============================================================================
+# Mass Telekinesis Tests
+# =============================================================================
+
+
+class TestMassTelekinesisEffect:
+    """Tests for the Mass Telekinesis effect."""
+
+    def test_mass_telekinesis_effect_registered(self):
+        """Test that mass_telekinesis effect is properly registered."""
+        effect = CardEffectRegistry.get("mass_telekinesis")
+        assert effect is not None
+
+    def test_mass_telekinesis_structure(self, wasp_state):
+        """
+        Test that mass_telekinesis returns:
+        1. Select Unit
+        2. Select Destination
+        3. Place Unit
+        4. MayRepeatOnceStep containing the same logic
+        """
+        effect = CardEffectRegistry.get("mass_telekinesis")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_mass_telekinesis_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 4 steps total
+        assert len(steps) == 4
+        assert steps[0].__class__.__name__ == "SelectStep"
+        assert steps[1].__class__.__name__ == "SelectStep"
+        assert steps[2].__class__.__name__ == "PlaceUnitStep"
+        assert steps[3].__class__.__name__ == "MayRepeatOnceStep"
+
+        repeat_step = steps[3]
+        # Verify the repeat template contains the same steps
+        template = repeat_step.steps_template
+        assert len(template) == 3
+        assert template[0].__class__.__name__ == "SelectStep"
+        assert template[1].__class__.__name__ == "SelectStep"
+        assert template[2].__class__.__name__ == "PlaceUnitStep"
+
+    def test_mass_telekinesis_filters(self, wasp_state):
+        """Test that filters are correctly applied to the initial steps."""
+        effect = CardEffectRegistry.get("mass_telekinesis")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_mass_telekinesis_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        unit_select = steps[0]
+        hex_select = steps[1]
+
+        # Verify unit selection filter (Not in straight line)
+        has_sl_filter = any(
+            f.__class__.__name__ == "NotInStraightLineFilter"
+            for f in unit_select.filters
+        )
+        assert has_sl_filter, "Must filter out units in straight line"
+
+        # Verify destination filter (Adjacent, Range 1)
+        range_filter = next(
+            (f for f in hex_select.filters if f.__class__.__name__ == "RangeFilter"),
+            None,
+        )
+        assert range_filter is not None
+        assert range_filter.max_range == 1, "Destination must be adjacent"
+
+
+# =============================================================================
 # Electroblast Tests
 # =============================================================================
 
@@ -469,3 +579,72 @@ class TestDeflectProjectilesEffect:
 
         assert exclude_filter is not None
         assert "attacker_id" in exclude_filter.exclude_keys
+
+
+# =============================================================================
+# Lift Up Tests
+# =============================================================================
+
+
+class TestLiftUpEffect:
+    """Tests for the Lift Up effect."""
+
+    def test_lift_up_effect_registered(self):
+        """Test that lift_up effect is properly registered."""
+        effect = CardEffectRegistry.get("lift_up")
+        assert effect is not None
+
+    def test_lift_up_structure(self, wasp_state):
+        """
+        Test that lift_up returns:
+        1. Select Unit
+        2. Select Destination
+        3. Place Unit
+        4. MayRepeatOnceStep (repeating Steps 2 & 3 only)
+        """
+        effect = CardEffectRegistry.get("lift_up")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_lift_up_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 4 steps total
+        assert len(steps) == 4
+        assert steps[0].__class__.__name__ == "SelectStep"  # Select Unit
+        assert steps[1].__class__.__name__ == "SelectStep"  # Select Hex
+        assert steps[2].__class__.__name__ == "PlaceUnitStep"  # Place
+        assert steps[3].__class__.__name__ == "MayRepeatOnceStep"  # Repeat
+
+        # Verify initial target selection filters
+        unit_select = steps[0]
+        # Range 2
+        assert any(
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 2
+            for f in unit_select.filters
+        )
+
+        # Verify destination selection filters
+        hex_select = steps[1]
+        # 1. AdjacencyToContextFilter (adjacent to target unit)
+        assert any(
+            f.__class__.__name__ == "AdjacencyToContextFilter"
+            and f.target_key == "lift_target"
+            for f in hex_select.filters
+        )
+        # 2. PreserveDistanceFilter (preserve distance to Wasp/origin)
+        assert any(
+            f.__class__.__name__ == "PreserveDistanceFilter"
+            and f.target_key == "lift_target"
+            for f in hex_select.filters
+        )
+
+        # Verify repeat template only contains move steps (2 & 3), not target selection (1)
+        repeat_step = steps[3]
+        template = repeat_step.steps_template
+        assert len(template) == 2
+        assert template[0].__class__.__name__ == "SelectStep"
+        assert template[1].__class__.__name__ == "PlaceUnitStep"
+
+        # Verify keys are consistent
+        assert template[0].output_key == "lift_dest"
+        assert template[1].unit_key == "lift_target"

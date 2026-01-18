@@ -7,7 +7,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import ActionType, StatType
+from goa2.domain.models.enums import ActionType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
@@ -15,6 +15,7 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     ForceDiscardOrDefeatStep,
     GameStep,
+    MayRepeatOnceStep,
     PlaceUnitStep,
     SelectStep,
     SetContextFlagStep,
@@ -27,6 +28,8 @@ from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
     UnitTypeFilter,
+    AdjacencyToContextFilter,
+    PreserveDistanceFilter,
 )
 
 if TYPE_CHECKING:
@@ -176,7 +179,9 @@ class ElectrocuteEffect(CardEffect):
                 ],
             ),
             # 3. Force discard
-            ForceDiscardStep(victim_key="electrocute_victim", active_if_key="electrocute_victim"),
+            ForceDiscardStep(
+                victim_key="electrocute_victim", active_if_key="electrocute_victim"
+            ),
         ]
 
 
@@ -224,6 +229,55 @@ class TelekinesisEffect(CardEffect):
                 destination_key="telekinesis_dest",
             ),
         ]
+
+
+@register_effect("mass_telekinesis")
+class MassTelekinesisEffect(CardEffect):
+    """
+    Card Text: "Place a unit or a token in range, which is not in a straight line,
+    into a space adjacent to you. May repeat once."
+
+    Steps:
+    1. Select unit in range, not in straight line
+    2. Select destination adjacent to Wasp
+    3. Place unit at destination
+    4. Repeat once
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        effect_steps = [
+            # 1. Select unit or token in range, not in straight line
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select unit to teleport",
+                output_key="telekinesis_target",
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(max_range=stats.range or 3),
+                    NotInStraightLineFilter(),
+                ],
+            ),
+            # 2. Select destination adjacent to Wasp
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select destination adjacent to you",
+                output_key="telekinesis_dest",
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(max_range=1),
+                    OccupiedFilter(is_occupied=False),
+                ],
+            ),
+            # 3. Place unit
+            PlaceUnitStep(
+                unit_key="telekinesis_target",
+                destination_key="telekinesis_dest",
+            ),
+        ]
+        repeat = MayRepeatOnceStep(steps_template=effect_steps)
+        return effect_steps + [repeat]
 
 
 @register_effect("electroblast")
@@ -353,3 +407,50 @@ class DeflectProjectilesEffect(CardEffect):
             ),
             ForceDiscardStep(victim_key="deflect_victim"),
         ]
+
+
+@register_effect("lift_up")
+class LiftUpEffect(CardEffect):
+    """
+    Card Text: "Move a unit, or a token, in radius 1 space, without moving it
+    away from you or closer to you. May repeat once on the same target."
+
+    Orbit mechanic: Distance from origin must be preserved.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        orbit_steps = [
+            # 2. Select destination adjacent to target + preserving distance
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select orbit destination (distance preserved)",
+                output_key="lift_dest",
+                is_mandatory=True,
+                filters=[
+                    AdjacencyToContextFilter(target_key="lift_target"),
+                    PreserveDistanceFilter(target_key="lift_target"),
+                    OccupiedFilter(is_occupied=False),
+                ],
+            ),
+            # 3. Place unit at destination
+            PlaceUnitStep(
+                unit_key="lift_target",
+                destination_key="lift_dest",
+            ),
+        ]
+
+        steps: List[GameStep] = [
+            # 1. Select unit or token in radius
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select unit to lift",
+                output_key="lift_target",
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(max_range=stats.radius or 2),
+                ],
+            ),
+        ]
+        return steps + orbit_steps + [MayRepeatOnceStep(steps_template=orbit_steps)]

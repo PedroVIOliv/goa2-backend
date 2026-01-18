@@ -36,7 +36,6 @@ from typing import List, Optional, TYPE_CHECKING, Union
 
 from goa2.domain.hex import Hex
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape
-from goa2.domain.types import BoardEntityID
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState

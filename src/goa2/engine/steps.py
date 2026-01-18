@@ -22,7 +22,6 @@ from goa2.domain.models.effect import (
     DurationType,
     EffectType,
     EffectScope,
-    Shape,
     ActiveEffect,
 )
 from goa2.domain.models.marker import MarkerType
