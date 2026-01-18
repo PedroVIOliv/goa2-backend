@@ -151,10 +151,11 @@ class FilterType(str, Enum):
 
 class TargetType(str, Enum):
     UNIT = "UNIT"
+    TOKEN = "TOKEN"
     HEX = "HEX"
     CARD = "CARD"
     NUMBER = "NUMBER"
-
+    UNIT_OR_TOKEN = "UNIT_OR_TOKEN"
 
 class CardContainerType(str, Enum):
     HAND = "HAND"

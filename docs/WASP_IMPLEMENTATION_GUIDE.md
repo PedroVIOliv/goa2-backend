@@ -17,20 +17,20 @@ Wasp is a telekinetic hero with 18 cards focusing on:
 |------|------|-------|---------|--------|------------|
 | Stop Projectiles | I | Green | DEFENSE | Done | Trivial |
 | Magnetic Dagger | Gold | Gold | ATTACK | Done | Simple |
-| Shock | I | Red | ATTACK | TODO | Simple |
+| Shock | I | Red | ATTACK | Done | Simple |
 | Lift Up | I | Blue | SKILL | TODO | Moderate |
 | Charged Boomerang | II | Red | ATTACK | Done | Trivial |
-| Telekinesis | II | Green | SKILL | TODO | Simple |
-| Deflect Projectiles | II | Green | DEFENSE | TODO | Simple |
+| Telekinesis | II | Green | SKILL | Done | Simple |
+| Deflect Projectiles | II | Green | DEFENSE | Done | Simple |
 | Kinetic Repulse | II | Blue | SKILL | TODO | Complex |
 | Control Gravity | II | Blue | SKILL | TODO | Moderate |
-| Electrocute | II | Red | ATTACK | TODO | Simple |
+| Electrocute | II | Red | ATTACK | Done | Simple |
 | Thunder Boomerang | III | Red | ATTACK | TODO | Complex |
-| Reflect Projectiles | III | Green | DEFENSE | TODO | Simple |
+| Reflect Projectiles | III | Green | DEFENSE | Done | Simple |
 | Mass Telekinesis | III | Green | SKILL | TODO | Moderate |
 | Kinetic Blast | III | Blue | SKILL | TODO | Complex |
 | Center of Mass | III | Blue | SKILL | TODO | Complex |
-| Electroblast | III | Red | ATTACK | TODO | Moderate |
+| Electroblast | III | Red | ATTACK | Done | Moderate |
 | Static Barrier | Silver | Silver | SKILL | TODO | Complex |
 | High Voltage | IV | Purple | PASSIVE | TODO | Very Complex |
 

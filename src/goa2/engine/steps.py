@@ -536,8 +536,11 @@ class SelectStep(GameStep):
 
         effective = list(self.filters)
 
-        # Auto-add ImmunityFilter for UNIT selections
-        if self.target_type == TargetType.UNIT and not self.skip_immunity_filter:
+        # Auto-add ImmunityFilter for UNIT and UNIT_OR_TOKEN selections
+        if (
+            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
+            and not self.skip_immunity_filter
+        ):
             # Check if ImmunityFilter is already in the list
             has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
             if not has_immunity:
@@ -565,6 +568,10 @@ class SelectStep(GameStep):
             candidates = [
                 eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
             ]
+        elif self.target_type == TargetType.UNIT_OR_TOKEN:
+            # Use helper method that filters for Units and Tokens only
+            # (excludes future entity types like Structures, Hazards, etc.)
+            candidates = state.get_units_and_tokens()
         elif self.target_type == TargetType.HEX:
             # Optimization: If there is a RangeFilter, use it to narrow search area
             # For now, simplistic iteration over all tiles
@@ -597,12 +604,21 @@ class SelectStep(GameStep):
         effective_filters = self._get_effective_filters()
         for c in candidates:
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
+            # For UNIT_OR_TOKEN, only validate if the candidate is actually a unit
             if self.target_type == TargetType.UNIT and actor_id:
                 val_res = state.validator.can_be_targeted(
                     state, str(actor_id), str(c), context
                 )
                 if not val_res.allowed:
                     continue
+            elif self.target_type == TargetType.UNIT_OR_TOKEN and actor_id:
+                # Only apply targeting validation to units, not tokens
+                if state.get_unit(UnitID(str(c))):
+                    val_res = state.validator.can_be_targeted(
+                        state, str(actor_id), str(c), context
+                    )
+                    if not val_res.allowed:
+                        continue
 
             is_valid = True
             for f in effective_filters:

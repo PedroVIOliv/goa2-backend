@@ -282,6 +282,24 @@ class GameState(BaseModel):
                     return minion
         return None
 
+    def get_units_and_tokens(self) -> List[BoardEntityID]:
+        """
+        Returns IDs of all Units and Tokens currently on the board.
+
+        This explicitly filters for Unit and Token types only, excluding
+        any future board entity types (e.g., Structures, Hazards).
+
+        Used by SelectStep for UNIT_OR_TOKEN target type.
+        """
+        from goa2.domain.models import Unit, Token
+
+        result = []
+        for eid in self.entity_locations.keys():
+            entity = self.get_entity(eid)
+            if entity and isinstance(entity, (Unit, Token)):
+                result.append(eid)
+        return result
+
     def place_entity(self, entity_id: BoardEntityID, target_hex: Hex):
         """
         Primary Primitive for putting something on the map.

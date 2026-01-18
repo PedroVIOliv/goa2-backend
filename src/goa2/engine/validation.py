@@ -291,18 +291,21 @@ class ValidationService:
         Can unit_id be placed/teleported by actor_id?
         Handles: Magnetic Dagger, Bulwark, displacement prevention.
 
+        Supports both Units (Heroes, Minions) and Tokens.
+
         Args:
-            unit_id: The unit being moved/placed
+            unit_id: The entity being moved/placed (unit or token)
             actor_id: The hero performing the action
             destination: Target hex (optional, for destination-specific checks)
         """
         context = context or {}
 
-        unit = state.get_unit(UnitID(unit_id))
-        actor = state.get_unit(UnitID(actor_id))
+        # Use get_entity() to support both Units and Tokens
+        entity = state.get_entity(BoardEntityID(unit_id))
+        actor = state.get_entity(BoardEntityID(actor_id))
 
-        if not unit:
-            return ValidationResult.deny("Unit not found")
+        if not entity:
+            return ValidationResult.deny("Entity not found")
 
         # Destination validation (if provided)
         if destination:
@@ -313,9 +316,9 @@ class ValidationService:
                 return ValidationResult.deny("Destination occupied")
 
         # Check spatial placement prevention effects (ActiveEffects)
-        unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
-        if not unit_loc:
-            # Unit not on board - only check destination-based effects (future)
+        entity_loc = state.entity_locations.get(BoardEntityID(unit_id))
+        if not entity_loc:
+            # Entity not on board - only check destination-based effects (future)
             return ValidationResult.allow()
 
         for effect in state.active_effects:
@@ -323,11 +326,12 @@ class ValidationService:
                 continue
             if not self._is_effect_active(effect, state):
                 continue
-            if not self._is_in_scope(effect, unit_id, unit_loc, state):
+            if not self._is_in_scope(effect, unit_id, entity_loc, state):
                 continue
 
             # Check if this actor's actions are blocked
-            if self._actor_blocked_by_effect(effect, actor, unit, state):
+            # Note: _actor_blocked_by_effect uses getattr for team, so it's token-safe
+            if self._actor_blocked_by_effect(effect, actor, entity, state):
                 return ValidationResult.deny(
                     reason="Placement prevented by area effect",
                     effect_ids=[effect.id],

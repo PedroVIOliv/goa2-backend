@@ -285,7 +285,7 @@ class ImmunityFilter(FilterCondition):
 
         # Check 2: ATTACK_IMMUNITY effects
         # Only applies when current action is ATTACK
-        current_action = context.get("current_action_type")
+        current_action = context.get("current_action_type") # TODO: this is wrong, we should check if the current selection is for an attack, as before or after attack effects could still select units who are immune to attack actions.
         if current_action == ActionType.ATTACK:
             current_actor_id = (
                 str(state.current_actor_id) if state.current_actor_id else None
