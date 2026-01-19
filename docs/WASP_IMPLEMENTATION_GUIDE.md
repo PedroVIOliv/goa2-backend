@@ -22,13 +22,13 @@ Wasp is a telekinetic hero with 18 cards focusing on:
 | Charged Boomerang | II | Red | ATTACK | Done | Trivial |
 | Telekinesis | II | Green | SKILL | Done | Simple |
 | Deflect Projectiles | II | Green | DEFENSE | Done | Simple |
-| Kinetic Repulse | II | Blue | SKILL | TODO | Complex |
+| Kinetic Repulse | II | Blue | SKILL | Done | Complex |
 | Control Gravity | II | Blue | SKILL | Done | Moderate |
 | Electrocute | II | Red | ATTACK | Done | Simple |
 | Thunder Boomerang | III | Red | ATTACK | TODO | Complex |
 | Reflect Projectiles | III | Green | DEFENSE | Done | Simple |
 | Mass Telekinesis | III | Green | SKILL | Done | Moderate |
-| Kinetic Blast | III | Blue | SKILL | TODO | Complex |
+| Kinetic Blast | III | Blue | SKILL | Done | Complex |
 | Center of Mass | III | Blue | SKILL | Done | Complex |
 | Electroblast | III | Red | ATTACK | Done | Moderate |
 | Static Barrier | Silver | Silver | SKILL | TODO | Complex |
@@ -376,121 +376,73 @@ into a space adjacent to you. May repeat once."
 
 ---
 
-### Phase 3: Push Mechanics (2 cards)
+### Phase 3: Push Mechanics (2 cards) ✅ COMPLETE
 
 Cards that push multiple units with collision penalties.
 
-#### New Component: MultiSelectStep
+#### Implementation Note
 
-```python
-class MultiSelectStep(GameStep):
-    """
-    Allows selecting up to N units.
-    Stores results as a list in context.
-    """
-    target_type: TargetType
-    prompt: str
-    output_key: str
-    max_selections: int
-    filters: List[FilterCondition] = Field(default_factory=list)
-    
-    # Internal
-    selections: List[str] = Field(default_factory=list)
-```
-
-#### New Component: PushWithCollisionStep
-
-```python
-class PushWithCollisionStep(GameStep):
-    """
-    Pushes a unit and triggers callback if stopped by obstacle.
-    """
-    target_key: str
-    distance: int
-    on_collision_steps: List[GameStep] = Field(default_factory=list)
-    
-    def resolve(self, state, context):
-        target_id = context.get(self.target_key)
-        # ... push logic ...
-        
-        if was_stopped_by_obstacle:
-            context["collision_victim"] = target_id
-            return StepResult(
-                is_finished=True,
-                new_steps=self.on_collision_steps,
-            )
-        
-        return StepResult(is_finished=True)
-```
+All required components already existed in the codebase:
+- `MultiSelectStep` - Allows selecting up to N targets, stores results as list in context
+- `PushUnitStep` - Has `collision_output_key` parameter to detect when push is stopped
+- `ForEachStep` - Iterates over a list in context, executing template steps for each item
+- `CheckUnitTypeStep` - Checks if unit is HERO or MINION
+- `CombineBooleanContextStep` - NEW: Combines two boolean context values with AND/OR
 
 ---
 
-#### 3.1 Kinetic Repulse
+#### 3.1 Kinetic Repulse ✅
 ```
 Effect: "Push up to 2 enemy units adjacent to you 3 spaces; 
 if a pushed hero is stopped by an obstacle, that hero discards a card, if able."
 ```
 
-**Implementation:**
+**Implementation:** See `src/goa2/scripts/wasp_effects.py` - `KineticRepulseEffect`
+
+Key pattern:
 ```python
-@register_effect("kinetic_repulse")
-class KineticRepulseEffect(CardEffect):
-    def get_steps(self, state, hero, card):
-        return [
-            # Select up to 2 adjacent enemies
-            MultiSelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select up to 2 adjacent enemies to push",
-                output_key="push_targets",
-                max_selections=2,
-                filters=[
-                    RangeFilter(max_range=1),
-                    TeamFilter(relation="ENEMY"),
-                ],
-            ),
-            # Push each with collision check
-            ForEachStep(
-                list_key="push_targets",
-                item_key="current_push_target",
-                steps_template=[
-                    PushWithCollisionStep(
-                        target_key="current_push_target",
-                        distance=3,
-                        on_collision_steps=[
-                            # Only heroes discard
-                            CheckUnitTypeStep(
-                                unit_key="collision_victim",
-                                expected_type="HERO",
-                                output_key="is_hero_collision",
-                            ),
-                            ForceDiscardStep(
-                                victim_key="collision_victim",
-                                active_if_key="is_hero_collision",
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ]
+return [
+    MultiSelectStep(
+        target_type=TargetType.UNIT,
+        output_key="push_targets",
+        max_selections=2,
+        filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
+    ),
+    ForEachStep(
+        list_key="push_targets",
+        item_key="current_push_target",
+        steps_template=[
+            PushUnitStep(target_key="current_push_target", distance=3, collision_output_key="push_collision"),
+            CheckUnitTypeStep(unit_key="current_push_target", expected_type="HERO", output_key="is_hero"),
+            CombineBooleanContextStep(key_a="push_collision", key_b="is_hero", output_key="should_discard"),
+            ForceDiscardStep(victim_key="current_push_target", active_if_key="should_discard"),
+        ],
+    ),
+]
 ```
 
 ---
 
-#### 3.2 Kinetic Blast
+#### 3.2 Kinetic Blast ✅
 ```
 Effect: "Push up to 2 enemy units adjacent to you 3 or 4 spaces; 
 if a pushed hero is stopped by an obstacle, that hero discards a card, if able."
 ```
 
-**Implementation:** Same as Kinetic Repulse but with distance choice:
+**Implementation:** See `src/goa2/scripts/wasp_effects.py` - `KineticBlastEffect`
+
+Same as Kinetic Repulse but with distance choice:
 ```python
-# Add before push:
-SelectStep(
-    target_type=TargetType.NUMBER,
-    prompt="Choose push distance",
-    output_key="push_distance",
-    number_options=[3, 4],
-),
+return [
+    # Choose distance first
+    SelectStep(
+        target_type=TargetType.NUMBER,
+        output_key="push_distance",
+        number_options=[3, 4],
+    ),
+    # Then MultiSelectStep + ForEachStep as in Kinetic Repulse
+    # with PushUnitStep using distance_key="push_distance"
+]
 ```
 
 ---
@@ -834,15 +786,16 @@ class HighVoltageEffect(CardEffect):
 |------|---------|---------|--------|
 | `MayRepeatNTimesStep` | Repeat up to N times | Center of Mass | ✅ Done |
 | `MayRepeatOnceStep` | Repeat once (subclass of above) | Lift Up, Mass Telekinesis | ✅ Done |
+| `MultiSelectStep` | Select up to N targets | Kinetic Repulse, Kinetic Blast | ✅ Done |
+| `PushUnitStep` | Push with optional collision detection | Kinetic Repulse, Kinetic Blast | ✅ Done |
+| `ForEachStep` | Iterate over list in context | Kinetic Repulse, Kinetic Blast, High Voltage | ✅ Done |
+| `CheckUnitTypeStep` | Check if unit is hero/minion | Thunder Boomerang, Kinetic Repulse, Kinetic Blast | ✅ Done |
+| `CombineBooleanContextStep` | Combine context booleans with AND/OR | Kinetic Repulse, Kinetic Blast | ✅ Done |
 
 ### Steps (Planned)
 
 | Step | Purpose | Used By | Status |
 |------|---------|---------|--------|
-| `MultiSelectStep` | Select up to N targets | Kinetic Repulse, Kinetic Blast | TODO |
-| `PushWithCollisionStep` | Push with obstacle callback | Kinetic Repulse, Kinetic Blast | TODO |
-| `ForEachStep` | Iterate over list in context | Kinetic Repulse, Kinetic Blast, High Voltage | TODO |
-| `CheckUnitTypeStep` | Check if unit is hero/minion | Thunder Boomerang, Kinetic Repulse | TODO |
 | `FindAdjacentHeroesStep` | Get heroes adjacent to unit | High Voltage | TODO |
 
 ### Effect Types (Planned)
@@ -953,12 +906,13 @@ class TestStaticBarrier:
   - [x] Implement `center_of_mass`
   - [x] Implement `mass_telekinesis`
 
-- [ ] **Phase 3: Push Mechanics**
-  - [ ] Add `MultiSelectStep` to steps.py
-  - [ ] Add `PushWithCollisionStep` to steps.py
-  - [ ] Add `ForEachStep` to steps.py
-  - [ ] Implement `kinetic_repulse`
-  - [ ] Implement `kinetic_blast`
+- [x] **Phase 3: Push Mechanics** ✅ COMPLETE
+  - [x] Verified `MultiSelectStep` exists in steps.py
+  - [x] Verified `PushUnitStep` has `collision_output_key` parameter
+  - [x] Verified `ForEachStep` exists in steps.py
+  - [x] Added `CombineBooleanContextStep` to steps.py (for AND/OR conditions)
+  - [x] Implement `kinetic_repulse`
+  - [x] Implement `kinetic_blast`
 
 - [ ] **Phase 4: Conditional Repeat**
   - [ ] Add `CheckUnitTypeStep` to steps.py

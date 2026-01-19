@@ -126,6 +126,9 @@ class StepType(str, Enum):
     CHECK_PASSIVE_ABILITIES = "check_passive_abilities"
     OFFER_PASSIVE = "offer_passive"
     MARK_PASSIVE_USED = "mark_passive_used"
+    MULTI_SELECT = "multi_select"
+    FOR_EACH = "for_each"
+    CHECK_UNIT_TYPE = "check_unit_type"
 
 
 class FilterType(str, Enum):

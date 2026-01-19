@@ -838,3 +838,205 @@ class TestCenterOfMassEffect:
             f.__class__.__name__ == "OccupiedFilter" and f.is_occupied is False
             for f in hex_select.filters
         )
+
+
+# =============================================================================
+# Kinetic Repulse Tests
+# =============================================================================
+
+
+def make_kinetic_repulse_card():
+    """Create a Kinetic Repulse card (Tier II Blue Skill)."""
+    return Card(
+        id="kinetic_repulse",
+        name="Kinetic Repulse",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.DEFENSE: 5, ActionType.MOVEMENT: 3},
+        effect_id="kinetic_repulse",
+        effect_text="Push up to 2 enemy units adjacent to you 3 spaces; if a pushed hero is stopped by an obstacle, that hero discards a card, if able.",
+    )
+
+
+class TestKineticRepulseEffect:
+    """Tests for the Kinetic Repulse effect."""
+
+    def test_kinetic_repulse_effect_registered(self):
+        """Test that kinetic_repulse effect is properly registered."""
+        effect = CardEffectRegistry.get("kinetic_repulse")
+        assert effect is not None
+
+    def test_kinetic_repulse_structure(self, wasp_state):
+        """Test that kinetic_repulse returns correct step structure."""
+        effect = CardEffectRegistry.get("kinetic_repulse")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_repulse_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 2 top-level steps: MultiSelectStep + ForEachStep
+        assert len(steps) == 2
+        assert steps[0].__class__.__name__ == "MultiSelectStep"
+        assert steps[1].__class__.__name__ == "ForEachStep"
+
+    def test_kinetic_repulse_multi_select_config(self, wasp_state):
+        """Test that MultiSelectStep is configured for up to 2 adjacent enemies."""
+        effect = CardEffectRegistry.get("kinetic_repulse")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_repulse_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        multi_select = steps[0]
+
+        # Up to 2 selections, optional
+        assert multi_select.max_selections == 2
+        assert multi_select.min_selections == 0
+        assert multi_select.is_mandatory is False
+        assert multi_select.output_key == "push_targets"
+
+        # Check filters: Range 1 (adjacent) + Enemy
+        has_range = any(
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 1
+            for f in multi_select.filters
+        )
+        has_enemy = any(
+            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"
+            for f in multi_select.filters
+        )
+        assert has_range, "Must filter to adjacent units (range 1)"
+        assert has_enemy, "Must filter to enemy units"
+
+    def test_kinetic_repulse_foreach_template(self, wasp_state):
+        """Test that ForEachStep template contains push and collision logic."""
+        effect = CardEffectRegistry.get("kinetic_repulse")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_repulse_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        foreach_step = steps[1]
+
+        assert foreach_step.list_key == "push_targets"
+        assert foreach_step.item_key == "current_push_target"
+
+        template = foreach_step.steps_template
+        assert len(template) == 4
+
+        # Step 1: PushUnitStep
+        push_step = template[0]
+        assert push_step.__class__.__name__ == "PushUnitStep"
+        assert push_step.target_key == "current_push_target"
+        assert push_step.distance == 3
+        assert push_step.collision_output_key == "push_collision"
+
+        # Step 2: CheckUnitTypeStep
+        check_step = template[1]
+        assert check_step.__class__.__name__ == "CheckUnitTypeStep"
+        assert check_step.unit_key == "current_push_target"
+        assert check_step.expected_type == "HERO"
+
+        # Step 3: CombineBooleanContextStep
+        combine_step = template[2]
+        assert combine_step.__class__.__name__ == "CombineBooleanContextStep"
+        assert combine_step.key_a == "push_collision"
+        assert combine_step.key_b == "is_hero"
+        assert combine_step.operation == "AND"
+
+        # Step 4: ForceDiscardStep
+        discard_step = template[3]
+        assert discard_step.__class__.__name__ == "ForceDiscardStep"
+        assert discard_step.victim_key == "current_push_target"
+        assert discard_step.active_if_key == "should_discard"
+
+
+# =============================================================================
+# Kinetic Blast Tests
+# =============================================================================
+
+
+def make_kinetic_blast_card():
+    """Create a Kinetic Blast card (Tier III Blue Skill)."""
+    return Card(
+        id="kinetic_blast",
+        name="Kinetic Blast",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=11,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 3},
+        effect_id="kinetic_blast",
+        effect_text="Push up to 2 enemy units adjacent to you 3 or 4 spaces; if a pushed hero is stopped by an obstacle, that hero discards a card, if able.",
+    )
+
+
+class TestKineticBlastEffect:
+    """Tests for the Kinetic Blast effect."""
+
+    def test_kinetic_blast_effect_registered(self):
+        """Test that kinetic_blast effect is properly registered."""
+        effect = CardEffectRegistry.get("kinetic_blast")
+        assert effect is not None
+
+    def test_kinetic_blast_structure(self, wasp_state):
+        """Test that kinetic_blast returns correct step structure."""
+        effect = CardEffectRegistry.get("kinetic_blast")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_blast_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 3 top-level steps: SelectStep (distance) + MultiSelectStep + ForEachStep
+        assert len(steps) == 3
+        assert steps[0].__class__.__name__ == "SelectStep"
+        assert steps[1].__class__.__name__ == "MultiSelectStep"
+        assert steps[2].__class__.__name__ == "ForEachStep"
+
+    def test_kinetic_blast_distance_selection(self, wasp_state):
+        """Test that first step selects push distance (3 or 4)."""
+        effect = CardEffectRegistry.get("kinetic_blast")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_blast_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        distance_step = steps[0]
+
+        # Should be a NUMBER selection with options 3 and 4
+        from goa2.domain.models import TargetType
+
+        assert distance_step.target_type == TargetType.NUMBER
+        assert distance_step.output_key == "push_distance"
+        assert distance_step.number_options == [3, 4]
+        assert distance_step.is_mandatory is True
+
+    def test_kinetic_blast_uses_distance_from_context(self, wasp_state):
+        """Test that PushUnitStep reads distance from context."""
+        effect = CardEffectRegistry.get("kinetic_blast")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_blast_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        foreach_step = steps[2]
+        push_step = foreach_step.steps_template[0]
+
+        # Should use distance_key instead of fixed distance
+        assert push_step.distance_key == "push_distance"
+
+    def test_kinetic_blast_same_collision_logic_as_repulse(self, wasp_state):
+        """Test that Kinetic Blast has same collision/discard logic as Kinetic Repulse."""
+        effect = CardEffectRegistry.get("kinetic_blast")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_kinetic_blast_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        foreach_step = steps[2]
+        template = foreach_step.steps_template
+
+        # Should have same 4-step template as Repulse
+        assert len(template) == 4
+        assert template[0].__class__.__name__ == "PushUnitStep"
+        assert template[1].__class__.__name__ == "CheckUnitTypeStep"
+        assert template[2].__class__.__name__ == "CombineBooleanContextStep"
+        assert template[3].__class__.__name__ == "ForceDiscardStep"

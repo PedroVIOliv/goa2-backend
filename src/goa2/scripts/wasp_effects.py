@@ -11,13 +11,18 @@ from goa2.domain.models.enums import ActionType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
+    CheckUnitTypeStep,
+    CombineBooleanContextStep,
     CreateEffectStep,
     ForceDiscardStep,
     ForceDiscardOrDefeatStep,
+    ForEachStep,
     GameStep,
     MayRepeatOnceStep,
     MayRepeatNTimesStep,
+    MultiSelectStep,
     PlaceUnitStep,
+    PushUnitStep,
     SelectStep,
     SetContextFlagStep,
     TargetType,
@@ -523,3 +528,137 @@ class CenterOfMassEffect(LiftUpEffect):
                 )
             ]
         )
+
+
+@register_effect("kinetic_repulse")
+class KineticRepulseEffect(CardEffect):
+    """
+    Card Text: "Push up to 2 enemy units adjacent to you 3 spaces;
+    if a pushed hero is stopped by an obstacle, that hero discards a card, if able."
+
+    Steps:
+    1. Select up to 2 adjacent enemies (MultiSelectStep)
+    2. For each selected unit:
+       a. Push 3 spaces with collision detection
+       b. Check if unit is hero
+       c. Combine: collision AND is_hero
+       d. If both true, force discard
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Select up to 2 adjacent enemies
+            MultiSelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select up to 2 adjacent enemies to push",
+                output_key="push_targets",
+                max_selections=2,
+                min_selections=0,  # Optional - can push 0, 1, or 2
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                ],
+            ),
+            # 2. Process each push
+            ForEachStep(
+                list_key="push_targets",
+                item_key="current_push_target",
+                steps_template=[
+                    # Push with collision detection
+                    PushUnitStep(
+                        target_key="current_push_target",
+                        distance=3,
+                        collision_output_key="push_collision",
+                    ),
+                    # Check if pushed unit is a hero
+                    CheckUnitTypeStep(
+                        unit_key="current_push_target",
+                        expected_type="HERO",
+                        output_key="is_hero",
+                    ),
+                    # Combine checks: collision AND hero
+                    CombineBooleanContextStep(
+                        key_a="push_collision",
+                        key_b="is_hero",
+                        output_key="should_discard",
+                        operation="AND",
+                    ),
+                    # Force discard only if both conditions are true
+                    ForceDiscardStep(
+                        victim_key="current_push_target",
+                        active_if_key="should_discard",
+                    ),
+                ],
+            ),
+        ]
+
+
+@register_effect("kinetic_blast")
+class KineticBlastEffect(CardEffect):
+    """
+    Card Text: "Push up to 2 enemy units adjacent to you 3 or 4 spaces;
+    if a pushed hero is stopped by an obstacle, that hero discards a card, if able."
+
+    Same as Kinetic Repulse but with choice of push distance (3 or 4).
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Choose push distance (3 or 4)
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose push distance",
+                output_key="push_distance",
+                number_options=[3, 4],
+                is_mandatory=True,
+            ),
+            # 2. Select up to 2 adjacent enemies
+            MultiSelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select up to 2 adjacent enemies to push",
+                output_key="push_targets",
+                max_selections=2,
+                min_selections=0,
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                ],
+            ),
+            # 3. Process each push
+            ForEachStep(
+                list_key="push_targets",
+                item_key="current_push_target",
+                steps_template=[
+                    # Push with collision detection (distance from context)
+                    PushUnitStep(
+                        target_key="current_push_target",
+                        distance_key="push_distance",
+                        collision_output_key="push_collision",
+                    ),
+                    # Check if pushed unit is a hero
+                    CheckUnitTypeStep(
+                        unit_key="current_push_target",
+                        expected_type="HERO",
+                        output_key="is_hero",
+                    ),
+                    # Combine checks: collision AND hero
+                    CombineBooleanContextStep(
+                        key_a="push_collision",
+                        key_b="is_hero",
+                        output_key="should_discard",
+                        operation="AND",
+                    ),
+                    # Force discard only if both conditions are true
+                    ForceDiscardStep(
+                        victim_key="current_push_target",
+                        active_if_key="should_discard",
+                    ),
+                ],
+            ),
+        ]

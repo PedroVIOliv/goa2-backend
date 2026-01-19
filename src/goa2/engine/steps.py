@@ -1734,6 +1734,9 @@ class PushUnitStep(GameStep):
     Supports two modes:
     - Direct: Provide target_id and distance directly
     - Context: Provide target_key and/or distance_key to read from context
+
+    If collision_output_key is set, stores True in context if push was stopped
+    early by an obstacle (for effects like Kinetic Repulse that trigger on collision).
     """
 
     type: StepType = StepType.PUSH_UNIT
@@ -1742,6 +1745,7 @@ class PushUnitStep(GameStep):
     source_hex: Optional[Hex] = None  # If None, uses current actor's location
     distance: int = 1  # Default/fallback distance
     distance_key: Optional[str] = None  # Read distance from context
+    collision_output_key: Optional[str] = None  # If set, stores True on collision
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1802,11 +1806,13 @@ class PushUnitStep(GameStep):
 
         current_loc = target_loc
         pushed_dist = 0
+        was_stopped_by_obstacle = False
         for _ in range(actual_distance):
             next_hex = current_loc.neighbor(direction_idx)
 
             if next_hex not in state.board.tiles:
                 print(f"   [PUSH] {actual_target_id} hit board edge at {current_loc}")
+                was_stopped_by_obstacle = True
                 break
 
             # Check topology (Crack in Reality)
@@ -1814,11 +1820,13 @@ class PushUnitStep(GameStep):
                 print(
                     f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
                 )
+                was_stopped_by_obstacle = True
                 break
 
             tile = state.board.get_tile(next_hex)
             if tile and tile.is_obstacle:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
+                was_stopped_by_obstacle = True
                 break
 
             current_loc = next_hex
@@ -1831,6 +1839,13 @@ class PushUnitStep(GameStep):
             state.move_unit(UnitID(actual_target_id), current_loc)
         else:
             print(f"   [LOGIC] Push had no effect for {actual_target_id}")
+
+        # Store collision result if requested
+        if self.collision_output_key:
+            context[self.collision_output_key] = was_stopped_by_obstacle
+            print(
+                f"   [PUSH] Collision detected: {was_stopped_by_obstacle} -> {self.collision_output_key}"
+            )
 
         return StepResult(is_finished=True)
 
@@ -3428,5 +3443,283 @@ class CancelEffectsStep(GameStep):
         return None
 
 
+class MultiSelectStep(GameStep):
+    """
+    Allows selecting up to N targets sequentially.
+    Stores results as a list in context.
+
+    The step prompts for selection repeatedly until:
+    - Player selects "DONE" (if min_selections met)
+    - max_selections is reached
+    - No more valid candidates
+
+    Uses the same filtering system as SelectStep.
+    """
+
+    type: StepType = StepType.MULTI_SELECT
+    target_type: TargetType  # "UNIT", "HEX", etc.
+    prompt: str
+    output_key: str  # Context key for result list
+    max_selections: int
+    min_selections: int = 0  # 0 = fully optional
+    filters: List[FilterCondition] = Field(default_factory=list)
+    skip_immunity_filter: bool = False
+
+    # Internal state (preserved when pushed back to stack)
+    selections: List[str] = Field(default_factory=list)
+
+    def _get_effective_filters(self) -> List[FilterCondition]:
+        """Returns filters, adding ImmunityFilter for UNIT selections if needed."""
+        from goa2.engine.filters import ImmunityFilter
+
+        effective = list(self.filters)
+        if (
+            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
+            and not self.skip_immunity_filter
+        ):
+            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
+            if not has_immunity:
+                effective.append(ImmunityFilter())
+        return effective
+
+    def _get_candidates(self, state: GameState, context: Dict[str, Any]) -> List[str]:
+        """Get valid candidates, excluding already-selected items."""
+        actor_id = state.current_actor_id
+
+        # Build initial candidate list based on target type
+        candidates: List[Any] = []
+        if self.target_type == TargetType.UNIT:
+            all_entities = list(state.entity_locations.keys())
+            candidates = [
+                eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
+            ]
+        elif self.target_type == TargetType.UNIT_OR_TOKEN:
+            candidates = state.get_units_and_tokens()
+        elif self.target_type == TargetType.HEX:
+            candidates = list(state.board.tiles.keys())
+
+        # Apply filters
+        valid = []
+        effective_filters = self._get_effective_filters()
+        for c in candidates:
+            # Skip already selected
+            if str(c) in self.selections:
+                continue
+
+            # Targeting validation for units
+            if self.target_type == TargetType.UNIT and actor_id:
+                val_res = state.validator.can_be_targeted(
+                    state, str(actor_id), str(c), context
+                )
+                if not val_res.allowed:
+                    continue
+            elif self.target_type == TargetType.UNIT_OR_TOKEN and actor_id:
+                if state.get_unit(UnitID(str(c))):
+                    val_res = state.validator.can_be_targeted(
+                        state, str(actor_id), str(c), context
+                    )
+                    if not val_res.allowed:
+                        continue
+
+            # Apply custom filters
+            is_valid = True
+            for f in effective_filters:
+                if not f.apply(c, state, context):
+                    is_valid = False
+                    break
+            if is_valid:
+                valid.append(str(c))
+
+        return valid
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            context[self.output_key] = self.selections
+            return StepResult(is_finished=True)
+
+        # Handle input from previous prompt
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+
+            if selection == "DONE":
+                print(
+                    f"   [MULTI-SELECT] Player chose DONE with {len(self.selections)} selections."
+                )
+                context[self.output_key] = list(self.selections)
+                return StepResult(is_finished=True)
+
+            # Add selection
+            self.selections.append(str(selection))
+            context[self.output_key] = list(self.selections)
+            print(
+                f"   [MULTI-SELECT] Added {selection}. Total: {len(self.selections)}/{self.max_selections}"
+            )
+            self.pending_input = None
+
+            # Hit max? Done
+            if len(self.selections) >= self.max_selections:
+                print(f"   [MULTI-SELECT] Max reached. Finishing.")
+                return StepResult(is_finished=True)
+
+        # Get remaining valid candidates
+        candidates = self._get_candidates(state, context)
+
+        # No more candidates? Finish
+        if not candidates:
+            print(f"   [MULTI-SELECT] No more candidates. Finishing.")
+            context[self.output_key] = list(self.selections)
+            # If mandatory and below min, abort
+            if self.is_mandatory and len(self.selections) < self.min_selections:
+                print(
+                    f"   [ABORT] MultiSelectStep: Only {len(self.selections)} selected, need {self.min_selections}."
+                )
+                return StepResult(is_finished=True, abort_action=True)
+            return StepResult(is_finished=True)
+
+        # Can player skip/finish early?
+        allow_done = len(self.selections) >= self.min_selections
+
+        return StepResult(
+            requires_input=True,
+            input_request={
+                "type": "SELECT_UNIT",
+                "prompt": f"{self.prompt} ({len(self.selections)}/{self.max_selections})",
+                "player_id": actor_id,
+                "candidates": candidates,
+                "allow_skip": allow_done,  # Shows "Done" button if True
+            },
+        )
+
+
+class ForEachStep(GameStep):
+    """
+    Executes a template of steps for each item in a context list.
+
+    For each item in the list:
+    1. Sets context[item_key] = current item
+    2. Spawns deep-copied template steps
+
+    Uses is_finished=False to stay on stack until all items processed.
+    """
+
+    type: StepType = StepType.FOR_EACH
+    list_key: str  # Context key containing the list
+    item_key: str  # Context key to store current item
+    steps_template: List["GameStep"] = Field(default_factory=list)
+
+    # Internal state
+    current_index: int = 0
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        items = context.get(self.list_key, [])
+
+        # All items processed?
+        if self.current_index >= len(items):
+            print(f"   [FOR-EACH] All {len(items)} items processed.")
+            return StepResult(is_finished=True)
+
+        # Set current item in context
+        current_item = items[self.current_index]
+        context[self.item_key] = current_item
+        print(
+            f"   [FOR-EACH] Processing item {self.current_index + 1}/{len(items)}: {current_item}"
+        )
+
+        # Advance index for next iteration
+        self.current_index += 1
+
+        # Deep copy template for this iteration
+        new_steps = [copy.deepcopy(s) for s in self.steps_template]
+
+        # More items remaining? Stay on stack
+        if self.current_index < len(items):
+            return StepResult(is_finished=False, new_steps=new_steps)
+        else:
+            # Last item - finish after these steps
+            return StepResult(is_finished=True, new_steps=new_steps)
+
+
+class CheckUnitTypeStep(GameStep):
+    """
+    Checks if a unit is a specific type (HERO or MINION) and stores boolean result.
+    Used for conditional effects that behave differently for heroes vs minions.
+    """
+
+    type: StepType = StepType.CHECK_UNIT_TYPE
+    unit_id: Optional[str] = None  # Direct unit ID
+    unit_key: Optional[str] = None  # Read from context
+    expected_type: str = "HERO"  # "HERO" or "MINION"
+    output_key: str = "is_expected_type"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Resolve unit ID
+        actual_id = self.unit_id
+        if not actual_id and self.unit_key:
+            actual_id = context.get(self.unit_key)
+
+        if not actual_id:
+            print(f"   [CHECK-TYPE] No unit specified. Setting {self.output_key}=False")
+            context[self.output_key] = False
+            return StepResult(is_finished=True)
+
+        # Check type
+        is_hero = state.get_hero(HeroID(str(actual_id))) is not None
+
+        if self.expected_type == "HERO":
+            result = is_hero
+        elif self.expected_type == "MINION":
+            result = not is_hero
+        else:
+            print(
+                f"   [CHECK-TYPE] Unknown type '{self.expected_type}'. Defaulting False."
+            )
+            result = False
+
+        context[self.output_key] = result
+        print(
+            f"   [CHECK-TYPE] Unit {actual_id} is_hero={is_hero}, expected={self.expected_type} -> {result}"
+        )
+        return StepResult(is_finished=True)
+
+
+class CombineBooleanContextStep(GameStep):
+    """
+    Combines two boolean context values using AND or OR.
+    Used for conditional effects that require multiple conditions to be true.
+
+    Example: Kinetic Repulse needs both collision=True AND is_hero=True
+    """
+
+    type: StepType = StepType.GENERIC
+    key_a: str  # First boolean context key
+    key_b: str  # Second boolean context key
+    output_key: str  # Where to store result
+    operation: str = "AND"  # "AND" or "OR"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        val_a = bool(context.get(self.key_a, False))
+        val_b = bool(context.get(self.key_b, False))
+
+        if self.operation == "AND":
+            result = val_a and val_b
+        elif self.operation == "OR":
+            result = val_a or val_b
+        else:
+            print(f"   [COMBINE] Unknown operation '{self.operation}'. Defaulting AND.")
+            result = val_a and val_b
+
+        context[self.output_key] = result
+        print(
+            f"   [COMBINE] {self.key_a}={val_a} {self.operation} {self.key_b}={val_b} -> {result}"
+        )
+        return StepResult(is_finished=True)
+
+
 # Rebuild recursive models
 MayRepeatOnceStep.model_rebuild()
+ForEachStep.model_rebuild()
