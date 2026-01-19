@@ -16,6 +16,7 @@ from goa2.engine.steps import (
     ForceDiscardOrDefeatStep,
     GameStep,
     MayRepeatOnceStep,
+    MayRepeatNTimesStep,
     PlaceUnitStep,
     SelectStep,
     SetContextFlagStep,
@@ -454,3 +455,71 @@ class LiftUpEffect(CardEffect):
             ),
         ]
         return steps + orbit_steps + [MayRepeatOnceStep(steps_template=orbit_steps)]
+
+
+@register_effect("control_gravity")
+class ControlGravityEffect(LiftUpEffect):
+    """
+    Card Text: "Move a unit, or a token, in radius 1 space, without moving it
+    away from you or closer to you. May repeat once on the same target."
+
+    Inherits logic from Lift Up but uses card stats (Radius 3).
+    """
+
+    pass
+
+
+@register_effect("center_of_mass")
+class CenterOfMassEffect(LiftUpEffect):
+    """
+    Card Text: "Move a unit, or a token, in radius 1 space, without moving it
+    away from you or closer to you. May repeat up to two times on the same target."
+
+    Inherits logic from Lift Up/Control Gravity but repeats TWICE.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        orbit_steps = [
+            # 2. Select destination adjacent to target + preserving distance
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select orbit destination (distance preserved)",
+                output_key="lift_dest",
+                is_mandatory=True,
+                filters=[
+                    AdjacencyToContextFilter(target_key="lift_target"),
+                    PreserveDistanceFilter(target_key="lift_target"),
+                    OccupiedFilter(is_occupied=False),
+                ],
+            ),
+            # 3. Place unit at destination
+            PlaceUnitStep(
+                unit_key="lift_target",
+                destination_key="lift_dest",
+            ),
+        ]
+
+        steps: List[GameStep] = [
+            # 1. Select unit or token in radius
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select unit to lift",
+                output_key="lift_target",
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(max_range=stats.radius or 3),
+                ],
+            ),
+        ]
+        # Repeat up to 2 times
+        return (
+            steps
+            + orbit_steps
+            + [
+                MayRepeatNTimesStep(
+                    steps_template=orbit_steps, max_repeats=2, prompt="Repeat orbit?"
+                )
+            ]
+        )

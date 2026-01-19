@@ -31,6 +31,7 @@ from goa2.engine.steps import (
     SelectStep,
     PlaceUnitStep,
     MayRepeatOnceStep,
+    MayRepeatNTimesStep,
 )
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
@@ -227,6 +228,40 @@ def make_lift_up_card():
         radius_value=2,
         effect_id="lift_up",
         effect_text="Move a unit, or a token, in radius 1 space, without moving it away from you or closer to you. May repeat once on the same target.",
+        is_facedown=False,
+    )
+
+
+def make_control_gravity_card():
+    """Create a Control Gravity card (Tier II Blue Skill with radius 3)."""
+    return Card(
+        id="control_gravity",
+        name="Control Gravity",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=5,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        radius_value=3,
+        effect_id="control_gravity",
+        effect_text="Move a unit, or a token, in radius 1 space, without moving it away from you or closer to you. May repeat once on the same target.",
+        is_facedown=False,
+    )
+
+
+def make_center_of_mass_card():
+    """Create a Center of Mass card (Tier III Blue Skill with radius 3)."""
+    return Card(
+        id="center_of_mass",
+        name="Center of Mass",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=3,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        radius_value=3,
+        effect_id="center_of_mass",
+        effect_text="Move a unit, or a token, in radius 1 space, without moving it away from you or closer to you. May repeat up to two times on the same target.",
         is_facedown=False,
     )
 
@@ -648,3 +683,158 @@ class TestLiftUpEffect:
         # Verify keys are consistent
         assert template[0].output_key == "lift_dest"
         assert template[1].unit_key == "lift_target"
+
+
+# =============================================================================
+# Control Gravity Tests
+# =============================================================================
+
+
+class TestControlGravityEffect:
+    """Tests for the Control Gravity effect."""
+
+    def test_control_gravity_effect_registered(self):
+        """Test that control_gravity effect is properly registered."""
+        effect = CardEffectRegistry.get("control_gravity")
+        assert effect is not None
+
+    def test_control_gravity_inherits_from_lift_up(self):
+        """Test that ControlGravityEffect inherits from LiftUpEffect."""
+        from goa2.scripts.wasp_effects import ControlGravityEffect, LiftUpEffect
+
+        assert issubclass(ControlGravityEffect, LiftUpEffect)
+
+    def test_control_gravity_uses_card_radius(self, wasp_state):
+        """Test that control_gravity uses the card's radius value (3)."""
+        effect = CardEffectRegistry.get("control_gravity")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_control_gravity_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Check unit select filter uses radius 3
+        unit_select = steps[0]
+        range_filter = next(
+            (f for f in unit_select.filters if f.__class__.__name__ == "RangeFilter"),
+            None,
+        )
+        assert range_filter is not None
+        assert range_filter.max_range == 3, "Should use card's radius_value (3)"
+
+    def test_control_gravity_structure_same_as_lift_up(self, wasp_state):
+        """Test that control_gravity has same structure as lift_up."""
+        effect = CardEffectRegistry.get("control_gravity")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_control_gravity_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 4 steps: Select Unit, Select Hex, Place, MayRepeatOnce
+        assert len(steps) == 4
+        assert steps[0].__class__.__name__ == "SelectStep"
+        assert steps[1].__class__.__name__ == "SelectStep"
+        assert steps[2].__class__.__name__ == "PlaceUnitStep"
+        assert steps[3].__class__.__name__ == "MayRepeatOnceStep"
+
+
+# =============================================================================
+# Center of Mass Tests
+# =============================================================================
+
+
+class TestCenterOfMassEffect:
+    """Tests for the Center of Mass effect."""
+
+    def test_center_of_mass_effect_registered(self):
+        """Test that center_of_mass effect is properly registered."""
+        effect = CardEffectRegistry.get("center_of_mass")
+        assert effect is not None
+
+    def test_center_of_mass_inherits_from_lift_up(self):
+        """Test that CenterOfMassEffect inherits from LiftUpEffect."""
+        from goa2.scripts.wasp_effects import CenterOfMassEffect, LiftUpEffect
+
+        assert issubclass(CenterOfMassEffect, LiftUpEffect)
+
+    def test_center_of_mass_uses_repeat_n_times(self, wasp_state):
+        """Test that center_of_mass uses MayRepeatNTimesStep with max_repeats=2."""
+        effect = CardEffectRegistry.get("center_of_mass")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_center_of_mass_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Should have 4 steps: Select Unit, Select Hex, Place, MayRepeatNTimesStep
+        assert len(steps) == 4
+        assert steps[3].__class__.__name__ == "MayRepeatNTimesStep"
+
+        repeat_step = steps[3]
+        assert repeat_step.max_repeats == 2, "Should allow 2 repeats"
+        assert repeat_step.repeats_done == 0, "Should start with 0 repeats done"
+
+    def test_center_of_mass_structure(self, wasp_state):
+        """Test that center_of_mass has correct step structure."""
+        effect = CardEffectRegistry.get("center_of_mass")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_center_of_mass_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Verify step types
+        assert steps[0].__class__.__name__ == "SelectStep"  # Select Unit
+        assert steps[1].__class__.__name__ == "SelectStep"  # Select Hex
+        assert steps[2].__class__.__name__ == "PlaceUnitStep"  # Place
+        assert steps[3].__class__.__name__ == "MayRepeatNTimesStep"  # Repeat
+
+        # Verify repeat template only contains orbit steps (2 steps)
+        repeat_step = steps[3]
+        template = repeat_step.steps_template
+        assert len(template) == 2
+        assert template[0].__class__.__name__ == "SelectStep"
+        assert template[1].__class__.__name__ == "PlaceUnitStep"
+
+    def test_center_of_mass_uses_card_radius(self, wasp_state):
+        """Test that center_of_mass uses the card's radius value (3)."""
+        effect = CardEffectRegistry.get("center_of_mass")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_center_of_mass_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+
+        # Check unit select filter uses radius 3
+        unit_select = steps[0]
+        range_filter = next(
+            (f for f in unit_select.filters if f.__class__.__name__ == "RangeFilter"),
+            None,
+        )
+        assert range_filter is not None
+        assert range_filter.max_range == 3, "Should use card's radius_value (3)"
+
+    def test_center_of_mass_orbit_filters(self, wasp_state):
+        """Test that orbit destination has correct filters."""
+        effect = CardEffectRegistry.get("center_of_mass")
+        wasp = wasp_state.get_hero("wasp")
+        card = make_center_of_mass_card()
+
+        steps = effect.get_steps(wasp_state, wasp, card)
+        hex_select = steps[1]
+
+        # Verify AdjacencyToContextFilter
+        assert any(
+            f.__class__.__name__ == "AdjacencyToContextFilter"
+            and f.target_key == "lift_target"
+            for f in hex_select.filters
+        )
+
+        # Verify PreserveDistanceFilter
+        assert any(
+            f.__class__.__name__ == "PreserveDistanceFilter"
+            and f.target_key == "lift_target"
+            for f in hex_select.filters
+        )
+
+        # Verify OccupiedFilter (must be empty)
+        assert any(
+            f.__class__.__name__ == "OccupiedFilter" and f.is_occupied is False
+            for f in hex_select.filters
+        )

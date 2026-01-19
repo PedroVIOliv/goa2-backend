@@ -1,7 +1,7 @@
 # Wasp Implementation Guide
 
 > Implementation guide for Wasp (The Warmaiden) card effects.
-> Last updated: 2026-01-16
+> Last updated: 2026-01-18
 
 ## Overview
 
@@ -18,18 +18,18 @@ Wasp is a telekinetic hero with 18 cards focusing on:
 | Stop Projectiles | I | Green | DEFENSE | Done | Trivial |
 | Magnetic Dagger | Gold | Gold | ATTACK | Done | Simple |
 | Shock | I | Red | ATTACK | Done | Simple |
-| Lift Up | I | Blue | SKILL | TODO | Moderate |
+| Lift Up | I | Blue | SKILL | Done | Moderate |
 | Charged Boomerang | II | Red | ATTACK | Done | Trivial |
 | Telekinesis | II | Green | SKILL | Done | Simple |
 | Deflect Projectiles | II | Green | DEFENSE | Done | Simple |
 | Kinetic Repulse | II | Blue | SKILL | TODO | Complex |
-| Control Gravity | II | Blue | SKILL | TODO | Moderate |
+| Control Gravity | II | Blue | SKILL | Done | Moderate |
 | Electrocute | II | Red | ATTACK | Done | Simple |
 | Thunder Boomerang | III | Red | ATTACK | TODO | Complex |
 | Reflect Projectiles | III | Green | DEFENSE | Done | Simple |
-| Mass Telekinesis | III | Green | SKILL | TODO | Moderate |
+| Mass Telekinesis | III | Green | SKILL | Done | Moderate |
 | Kinetic Blast | III | Blue | SKILL | TODO | Complex |
-| Center of Mass | III | Blue | SKILL | TODO | Complex |
+| Center of Mass | III | Blue | SKILL | Done | Complex |
 | Electroblast | III | Red | ATTACK | Done | Moderate |
 | Static Barrier | Silver | Silver | SKILL | TODO | Complex |
 | High Voltage | IV | Purple | PASSIVE | TODO | Very Complex |
@@ -301,193 +301,78 @@ def get_on_block_steps(self, state, defender, card, context):
 
 ---
 
-### Phase 2: Telekinetic Movement (4 cards)
+### Phase 2: Telekinetic Movement (4 cards) ✅ COMPLETE
 
 Cards that move units while maintaining constant distance.
 
-#### New Component: ConstantDistanceFilter
+#### Implementation Note
 
-```python
-class ConstantDistanceFilter(FilterCondition):
-    """
-    For destination selection: ensures the destination maintains 
-    the same distance from origin as the unit's current position.
-    
-    Used for "move without moving closer or away" effects.
-    """
-    origin_id: Optional[str] = None  # Defaults to current_actor
-    unit_key: str  # Context key for unit being moved
-    
-    def apply(self, candidate_hex, state, context):
-        origin_id = self.origin_id or state.current_actor_id
-        origin_hex = state.entity_locations.get(origin_id)
-        
-        unit_id = context.get(self.unit_key)
-        unit_hex = state.entity_locations.get(unit_id)
-        
-        if not origin_hex or not unit_hex:
-            return False
-            
-        current_distance = origin_hex.distance(unit_hex)
-        new_distance = origin_hex.distance(candidate_hex)
-        
-        return new_distance == current_distance
-```
+Instead of `ConstantDistanceFilter`, we implemented two more composable filters:
+- `AdjacencyToContextFilter` - Hex must be adjacent to unit stored in context
+- `PreserveDistanceFilter` - Hex must maintain same distance from actor as unit's current position
 
----
+This provides better reusability and clearer semantics.
 
-#### 2.1 Lift Up
+#### 2.1 Lift Up ✅
 ```
 Effect: "Move a unit, or a token, in radius 1 space, 
 without moving it away from you or closer to you. May repeat once on the same target."
 ```
 
-**Implementation:**
+**Implementation:** See `src/goa2/scripts/wasp_effects.py` - `LiftUpEffect`
+
+Key pattern:
 ```python
-@register_effect("lift_up")
-class LiftUpEffect(CardEffect):
-    def get_steps(self, state, hero, card):
-        stats = compute_card_stats(state, hero.id, card)
-        
-        move_steps = [
-            # Select unit in radius
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select unit to move",
-                output_key="lift_target",
-                is_mandatory=True,
-                filters=[RangeFilter(max_range=stats.radius)],
-                skip_immunity_filter=True,
-            ),
-            # Select destination (1 space, same distance from Wasp)
-            SelectStep(
-                target_type=TargetType.HEX,
-                prompt="Select destination (1 space, same distance from you)",
-                output_key="lift_dest",
-                is_mandatory=True,
-                filters=[
-                    RangeFilter(max_range=1, origin_key="lift_target"),
-                    OccupiedFilter(is_occupied=False),
-                    ConstantDistanceFilter(unit_key="lift_target"),
-                ],
-            ),
-            PlaceUnitStep(unit_key="lift_target", destination_key="lift_dest"),
-        ]
-        
-        return move_steps + [
-            MayRepeatOnceStep(
-                steps_template=move_steps,
-                prompt="Repeat Lift Up on same target?",
-                # Same target constraint handled by re-using lift_target
-            ),
-        ]
+orbit_steps = [
+    SelectStep(
+        target_type=TargetType.HEX,
+        filters=[
+            AdjacencyToContextFilter(target_key="lift_target"),
+            PreserveDistanceFilter(target_key="lift_target"),
+            OccupiedFilter(is_occupied=False),
+        ],
+    ),
+    PlaceUnitStep(unit_key="lift_target", destination_key="lift_dest"),
+]
+# Initial selection + orbit + may repeat orbit
+return [SelectStep(...)] + orbit_steps + [MayRepeatOnceStep(steps_template=orbit_steps)]
 ```
 
 ---
 
-#### 2.2 Control Gravity
+#### 2.2 Control Gravity ✅
 ```
 Effect: Same as Lift Up with larger radius.
 ```
 
-**Implementation:** Identical to Lift Up (stats-driven radius).
+**Implementation:** Inherits from `LiftUpEffect` (stats-driven radius 3).
 
 ---
 
-#### 2.3 Center of Mass
+#### 2.3 Center of Mass ✅
 ```
 Effect: "Move a unit, or a token, in radius 1 space, 
 without moving it away from you or closer to you. 
 May repeat up to two times on the same target."
 ```
 
-**Requirements:**
-- New `MayRepeatNTimesStep`
+**Implementation:** Uses `MayRepeatNTimesStep(max_repeats=2)` instead of `MayRepeatOnceStep`.
 
-**New Component:**
-```python
-class MayRepeatNTimesStep(GameStep):
-    """
-    Allows repeating a sequence of steps up to N times.
-    Each repeat is optional (player can decline).
-    """
-    steps_template: List[GameStep]
-    max_repeats: int = 2
-    prompt: str = "Repeat?"
-    
-    # Internal state
-    repeats_done: int = 0
-    
-    def resolve(self, state, context):
-        if self.repeats_done >= self.max_repeats:
-            return StepResult(is_finished=True)
-            
-        if self.pending_input:
-            if self.pending_input.get("choice") == "YES":
-                self.repeats_done += 1
-                # Deep copy template and spawn
-                new_steps = [copy.deepcopy(s) for s in self.steps_template]
-                return StepResult(
-                    is_finished=False,  # Stay on stack
-                    new_steps=new_steps,
-                )
-            else:
-                return StepResult(is_finished=True)
-        
-        return StepResult(
-            requires_input=True,
-            input_request={
-                "type": "CONFIRM_REPEAT",
-                "prompt": f"{self.prompt} ({self.repeats_done}/{self.max_repeats} done)",
-                "options": ["YES", "NO"],
-            },
-        )
-```
+**New Component:** `MayRepeatNTimesStep` (added to `steps.py`)
+- Generalized version of `MayRepeatOnceStep`
+- `max_repeats` parameter controls repeat limit
+- `repeats_done` internal counter preserved across stack operations
+- `MayRepeatOnceStep` is now a subclass with `max_repeats=1`
 
 ---
 
-#### 2.4 Mass Telekinesis
+#### 2.4 Mass Telekinesis ✅
 ```
 Effect: "Place a unit or a token in range, which is not in a straight line, 
 into a space adjacent to you. May repeat once."
 ```
 
-**Implementation:**
-```python
-@register_effect("mass_telekinesis")
-class MassTelekinesisEffect(CardEffect):
-    def get_steps(self, state, hero, card):
-        stats = compute_card_stats(state, hero.id, card)
-        
-        teleport_steps = [
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select unit to teleport",
-                output_key="mass_tk_target",
-                is_mandatory=True,
-                filters=[
-                    RangeFilter(max_range=stats.range),
-                    NotInStraightLineFilter(),
-                ],
-                skip_immunity_filter=True,
-            ),
-            SelectStep(
-                target_type=TargetType.HEX,
-                prompt="Select destination adjacent to you",
-                output_key="mass_tk_dest",
-                is_mandatory=True,
-                filters=[
-                    RangeFilter(max_range=1),
-                    OccupiedFilter(is_occupied=False),
-                ],
-            ),
-            PlaceUnitStep(unit_key="mass_tk_target", destination_key="mass_tk_dest"),
-        ]
-        
-        return teleport_steps + [
-            MayRepeatOnceStep(steps_template=teleport_steps),
-        ]
-```
+**Implementation:** Telekinesis + `MayRepeatOnceStep` wrapping the teleport steps.
 
 ---
 
@@ -934,35 +819,43 @@ class HighVoltageEffect(CardEffect):
 
 ## New Components Summary
 
-### Filters
+### Filters (Implemented)
 
-| Filter | Purpose | Used By |
-|--------|---------|---------|
-| `NotInStraightLineFilter` | Exclude straight-line targets | Charged Boomerang, Telekinesis, Mass Telekinesis, Thunder Boomerang |
-| `ConstantDistanceFilter` | Maintain distance from origin | Lift Up, Control Gravity, Center of Mass |
+| Filter | Purpose | Used By | Status |
+|--------|---------|---------|--------|
+| `NotInStraightLineFilter` | Exclude straight-line targets | Charged Boomerang, Telekinesis, Mass Telekinesis, Thunder Boomerang | ✅ Done |
+| `AdjacencyToContextFilter` | Hex must be adjacent to unit in context | Lift Up, Control Gravity, Center of Mass | ✅ Done |
+| `PreserveDistanceFilter` | Maintain distance from actor | Lift Up, Control Gravity, Center of Mass | ✅ Done |
+| `ExcludeIdentityFilter` | Exclude specific units by context key | Deflect Projectiles, Thunder Boomerang | ✅ Done |
 
-### Steps
+### Steps (Implemented)
 
-| Step | Purpose | Used By |
-|------|---------|---------|
-| `MayRepeatNTimesStep` | Repeat up to N times | Center of Mass |
-| `MultiSelectStep` | Select up to N targets | Kinetic Repulse, Kinetic Blast |
-| `PushWithCollisionStep` | Push with obstacle callback | Kinetic Repulse, Kinetic Blast |
-| `ForEachStep` | Iterate over list in context | Kinetic Repulse, Kinetic Blast, High Voltage |
-| `CheckUnitTypeStep` | Check if unit is hero/minion | Thunder Boomerang, Kinetic Repulse |
-| `FindAdjacentHeroesStep` | Get heroes adjacent to unit | High Voltage |
+| Step | Purpose | Used By | Status |
+|------|---------|---------|--------|
+| `MayRepeatNTimesStep` | Repeat up to N times | Center of Mass | ✅ Done |
+| `MayRepeatOnceStep` | Repeat once (subclass of above) | Lift Up, Mass Telekinesis | ✅ Done |
 
-### Effect Types
+### Steps (Planned)
 
-| Type | Purpose | Used By |
-|------|---------|---------|
-| `DYNAMIC_OBSTACLE` | Actor-position-dependent obstacle zones (bubble follows caster) | Static Barrier |
+| Step | Purpose | Used By | Status |
+|------|---------|---------|--------|
+| `MultiSelectStep` | Select up to N targets | Kinetic Repulse, Kinetic Blast | TODO |
+| `PushWithCollisionStep` | Push with obstacle callback | Kinetic Repulse, Kinetic Blast | TODO |
+| `ForEachStep` | Iterate over list in context | Kinetic Repulse, Kinetic Blast, High Voltage | TODO |
+| `CheckUnitTypeStep` | Check if unit is hero/minion | Thunder Boomerang, Kinetic Repulse | TODO |
+| `FindAdjacentHeroesStep` | Get heroes adjacent to unit | High Voltage | TODO |
 
-### Passive Triggers
+### Effect Types (Planned)
 
-| Trigger | Purpose | Used By |
-|---------|---------|---------|
-| `AFTER_SKILL` | Fire after skill resolution | High Voltage |
+| Type | Purpose | Used By | Status |
+|------|---------|---------|--------|
+| `DYNAMIC_OBSTACLE` | Actor-position-dependent obstacle zones | Static Barrier | TODO |
+
+### Passive Triggers (Planned)
+
+| Trigger | Purpose | Used By | Status |
+|---------|---------|---------|--------|
+| `AFTER_SKILL` | Fire after skill resolution | High Voltage | TODO |
 
 ---
 
@@ -1040,24 +933,25 @@ class TestStaticBarrier:
 
 ## Implementation Checklist
 
-- [ ] **Phase 1: Quick Wins**
-  - [ ] Add `NotInStraightLineFilter` to filters.py
-  - [ ] Add `min_range` to `RangeFilter` (if missing)
-  - [ ] Implement `charged_boomerang`
-  - [ ] Implement `shock`
-  - [ ] Implement `electrocute`
-  - [ ] Implement `telekinesis`
-  - [ ] Implement `electroblast`
-  - [ ] Implement `reflect_projectiles`
-  - [ ] Implement `deflect_projectiles`
+- [x] **Phase 1: Quick Wins** ✅ COMPLETE
+  - [x] Add `NotInStraightLineFilter` to filters.py
+  - [x] Add `min_range` to `RangeFilter` (if missing)
+  - [x] Implement `charged_boomerang`
+  - [x] Implement `shock`
+  - [x] Implement `electrocute`
+  - [x] Implement `telekinesis`
+  - [x] Implement `electroblast`
+  - [x] Implement `reflect_projectiles`
+  - [x] Implement `deflect_projectiles`
 
-- [ ] **Phase 2: Telekinetic Movement**
-  - [ ] Add `ConstantDistanceFilter` to filters.py
-  - [ ] Implement `lift_up`
-  - [ ] Implement `control_gravity`
-  - [ ] Add `MayRepeatNTimesStep` to steps.py
-  - [ ] Implement `center_of_mass`
-  - [ ] Implement `mass_telekinesis`
+- [x] **Phase 2: Telekinetic Movement** ✅ COMPLETE
+  - [x] Add `AdjacencyToContextFilter` to filters.py (replaced ConstantDistanceFilter)
+  - [x] Add `PreserveDistanceFilter` to filters.py
+  - [x] Implement `lift_up`
+  - [x] Implement `control_gravity`
+  - [x] Add `MayRepeatNTimesStep` to steps.py
+  - [x] Implement `center_of_mass`
+  - [x] Implement `mass_telekinesis`
 
 - [ ] **Phase 3: Push Mechanics**
   - [ ] Add `MultiSelectStep` to steps.py

@@ -2609,17 +2609,26 @@ class RecordTargetStep(GameStep):
         return StepResult(is_finished=True)
 
 
-class MayRepeatOnceStep(GameStep):
+class MayRepeatNTimesStep(GameStep):
     """
-    Wraps a sequence of steps that can be repeated once upon player confirmation.
-    Checks ValidationService.can_repeat_action() before asking.
+    Allows repeating a sequence of steps up to N times.
+    Each repeat is optional (player can decline).
+    Tracks state via repeats_done internal counter.
     """
 
     type: StepType = StepType.MAY_REPEAT_ONCE
     steps_template: List["GameStep"] = Field(default_factory=list)
+    max_repeats: int = 1
     prompt: str = "Repeat action?"
 
+    # Internal state, preserved when pushed back to stack
+    repeats_done: int = 0
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Check if we've hit the limit
+        if self.repeats_done >= self.max_repeats:
+            return StepResult(is_finished=True)
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -2637,12 +2646,19 @@ class MayRepeatOnceStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             if selection == "YES":
+                self.repeats_done += 1
                 print(
-                    f"   [REPEAT] Confirmed. Spawning {len(self.steps_template)} steps."
+                    f"   [REPEAT] Confirmed ({self.repeats_done}/{self.max_repeats}). Spawning steps."
                 )
-                # Deepcopy to ensure fresh state for the new steps
+                # Deepcopy template steps
                 new_steps = [copy.deepcopy(s) for s in self.steps_template]
-                return StepResult(is_finished=True, new_steps=new_steps)
+
+                # Push ourselves back onto the stack to handle potential subsequent repeats
+                # BUT only if we haven't reached the max yet
+                if self.repeats_done < self.max_repeats:
+                    return StepResult(is_finished=False, new_steps=new_steps)
+                else:
+                    return StepResult(is_finished=True, new_steps=new_steps)
             else:
                 print("   [REPEAT] Declined.")
                 return StepResult(is_finished=True)
@@ -2652,7 +2668,7 @@ class MayRepeatOnceStep(GameStep):
             requires_input=True,
             input_request={
                 "type": "SELECT_OPTION",
-                "prompt": self.prompt,
+                "prompt": f"{self.prompt} ({self.repeats_done}/{self.max_repeats} done)",
                 "player_id": actor_id,
                 "options": [
                     {"id": "YES", "text": "Yes"},
@@ -2660,6 +2676,14 @@ class MayRepeatOnceStep(GameStep):
                 ],
             },
         )
+
+
+class MayRepeatOnceStep(MayRepeatNTimesStep):
+    """
+    Backward compatibility wrapper.
+    """
+
+    max_repeats: int = 1
 
 
 class ValidateRepeatStep(GameStep):
