@@ -25,7 +25,7 @@ Wasp is a telekinetic hero with 18 cards focusing on:
 | Kinetic Repulse | II | Blue | SKILL | Done | Complex |
 | Control Gravity | II | Blue | SKILL | Done | Moderate |
 | Electrocute | II | Red | ATTACK | Done | Simple |
-| Thunder Boomerang | III | Red | ATTACK | TODO | Complex |
+| Thunder Boomerang | III | Red | ATTACK | Done | Complex |
 | Reflect Projectiles | III | Green | DEFENSE | Done | Simple |
 | Mass Telekinesis | III | Green | SKILL | Done | Moderate |
 | Kinetic Blast | III | Blue | SKILL | Done | Complex |
@@ -447,9 +447,9 @@ return [
 
 ---
 
-### Phase 4: Conditional Repeat (1 card)
+### Phase 4: Conditional Repeat (1 card) ✅ COMPLETE
 
-#### 4.1 Thunder Boomerang
+#### 4.1 Thunder Boomerang ✅
 ```
 Effect: "Target a unit in range and not in a straight line. 
 After the attack: If you targeted a hero, may repeat once on a different target."
@@ -914,10 +914,10 @@ class TestStaticBarrier:
   - [x] Implement `kinetic_repulse`
   - [x] Implement `kinetic_blast`
 
-- [ ] **Phase 4: Conditional Repeat**
-  - [ ] Add `CheckUnitTypeStep` to steps.py
-  - [ ] Modify `AttackSequenceStep` to optionally store target
-  - [ ] Implement `thunder_boomerang`
+- [x] **Phase 4: Conditional Repeat** ✅ COMPLETE
+  - [x] Verified `CheckUnitTypeStep` exists in steps.py
+  - [x] Used `AttackSequenceStep.target_id_key` to pass pre-selected target
+  - [x] Implement `thunder_boomerang`
 
 - [ ] **Phase 5: Complex Effects**
   - [ ] Add `DYNAMIC_OBSTACLE` to `EffectType` enum

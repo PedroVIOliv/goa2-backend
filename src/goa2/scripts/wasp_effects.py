@@ -318,6 +318,73 @@ class ElectroblastEffect(CardEffect):
         ]
 
 
+@register_effect("thunder_boomerang")
+class ThunderBoomerangEffect(CardEffect):
+    """
+    Card Text: "Target a unit in range and not in a straight line.
+    After the attack: If you targeted a hero, may repeat once on a different target."
+
+    Steps:
+    1. Select target (not in straight line)
+    2. Attack using pre-selected target
+    3. Check if target was a hero
+    4. If hero: may repeat once on different target
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Select target with NotInStraightLineFilter FIRST
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select attack target (not in straight line)",
+                output_key="thunder_target_1",
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(max_range=stats.range or 3),
+                    TeamFilter(relation="ENEMY"),
+                    NotInStraightLineFilter(),
+                ],
+            ),
+            # 2. Attack using pre-selected target
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range or 3,
+                target_id_key="thunder_target_1",
+            ),
+            # 3. Check if target was a hero
+            CheckUnitTypeStep(
+                unit_key="thunder_target_1",
+                expected_type="HERO",
+                output_key="can_repeat_thunder",
+            ),
+            # 4. Conditional repeat on different target
+            MayRepeatOnceStep(
+                active_if_key="can_repeat_thunder",
+                steps_template=[
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Select second target (not in straight line)",
+                        output_key="thunder_target_2",
+                        is_mandatory=False,
+                        filters=[
+                            RangeFilter(max_range=stats.range or 3),
+                            TeamFilter(relation="ENEMY"),
+                            NotInStraightLineFilter(),
+                            ExcludeIdentityFilter(exclude_keys=["thunder_target_1"]),
+                        ],
+                    ),
+                    AttackSequenceStep(
+                        damage=stats.primary_value,
+                        range_val=stats.range or 3,
+                        target_id_key="thunder_target_2",
+                    ),
+                ],
+            ),
+        ]
+
+
 @register_effect("reflect_projectiles")
 class ReflectProjectilesEffect(CardEffect):
     """
