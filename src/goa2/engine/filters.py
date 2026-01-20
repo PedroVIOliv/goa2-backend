@@ -35,9 +35,9 @@ class FilterCondition(BaseModel, ABC):
 # -----------------------------------------------------------------------------
 
 
-class OccupiedFilter(FilterCondition):
+class ObstacleFilter(FilterCondition):
     type: FilterType = FilterType.OCCUPIED
-    is_occupied: bool = False  # False = Must be empty, True = Must be occupied
+    is_obstacle: bool = False  # False = Must be empty, True = Must be occupied
     exclude_id: Optional[str] = (
         None  # If set, ignore this entity when checking occupancy
     )
@@ -45,16 +45,14 @@ class OccupiedFilter(FilterCondition):
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if isinstance(candidate, Hex):
             tile = state.board.get_tile(candidate)
+            occupant_id = tile.occupant_id
+            if self.exclude_id:
+                if occupant_id == self.exclude_id:
+                    return True
             if not tile:
-                return False
-
-            occ_id = tile.occupant_id
-            if occ_id and self.exclude_id and occ_id == self.exclude_id:
-                occ_id = None
-
-            is_occ = occ_id is not None
-            return is_occ == self.is_occupied
-        return False
+                return self.is_obstacle
+            return tile.is_obstacle == self.is_obstacle
+        return self.is_obstacle
 
 
 class TerrainFilter(FilterCondition):
@@ -65,9 +63,9 @@ class TerrainFilter(FilterCondition):
         if isinstance(candidate, Hex):
             tile = state.board.get_tile(candidate)
             if not tile:
-                return False
+                return self.is_terrain
             return tile.is_terrain == self.is_terrain
-        return False
+        return self.is_terrain
 
 
 class RangeFilter(FilterCondition):

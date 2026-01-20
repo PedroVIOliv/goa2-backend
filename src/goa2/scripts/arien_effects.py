@@ -20,7 +20,7 @@ from goa2.engine.filters import (
     TeamFilter,
     RangeFilter,
     LineBehindTargetFilter,
-    OccupiedFilter,
+    ObstacleFilter,
     SpawnPointFilter,
     AdjacentSpawnPointFilter,
     AdjacencyToContextFilter,
@@ -118,7 +118,7 @@ class NobleBladeEffect(CardEffect):
                 active_if_key="nudge_unit_id",
                 filters=[
                     RangeFilter(max_range=1, origin_key="nudge_unit_id"),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                 ],
                 is_mandatory=True,
             ),
@@ -407,7 +407,7 @@ class TeleportStrictEffect(CardEffect):
                 output_key="target_hex",
                 filters=[
                     RangeFilter(max_range=stats.range),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                     SpawnPointFilter(has_spawn_point=False),
                     AdjacentSpawnPointFilter(is_empty=True, must_not_have=True),
                 ],
@@ -434,7 +434,7 @@ class TeleportNoSpawnEffect(CardEffect):
                 output_key="target_hex",
                 filters=[
                     RangeFilter(max_range=stats.range),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                     SpawnPointFilter(has_spawn_point=False),
                 ],
                 is_mandatory=True,

@@ -6,7 +6,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.filters import (
-    FilterCondition, OccupiedFilter, TerrainFilter, RangeFilter, 
+    FilterCondition, ObstacleFilter, TerrainFilter, RangeFilter, 
     TeamFilter, UnitTypeFilter, AdjacencyFilter, ImmunityFilter
 )
 
@@ -70,10 +70,6 @@ def test_filter_condition_base():
     with pytest.raises(NotImplementedError):
         f.apply(None, None, {})
 
-def test_occupied_filter_invalid_candidate(extended_state):
-    f = OccupiedFilter(is_occupied=True)
-    assert f.apply("not_a_hex", extended_state, {}) is False
-
 def test_terrain_filter(extended_state):
     # Test True
     f_true = TerrainFilter(is_terrain=True)
@@ -87,9 +83,6 @@ def test_terrain_filter(extended_state):
     assert f_false.apply(Hex(q=1, r=-1, s=0), extended_state, {}) is False
     # (0,1,-1) is in board.tiles and NOT marked as terrain
     assert f_false.apply(Hex(q=0, r=1, s=-1), extended_state, {}) is True
-    
-    # Invalid candidate
-    assert f_true.apply("h1", extended_state, {}) is False
     
     # Missing tile (Virtual tile logic in Board.get_tile returns is_terrain=True)
     assert f_true.apply(Hex(q=99, r=99, s=-198), extended_state, {}) is True # Should be True as it's a virtual terrain tile

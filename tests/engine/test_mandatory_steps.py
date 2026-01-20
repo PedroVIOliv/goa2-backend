@@ -98,7 +98,7 @@ class TestMandatoryStepAbort:
         
         This is the CORRECT abort trigger - player has no valid options to choose from.
         """
-        from goa2.engine.filters import RangeFilter, OccupiedFilter
+        from goa2.engine.filters import RangeFilter, ObstacleFilter
         
         # Setup: All hexes in range are occupied (no valid movement destinations)
         adjacent_hex = Hex(q=1, r=0, s=-1)
@@ -111,7 +111,7 @@ class TestMandatoryStepAbort:
             SelectStep(
                 target_type="HEX",
                 prompt="Select movement destination",
-                filters=[RangeFilter(max_range=1), OccupiedFilter(is_occupied=False)], # Note: OccupiedFilter changed param name from require_empty to is_occupied=False
+                filters=[RangeFilter(max_range=1), ObstacleFilter(is_occupied=False)], # Note: OccupiedFilter changed param name from require_empty to is_occupied=False
                 is_mandatory=True  # No valid hexes -> abort
             )
         ])

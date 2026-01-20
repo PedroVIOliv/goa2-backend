@@ -919,14 +919,14 @@ class MoveSequenceStep(GameStep):
                 ],
             )
 
-        from goa2.engine.filters import OccupiedFilter, MovementPathFilter
+        from goa2.engine.filters import ObstacleFilter, MovementPathFilter
 
         # Determine filters.
         # MovementPathFilter now always allows the current hex.
         # We add OccupiedFilter(is_occupied=False, exclude_id=actor_id)
         # to ensure other units block movement but the moving unit doesn't block itself.
         filters = [
-            OccupiedFilter(is_occupied=False, exclude_id=actor_id),
+            ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
             MovementPathFilter(range_val=self.range_val, unit_id=actor_id),
         ]
 

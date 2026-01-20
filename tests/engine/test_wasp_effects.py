@@ -835,7 +835,7 @@ class TestCenterOfMassEffect:
 
         # Verify OccupiedFilter (must be empty)
         assert any(
-            f.__class__.__name__ == "OccupiedFilter" and f.is_occupied is False
+            f.__class__.__name__ == "ObstacleFilter" and f.is_obstacle is False
             for f in hex_select.filters
         )
 

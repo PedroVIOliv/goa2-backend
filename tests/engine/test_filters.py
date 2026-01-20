@@ -5,7 +5,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.steps import SelectStep
-from goa2.engine.filters import RangeFilter, TeamFilter, OccupiedFilter, UnitTypeFilter
+from goa2.engine.filters import RangeFilter, TeamFilter, ObstacleFilter, UnitTypeFilter
 
 @pytest.fixture
 def filter_state():
@@ -89,7 +89,7 @@ def test_hex_filter_occupied(filter_state):
         prompt="Test",
         filters=[
             RangeFilter(max_range=1),
-            OccupiedFilter(is_occupied=False)
+            ObstacleFilter(is_occupied=False)
         ]
     )
     res = step.resolve(filter_state, {})

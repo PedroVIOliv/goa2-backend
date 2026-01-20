@@ -30,7 +30,7 @@ from goa2.engine.steps import (
 from goa2.engine.filters import (
     ExcludeIdentityFilter,
     NotInStraightLineFilter,
-    OccupiedFilter,
+    ObstacleFilter,
     RangeFilter,
     TeamFilter,
     UnitTypeFilter,
@@ -226,7 +226,7 @@ class TelekinesisEffect(CardEffect):
                 is_mandatory=True,
                 filters=[
                     RangeFilter(max_range=1),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             # 3. Place unit
@@ -273,7 +273,7 @@ class MassTelekinesisEffect(CardEffect):
                 is_mandatory=True,
                 filters=[
                     RangeFilter(max_range=1),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             # 3. Place unit
@@ -504,7 +504,7 @@ class LiftUpEffect(CardEffect):
                 filters=[
                     AdjacencyToContextFilter(target_key="lift_target"),
                     PreserveDistanceFilter(target_key="lift_target"),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             # 3. Place unit at destination
@@ -563,7 +563,7 @@ class CenterOfMassEffect(LiftUpEffect):
                 filters=[
                     AdjacencyToContextFilter(target_key="lift_target"),
                     PreserveDistanceFilter(target_key="lift_target"),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             # 3. Place unit at destination
