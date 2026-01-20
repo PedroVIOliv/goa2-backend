@@ -42,6 +42,15 @@ class ActionType(str, Enum):
     FAST_TRAVEL = "FAST_TRAVEL"  # Replaces Movement
 
 
+class DisplacementType(str, Enum):
+    """Types of displacement that can be prevented by effects."""
+
+    MOVE = "MOVE"  # Walking/stepping (MoveUnitStep)
+    PUSH = "PUSH"  # Forced movement away (PushUnitStep)
+    SWAP = "SWAP"  # Position exchange (SwapUnitsStep)
+    PLACE = "PLACE"  # Direct placement (PlaceUnitStep)
+
+
 class StatType(str, Enum):
     ATTACK = "ATTACK"
     DEFENSE = "DEFENSE"

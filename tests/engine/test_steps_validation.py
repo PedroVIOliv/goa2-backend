@@ -17,6 +17,7 @@ from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
 )
+from goa2.domain.models.enums import DisplacementType
 from goa2.domain.hex import Hex
 from goa2.engine.steps import PlaceUnitStep, MoveUnitStep
 
@@ -69,6 +70,7 @@ def test_place_unit_step_blocked_by_effect(game_state_with_heroes):
             duration=DurationType.PASSIVE,
             created_at_turn=1,
             created_at_round=1,
+            displacement_blocks=[DisplacementType.PLACE],
             blocks_enemy_actors=True,
         )
     )

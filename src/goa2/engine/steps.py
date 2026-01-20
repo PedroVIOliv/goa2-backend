@@ -29,7 +29,7 @@ from goa2.domain.hex import Hex
 from goa2.engine import rules  # For validation
 from goa2.engine.stats import get_computed_stat  # For stat calculation
 
-from goa2.domain.models.enums import StatType
+from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
 
@@ -103,6 +103,7 @@ class CreateEffectStep(GameStep):
     duration: DurationType = DurationType.THIS_TURN
 
     restrictions: List[ActionType] = Field(default_factory=list)
+    displacement_blocks: List[DisplacementType] = Field(default_factory=list)
     except_card_colors: List[CardColor] = Field(default_factory=list)
     except_attacker_ids: List[str] = Field(
         default_factory=list
@@ -161,6 +162,7 @@ class CreateEffectStep(GameStep):
             scope=self.scope,
             duration=self.duration,
             restrictions=self.restrictions,
+            displacement_blocks=self.displacement_blocks,
             except_card_colors=self.except_card_colors,
             except_attacker_ids=resolved_except_attackers,
             stat_type=self.stat_type,
@@ -814,22 +816,40 @@ class ForceDiscardOrDefeatStep(GameStep):
 
 class MoveUnitStep(GameStep):
     """
-    Moves the active unit (or specified unit) to a target hex.
-    Includes Pathfinding validation if destination is selected.
+    Moves a unit to a target hex with pathfinding validation.
+
+    Supports:
+    - Self-movement (actor moves themselves)
+    - Forced movement (actor moves another unit, e.g., Noble Blade nudge)
     """
 
     type: StepType = StepType.MOVE_UNIT
-    unit_id: Optional[str] = None  # If None, uses current_actor
-    destination_key: str = "target_hex"  # Where to look in context for destination
+
+    unit_id: Optional[str] = None
+    unit_key: Optional[str] = None
+
+    destination_key: str = "target_hex"
+    target_hex_arg: Optional[Hex] = None
+
     range_val: int = 1
-    is_movement_action: bool = False  # Flag: Is this a formal "Movement Action"?
+    is_movement_action: bool = False
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        actor_id = self.unit_id if self.unit_id else state.current_actor_id
-        dest_val = context.get(self.destination_key)
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
 
-        if not actor_id:
-            print("   [ERROR] No actor for move.")
+        target_unit_id = self.unit_id
+        if not target_unit_id and self.unit_key:
+            target_unit_id = context.get(self.unit_key)
+        if not target_unit_id:
+            target_unit_id = state.current_actor_id
+
+        dest_val = self.target_hex_arg
+        if not dest_val:
+            dest_val = context.get(self.destination_key)
+
+        if not target_unit_id:
+            print("   [ERROR] No unit for move.")
             return StepResult(is_finished=True)
 
         if not dest_val:
@@ -839,26 +859,38 @@ class MoveUnitStep(GameStep):
         if isinstance(dest_val, dict):
             dest_hex = Hex(**dest_val)
         else:
-            dest_hex = dest_val  # Assume it is already a Hex
+            dest_hex = dest_val
 
-        # Validation: Check Effects/Constraints
-        # Pass is_movement_action to validator
-        validation = state.validator.can_move(
-            state,
-            actor_id,
-            self.range_val,
-            context,
-            is_movement_action=self.is_movement_action,
+        actor_id = state.current_actor_id or target_unit_id
+
+        displacement_validation = state.validator.can_be_moved(
+            state=state,
+            unit_id=target_unit_id,
+            actor_id=actor_id,
+            context=context,
         )
-        if not validation.allowed:
-            print(f"   [BLOCKED] MoveUnitStep: {validation.reason}")
+        if not displacement_validation.allowed:
+            print(f"   [BLOCKED] MoveUnitStep: {displacement_validation.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
-        start_hex = state.entity_locations.get(BoardEntityID(actor_id))
+        move_validation = state.validator.can_move(
+            state,
+            target_unit_id,
+            self.range_val,
+            context,
+            is_movement_action=self.is_movement_action,
+        )
+        if not move_validation.allowed:
+            print(f"   [BLOCKED] MoveUnitStep: {move_validation.reason}")
+            if self.is_mandatory:
+                return StepResult(is_finished=True, abort_action=True)
+            return StepResult(is_finished=True)
+
+        start_hex = state.entity_locations.get(BoardEntityID(target_unit_id))
         if not start_hex:
-            print(f"   [ERROR] Unit {actor_id} has no location on board.")
+            print(f"   [ERROR] Unit {target_unit_id} has no location on board.")
             return StepResult(is_finished=True)
 
         if start_hex == dest_hex:
@@ -872,18 +904,15 @@ class MoveUnitStep(GameStep):
             )
 
         if not is_valid:
-            # NOTE: This should rarely happen if SelectStep correctly filtered movement options.
-            # Invalid path is an ERROR (wrong destination chosen), not an abort trigger.
-            # Abort only happens at SelectStep when no valid options exist at all.
             print(
-                f"   [ERROR] Invalid move for {actor_id} to {dest_hex}. Path blocked or out of range."
+                f"   [ERROR] Invalid move for {target_unit_id} to {dest_hex}. Path blocked or out of range."
             )
             return StepResult(is_finished=True)
 
         print(
-            f"   [LOGIC] Moving {actor_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
+            f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
         )
-        state.move_unit(UnitID(actor_id), dest_hex)
+        state.move_unit(UnitID(target_unit_id), dest_hex)
         return StepResult(is_finished=True)
 
 

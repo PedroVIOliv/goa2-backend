@@ -6,6 +6,7 @@ from goa2.engine.steps import (
     SelectStep,
     SwapUnitsStep,
     PlaceUnitStep,
+    MoveUnitStep,
     AttackSequenceStep,
     PushUnitStep,
     CreateEffectStep,
@@ -123,9 +124,10 @@ class NobleBladeEffect(CardEffect):
                 is_mandatory=True,
             ),
             # 4. Execute Move (Active If Nudge Selected)
-            PlaceUnitStep(
+            MoveUnitStep(
                 unit_key="nudge_unit_id",
                 destination_key="nudge_dest",
+                range_val=1,
                 active_if_key="nudge_unit_id",
             ),
             # 5. Resolve Attack Sequence (Using pre-selected target)

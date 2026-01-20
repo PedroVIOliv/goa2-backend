@@ -7,7 +7,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import ActionType
+from goa2.domain.models.enums import ActionType, DisplacementType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
@@ -91,7 +91,7 @@ class MagneticDaggerEffect(CardEffect):
                     affects=AffectsFilter.ENEMY_HEROES,
                 ),
                 duration=DurationType.THIS_TURN,
-                restrictions=[ActionType.MOVEMENT],
+                displacement_blocks=[DisplacementType.PLACE, DisplacementType.SWAP],
                 blocks_enemy_actors=True,
                 blocks_friendly_actors=False,
                 blocks_self=False,

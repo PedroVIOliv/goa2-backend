@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
-from goa2.domain.models.enums import ActionType, StatType, CardColor
+from goa2.domain.models.enums import ActionType, StatType, CardColor, DisplacementType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
 
@@ -89,7 +89,10 @@ class ActiveEffect(BaseModel):
     # Effect-specific payload
     restrictions: List[ActionType] = Field(
         default_factory=list
-    )  # For prevention effects
+    )  # For prevention effects (action types)
+    displacement_blocks: List[DisplacementType] = Field(
+        default_factory=list
+    )  # For displacement prevention (move, push, swap, place)
     except_card_colors: List[CardColor] = Field(
         default_factory=list
     )  # Exceptions to prevention (e.g. "except on Gold cards")
