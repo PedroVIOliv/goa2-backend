@@ -429,6 +429,91 @@ class ValidationService:
             displacement_type=DisplacementType.SWAP,
         )
 
+    def is_obstacle_for_actor(
+        self,
+        state: "GameState",
+        hex_pos: "Hex",
+        actor_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Context-aware obstacle check that accounts for STATIC_BARRIER effects.
+
+        Returns True if the hex is an obstacle for the given actor.
+        This includes both:
+        1. Base obstacle status (terrain/occupied)
+        2. Dynamic obstacle status from STATIC_BARRIER effects
+
+        Static Barrier logic (Wasp):
+        - If acting enemy hero is OUTSIDE barrier radius -> hexes INSIDE radius are obstacles
+        - If acting enemy hero is INSIDE barrier radius -> hexes OUTSIDE radius are obstacles
+        """
+        tile = state.board.get_tile(hex_pos)
+
+        # Base obstacle check (terrain/occupied)
+        if tile.is_obstacle:
+            return True
+
+        # Check STATIC_BARRIER effects
+        if actor_id is None:
+            actor_id = str(state.current_actor_id) if state.current_actor_id else None
+
+        if not actor_id:
+            return False  # No actor context, can't check barrier effects
+
+        # Get actor entity and verify it's an enemy hero
+        from goa2.domain.models import Hero
+
+        actor = state.get_entity(BoardEntityID(actor_id))
+        if not actor or not isinstance(actor, Hero):
+            return False  # Static Barrier only affects enemy heroes as actors
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.STATIC_BARRIER:
+                continue
+            if not self._is_effect_active(effect, state):
+                continue
+
+            # Only affects enemy actors
+            source = state.get_entity(BoardEntityID(effect.source_id))
+            if not source:
+                continue
+
+            actor_team = getattr(actor, "team", None)
+            source_team = getattr(source, "team", None)
+
+            if actor_team is None or source_team is None:
+                continue
+            if actor_team == source_team:
+                continue  # Friendly actors not affected
+
+            # Get barrier origin position
+            origin_id = effect.barrier_origin_id or effect.source_id
+            origin_hex = state.entity_locations.get(BoardEntityID(origin_id))
+            if not origin_hex:
+                continue
+
+            # Get actor position
+            actor_hex = state.entity_locations.get(BoardEntityID(actor_id))
+            if not actor_hex:
+                continue
+
+            # Calculate distances using topology-aware distance
+            topology = get_topology_service()
+            actor_dist = topology.distance(origin_hex, actor_hex, state)
+            hex_dist = topology.distance(origin_hex, hex_pos, state)
+
+            # Apply barrier logic:
+            # Actor OUTSIDE radius -> hexes INSIDE radius are obstacles
+            # Actor INSIDE radius -> hexes OUTSIDE radius are obstacles
+            actor_inside = actor_dist <= effect.barrier_radius
+            hex_inside = hex_dist <= effect.barrier_radius
+
+            if actor_inside != hex_inside:
+                return True  # This hex is an obstacle for this actor
+
+        return False
+
     def _check_displacement_prevention(
         self,
         state: "GameState",

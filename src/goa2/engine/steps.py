@@ -126,6 +126,10 @@ class CreateEffectStep(GameStep):
     # Origin action type - tracks whether effect came from skill or attack
     origin_action_type: Optional[ActionType] = None
 
+    # Static Barrier parameters (Wasp)
+    barrier_radius: int = 0  # The radius boundary for the barrier
+    barrier_origin_id: Optional[str] = None  # Entity ID for radius calculation
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -174,6 +178,8 @@ class CreateEffectStep(GameStep):
             blocks_self=self.blocks_self,
             is_active=self.is_active,
             origin_action_type=action_type,
+            barrier_radius=self.barrier_radius,
+            barrier_origin_id=self.barrier_origin_id,
         )
 
         print(
@@ -1853,7 +1859,11 @@ class PushUnitStep(GameStep):
                 break
 
             tile = state.board.get_tile(next_hex)
-            if tile and tile.is_obstacle:
+            # Use context-aware obstacle check for Static Barrier support
+            is_obs = state.validator.is_obstacle_for_actor(
+                state, next_hex, actual_target_id
+            )
+            if is_obs:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
                 was_stopped_by_obstacle = True
                 break

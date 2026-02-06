@@ -144,7 +144,11 @@ class TopologyService:
         return [h for h in center.ring(radius) if self.are_connected(center, h, state)]
 
     def get_traversable_neighbors(
-        self, hex: Hex, state: "GameState", end_hex: Optional[Hex] = None
+        self,
+        hex: Hex,
+        state: "GameState",
+        end_hex: Optional[Hex] = None,
+        actor_id: Optional[str] = None,
     ) -> List[Hex]:
         """
         Returns neighbors that can be traversed during movement.
@@ -153,11 +157,13 @@ class TopologyService:
         1. Topology: Must be connected (not split off)
         2. Map bounds: Must be on the game map
         3. Obstacles: Must not be blocked (unless it's the destination)
+           - Includes STATIC_BARRIER effects if actor_id is provided
 
         Args:
             hex: The current position
             state: Game state
             end_hex: Optional destination (obstacles are allowed if it's the end)
+            actor_id: Optional actor ID for context-aware obstacle checking
 
         Returns:
             List of hexes that can be moved to from the current position
@@ -173,8 +179,15 @@ class TopologyService:
                 continue
 
             # Check obstacles (unless it's the destination)
-            tile = state.board.get_tile(n)
-            if tile and tile.is_obstacle:
+            # Use context-aware check if validator available
+            is_obs = False
+            if state.validator:
+                is_obs = state.validator.is_obstacle_for_actor(state, n, actor_id)
+            else:
+                tile = state.board.get_tile(n)
+                is_obs = tile.is_obstacle if tile else True
+
+            if is_obs:
                 # Allow if this is the destination (for attacks, etc.)
                 if end_hex is not None and n == end_hex:
                     pass  # Allow

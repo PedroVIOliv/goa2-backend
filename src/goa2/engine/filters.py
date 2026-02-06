@@ -45,13 +45,20 @@ class ObstacleFilter(FilterCondition):
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if isinstance(candidate, Hex):
             tile = state.board.get_tile(candidate)
-            occupant_id = tile.occupant_id
-            if self.exclude_id:
-                if occupant_id == self.exclude_id:
-                    return True
-            if not tile:
-                return self.is_obstacle
-            return tile.is_obstacle == self.is_obstacle
+
+            # Get actor for context-aware check (Static Barrier)
+            actor_id = str(state.current_actor_id) if state.current_actor_id else None
+
+            # Use validation service for context-aware obstacle check
+            is_obs = state.validator.is_obstacle_for_actor(
+                state, candidate, actor_id, context
+            )
+
+            # Handle exclude_id (for "ignore self" scenarios)
+            if self.exclude_id and tile.occupant_id == self.exclude_id:
+                return True
+
+            return is_obs == self.is_obstacle
         return self.is_obstacle
 
 
@@ -455,10 +462,14 @@ class HasEmptyNeighborFilter(FilterCondition):
         # Use topology-aware neighbors (respects reality splits)
         topology = get_topology_service()
         neighbors = topology.get_connected_neighbors(cand_hex, state)
+
+        # Get actor for context-aware obstacle check (Static Barrier support)
+        actor_id = str(state.current_actor_id) if state.current_actor_id else None
+
         for n in neighbors:
-            # Check if hex exists on board
-            tile = state.board.get_tile(n)
-            if tile and not tile.is_obstacle:
+            # Use context-aware obstacle check to respect Static Barrier effects
+            is_obs = state.validator.is_obstacle_for_actor(state, n, actor_id)
+            if not is_obs:
                 return True
         return False
 

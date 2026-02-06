@@ -35,6 +35,9 @@ class EffectType(str, Enum):
         "topology_isolation"  # Tier 3: Shift Reality - split + isolate caster
     )
 
+    # Actor-conditional obstacle (Wasp)
+    STATIC_BARRIER = "static_barrier"  # Hexes become obstacles based on actor location relative to radius
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""
@@ -134,4 +137,13 @@ class ActiveEffect(BaseModel):
     split_value: int = 0  # The coordinate value of the dividing line
     isolated_hex: Optional[Hex] = (
         None  # For Tier 3 - the specific hex that is isolated (Nebkher's position)
+    )
+
+    # Static Barrier fields (Wasp)
+    # When an enemy hero acts, hexes on the "opposite side" of the barrier become obstacles:
+    # - Actor OUTSIDE radius -> hexes INSIDE radius are obstacles
+    # - Actor INSIDE radius -> hexes OUTSIDE radius are obstacles
+    barrier_radius: int = 0  # The radius boundary for the barrier
+    barrier_origin_id: Optional[str] = (
+        None  # Entity ID for radius calculation (Wasp's position)
     )

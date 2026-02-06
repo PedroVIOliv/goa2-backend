@@ -16,6 +16,7 @@ def validate_movement_path(
     ignore_obstacles: bool = False,
     active_zone_id: Optional[str] = None,
     state: Optional[GameState] = None,
+    actor_id: Optional[str] = None,
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -24,6 +25,7 @@ def validate_movement_path(
     - Cannot end on Obstacle.
     - Path length <= max_steps.
     - Respects topology constraints (reality splits) if state is provided.
+    - Respects STATIC_BARRIER effects if state and actor_id are provided.
     """
     if max_steps <= 0:
         return False
@@ -32,8 +34,11 @@ def validate_movement_path(
         return False
 
     if not ignore_obstacles:
-        # Check occupancy via the Board Cache (now guaranteed synced)
-        if board.get_tile(end).is_obstacle:
+        # Check destination obstacle - use context-aware check if state is available
+        if state and state.validator:
+            if state.validator.is_obstacle_for_actor(state, end, actor_id):
+                return False
+        elif board.get_tile(end).is_obstacle:
             return False
 
     queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
@@ -53,7 +58,9 @@ def validate_movement_path(
 
         # Get neighbors - topology-aware if state provided, otherwise geometric
         if topology and state:
-            neighbors = topology.get_traversable_neighbors(current, state, end)
+            neighbors = topology.get_traversable_neighbors(
+                current, state, end, actor_id
+            )
         else:
             neighbors = board.get_neighbors(current)
 
@@ -61,7 +68,15 @@ def validate_movement_path(
             if neighbor not in visited:
                 # Skip obstacles (unless using topology which already filters)
                 if not (topology and state):
-                    if board.get_tile(neighbor).is_obstacle and neighbor != end:
+                    # Use context-aware check if state is available, otherwise base check
+                    if state and state.validator:
+                        is_obs = state.validator.is_obstacle_for_actor(
+                            state, neighbor, actor_id
+                        )
+                    else:
+                        is_obs = board.get_tile(neighbor).is_obstacle
+
+                    if is_obs and neighbor != end:
                         continue
 
                 visited.add(neighbor)

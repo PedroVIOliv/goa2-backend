@@ -729,3 +729,39 @@ class KineticBlastEffect(CardEffect):
                 ],
             ),
         ]
+
+
+@register_effect("static_barrier")
+class StaticBarrierEffect(CardEffect):
+    """
+    Card Text: "This turn: While an enemy hero outside of radius is performing
+    an action, spaces in radius count as obstacles. While an enemy hero in radius
+    is performing an action, spaces outside of radius count as obstacles."
+
+    Creates a STATIC_BARRIER effect that makes hexes conditionally obstacles
+    based on where the acting enemy hero is relative to Wasp's radius.
+
+    Implementation:
+    - Creates a global effect that affects enemy heroes
+    - When an enemy hero performs any action:
+      - If actor is OUTSIDE radius -> hexes INSIDE radius are obstacles
+      - If actor is INSIDE radius -> hexes OUTSIDE radius are obstacles
+    - The barrier_radius field stores the radius boundary
+    - The barrier_origin_id field stores Wasp's ID for distance calculations
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.STATIC_BARRIER,
+                scope=EffectScope(
+                    shape=Shape.GLOBAL,  # Affects entire board
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                barrier_radius=stats.radius or 2,
+                barrier_origin_id=hero.id,
+            ),
+        ]
