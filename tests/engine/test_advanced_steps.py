@@ -136,14 +136,14 @@ def test_push_unit_blocked_by_unit(base_state):
 def test_respawn_hero_step(base_state):
     base_state.remove_unit("h1")
     spawn_hex = Hex(q=-3, r=0, s=3)
-    base_state.board.get_tile(spawn_hex).spawn_point = SpawnPoint(
-        location=spawn_hex, team=TeamColor.RED, type=SpawnType.HERO
-    )
-    
+    sp = SpawnPoint(location=spawn_hex, team=TeamColor.RED, type=SpawnType.HERO)
+    base_state.board.get_tile(spawn_hex).spawn_point = sp
+    base_state.board.spawn_points.append(sp)
+
     step = RespawnHeroStep(hero_id="h1")
     res = step.resolve(base_state, {})
     assert res.requires_input
-    
+
     step.pending_input = {"choice": "RESPAWN", "spawn_hex": {"q": -3, "r": 0, "s": 3}}
     res = step.resolve(base_state, {})
     assert res.is_finished

@@ -282,6 +282,31 @@ class GameState(BaseModel):
                     return minion
         return None
 
+    def get_card_by_id(self, card_id: str) -> Optional[Card]:
+        """
+        Finds a Card by ID across all heroes.
+        Searches current_turn_card, played_cards, hand, deck, discard_pile, and ultimate_card.
+        """
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if hero.current_turn_card and hero.current_turn_card.id == card_id:
+                    return hero.current_turn_card
+                for card in hero.played_cards:
+                    if card.id == card_id:
+                        return card
+                for card in hero.hand:
+                    if card.id == card_id:
+                        return card
+                for card in hero.deck:
+                    if card.id == card_id:
+                        return card
+                for card in hero.discard_pile:
+                    if card.id == card_id:
+                        return card
+                if hero.ultimate_card and hero.ultimate_card.id == card_id:
+                    return hero.ultimate_card
+        return None
+
     def get_units_and_tokens(self) -> List[BoardEntityID]:
         """
         Returns IDs of all Units and Tokens currently on the board.

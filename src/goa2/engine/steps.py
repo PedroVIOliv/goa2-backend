@@ -1337,6 +1337,17 @@ class DefeatUnitStep(GameStep):
                 f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {actual_victim_id}"
             )
 
+        # Cancel all active effects created by the defeated unit
+        EffectManager.expire_by_source(state, actual_victim_id)
+
+        # If the defeated hero has an unresolved card, resolve it without action
+        if hasattr(victim, "current_turn_card") and victim.current_turn_card:
+            victim.resolve_current_card()
+
+        # Remove from unresolved pool so they don't get another turn this round
+        if HeroID(actual_victim_id) in state.unresolved_hero_ids:
+            state.unresolved_hero_ids.remove(HeroID(actual_victim_id))
+
         if hasattr(victim, "level"):  # Is Hero
             level = getattr(victim, "level", 1)
 
@@ -1933,15 +1944,26 @@ class RespawnHeroStep(GameStep):
                 state.move_unit(UnitID(self.hero_id), selected_hex)
                 return StepResult(is_finished=True)
 
+        # Find hero spawn points for this team that aren't obstacles
         valid_hexes = []
-        for h, tile in state.board.tiles.items():
-            if (
-                tile.spawn_point
-                and tile.spawn_point.is_hero_spawn
-                and tile.spawn_point.team == hero.team
-            ):
-                if not tile.is_occupied:
-                    valid_hexes.append(h)
+        team_spawn_hexes = []
+        for sp in state.board.spawn_points:
+            if sp.is_hero_spawn and sp.team == hero.team:
+                team_spawn_hexes.append(sp.location)
+                if not state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id):
+                    valid_hexes.append(sp.location)
+
+        # Fallback: BFS from spawn points to find nearest non-obstacle hex
+        if not valid_hexes and team_spawn_hexes:
+            from goa2.engine.map_logic import find_nearest_empty_hexes
+
+            for spawn_hex in team_spawn_hexes:
+                zone_id = state.board.get_zone_for_hex(spawn_hex)
+                if zone_id:
+                    candidates = find_nearest_empty_hexes(state, spawn_hex, zone_id)
+                    if candidates:
+                        valid_hexes.extend(candidates)
+                        break
 
         if not valid_hexes:
             print(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
@@ -2127,6 +2149,10 @@ class ResolveCardStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         hero = state.get_hero(HeroID(self.hero_id))
         if not hero or not hero.current_turn_card:
+            return StepResult(is_finished=True)
+
+        # If hero is off-board (didn't respawn), skip action
+        if self.hero_id not in state.entity_locations:
             return StepResult(is_finished=True)
 
         card = hero.current_turn_card
@@ -3136,8 +3162,9 @@ class ResolveTieBreakerStep(GameStep):
         state.current_actor_id = HeroID(winner_id)
 
         new_steps: List[GameStep] = []
+        if winner_id not in state.entity_locations:
+            new_steps.append(RespawnHeroStep(hero_id=winner_id))
         new_steps.append(ResolveCardStep(hero_id=winner_id))
-
         new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
 
         return StepResult(is_finished=True, new_steps=new_steps)

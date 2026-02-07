@@ -1,6 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveCardStep
@@ -40,6 +41,7 @@ def choice_state():
         board=Board(),
         teams={TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[])}
     )
+    state.move_unit(hero.id, Hex(q=0, r=0, s=0))
     return state
 
 def test_resolve_card_prompts_for_choice(choice_state):
@@ -119,7 +121,8 @@ def test_resolve_card_no_primary():
         board=Board(),
         teams={TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[hero], minions=[])}
     )
-    
+    state.move_unit(hero.id, Hex(q=0, r=0, s=0))
+
     step = ResolveCardStep(hero_id="B")
     push_steps(state, [step])
     

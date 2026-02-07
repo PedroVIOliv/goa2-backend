@@ -1,6 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveTieBreakerStep
@@ -29,7 +30,13 @@ def complex_tie_state():
     hero_b.current_turn_card = fake_card
     hero_c.current_turn_card = fake_card
     hero_d.current_turn_card = fake_card
-    
+
+    # Place heroes on board
+    state.move_unit(hero_a.id, Hex(q=0, r=0, s=0))
+    state.move_unit(hero_b.id, Hex(q=1, r=0, s=-1))
+    state.move_unit(hero_c.id, Hex(q=0, r=1, s=-1))
+    state.move_unit(hero_d.id, Hex(q=-1, r=1, s=0))
+
     return state
 
 def test_complex_tie_resolution_flow(complex_tie_state):

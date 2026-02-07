@@ -52,7 +52,23 @@ class EffectManager:
             **kwargs,
         )
         state.add_effect(effect)
+        if source_card_id:
+            card = state.get_card_by_id(source_card_id)
+            if card:
+                card.is_active = True
         return effect
+
+    @staticmethod
+    def _update_card_active_status(state: "GameState", card_id: str):
+        """
+        Set card.is_active based on whether any effects reference it.
+        """
+        has_active_effect = any(
+            e.source_card_id == card_id for e in state.active_effects
+        )
+        card = state.get_card_by_id(card_id)
+        if card:
+            card.is_active = has_active_effect
 
     @staticmethod
     def expire_by_card(state: "GameState", card_id: str):
@@ -60,20 +76,37 @@ class EffectManager:
         state.active_effects = [
             e for e in state.active_effects if e.source_card_id != card_id
         ]
+        card = state.get_card_by_id(card_id)
+        if card:
+            card.is_active = False
 
     @staticmethod
     def expire_effects(state: "GameState", duration: DurationType):
         """Remove all effects matching duration type."""
+        affected_card_ids = {
+            e.source_card_id
+            for e in state.active_effects
+            if e.duration == duration and e.source_card_id
+        }
         state.active_effects = [
             e for e in state.active_effects if e.duration != duration
         ]
+        for card_id in affected_card_ids:
+            EffectManager._update_card_active_status(state, card_id)
 
     @staticmethod
     def expire_by_source(state: "GameState", source_id: str):
         """Remove all effects from a specific source (e.g., defeated hero)."""
+        affected_card_ids = {
+            e.source_card_id
+            for e in state.active_effects
+            if e.source_id == source_id and e.source_card_id
+        }
         state.active_effects = [
             e for e in state.active_effects if e.source_id != source_id
         ]
+        for card_id in affected_card_ids:
+            EffectManager._update_card_active_status(state, card_id)
 
     # -------------------------------------------------------------------------
     # Activation / Deactivation

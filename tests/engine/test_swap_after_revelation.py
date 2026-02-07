@@ -1,5 +1,6 @@
 import pytest
 from goa2.domain.state import GameState
+from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, GamePhase
 from goa2.domain.types import HeroID
 from goa2.data.heroes.arien import create_arien
@@ -45,6 +46,10 @@ def state():
     # Initialize hands
     arien.initialize_state()
     rogue.initialize_state()
+
+    # Place heroes on board
+    state.move_unit(arien.id, Hex(q=0, r=0, s=0))
+    state.move_unit(rogue.id, Hex(q=1, r=0, s=-1))
 
     return state
 

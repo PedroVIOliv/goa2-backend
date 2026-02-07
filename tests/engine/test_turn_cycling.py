@@ -1,5 +1,6 @@
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.phases import start_resolution_phase
@@ -43,6 +44,11 @@ def test_automatic_turn_cycling():
     state.get_hero("B").current_turn_card = create_card("B", 10)
     state.get_hero("C").current_turn_card = create_card("C", 5)
     
+    # Place heroes on board
+    state.move_unit(hero_a.id, Hex(q=0, r=0, s=0))
+    state.move_unit(hero_b.id, Hex(q=1, r=0, s=-1))
+    state.move_unit(hero_c.id, Hex(q=0, r=1, s=-1))
+
     # Setup unresolved pool
     state.unresolved_hero_ids = ["A", "B", "C"]
     

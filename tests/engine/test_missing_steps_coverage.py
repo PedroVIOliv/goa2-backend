@@ -1,6 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
     Team,
     TeamColor,
@@ -25,6 +26,7 @@ def fallback_state():
         board=Board(),
         teams={TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[])},
     )
+    state.move_unit(hero.id, Hex(q=0, r=0, s=0))
     return state
 
 
@@ -164,7 +166,7 @@ def test_resolve_card_text_fallback_defense(fallback_state):
 
 
 def test_fast_travel_not_available_no_loc(fallback_state):
-    # Testing Line 847 (is_action_available -> no u_loc)
+    # Testing: off-board hero skips action entirely (no card resolution)
     hero = fallback_state.get_hero("A")
     hero.current_turn_card = Card(
         id="c1",
@@ -179,13 +181,14 @@ def test_fast_travel_not_available_no_loc(fallback_state):
         effect_text="t",
         is_facedown=False,
     )
-    # Hero is in state but NOT on board
+    # Remove hero from board — off-board heroes skip their action
+    fallback_state.remove_unit("A")
     step = ResolveCardStep(hero_id="A")
     push_steps(fallback_state, [step])
     req = process_resolution_stack(fallback_state)
 
-    opts = [o["id"] for o in req["options"]]
-    assert "FAST_TRAVEL" not in opts
+    # Off-board hero skips action, no input request
+    assert req is None
 
 
 def test_choose_secondary_defense_active(fallback_state):

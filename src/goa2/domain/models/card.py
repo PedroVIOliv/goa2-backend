@@ -44,6 +44,12 @@ class Card(GameEntity):
     # Passive ability usage tracking (reset at turn end)
     passive_uses_this_turn: int = 0
 
+    # Active effect tracking (tapped/sideways in physical game)
+    is_active: bool = Field(
+        default=False,
+        description="True when this card has an active effect in play (tapped/sideways).",
+    )
+
     metadata: Optional[Dict[str, Any]] = None
 
     def __init__(self, **data):
