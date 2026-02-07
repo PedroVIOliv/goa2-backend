@@ -1299,30 +1299,42 @@ class DefeatUnitStep(GameStep):
     """
 
     type: StepType = StepType.DEFEAT_UNIT
-    victim_id: str
+    victim_id: Optional[str] = None  # Direct ID
+    victim_key: Optional[str] = None  # Context key for victim ID
     killer_id: Optional[str] = None
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print(f"   [DEATH] Processing Defeat of {self.victim_id}...")
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
 
-        victim = state.get_unit(UnitID(self.victim_id))
+        # Resolve victim_id from key if needed
+        actual_victim_id = self.victim_id
+        if not actual_victim_id and self.victim_key:
+            actual_victim_id = context.get(self.victim_key)
+
+        if not actual_victim_id:
+            return StepResult(is_finished=True)  # Nothing to defeat
+
+        print(f"   [DEATH] Processing Defeat of {actual_victim_id}...")
+
+        victim = state.get_unit(UnitID(actual_victim_id))
         if not victim:
-            raise ValueError(f"Cannot defeat unknown unit: {self.victim_id}")
+            raise ValueError(f"Cannot defeat unknown unit: {actual_victim_id}")
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
 
         # Return markers from the defeated hero
-        markers_from = state.return_markers_from_hero(self.victim_id)
+        markers_from = state.return_markers_from_hero(actual_victim_id)
         if markers_from:
             print(
-                f"   [DEATH] Returned {len(markers_from)} marker(s) from defeated {self.victim_id}"
+                f"   [DEATH] Returned {len(markers_from)} marker(s) from defeated {actual_victim_id}"
             )
 
         # Return markers placed by the defeated hero
-        markers_by = state.return_markers_by_source(self.victim_id)
+        markers_by = state.return_markers_by_source(actual_victim_id)
         if markers_by:
             print(
-                f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {self.victim_id}"
+                f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {actual_victim_id}"
             )
 
         if hasattr(victim, "level"):  # Is Hero
@@ -1383,7 +1395,7 @@ class DefeatUnitStep(GameStep):
                             return StepResult(
                                 is_finished=True,
                                 new_steps=[
-                                    RemoveUnitStep(unit_id=self.victim_id),
+                                    RemoveUnitStep(unit_id=actual_victim_id),
                                     TriggerGameOverStep(
                                         winner=winning_team, condition="ANNIHILATION"
                                     ),
@@ -1399,7 +1411,7 @@ class DefeatUnitStep(GameStep):
         # Execution Order: RemoveUnitStep -> CheckLanePushStep
         return StepResult(
             is_finished=True,
-            new_steps=[RemoveUnitStep(unit_id=self.victim_id), CheckLanePushStep()],
+            new_steps=[RemoveUnitStep(unit_id=actual_victim_id), CheckLanePushStep()],
         )
 
 
@@ -2315,6 +2327,17 @@ class ResolveCardStep(GameStep):
                         steps_list.append(
                             LogMessageStep(message=f"{self.hero_id} Defends (Active).")
                         )
+
+                # Add AFTER_BASIC_SKILL passive check for Gold/Silver SKILL cards
+                if act_type == ActionType.SKILL and card.color in (
+                    CardColor.GOLD,
+                    CardColor.SILVER,
+                ):
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(
+                            trigger=PassiveTrigger.AFTER_BASIC_SKILL.value
+                        )
+                    )
 
                 return StepResult(is_finished=True, new_steps=steps_list)
 

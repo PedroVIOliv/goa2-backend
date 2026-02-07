@@ -49,6 +49,7 @@ def verify_hero_effects():
         implemented = []
         missing = []
 
+        # Check deck cards
         for card in hero.deck:
             if not card.effect_id:
                 continue
@@ -58,6 +59,18 @@ def verify_hero_effects():
                 implemented.append(f"{card.name} ({card.effect_id})")
             else:
                 missing.append(f"{card.name} ({card.effect_id})")
+
+        # Check ultimate card
+        if hero.ultimate_card and hero.ultimate_card.effect_id:
+            effect = CardEffectRegistry.get(hero.ultimate_card.effect_id)
+            if effect:
+                implemented.append(
+                    f"{hero.ultimate_card.name} ({hero.ultimate_card.effect_id}) [ULTIMATE]"
+                )
+            else:
+                missing.append(
+                    f"{hero.ultimate_card.name} ({hero.ultimate_card.effect_id}) [ULTIMATE]"
+                )
 
         # Print results
         if implemented:

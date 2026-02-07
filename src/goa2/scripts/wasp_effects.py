@@ -14,6 +14,7 @@ from goa2.engine.steps import (
     CheckUnitTypeStep,
     CombineBooleanContextStep,
     CreateEffectStep,
+    DefeatUnitStep,
     ForceDiscardStep,
     ForceDiscardOrDefeatStep,
     ForEachStep,
@@ -41,6 +42,8 @@ from goa2.engine.filters import (
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
+    from goa2.domain.models.enums import PassiveTrigger
+    from goa2.engine.effects import PassiveConfig
     from goa2.engine.stats import CardStats
 
 
@@ -764,4 +767,80 @@ class StaticBarrierEffect(CardEffect):
                 barrier_radius=stats.radius or 2,
                 barrier_origin_id=hero.id,
             ),
+        ]
+
+
+# =============================================================================
+# ULTIMATE (Purple/Tier IV) - Passive Ability
+# =============================================================================
+
+
+@register_effect("high_voltage")
+class HighVoltageEffect(CardEffect):
+    """
+    Ultimate (Purple) - Wasp
+
+    Card text: "Each time after you perform a basic skill, you may defeat
+    an enemy minion in radius; an enemy hero who was adjacent to that
+    minion discards a card, if able."
+
+    This is a passive ability that triggers AFTER_BASIC_SKILL.
+    As an ultimate, it's always active once the hero reaches Level 8.
+    """
+
+    def get_passive_config(self) -> Optional["PassiveConfig"]:
+        from goa2.engine.effects import PassiveConfig
+        from goa2.domain.models.enums import PassiveTrigger
+
+        return PassiveConfig(
+            trigger=PassiveTrigger.AFTER_BASIC_SKILL,
+            uses_per_turn=0,  # Unlimited - "each time"
+            is_optional=True,
+            prompt="High Voltage: Defeat an enemy minion in radius?",
+        )
+
+    def get_passive_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: "PassiveTrigger",
+        context: Dict[str, Any],
+    ) -> List[GameStep]:
+        from goa2.domain.models.enums import PassiveTrigger
+
+        # Only respond to AFTER_BASIC_SKILL trigger
+        if trigger != PassiveTrigger.AFTER_BASIC_SKILL:
+            return []
+
+        return [
+            # 1. Select enemy minion in radius to defeat (optional)
+            SelectStep(
+                target_type=TargetType.UNIT,
+                filters=[
+                    UnitTypeFilter(unit_type="MINION"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=card.radius_value or 3),
+                ],
+                output_key="hv_minion",
+                is_mandatory=False,
+                prompt="Select enemy minion to defeat (High Voltage)",
+            ),
+            # 2. Select adjacent enemy hero BEFORE defeating minion
+            SelectStep(
+                target_type=TargetType.UNIT,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    AdjacencyToContextFilter(target_key="hv_minion"),
+                ],
+                output_key="hv_hero",
+                is_mandatory=False,
+                active_if_key="hv_minion",
+                prompt="Select adjacent enemy hero to force discard",
+            ),
+            # 3. Defeat the minion
+            DefeatUnitStep(victim_key="hv_minion", active_if_key="hv_minion"),
+            # 4. Force hero to discard (if able)
+            ForceDiscardStep(victim_key="hv_hero"),
         ]

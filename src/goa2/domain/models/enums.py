@@ -184,3 +184,4 @@ class PassiveTrigger(str, Enum):
     BEFORE_ATTACK = "before_attack"
     BEFORE_MOVEMENT = "before_movement"
     BEFORE_SKILL = "before_skill"
+    AFTER_BASIC_SKILL = "after_basic_skill"
