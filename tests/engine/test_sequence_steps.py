@@ -82,7 +82,7 @@ def test_move_sequence_range_zero_only_current_hex(base_state):
 
     assert req is not None
     assert len(req["valid_options"]) == 1
-    assert req["valid_options"][0] == Hex(q=0, r=0, s=0)
+    assert req["valid_options"][0] == Hex(q=0, r=0, s=0).model_dump()
 
 
 def test_fast_travel_sequence_flow(base_state):
@@ -98,7 +98,7 @@ def test_fast_travel_sequence_flow(base_state):
     assert req["type"] == "SELECT_HEX"
     # Valid options should be Hex(1,0,-1) because Hex(0,0,0) is occupied by self
     assert len(req["valid_options"]) == 1
-    assert req["valid_options"][0] == Hex(q=1, r=0, s=-1)
+    assert req["valid_options"][0] == Hex(q=1, r=0, s=-1).model_dump()
 
 
 def test_fast_travel_sequence_skips_selection_with_key(base_state):
@@ -134,8 +134,8 @@ def test_move_sequence_obstacle_pathfinding(base_state):
     req_2 = process_resolution_stack(base_state)
 
     assert req_2 is not None
-    # target should NOT be in options
-    assert target not in req_2["valid_options"]
+    # target should NOT be in options (compare as dict)
+    assert target.model_dump() not in req_2["valid_options"]
 
     # Case 2: Movement range 3
     base_state.execution_stack.clear()
@@ -145,8 +145,8 @@ def test_move_sequence_obstacle_pathfinding(base_state):
 
     assert req_3 is not None
     # target SHOULD be in options. Plus neighbors, plus current hex.
-    assert target in req_3["valid_options"]
-    assert start in req_3["valid_options"]
+    assert target.model_dump() in req_3["valid_options"]
+    assert start.model_dump() in req_3["valid_options"]
 
 
 def test_move_sequence_always_allows_current_hex(base_state):
@@ -161,4 +161,4 @@ def test_move_sequence_always_allows_current_hex(base_state):
 
     assert req is not None
     # start (0,0,0) SHOULD be in valid options even though range > 0
-    assert start in req["valid_options"]
+    assert start.model_dump() in req["valid_options"]

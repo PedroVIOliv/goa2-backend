@@ -32,6 +32,12 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
+from goa2.domain.input import (
+    InputRequest,
+    InputRequestType,
+    InputOption,
+    create_input_request,
+)
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -43,7 +49,8 @@ class StepResult(BaseModel):
 
     is_finished: bool = True
     requires_input: bool = False
-    input_request: Optional[Dict[str, Any]] = None
+    # Typed InputRequest for unified contract (Phase 1 of Client-Readiness)
+    input_request: Optional[InputRequest] = None
     new_steps: Sequence["GameStep"] = Field(default_factory=list)  # Steps to spawn
     abort_action: bool = False  # If True, abort remaining steps in current action
 
@@ -465,14 +472,17 @@ class OfferPassiveStep(GameStep):
         # Request input from player
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "CONFIRM_PASSIVE",
-                "prompt": self.prompt,
-                "player_id": state.current_actor_id,
-                "card_id": self.card_id,
-                "card_name": card.name,
-                "options": ["YES", "NO"],
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.CONFIRM_PASSIVE,
+                player_id=str(state.current_actor_id),
+                prompt=self.prompt,
+                options=[
+                    InputOption(id="YES", text="Yes"),
+                    InputOption(id="NO", text="No"),
+                ],
+                card_id=self.card_id,
+                card_name=card.name,
+            ),
         )
 
 
@@ -676,15 +686,25 @@ class SelectStep(GameStep):
                 # Invalid choice, re-request
                 pass
 
+        # Map target_type to InputRequestType
+        type_map = {
+            TargetType.UNIT: InputRequestType.SELECT_UNIT,
+            TargetType.UNIT_OR_TOKEN: InputRequestType.SELECT_UNIT_OR_TOKEN,
+            TargetType.HEX: InputRequestType.SELECT_HEX,
+            TargetType.CARD: InputRequestType.SELECT_CARD,
+            TargetType.NUMBER: InputRequestType.SELECT_NUMBER,
+        }
+        request_type = type_map.get(self.target_type, InputRequestType.SELECT_UNIT)
+
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": f"SELECT_{self.target_type.value}",
-                "prompt": self.prompt,
-                "player_id": actor_id,
-                "valid_options": valid_candidates,
-                "can_skip": not self.is_mandatory,
-            },
+            input_request=create_input_request(
+                request_type=request_type,
+                player_id=str(actor_id),
+                prompt=self.prompt,
+                options=valid_candidates,
+                can_skip=not self.is_mandatory,
+            ),
         )
 
 
@@ -1162,12 +1182,12 @@ class ReactionWindowStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_CARD_OR_PASS",
-                "prompt": f"Player {target_id}, select a Defense card.",
-                "player_id": target_id,
-                "options": valid_ids + ["PASS"],
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_CARD_OR_PASS,
+                player_id=str(target_id),
+                prompt=f"Player {target_id}, select a Defense card.",
+                options=valid_ids + ["PASS"],
+            ),
         )
 
 
@@ -1975,24 +1995,25 @@ class RespawnHeroStep(GameStep):
         if self.pending_input and self.pending_input.get("choice") == "RESPAWN":
             return StepResult(
                 requires_input=True,
-                input_request={
-                    "type": "CHOOSE_RESPAWN",
-                    "prompt": f"Select spawn location for {self.hero_id}",
-                    "player_id": self.hero_id,
-                    "valid_hexes": valid_hexes,
-                },
+                input_request=create_input_request(
+                    request_type=InputRequestType.CHOOSE_RESPAWN_HEX,
+                    player_id=self.hero_id,
+                    prompt=f"Select spawn location for {self.hero_id}",
+                    options=valid_hexes,
+                    valid_hexes=valid_hexes,  # Pass raw Hex objects
+                ),
             )
 
         # Otherwise, show YES/NO prompt first
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "CHOOSE_RESPAWN",
-                "prompt": f"Hero {self.hero_id} is defeated. Respawn at an empty spawn point?",
-                "player_id": self.hero_id,
-                "options": ["RESPAWN", "PASS"],
-                "valid_hexes": valid_hexes,
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.CHOOSE_RESPAWN,
+                player_id=self.hero_id,
+                prompt=f"Hero {self.hero_id} is defeated. Respawn at an empty spawn point?",
+                options=["RESPAWN", "PASS"],
+                valid_hexes=valid_hexes,  # Pass raw Hex objects
+            ),
         )
 
 
@@ -2056,14 +2077,14 @@ class RespawnMinionStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_HEX",
-                "prompt": f"Select space to respawn {self.minion_type}.",
-                "player_id": str(state.current_actor_id)
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_HEX,
+                player_id=str(state.current_actor_id)
                 if state.current_actor_id
                 else "system",
-                "valid_hexes": valid_spaces,
-            },
+                prompt=f"Select space to respawn {self.minion_type}.",
+                options=valid_spaces,
+            ),
         )
 
 
@@ -2384,12 +2405,12 @@ class ResolveCardStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "CHOOSE_ACTION",
-                "prompt": f"Choose action for card {card.name}",
-                "player_id": self.hero_id,
-                "options": options,
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.CHOOSE_ACTION,
+                player_id=self.hero_id,
+                prompt=f"Choose action for card {card.name}",
+                options=options,
+            ),
         )
 
 
@@ -2462,12 +2483,12 @@ class ResolveDisplacementStep(GameStep):
 
             return StepResult(
                 requires_input=True,
-                input_request={
-                    "type": "SELECT_UNIT",
-                    "prompt": f"Team {team.name if team else 'Unknown'}, choose which displaced unit to place first.",
-                    "player_id": delegate_id,
-                    "valid_options": options,
-                },
+                input_request=create_input_request(
+                    request_type=InputRequestType.SELECT_UNIT,
+                    player_id=delegate_id,
+                    prompt=f"Team {team.name if team else 'Unknown'}, choose which displaced unit to place first.",
+                    options=options,
+                ),
             )
 
         uid, origin = active_group[0]
@@ -2527,13 +2548,13 @@ class ResolveDisplacementStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_HEX",
-                "prompt": f"Team {team.name if team else 'Unknown'}, choose displacement for {unit_obj.name if unit_obj else uid}.",
-                "player_id": delegate_id,
-                "valid_hexes": candidates,
-                "context_unit_id": uid,
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_HEX,
+                player_id=delegate_id,
+                prompt=f"Team {team.name if team else 'Unknown'}, choose displacement for {unit_obj.name if unit_obj else uid}.",
+                options=candidates,
+                context_unit_id=uid,
+            ),
         )
 
 
@@ -2694,15 +2715,15 @@ class AskConfirmationStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_OPTION",  # Frontend maps this to Buttons
-                "prompt": self.prompt,
-                "player_id": actor_id,
-                "options": [
-                    {"id": "YES", "text": "Yes"},
-                    {"id": "NO", "text": "No"},
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=str(actor_id),
+                prompt=self.prompt,
+                options=[
+                    InputOption(id="YES", text="Yes"),
+                    InputOption(id="NO", text="No"),
                 ],
-            },
+            ),
         )
 
 
@@ -2784,15 +2805,15 @@ class MayRepeatNTimesStep(GameStep):
         # 3. Request Input
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_OPTION",
-                "prompt": f"{self.prompt} ({self.repeats_done}/{self.max_repeats} done)",
-                "player_id": actor_id,
-                "options": [
-                    {"id": "YES", "text": "Yes"},
-                    {"id": "NO", "text": "No"},
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=str(actor_id),
+                prompt=f"{self.prompt} ({self.repeats_done}/{self.max_repeats} done)",
+                options=[
+                    InputOption(id="YES", text="Yes"),
+                    InputOption(id="NO", text="No"),
                 ],
-            },
+            ),
         )
 
 
@@ -3155,12 +3176,13 @@ class ResolveTieBreakerStep(GameStep):
             else:
                 return StepResult(
                     requires_input=True,
-                    input_request={
-                        "type": "CHOOSE_ACTOR",
-                        "prompt": f"Team {target_team.name}, choose who acts first between {candidates}.",
-                        "player_ids": candidates,
-                        "team": target_team,
-                    },
+                    input_request=create_input_request(
+                        request_type=InputRequestType.CHOOSE_ACTOR,
+                        player_id=candidates[0] if candidates else "unknown",
+                        prompt=f"Team {target_team.name}, choose who acts first between {candidates}.",
+                        options=candidates,
+                        team=target_team,
+                    ),
                 )
 
         # We have a winner!
@@ -3352,11 +3374,14 @@ class ResolveUpgradesStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "UPGRADE_PHASE",
-                "players": broadcast_data,
-                "prompt": "Mandatory Upgrade Phase",
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.UPGRADE_PHASE,
+                player_id=list(state.pending_upgrades.keys())[0]
+                if state.pending_upgrades
+                else "system",
+                prompt="Mandatory Upgrade Phase",
+                players=broadcast_data,
+            ),
         )
 
     def _get_upgrade_options(self, state: GameState, hero_id: str):
@@ -3690,13 +3715,13 @@ class MultiSelectStep(GameStep):
 
         return StepResult(
             requires_input=True,
-            input_request={
-                "type": "SELECT_UNIT",
-                "prompt": f"{self.prompt} ({len(self.selections)}/{self.max_selections})",
-                "player_id": actor_id,
-                "candidates": candidates,
-                "allow_skip": allow_done,  # Shows "Done" button if True
-            },
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_UNIT,
+                player_id=str(actor_id),
+                prompt=f"{self.prompt} ({len(self.selections)}/{self.max_selections})",
+                options=candidates,
+                can_skip=allow_done,
+            ),
         )
 
 

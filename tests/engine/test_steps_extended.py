@@ -121,7 +121,7 @@ def test_fast_travel_step_scenarios(steps_state):
     # But wait, FastTravelDestinationFilter should only allow (1,0,-1) now.
     assert res_auto is not None
     assert len(res_auto["valid_options"]) == 1
-    assert res_auto["valid_options"][0] == Hex(q=1, r=0, s=-1)
+    assert res_auto["valid_options"][0] == Hex(q=1, r=0, s=-1).model_dump()
 
 
 def test_reaction_window_full(steps_state):

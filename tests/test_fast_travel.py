@@ -49,7 +49,7 @@ def test_fast_travel_success_same_zone():
     # SelectStep returns input request
     assert req is not None
     assert req["type"] == "SELECT_HEX"
-    assert Hex(q=1, r=0, s=-1) in req["valid_options"]
+    assert Hex(q=1, r=0, s=-1).model_dump() in req["valid_options"]
 
 
 def test_fast_travel_success_adjacent_zone():
@@ -145,7 +145,7 @@ def test_fast_travel_exclude_unsafe_dest():
     # Only Z2 should be in valid options
     assert req is not None
     assert len(req["valid_options"]) == 1
-    assert req["valid_options"][0] == Hex(q=10, r=0, s=-10)
+    assert req["valid_options"][0] == Hex(q=10, r=0, s=-10).model_dump()
 
 
 def test_fast_travel_option_filtering():

@@ -62,9 +62,7 @@ def test_defeat_cancels_active_effects():
             TeamColor.BLUE: Team(
                 color=TeamColor.BLUE, heroes=[victim], minions=[], life_counters=5
             ),
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[killer], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[killer], minions=[]),
         },
     )
     state.move_unit(victim.id, Hex(q=0, r=0, s=0))
@@ -110,9 +108,7 @@ def test_defeat_resolves_unresolved_card():
             TeamColor.BLUE: Team(
                 color=TeamColor.BLUE, heroes=[victim], minions=[], life_counters=5
             ),
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[killer], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[killer], minions=[]),
         },
     )
     state.move_unit(victim.id, Hex(q=0, r=0, s=0))
@@ -140,9 +136,7 @@ def test_defeat_removes_from_unresolved_hero_ids():
             TeamColor.BLUE: Team(
                 color=TeamColor.BLUE, heroes=[victim], minions=[], life_counters=5
             ),
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[killer], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[killer], minions=[]),
         },
     )
     state.move_unit(victim.id, Hex(q=0, r=0, s=0))
@@ -196,9 +190,7 @@ def test_respawn_filters_occupied_spawn_points():
 
     # Place another unit on the spawn point to block it
     blocker = make_hero("Blocker", TeamColor.RED)
-    state.teams[TeamColor.RED] = Team(
-        color=TeamColor.RED, heroes=[blocker], minions=[]
-    )
+    state.teams[TeamColor.RED] = Team(color=TeamColor.RED, heroes=[blocker], minions=[])
     state.move_unit(blocker.id, spawn_hex)
 
     step = RespawnHeroStep(hero_id="Hero")
@@ -218,7 +210,7 @@ def test_respawn_offers_empty_spawn_point():
 
     assert result.requires_input is True
     assert result.input_request["type"] == "CHOOSE_RESPAWN"
-    assert spawn_hex in result.input_request["valid_hexes"]
+    assert spawn_hex.model_dump() in result.input_request["valid_hexes"]
 
 
 # ---------------------------------------------------------------------------
@@ -253,9 +245,7 @@ def test_respawn_bfs_fallback():
             TeamColor.BLUE: Team(
                 color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5
             ),
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[blocker], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[blocker], minions=[]),
         },
     )
     # Block the spawn point
