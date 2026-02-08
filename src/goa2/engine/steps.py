@@ -1950,7 +1950,9 @@ class RespawnHeroStep(GameStep):
         for sp in state.board.spawn_points:
             if sp.is_hero_spawn and sp.team == hero.team:
                 team_spawn_hexes.append(sp.location)
-                if not state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id):
+                if not state.validator.is_obstacle_for_actor(
+                    state, sp.location, self.hero_id
+                ):
                     valid_hexes.append(sp.location)
 
         # Fallback: BFS from spawn points to find nearest non-obstacle hex
@@ -1969,6 +1971,19 @@ class RespawnHeroStep(GameStep):
             print(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
             return StepResult(is_finished=True)
 
+        # If user already chose RESPAWN but hasn't picked hex yet, show hexes
+        if self.pending_input and self.pending_input.get("choice") == "RESPAWN":
+            return StepResult(
+                requires_input=True,
+                input_request={
+                    "type": "CHOOSE_RESPAWN",
+                    "prompt": f"Select spawn location for {self.hero_id}",
+                    "player_id": self.hero_id,
+                    "valid_hexes": valid_hexes,
+                },
+            )
+
+        # Otherwise, show YES/NO prompt first
         return StepResult(
             requires_input=True,
             input_request={

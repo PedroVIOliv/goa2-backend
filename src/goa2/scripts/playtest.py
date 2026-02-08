@@ -360,7 +360,7 @@ def get_input(prompt: str, valid_range: Optional[range] = None) -> str:
     while True:
         try:
             value = input(f"{Colors.CYAN}> {prompt}: {Colors.RESET}").strip()
-            if not value:
+            if not value and valid_range is not None:
                 continue
             if valid_range is not None:
                 num = int(value)
@@ -1090,10 +1090,31 @@ def handle_choose_actor(state: GameState, request: Dict[str, Any]) -> Dict[str, 
 
 
 def handle_choose_respawn(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle respawn hex selection."""
-    valid_hexes = request.get("valid_options", [])
-    prompt = request.get("prompt", "Select respawn location")
+    """
+    Handle respawn selection. This can be either:
+    1. YES/NO choice (options = ["RESPAWN", "PASS"])
+    2. Hex selection (valid_hexes = [...])
+    """
+    options = request.get("options", [])
+    valid_hexes = request.get("valid_hexes", [])
 
+    # Stage 1: YES/NO choice
+    if "RESPAWN" in options and "PASS" in options:
+        prompt = request.get("prompt", "Select an option")
+        print(f"\n{Colors.BOLD}=== {prompt} ==={Colors.RESET}")
+
+        for i, opt in enumerate(options, 1):
+            print(f"  [{i}] {opt}")
+
+        choice = get_input("Select", valid_range=range(1, len(options) + 1))
+        selected = options[int(choice) - 1]
+
+        # Engine expects {"choice": "RESPAWN"} or {"choice": "PASS"}
+        # If RESPAWN is chosen, engine will show hex selection next
+        return {"choice": selected}
+
+    # Stage 2: Hex selection (after user chose RESPAWN)
+    prompt = request.get("prompt", "Select spawn location")
     print(f"\n{Colors.BOLD}=== {prompt} ==={Colors.RESET}")
 
     for i, hex_data in enumerate(valid_hexes, 1):
@@ -1110,9 +1131,9 @@ def handle_choose_respawn(state: GameState, request: Dict[str, Any]) -> Dict[str
 
     selected = valid_hexes[int(choice) - 1]
     if isinstance(selected, dict):
-        return {"selected_hex": selected}
+        return {"spawn_hex": selected}
     else:
-        return {"selected_hex": {"q": selected.q, "r": selected.r, "s": selected.s}}
+        return {"spawn_hex": {"q": selected.q, "r": selected.r, "s": selected.s}}
 
 
 def handle_upgrade_phase(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -1246,7 +1267,18 @@ def run_playtest():
         return
 
     print(f"{Colors.GREEN}Game initialized successfully!{Colors.RESET}")
-    get_input("Press Enter to start")
+    start_input = get_input(
+        "Press Enter to start (or type 'close' to start at close positions)"
+    )
+
+    if start_input.lower() == "close":
+        print(f"{Colors.YELLOW}Setting up close positions...{Colors.RESET}")
+        from goa2.domain.types import HeroID
+
+        state.place_entity(HeroID("hero_arien"), Hex(q=0, r=-4, s=4))
+        state.place_entity(HeroID("hero_wasp"), Hex(q=-1, r=-3, s=4))
+        print(f"{Colors.GREEN}Heroes moved to close positions!{Colors.RESET}")
+        get_input("Press Enter to continue")
 
     last_phase = None
 
