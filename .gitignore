@@ -25,6 +25,9 @@ build/
 coverage.xml
 .coverage
 
+# Logs
+logs/
+
 # Environment Variables (Security)
 .env
 

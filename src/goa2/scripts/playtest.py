@@ -133,7 +133,7 @@ class GameLogger:
         options = request.get("options", request.get("valid_options", []))
 
         # Sanitize options for logging (remove non-serializable objects)
-        safe_options = []
+        safe_options: list[Any] = []
         for opt in options[:10]:  # Limit to 10 for readability
             if isinstance(opt, dict):
                 safe_options.append({k: str(v) for k, v in opt.items()})
@@ -191,7 +191,7 @@ class GameLogger:
 
     def log_state_snapshot(self, state: GameState):
         """Log a snapshot of current game state."""
-        snapshot = {
+        snapshot: Dict[str, Any] = {
             "phase": state.phase.value,
             "round": state.round,
             "turn": state.turn,
@@ -204,10 +204,11 @@ class GameLogger:
 
         # Log unit positions
         for entity_id, hex_pos in state.entity_locations.items():
-            snapshot["units"][entity_id] = {
-                "q": hex_pos.q,
-                "r": hex_pos.r,
-                "s": hex_pos.s,
+            snapshot["units"][entity_id] = {  # type: ignore[index]
+                "hex": hex_pos.model_dump()
+                if hasattr(hex_pos, "model_dump")
+                else hex_pos,
+                "type": "HERO" if state.get_hero(HeroID(entity_id)) else "MINION",
             }
 
         self.logger.debug(f"STATE_SNAPSHOT: {json.dumps(snapshot, indent=2)}")
@@ -357,6 +358,7 @@ def clear_screen():
 
 def get_input(prompt: str, valid_range: Optional[range] = None) -> str:
     """Get user input with optional numeric validation."""
+    value: Optional[str] = None
     while True:
         try:
             value = input(f"{Colors.CYAN}> {prompt}: {Colors.RESET}").strip()
@@ -364,7 +366,7 @@ def get_input(prompt: str, valid_range: Optional[range] = None) -> str:
                 continue
             if valid_range is not None:
                 num = int(value)
-                if num in valid_range:
+                if num in valid_range:  # type: ignore[operator]
                     return value
                 print(
                     f"{Colors.RED}Please enter a number between {valid_range.start} and {valid_range.stop - 1}{Colors.RESET}"
@@ -375,7 +377,7 @@ def get_input(prompt: str, valid_range: Optional[range] = None) -> str:
             if valid_range is not None:
                 print(f"{Colors.RED}Please enter a valid number{Colors.RESET}")
             else:
-                return value
+                return value  # type: ignore[possibly-unbound,return-value]
         except (KeyboardInterrupt, EOFError):
             print("\nExiting...")
             sys.exit(0)
@@ -397,7 +399,7 @@ def get_unit_symbol(state: GameState, entity_id: str) -> Tuple[str, str]:
     Heroes: First letter of name
     Minions: m (melee), r (ranged), H (heavy)
     """
-    unit = state.get_unit(entity_id)
+    unit = state.get_unit(entity_id)  # type: ignore[arg-type]
     if not unit:
         return ("?", Colors.WHITE)
 
@@ -446,10 +448,10 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
     for hex_coord, tile in state.board.tiles.items():
         zone_id = state.board.get_zone_for_hex(hex_coord)
         if zone_id not in zone_hexes:
-            zone_hexes[zone_id] = []
+            zone_hexes[zone_id] = []  # type: ignore[index]
 
         occupant_id = tile.occupant_id
-        zone_hexes[zone_id].append((hex_coord, occupant_id))
+        zone_hexes[zone_id].append((hex_coord, occupant_id))  # type: ignore[index]
 
     # Display in lane order
     lane_order = state.board.lane if state.board.lane else list(zone_hexes.keys())
@@ -480,7 +482,7 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
         units_in_zone = []
         empty_count = 0
 
-        for hex_coord, occupant_id in zone_hexes[zone_id]:
+        for hex_coord, occupant_id in zone_hexes[zone_id]:  # type: ignore[assignment]
             if occupant_id:
                 symbol, color = get_unit_symbol(state, occupant_id)
                 is_highlighted = hex_coord in highlight_hexes
@@ -506,7 +508,7 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
             if has_units:
                 zone_color = ZONE_COLORS.get(zone_id, Colors.WHITE)
                 lines.append(f"{zone_color} {zone_id} {Colors.RESET}")
-                for hex_coord, occupant_id in zone_hexes[zone_id]:
+                for hex_coord, occupant_id in zone_hexes[zone_id]:  # type: ignore[assignment]
                     if occupant_id:
                         symbol, color = get_unit_symbol(state, occupant_id)
                         lines.append(
@@ -609,8 +611,9 @@ def render_hand(hero: Hero) -> str:
     lines = []
 
     team_color = Colors.RED if hero.team == TeamColor.RED else Colors.BLUE
+    team_value = hero.team.value if hero.team else "?"
     lines.append(
-        f"\n{team_color}{Colors.BOLD}=== {hero.name} ({hero.team.value}) - Level {hero.level} - {hero.gold} Gold ==={Colors.RESET}"
+        f"\n{team_color}{Colors.BOLD}=== {hero.name} ({team_value}) - Level {hero.level} - {hero.gold} Gold ==={Colors.RESET}"
     )
 
     if not hero.hand:
@@ -726,16 +729,18 @@ def handle_select_unit(state: GameState, request: Dict[str, Any]) -> Dict[str, A
 
     # Display valid units
     for i, unit_id in enumerate(valid_ids, 1):
-        unit = state.get_unit(UnitID(str(unit_id)))
-        hex_loc = state.entity_locations.get(str(unit_id))
+        unit = state.get_unit(UnitID(str(unit_id)))  # type: ignore[arg-type]
+        hex_loc = state.entity_locations.get(str(unit_id))  # type: ignore[index,call-overload]
         hex_str = format_hex(hex_loc) if hex_loc else "?"
 
         if isinstance(unit, Hero):
+            team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
             print(
-                f"  [{i}] {Colors.BOLD}{unit.name}{Colors.RESET} ({unit.team.value}) @ {hex_str}"
+                f"  [{i}] {Colors.BOLD}{unit.name}{Colors.RESET} ({team_value}) @ {hex_str}"
             )
         elif isinstance(unit, Minion):
-            print(f"  [{i}] {unit.type.value} Minion ({unit.team.value}) @ {hex_str}")
+            team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
+            print(f"  [{i}] {unit.type.value} Minion ({team_value}) @ {hex_str}")
         else:
             print(f"  [{i}] {unit_id} @ {hex_str}")
 

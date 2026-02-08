@@ -17,6 +17,7 @@ from goa2.domain.models import (
     StepType,
     TargetType,
     CardContainerType,
+    Hero,
 )
 from goa2.domain.models.effect import (
     DurationType,
@@ -1362,7 +1363,8 @@ class DefeatUnitStep(GameStep):
 
         # If the defeated hero has an unresolved card, resolve it without action
         if hasattr(victim, "current_turn_card") and victim.current_turn_card:
-            victim.resolve_current_card()
+            hero = cast(Hero, victim)
+            hero.resolve_current_card()
 
         # Remove from unresolved pool so they don't get another turn this round
         if HeroID(actual_victim_id) in state.unresolved_hero_ids:
