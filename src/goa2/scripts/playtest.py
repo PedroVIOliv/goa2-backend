@@ -28,8 +28,7 @@ from goa2.domain.models.unit import Hero, Minion, Unit
 from goa2.domain.models.card import Card
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.setup import GameSetup
-from goa2.engine.handler import process_resolution_stack
-from goa2.engine.phases import commit_card, pass_turn
+from goa2.engine.session import GameSession, SessionResultType
 
 # Import effect scripts to register card effects
 import goa2.scripts.arien_effects  # noqa: F401
@@ -640,8 +639,9 @@ def render_hand(hero: Hero) -> str:
 # =============================================================================
 
 
-def handle_planning_phase(state: GameState) -> None:
+def handle_planning_phase(session: GameSession) -> None:
     """Handle card selection for all heroes during planning phase."""
+    state = session.state
     print(f"\n{Colors.GREEN}{Colors.BOLD}=== PLANNING PHASE ==={Colors.RESET}")
     print(f"{Colors.DIM}Each hero must select a card to play.{Colors.RESET}\n")
 
@@ -659,7 +659,7 @@ def handle_planning_phase(state: GameState) -> None:
 
         if not hero.hand:
             print(f"\n{Colors.YELLOW}{hero.name} has no cards - passing.{Colors.RESET}")
-            pass_turn(state, HeroID(hero.id))
+            session.pass_turn(HeroID(hero.id))
             continue
 
         # Get card selection
@@ -669,7 +669,7 @@ def handle_planning_phase(state: GameState) -> None:
         )
 
         selected_card = hero.hand[int(choice) - 1]
-        commit_card(state, HeroID(hero.id), selected_card)
+        session.commit_card(HeroID(hero.id), selected_card)
 
         # Log the card commit
         if game_logger:
@@ -1169,8 +1169,8 @@ def handle_upgrade_phase(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"selected_card_id": valid_options[int(choice) - 1]}
 
 
-def handle_input_request(state: GameState, request: Dict[str, Any]) -> None:
-    """Route input request to appropriate handler."""
+def handle_input_request(state: GameState, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Route input request to appropriate handler. Returns the response dict."""
     request_type = request.get("type", "UNKNOWN")
     player_id = request.get("player_id", "?")
     print(f"\n{Colors.DIM}[Input Request: {request_type}]{Colors.RESET}")
@@ -1209,17 +1209,14 @@ def handle_input_request(state: GameState, request: Dict[str, Any]) -> None:
         if game_logger:
             game_logger.log_player_input(request_type, str(player_id), result)
 
-        # Apply result to the pending step
-        if state.execution_stack:
-            step = state.execution_stack[-1]
-            if hasattr(step, "pending_input"):
-                step.pending_input = result
+        return result
     else:
         if game_logger:
             game_logger.log_error(f"Unknown request type: {request_type}")
         print(f"{Colors.RED}Unknown request type: {request_type}{Colors.RESET}")
         print(f"Request: {request}")
         get_input("Press Enter to continue")
+        return None
 
 
 # =============================================================================
@@ -1278,70 +1275,42 @@ def run_playtest():
 
     if start_input.lower() == "close":
         print(f"{Colors.YELLOW}Setting up close positions...{Colors.RESET}")
-        from goa2.domain.types import HeroID
-
         state.place_entity(HeroID("hero_arien"), Hex(q=0, r=-4, s=4))
         state.place_entity(HeroID("hero_wasp"), Hex(q=-1, r=-3, s=4))
         print(f"{Colors.GREEN}Heroes moved to close positions!{Colors.RESET}")
         get_input("Press Enter to continue")
 
+    session = GameSession(state)
     last_phase = None
 
     # Main game loop
     try:
-        while state.phase != GamePhase.GAME_OVER:
+        while session.current_phase != GamePhase.GAME_OVER:
             # Log phase changes
-            if state.phase != last_phase:
+            if session.current_phase != last_phase:
                 game_logger.log_phase_change(state)
-                last_phase = state.phase
+                last_phase = session.current_phase
 
             clear_screen()
             display_game_state(state)
 
-            if state.phase == GamePhase.PLANNING:
-                handle_planning_phase(state)
+            if session.current_phase == GamePhase.PLANNING:
+                handle_planning_phase(session)
                 # After planning, the phase will auto-transition
                 continue
 
-            elif state.phase in (
-                GamePhase.REVELATION,
-                GamePhase.RESOLUTION,
-                GamePhase.CLEANUP,
-                GamePhase.LEVEL_UP,
-            ):
-                # Process the resolution stack
-                request = process_resolution_stack(state)
+            # Resolution/Cleanup/LevelUp phases - use session.advance()
+            result = session.advance()
 
-                if request:
-                    # Need player input
-                    display_game_state(state)
-                    handle_input_request(state, request)
-                elif state.phase == GamePhase.PLANNING:
-                    # Round ended, back to planning
-                    continue
+            while result.result_type == SessionResultType.INPUT_NEEDED:
+                display_game_state(state)
+                request_dict = result.input_request.to_dict()
+                user_response = handle_input_request(state, request_dict)
+                if user_response is not None:
+                    result = session.advance(user_response)
                 else:
-                    # Stack empty but not planning - might be waiting for something
-                    if not state.execution_stack:
-                        # Check if we should transition
-                        if (
-                            state.phase == GamePhase.RESOLUTION
-                            and not state.unresolved_hero_ids
-                        ):
-                            print(f"\n{Colors.GREEN}Turn complete!{Colors.RESET}")
-                            get_input("Press Enter to continue")
-                        elif state.phase == GamePhase.CLEANUP:
-                            print(f"\n{Colors.YELLOW}Round cleanup...{Colors.RESET}")
-                            get_input("Press Enter to continue")
-
-            elif state.phase == GamePhase.SETUP:
-                # Should auto-transition to planning
-                print(f"{Colors.YELLOW}In SETUP phase, waiting...{Colors.RESET}")
-                get_input("Press Enter")
-
-            else:
-                game_logger.log_error(f"Unknown phase: {state.phase}")
-                print(f"{Colors.RED}Unknown phase: {state.phase}{Colors.RESET}")
-                get_input("Press Enter")
+                    # Unknown request type - skip
+                    break
 
     except Exception as e:
         game_logger.log_error(f"Unexpected error: {e}", e)
