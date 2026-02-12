@@ -1,8 +1,21 @@
-from typing import Dict, Any, Optional, Union
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional, Union
+
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase
 from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.events import GameEvent
 from goa2.engine.steps import GameStep, StepResult
+
+
+@dataclass
+class StackResult:
+    """Bundles the result of processing the execution stack."""
+
+    input_request: Optional[InputRequest] = None
+    events: List[GameEvent] = field(default_factory=list)
 
 
 def submit_input(
@@ -20,13 +33,14 @@ def submit_input(
         current_step.pending_input = response
 
 
-def process_stack(state: GameState) -> Optional[InputRequest]:
-    """Process the execution stack, returning typed InputRequest or None."""
+def process_stack(state: GameState) -> StackResult:
+    """Process the execution stack, returning StackResult with events."""
     safety_counter = 0
     MAX_STEPS = 1000
+    collected_events: List[GameEvent] = []
 
     if state.phase == GamePhase.GAME_OVER:
-        return None
+        return StackResult()
 
     while state.execution_stack:
         safety_counter += 1
@@ -36,13 +50,18 @@ def process_stack(state: GameState) -> Optional[InputRequest]:
         current_step: GameStep = state.execution_stack.pop()
         result: StepResult = current_step.resolve(state, state.execution_context)
 
+        # Collect events even from aborted steps
+        collected_events.extend(result.events)
+
         if result.abort_action:
             _clear_to_finalize(state)
             continue
 
         if result.requires_input:
             state.execution_stack.append(current_step)
-            return result.input_request
+            return StackResult(
+                input_request=result.input_request, events=collected_events
+            )
 
         if not result.is_finished:
             state.execution_stack.append(current_step)
@@ -50,7 +69,19 @@ def process_stack(state: GameState) -> Optional[InputRequest]:
         if result.new_steps:
             state.execution_stack.extend(reversed(result.new_steps))
 
-    return None
+    return StackResult(events=collected_events)
+
+
+# Module-level pending events for legacy callers
+_pending_events: List[GameEvent] = []
+
+
+def get_pending_events() -> List[GameEvent]:
+    """Return and clear pending events from the last process_resolution_stack call."""
+    global _pending_events
+    events = _pending_events
+    _pending_events = []
+    return events
 
 
 def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
@@ -60,11 +91,15 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
     Returns a dict representation of InputRequest for backwards compatibility.
     The internal steps now use typed InputRequest models.
     """
+    global _pending_events
+
     safety_counter = 0
     MAX_STEPS = 1000
+    collected_events: List[GameEvent] = []
 
     if state.phase == GamePhase.GAME_OVER:
         print("   [ENGINE] Game is Over. Halting execution.")
+        _pending_events = collected_events
         return None
 
     while state.execution_stack:
@@ -75,6 +110,9 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         current_step: GameStep = state.execution_stack.pop()
 
         result: StepResult = current_step.resolve(state, state.execution_context)
+
+        # Collect events even from aborted steps
+        collected_events.extend(result.events)
 
         # Handle Abort (GoA2 Rule: Mandatory step failure aborts action)
         if result.abort_action:
@@ -85,6 +123,7 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         if result.requires_input:
             # The step needs input. Put it back.
             state.execution_stack.append(current_step)
+            _pending_events = collected_events
             # Convert InputRequest to dict for backwards compatibility
             if result.input_request is not None:
                 return result.input_request.to_dict()
@@ -97,6 +136,7 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         if result.new_steps:
             state.execution_stack.extend(reversed(result.new_steps))
 
+    _pending_events = collected_events
     return None
 
 

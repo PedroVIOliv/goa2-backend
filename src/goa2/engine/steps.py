@@ -39,6 +39,7 @@ from goa2.domain.input import (
     InputOption,
     create_input_request,
 )
+from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -54,6 +55,8 @@ class StepResult(BaseModel):
     input_request: Optional[InputRequest] = None
     new_steps: Sequence["GameStep"] = Field(default_factory=list)  # Steps to spawn
     abort_action: bool = False  # If True, abort remaining steps in current action
+    # Events emitted by this step (Phase 3 of Client-Readiness)
+    events: List[GameEvent] = Field(default_factory=list)
 
 
 class GameStep(BaseModel, ABC):
@@ -190,11 +193,22 @@ class CreateEffectStep(GameStep):
             barrier_origin_id=self.barrier_origin_id,
         )
 
-        print(
-            f"   [EFFECT] Created {self.effect_type.value} from {state.current_actor_id}"
-        )
+        source = str(state.current_actor_id) if state.current_actor_id else "system"
+        print(f"   [EFFECT] Created {self.effect_type.value} from {source}")
 
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.EFFECT_CREATED,
+                    actor_id=source,
+                    metadata={
+                        "effect_type": self.effect_type.value,
+                        "duration": self.duration.value,
+                    },
+                )
+            ],
+        )
 
 
 class PlaceMarkerStep(GameStep):
@@ -248,7 +262,20 @@ class PlaceMarkerStep(GameStep):
             f"(value={self.value}, source={source_id})"
         )
 
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.MARKER_PLACED,
+                    actor_id=source_id,
+                    target_id=target,
+                    metadata={
+                        "marker_type": self.marker_type.value,
+                        "value": self.value,
+                    },
+                )
+            ],
+        )
 
 
 class RemoveMarkerStep(GameStep):
@@ -270,6 +297,15 @@ class RemoveMarkerStep(GameStep):
 
         if marker:
             print(f"   [MARKER] Removed {self.marker_type.value} from play")
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.MARKER_REMOVED,
+                        metadata={"marker_type": self.marker_type.value},
+                    )
+                ],
+            )
         else:
             print(f"   [MARKER] {self.marker_type.value} not in play")
 
@@ -939,8 +975,21 @@ class MoveUnitStep(GameStep):
         print(
             f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
         )
+        from_hex_dict = _hex_dict(start_hex)
+        to_hex_dict = _hex_dict(dest_hex)
         state.move_unit(UnitID(target_unit_id), dest_hex)
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNIT_MOVED,
+                    actor_id=target_unit_id,
+                    from_hex=from_hex_dict,
+                    to_hex=to_hex_dict,
+                    metadata={"range": self.range_val},
+                )
+            ],
+        )
 
 
 class MoveSequenceStep(GameStep):
@@ -1306,8 +1355,18 @@ class RemoveUnitStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print(f"   [LOGIC] Removing {self.unit_id} from board.")
+        from_hex = state.entity_locations.get(BoardEntityID(self.unit_id))
         state.remove_unit(UnitID(self.unit_id))
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNIT_REMOVED,
+                    target_id=self.unit_id,
+                    from_hex=_hex_dict(from_hex),
+                )
+            ],
+        )
 
 
 class DefeatUnitStep(GameStep):
@@ -1343,6 +1402,14 @@ class DefeatUnitStep(GameStep):
             raise ValueError(f"Cannot defeat unknown unit: {actual_victim_id}")
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
+
+        events: List[GameEvent] = [
+            GameEvent(
+                event_type=GameEventType.UNIT_DEFEATED,
+                actor_id=self.killer_id,
+                target_id=actual_victim_id,
+            )
+        ]
 
         # Return markers from the defeated hero
         markers_from = state.return_markers_from_hero(actual_victim_id)
@@ -1391,6 +1458,13 @@ class DefeatUnitStep(GameStep):
             if killer and hasattr(killer, "gold"):
                 killer.gold += kill_gold
                 print(f"   [ECONOMY] Killer {killer.id} gains {kill_gold} Gold.")
+                events.append(
+                    GameEvent(
+                        event_type=GameEventType.GOLD_GAINED,
+                        actor_id=killer.id,
+                        metadata={"amount": kill_gold, "reason": "kill"},
+                    )
+                )
 
             if killer and hasattr(killer, "team"):
                 killer_team_color = getattr(killer, "team", None)
@@ -1403,6 +1477,13 @@ class DefeatUnitStep(GameStep):
                                 print(
                                     f"   [ECONOMY] Assist: {ally.id} gains {assist_gold} Gold."
                                 )
+                                events.append(
+                                    GameEvent(
+                                        event_type=GameEventType.GOLD_GAINED,
+                                        actor_id=ally.id,
+                                        metadata={"amount": assist_gold, "reason": "assist"},
+                                    )
+                                )
 
             if hasattr(victim, "team"):
                 victim_team_color = getattr(victim, "team", None)
@@ -1414,6 +1495,16 @@ class DefeatUnitStep(GameStep):
                         )
                         print(
                             f"   [SCORE] Team {victim_team_color.name} loses {penalty_counters} Life Counter(s). Remaining: {victim_team.life_counters}"
+                        )
+                        events.append(
+                            GameEvent(
+                                event_type=GameEventType.LIFE_COUNTER_CHANGED,
+                                metadata={
+                                    "team": victim_team_color.name,
+                                    "change": -penalty_counters,
+                                    "remaining": victim_team.life_counters,
+                                },
+                            )
                         )
 
                         if victim_team.life_counters == 0:
@@ -1433,6 +1524,7 @@ class DefeatUnitStep(GameStep):
                                         winner=winning_team, condition="ANNIHILATION"
                                     ),
                                 ],
+                                events=events,
                             )
 
         elif hasattr(victim, "value"):  # Is Minion
@@ -1440,11 +1532,19 @@ class DefeatUnitStep(GameStep):
             print(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
             if killer and hasattr(killer, "gold"):
                 killer.gold += reward
+                events.append(
+                    GameEvent(
+                        event_type=GameEventType.GOLD_GAINED,
+                        actor_id=killer.id,
+                        metadata={"amount": reward, "reason": "minion_kill"},
+                    )
+                )
 
         # Execution Order: RemoveUnitStep -> CheckLanePushStep
         return StepResult(
             is_finished=True,
             new_steps=[RemoveUnitStep(unit_id=actual_victim_id), CheckLanePushStep()],
+            events=events,
         )
 
 
@@ -1493,6 +1593,19 @@ class ResolveCombatStep(GameStep):
         attack_val = self.damage
         actor_id = state.current_actor_id
 
+        def _combat_event(outcome: str, defense: Optional[int] = None, modifier: int = 0) -> GameEvent:
+            return GameEvent(
+                event_type=GameEventType.COMBAT_RESOLVED,
+                actor_id=str(actor_id) if actor_id else None,
+                target_id=target_id,
+                metadata={
+                    "attack_value": attack_val,
+                    "defense_value": defense,
+                    "modifier_value": modifier,
+                    "outcome": outcome,
+                },
+            )
+
         # Check for defense_invalid (e.g., stop_projectiles vs melee attack)
         if context.get("defense_invalid"):
             print(
@@ -1502,13 +1615,17 @@ class ResolveCombatStep(GameStep):
             return StepResult(
                 is_finished=True,
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
+                events=[_combat_event("DEFEATED")],
             )
 
         # Check for auto_block (e.g., stop_projectiles vs ranged attack)
         if context.get("auto_block"):
             print(f"   [COMBAT] Auto-block triggered! {target_id} is safe.")
             context["block_succeeded"] = True
-            return StepResult(is_finished=True)
+            return StepResult(
+                is_finished=True,
+                events=[_combat_event("BLOCKED")],
+            )
 
         # Calculate Passive Modifiers (unless ignored by defense effect)
         from goa2.engine.stats import calculate_minion_defense_modifier
@@ -1525,6 +1642,7 @@ class ResolveCombatStep(GameStep):
             return StepResult(
                 is_finished=True,
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
+                events=[_combat_event("DEFEATED")],
             )
         total_defense = defense_card_val + mod_val
 
@@ -1535,13 +1653,17 @@ class ResolveCombatStep(GameStep):
         if total_defense >= attack_val:
             print(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
             context["block_succeeded"] = True
-            return StepResult(is_finished=True)
+            return StepResult(
+                is_finished=True,
+                events=[_combat_event("BLOCKED", defense_card_val, mod_val)],
+            )
         else:
             print(f"   [RESULT] Attack HITS! {target_id} is DEFEATED!")
             context["block_succeeded"] = False
             return StepResult(
                 is_finished=True,
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
+                events=[_combat_event("DEFEATED", defense_card_val, mod_val)],
             )
 
 
@@ -1579,7 +1701,16 @@ class FinalizeHeroTurnStep(GameStep):
         context.clear()
         state.current_actor_id = None
 
-        return StepResult(is_finished=True, new_steps=[FindNextActorStep()])
+        return StepResult(
+            is_finished=True,
+            new_steps=[FindNextActorStep()],
+            events=[
+                GameEvent(
+                    event_type=GameEventType.TURN_ENDED,
+                    actor_id=self.hero_id,
+                )
+            ],
+        )
 
 
 class PlaceUnitStep(GameStep):
@@ -1651,8 +1782,21 @@ class PlaceUnitStep(GameStep):
             return StepResult(is_finished=True)
 
         print(f"   [LOGIC] Placing {target_unit_id} at {dest_hex}")
+        from_hex = state.entity_locations.get(BoardEntityID(str(target_unit_id)))
+        from_hex_dict = _hex_dict(from_hex)
+        to_hex_dict = _hex_dict(dest_hex)
         state.move_unit(UnitID(str(target_unit_id)), dest_hex)
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNIT_PLACED,
+                    actor_id=str(target_unit_id),
+                    from_hex=from_hex_dict,
+                    to_hex=to_hex_dict,
+                )
+            ],
+        )
 
 
 class SwapUnitsStep(GameStep):
@@ -1731,7 +1875,18 @@ class SwapUnitsStep(GameStep):
         state.place_entity(BoardEntityID(actual_unit_a), loc_b)
         state.place_entity(BoardEntityID(actual_unit_b), loc_a)
 
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNITS_SWAPPED,
+                    actor_id=actual_unit_a,
+                    target_id=actual_unit_b,
+                    from_hex=_hex_dict(loc_a),
+                    to_hex=_hex_dict(loc_b),
+                )
+            ],
+        )
 
 
 class SwapCardStep(GameStep):
@@ -1931,7 +2086,22 @@ class PushUnitStep(GameStep):
                 f"   [PUSH] Collision detected: {was_stopped_by_obstacle} -> {self.collision_output_key}"
             )
 
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNIT_PUSHED,
+                    actor_id=str(actor_id) if actor_id else None,
+                    target_id=actual_target_id,
+                    from_hex=_hex_dict(target_loc),
+                    to_hex=_hex_dict(current_loc),
+                    metadata={
+                        "distance": pushed_dist,
+                        "collision": was_stopped_by_obstacle,
+                    },
+                )
+            ],
+        )
 
 
 class RespawnHeroStep(GameStep):
@@ -3463,7 +3633,18 @@ class TriggerGameOverStep(GameStep):
         state.execution_stack.clear()
         state.input_stack.clear()
 
-        return StepResult(is_finished=True)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.GAME_OVER,
+                    metadata={
+                        "winner": self.winner.name,
+                        "condition": self.condition,
+                    },
+                )
+            ],
+        )
 
 
 class CancelEffectsStep(GameStep):

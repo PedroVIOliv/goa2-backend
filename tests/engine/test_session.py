@@ -59,24 +59,24 @@ class TestSubmitInput:
 
 class TestProcessStack:
     def test_returns_input_request(self, empty_state):
-        """process_stack returns typed InputRequest instead of dict."""
+        """process_stack returns StackResult with typed InputRequest."""
         step = SelectStep(target_type=TargetType.UNIT, prompt="Pick a unit")
         push_steps(empty_state, [step])
-        result = process_stack(empty_state)
-        assert isinstance(result, InputRequest)
-        assert result.prompt == "Pick a unit"
+        stack_result = process_stack(empty_state)
+        assert isinstance(stack_result.input_request, InputRequest)
+        assert stack_result.input_request.prompt == "Pick a unit"
 
     def test_returns_none_when_empty(self, empty_state):
-        """process_stack returns None when stack is empty."""
-        result = process_stack(empty_state)
-        assert result is None
+        """process_stack returns StackResult with no input_request when stack is empty."""
+        stack_result = process_stack(empty_state)
+        assert stack_result.input_request is None
 
     def test_processes_non_input_steps(self, empty_state):
         """process_stack processes steps that don't need input."""
         step = LogMessageStep(message="hello")
         push_steps(empty_state, [step])
-        result = process_stack(empty_state)
-        assert result is None
+        stack_result = process_stack(empty_state)
+        assert stack_result.input_request is None
 
 
 # =============================================================================

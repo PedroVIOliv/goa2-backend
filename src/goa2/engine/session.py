@@ -7,13 +7,14 @@ without touching execution_stack or calling internal functions.
 
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, Union, Dict, Any
-from pydantic import BaseModel, ConfigDict
+from typing import List, Optional, Union, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field
 
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase, Card, TeamColor
 from goa2.domain.types import HeroID
 from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.events import GameEvent
 
 
 class SessionResultType(str, Enum):
@@ -28,6 +29,7 @@ class SessionResult(BaseModel):
     input_request: Optional[InputRequest] = None
     current_phase: GamePhase
     winner: Optional[str] = None
+    events: List[GameEvent] = Field(default_factory=list)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -77,8 +79,10 @@ class GameSession:
         if response is not None:
             submit_input(self.state, response)
 
-        request = process_stack(self.state)
-        return self._build_result(request)
+        stack_result = process_stack(self.state)
+        return self._build_result(
+            stack_result.input_request, events=stack_result.events
+        )
 
     # -- internals --
 
@@ -87,8 +91,10 @@ class GameSession:
         if self.state.phase != self._last_phase:
             from goa2.engine.handler import process_stack
 
-            request = process_stack(self.state)
-            result = self._build_result(request)
+            stack_result = process_stack(self.state)
+            result = self._build_result(
+                stack_result.input_request, events=stack_result.events
+            )
             self._last_phase = self.state.phase
             return result
         return SessionResult(
@@ -97,30 +103,37 @@ class GameSession:
         )
 
     def _build_result(
-        self, request: Optional[InputRequest] = None
+        self,
+        request: Optional[InputRequest] = None,
+        events: Optional[List[GameEvent]] = None,
     ) -> SessionResult:
+        ev = events or []
         if self.state.phase == GamePhase.GAME_OVER:
             return SessionResult(
                 result_type=SessionResultType.GAME_OVER,
                 current_phase=GamePhase.GAME_OVER,
                 winner=self._determine_winner(),
+                events=ev,
             )
         if request is not None:
             return SessionResult(
                 result_type=SessionResultType.INPUT_NEEDED,
                 input_request=request,
                 current_phase=self.state.phase,
+                events=ev,
             )
         if self.state.phase != self._last_phase:
             result = SessionResult(
                 result_type=SessionResultType.PHASE_CHANGED,
                 current_phase=self.state.phase,
+                events=ev,
             )
             self._last_phase = self.state.phase
             return result
         return SessionResult(
             result_type=SessionResultType.ACTION_COMPLETE,
             current_phase=self.state.phase,
+            events=ev,
         )
 
     def _determine_winner(self) -> Optional[str]:
