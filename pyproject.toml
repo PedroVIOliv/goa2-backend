@@ -23,6 +23,7 @@ pythonpath = ["src"]
 [dependency-groups]
 dev = [
     "black>=25.11.0",
+    "httpx>=0.28.0",
     "mypy>=1.18.2",
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",

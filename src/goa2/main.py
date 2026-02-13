@@ -1,10 +1,10 @@
+"""Uvicorn entry point for the GoA2 API server."""
 
-def main():
-    print("Welcome to Guards of Atlantis II (Engine Reset)")
-    # basic setup test
-    # board = load_map("path/to/map.json") 
-    # state = GameState(board=board)
-    print("Engine is clean and ready for new implementation.")
+import uvicorn
+
+from goa2.server.app import create_app
+
+app = create_app()
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run("goa2.main:app", host="0.0.0.0", port=8000, reload=True)
