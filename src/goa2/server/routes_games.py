@@ -121,6 +121,7 @@ async def commit_card(
 
         result = session.commit_card(player.hero_id, card)
         game.last_result = result
+        registry.save_game(game_id)
         return _result_to_response(result)
 
 
@@ -141,6 +142,7 @@ async def pass_turn(
 
         result = session.pass_turn(player.hero_id)
         game.last_result = result
+        registry.save_game(game_id)
         return _result_to_response(result)
 
 
@@ -168,6 +170,7 @@ async def submit_input(
         )
         result = game.session.advance(response)
         game.last_result = result
+        registry.save_game(game_id)
         return _result_to_response(result)
 
 
@@ -184,4 +187,5 @@ async def advance(
     async with game.lock:
         result = game.session.advance()
         game.last_result = result
+        registry.save_game(game_id)
         return _result_to_response(result)

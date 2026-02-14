@@ -1,5 +1,7 @@
 """WebSocket integration tests."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,10 +9,12 @@ from goa2.server.app import create_app
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
+    os.environ["GOA2_SAVE_DIR"] = str(tmp_path)
     app = create_app()
     with TestClient(app) as c:
         yield c
+    os.environ.pop("GOA2_SAVE_DIR", None)
 
 
 @pytest.fixture

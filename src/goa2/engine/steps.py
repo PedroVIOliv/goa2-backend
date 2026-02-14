@@ -227,7 +227,7 @@ class PlaceMarkerStep(GameStep):
         )
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.PLACE_MARKER
     marker_type: MarkerType
     target_id: Optional[str] = None  # Direct target ID
     target_key: Optional[str] = None  # Context key for target ID
@@ -286,7 +286,7 @@ class RemoveMarkerStep(GameStep):
         RemoveMarkerStep(marker_type=MarkerType.VENOM)
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.REMOVE_MARKER
     marker_type: MarkerType
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -755,7 +755,7 @@ class DiscardCardStep(GameStep):
     Forces a specific card to be discarded.
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.DISCARD_CARD
     card_id: Optional[str] = None
     card_key: Optional[str] = None
     hero_id: Optional[str] = None
@@ -800,7 +800,7 @@ class ForceDiscardStep(GameStep):
     If NO: Completes successfully (no penalty).
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.FORCE_DISCARD
     victim_key: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -841,7 +841,7 @@ class ForceDiscardOrDefeatStep(GameStep):
     If NO: Spawns DefeatUnitStep (the penalty for not discarding).
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.FORCE_DISCARD_OR_DEFEAT
     victim_key: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -4007,7 +4007,7 @@ class CombineBooleanContextStep(GameStep):
     Example: Kinetic Repulse needs both collision=True AND is_hero=True
     """
 
-    type: StepType = StepType.GENERIC
+    type: StepType = StepType.COMBINE_BOOLEAN_CONTEXT
     key_a: str  # First boolean context key
     key_b: str  # Second boolean context key
     output_key: str  # Where to store result

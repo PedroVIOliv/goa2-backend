@@ -138,6 +138,12 @@ class StepType(str, Enum):
     MULTI_SELECT = "multi_select"
     FOR_EACH = "for_each"
     CHECK_UNIT_TYPE = "check_unit_type"
+    PLACE_MARKER = "place_marker"
+    REMOVE_MARKER = "remove_marker"
+    DISCARD_CARD = "discard_card"
+    FORCE_DISCARD = "force_discard"
+    FORCE_DISCARD_OR_DEFEAT = "force_discard_or_defeat"
+    COMBINE_BOOLEAN_CONTEXT = "combine_boolean_context"
 
 
 class FilterType(str, Enum):

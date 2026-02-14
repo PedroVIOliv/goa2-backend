@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -18,10 +20,17 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.ws import router as ws_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.registry = GameRegistry()
+    save_dir = os.environ.get("GOA2_SAVE_DIR", "data/games")
+    registry = GameRegistry(save_dir=save_dir)
+    count = registry.restore_all()
+    if count:
+        logger.info("Restored %d game(s) from %s", count, save_dir)
+    app.state.registry = registry
     yield
 
 

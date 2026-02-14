@@ -8,6 +8,7 @@ from goa2.domain.models import GamePhase
 from goa2.domain.input import InputRequest, InputResponse
 from goa2.domain.events import GameEvent
 from goa2.engine.steps import GameStep, StepResult
+import goa2.engine.step_types as _step_types  # noqa: F401 — patches model annotations
 
 
 @dataclass

@@ -198,6 +198,10 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     else:
                         reply = {"type": "ERROR", "detail": f"Unknown message type: {msg_type}"}
 
+                # Auto-save after mutations
+                if msg_type in ("SUBMIT_INPUT", "COMMIT_CARD", "PASS_TURN"):
+                    registry.save_game(game.game_id)
+
                 # Send reply to sender
                 await websocket.send_json(reply)
 
