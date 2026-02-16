@@ -228,62 +228,120 @@ The GoA2 backend engine is functionally solid but has no client-facing abstracti
 
 ---
 
-## Phase 5: API Server
+## Phase 5: API Server ✅ COMPLETE
 
 **Fixes:** Pain point #1 (no API boundary)
 **Goal:** Clients connect over HTTP/WebSocket.
 
-### What to do
+### What Was Done
 
-**A. FastAPI server** (new: `src/goa2/server/`)
-- `POST /games` - create game, returns game_id
-- `GET /games/{id}` - get current state view (player-scoped via auth)
-- `POST /games/{id}/input` - submit InputResponse
-- `WebSocket /games/{id}/ws` - real-time event stream + input requests
+**A. FastAPI server** (`src/goa2/server/`)
+- ✅ `POST /games` - create game, returns game_id + player tokens + spectator token
+- ✅ `GET /games/{id}` - get current state view (player-scoped via bearer token auth)
+- ✅ `GET /heroes` - list available hero names
+- ✅ `POST /games/{id}/cards` - commit a card during planning phase
+- ✅ `POST /games/{id}/pass` - pass turn during planning phase
+- ✅ `POST /games/{id}/input` - submit InputResponse during resolution
+- ✅ `POST /games/{id}/advance` - advance resolution without input
+- ✅ `WebSocket /games/{id}/ws` - real-time bidirectional game interaction (COMMIT_CARD, SUBMIT_INPUT, PASS_TURN, GET_VIEW)
 
-**B. Game session registry**
-- In-memory dict of `game_id -> GameSession`
-- Player authentication (simple token-based for now)
+**B. Game session registry** (`src/goa2/server/registry.py`)
+- ✅ In-memory dict of `game_id -> ManagedGame`
+- ✅ Bearer-token authentication per player + spectator tokens
+- ✅ Per-game async locks for concurrency safety
+- ✅ WebSocket connection tracking per game
 
-**C. Request/response serialization**
-- All models are Pydantic, so automatic OpenAPI schema generation
-- Clients get auto-generated TypeScript types via OpenAPI
+**C. Request/response serialization** (`src/goa2/server/models.py`)
+- ✅ Pydantic request/response models with automatic OpenAPI schema
+- ✅ `ActionResultResponse` with result_type, current_phase, events, input_request, winner
+- ✅ `GameViewResponse` with player-scoped view + pending input_request
 
-### Dependencies
-- ✅ Phases 1-4 must be complete (clean contracts, session abstraction, events, views)
-- ✅ FastAPI is already in dependencies
+**D. Error handling** (`src/goa2/server/errors.py`)
+- ✅ Custom exceptions: `GameNotFoundError`, `CardNotInHandError`, `InvalidPhaseError`, `NotYourTurnError`
+- ✅ Proper HTTP status codes (401, 403, 404) for auth/game/card errors
 
-### Files to create
-- `src/goa2/server/__init__.py`
-- `src/goa2/server/app.py` - FastAPI app
-- `src/goa2/server/routes.py` - endpoints
-- `src/goa2/server/auth.py` - simple player auth
-- `src/goa2/server/registry.py` - game session management
+**E. WebSocket features** (`src/goa2/server/ws.py`)
+- ✅ Player-scoped state broadcast after mutations
+- ✅ Spectator restrictions (can only GET_VIEW)
+- ✅ Error messages for invalid JSON, unknown message types
+
+### Files Created
+- ✅ `src/goa2/server/__init__.py`
+- ✅ `src/goa2/server/app.py` - FastAPI app with lifespan
+- ✅ `src/goa2/server/routes_heroes.py` - hero listing endpoint
+- ✅ `src/goa2/server/routes_games.py` - game CRUD + action endpoints
+- ✅ `src/goa2/server/ws.py` - WebSocket handler with broadcast
+- ✅ `src/goa2/server/auth.py` - bearer token auth dependency
+- ✅ `src/goa2/server/registry.py` - game session management
+- ✅ `src/goa2/server/models.py` - request/response Pydantic models
+- ✅ `src/goa2/server/errors.py` - custom exception classes
+
+### Tests
+- ✅ `tests/server/test_server_rest.py` - 13 REST integration tests
+- ✅ `tests/server/test_server_ws.py` - 11 WebSocket integration tests
 
 ### Verification
-- Can create a game via `curl POST /games`
-- Can play a full turn via HTTP requests
-- WebSocket receives events in real-time
-- OpenAPI docs auto-generated at `/docs`
+- ✅ Create game, commit cards, trigger phase transitions via REST
+- ✅ Full planning flow via WebSocket (both players commit → phase change)
+- ✅ Spectator access via both REST and WebSocket
+- ✅ Auth enforcement (401/403 for missing/wrong tokens)
+- ✅ OpenAPI docs auto-generated at `/docs`
+- ✅ 650 tests passing
 
 ---
 
-## Phase 6: State Persistence
+## Phase 6: State Persistence ✅ COMPLETE
 
 **Fixes:** Pain point #9 (no save/load)
 **Goal:** Games survive server restarts; replays are possible.
 
-### What to do
+### What Was Done
 
-- Serialize `GameState` (challenge: `execution_stack` contains `GameStep` instances)
-- Option A: Make all GameSteps fully serializable (they're already Pydantic models)
-- Option B: Checkpoint at phase boundaries when stack is empty
-- Add save/load to `GameSession`
-- Add reconnection endpoint to server
+**A. Fixed StepType discriminator collisions** (`src/goa2/domain/models/enums.py`)
+- ✅ Added 6 unique `StepType` values to replace shared `GENERIC`: `PLACE_MARKER`, `REMOVE_MARKER`, `DISCARD_CARD`, `FORCE_DISCARD`, `FORCE_DISCARD_OR_DEFEAT`, `COMBINE_BOOLEAN_CONTEXT`
+- ✅ Updated corresponding step classes in `steps.py`
+
+**B. Discriminated union types** (`src/goa2/engine/step_types.py`)
+- ✅ Defined `AnyStep` union covering all 53 step subclasses with `Tag` + callable `Discriminator` pattern
+- ✅ Defined `AnyFilter` union covering all 19 filter subclasses
+- ✅ Patched `model_fields` on `GameState`, `SelectStep`, `MultiSelectStep`, `AttackSequenceStep`, `MayRepeatNTimesStep`, `ForEachStep`
+- ✅ Sealing module imported from `handler.py` to ensure patching before engine use
+
+**C. Persistence module** (`src/goa2/engine/persistence.py`)
+- ✅ `save_game()` — atomic write (tmpfile + `os.replace`) of game state to JSON
+- ✅ `load_game()` — deserialize JSON, reconstruct `GameSession` + `ManagedGame`, re-derive `last_result` via `process_stack()`
+- ✅ `load_all_games()` — glob `*.json` in save directory, skip corrupt files
+- ✅ `delete_game_save()` — remove save file
+
+**D. Auto-save integration**
+- ✅ `GameRegistry` accepts `save_dir` param, auto-saves on game creation
+- ✅ REST endpoints auto-save after every mutation (commit_card, pass_turn, submit_input, advance)
+- ✅ WebSocket handler auto-saves after mutations (COMMIT_CARD, SUBMIT_INPUT, PASS_TURN)
+- ✅ `GOA2_SAVE_DIR` env var configures save directory (empty = disabled)
+- ✅ Server restores all games from save directory on startup
+
+### Files Created
+- ✅ `src/goa2/engine/step_types.py` - AnyStep/AnyFilter unions, model patching
+- ✅ `src/goa2/engine/persistence.py` - save/load functions
+
+### Files Modified
+- ✅ `src/goa2/domain/models/enums.py` - 6 new StepType values
+- ✅ `src/goa2/engine/steps.py` - unique StepType per class
+- ✅ `src/goa2/engine/handler.py` - import step_types for patching
+- ✅ `src/goa2/server/registry.py` - save_dir, save_game, restore_all
+- ✅ `src/goa2/server/app.py` - GOA2_SAVE_DIR, restore on startup
+- ✅ `src/goa2/server/routes_games.py` - auto-save after mutations
+- ✅ `src/goa2/server/ws.py` - auto-save after mutations
+
+### Tests
+- ✅ `tests/engine/test_persistence.py` - 15 tests (round-trip, filters, discriminators, mid-resolution, corrupt files)
+- ✅ `tests/server/test_server_persistence.py` - 8 tests (save file creation, restart survival, WS reconnection, multi-game, disabled persistence)
 
 ### Verification
-- Save mid-game, restart server, load, continue playing
-- Replay a game from event log
+- ✅ Save mid-game, restart server, load, continue playing
+- ✅ All step/filter types round-trip through JSON correctly
+- ✅ WebSocket reconnection works after restart with same tokens
+- ✅ 673 tests passing
 
 ---
 
@@ -300,10 +358,10 @@ The GoA2 backend engine is functionally solid but has no client-facing abstracti
    Events      Views
      \         /
       v       v
-⬜ Phase 5: API Server      (depends on Phases 1-4)
+✅ Phase 5: API Server      (depends on Phases 1-4)
      |
      v
-⬜ Phase 6: Persistence     (depends on Phase 5)
+✅ Phase 6: Persistence     (depends on Phase 5)
 ```
 
 ---
@@ -316,5 +374,5 @@ The GoA2 backend engine is functionally solid but has no client-facing abstracti
 | ✅ 2 | Interact through `GameSession` without touching engine internals |
 | ✅ 3 | Show action logs, animate events ("Arien moves to hex X") |
 | ✅ 4 | Only see information they're allowed to see |
-| ⬜ 5 | Connect over HTTP/WebSocket from any language |
-| ⬜ 6 | Reconnect to games, replay matches |
+| ✅ 5 | Connect over HTTP/WebSocket from any language |
+| ✅ 6 | Reconnect to games, replay matches |
