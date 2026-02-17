@@ -59,7 +59,7 @@ def test_arcane_whirlpool_swap(effect_state):
     assert req["type"] == "CHOOSE_ACTION"
     
     # 3. Select SKILL (which is Arcane Whirlpool)
-    effect_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    effect_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
     
     # 4. ResolveCardStep finishes -> spawns ResolveCardTextStep
     # ResolveCardTextStep runs -> spawns SelectStep (from effect)

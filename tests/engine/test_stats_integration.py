@@ -86,7 +86,7 @@ def test_resolve_card_step_movement_bonus(stats_state):
     assert opt["value"] == 3
 
     # Execute Choice (ResolveCardStep)
-    stats_state.execution_stack[0].pending_input = {"choice_id": "MOVEMENT"}
+    stats_state.execution_stack[0].pending_input = {"selection": "MOVEMENT"}
     res = stats_state.execution_stack[0].resolve(stats_state, {})
 
     # Should spawn ResolveCardTextStep (Primary)

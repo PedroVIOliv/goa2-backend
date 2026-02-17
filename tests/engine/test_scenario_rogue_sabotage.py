@@ -133,7 +133,7 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     # --- EXECUTE ROGUE TURN (SABOTAGE) ---
     # 1. ResolveCardStep -> Choose Action -> SKILL
     req = process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
     req = process_resolution_stack(state)
 
     # 2. Select Enemy Hero -> Arien
@@ -164,7 +164,7 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     assert "Noble Blade" in req["prompt"]
 
     # 2. Input: ATTACK
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     req = process_resolution_stack(state)
 
     # 3. Select Attack Target -> Rogue
@@ -232,7 +232,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
 
     # 1. Rogue Choose Action -> MOVEMENT
     req = process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "MOVEMENT"}
+    state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
     req = process_resolution_stack(state)
 
     # 2. Select Destination (if needed) or just resolve
@@ -258,7 +258,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     # 1. Choose Action - SKILL (primary)
     req = process_resolution_stack(state)  # Choose Action for Hero 3
     if req and req["type"] == "CHOOSE_ACTION":
-        state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+        state.execution_stack[-1].pending_input = {"selection": "SKILL"}
         process_resolution_stack(state)
 
     # SKILL with no effect just logs and finishes.
@@ -270,7 +270,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
             break
         # If input needed, provide default or skip
         if req["type"] == "CHOOSE_ACTION":
-            state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+            state.execution_stack[-1].pending_input = {"selection": "SKILL"}
         else:
             # Try to provide dummy input to break loop if stuck?
             # For SELECT_HEX, pick something valid

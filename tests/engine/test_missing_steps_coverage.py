@@ -102,7 +102,7 @@ def test_choose_secondary_hold(fallback_state):
     process_resolution_stack(fallback_state)
 
     # 2. Input: HOLD
-    fallback_state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    fallback_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
     # 3. Resolve choice -> Spawns LogMessageStep -> runs LogMessageStep
     process_resolution_stack(fallback_state)
@@ -130,7 +130,7 @@ def test_choose_secondary_clear(fallback_state):
     push_steps(fallback_state, [step])
 
     process_resolution_stack(fallback_state)
-    fallback_state.execution_stack[-1].pending_input = {"choice_id": "CLEAR"}
+    fallback_state.execution_stack[-1].pending_input = {"selection": "CLEAR"}
     process_resolution_stack(fallback_state)
 
     assert len(fallback_state.execution_stack) == 0

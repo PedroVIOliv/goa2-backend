@@ -62,7 +62,7 @@ def test_automatic_turn_cycling():
     assert req["player_id"] == "A"
     
     # 2. Provide Input (Secondary Hold)
-    state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     # 3. Process until Next Input (B)
     req = process_resolution_stack(state)
@@ -73,7 +73,7 @@ def test_automatic_turn_cycling():
     assert req["player_id"] == "B"
     
     # --- Turn B ---
-    state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     req = process_resolution_stack(state)
     
     assert req is not None
@@ -81,7 +81,7 @@ def test_automatic_turn_cycling():
     assert req["player_id"] == "C"
     
     # --- Turn C ---
-    state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     req = process_resolution_stack(state)
     
     # --- End ---

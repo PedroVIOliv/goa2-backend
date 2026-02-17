@@ -189,8 +189,13 @@ class TestSessionResultEvents:
                 opt = req.options[0]
                 rt = req.request_type.value
                 if rt in ("CHOOSE_ACTION", "ACTION_CHOICE"):
-                    resp = {"choice_id": opt.id}
-                elif rt in ("DEFENSE_CARD", "SELECT_CARD_OR_PASS", "UPGRADE_CHOICE", "UPGRADE_PHASE"):
+                    resp = {"selection": opt.id}
+                elif rt in (
+                    "DEFENSE_CARD",
+                    "SELECT_CARD_OR_PASS",
+                    "UPGRADE_CHOICE",
+                    "UPGRADE_PHASE",
+                ):
                     resp = {"selected_card_id": opt.id}
                 elif rt == "TIE_BREAKER":
                     resp = {"winner_id": opt.id}
@@ -198,11 +203,11 @@ class TestSessionResultEvents:
                     resp = {"selected_hero_id": opt.id}
                 elif rt in ("CHOOSE_RESPAWN", "CHOOSE_RESPAWN_HEX"):
                     if opt.id in ("RESPAWN", "PASS"):
-                        resp = {"choice": opt.id}
+                        resp = {"selection": opt.id}
                     else:
                         resp = {"spawn_hex": opt.id}
                 elif rt == "CONFIRM_PASSIVE":
-                    resp = {"choice": opt.id}
+                    resp = {"selection": opt.id}
                 elif rt == "SELECT_HEX":
                     if "hex" in opt.metadata:
                         resp = {"selection": opt.metadata["hex"]}

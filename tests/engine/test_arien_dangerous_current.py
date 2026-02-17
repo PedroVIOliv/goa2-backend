@@ -113,7 +113,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
 
     # 1. Action Choice (Attack)
     process_resolution_stack(dangerous_current_state)
-    dangerous_current_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory) -> enemy_minion
     req = process_resolution_stack(dangerous_current_state)
@@ -179,7 +179,7 @@ def test_dangerous_current_defeat_flow(dangerous_current_state):
 
     # 1. Action -> Attack
     process_resolution_stack(dangerous_current_state)
-    dangerous_current_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target -> Minion
     process_resolution_stack(dangerous_current_state)

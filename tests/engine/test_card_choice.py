@@ -76,7 +76,7 @@ def test_choose_secondary_movement(choice_state):
     process_resolution_stack(choice_state)
     
     # 2. Provide Input: Secondary Move
-    choice_state.execution_stack[-1].pending_input = {"choice_id": "MOVEMENT"}
+    choice_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
     
     # 3. Run again
     # The ResolveCardStep should finish and spawn MoveUnitStep
@@ -101,7 +101,7 @@ def test_choose_primary_script(choice_state):
     process_resolution_stack(choice_state)
     
     # Input: Primary
-    choice_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    choice_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     
     req = process_resolution_stack(choice_state)
     assert req is None

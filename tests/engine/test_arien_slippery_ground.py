@@ -88,7 +88,7 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
 
     # Action: MOVEMENT (Primary)
     process_resolution_stack(slippery_state)
-    slippery_state.execution_stack[-1].pending_input = {"choice_id": "MOVEMENT"}
+    slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     # Move selection (Arien stays put)
     process_resolution_stack(slippery_state)
@@ -127,7 +127,7 @@ def test_slippery_ground_movement_limited(slippery_state):
     push_steps(slippery_state, [step])
 
     process_resolution_stack(slippery_state)
-    slippery_state.execution_stack[-1].pending_input = {"choice_id": "MOVEMENT"}
+    slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     process_resolution_stack(slippery_state)
     slippery_state.execution_stack[-1].pending_input = {

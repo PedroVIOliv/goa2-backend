@@ -80,7 +80,7 @@ def test_noble_blade_flow(noble_state):
     # 1. Choose Action
     req = process_resolution_stack(noble_state)
     assert req["type"] == "CHOOSE_ACTION"
-    noble_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    noble_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory)
     req = process_resolution_stack(noble_state)
@@ -136,7 +136,7 @@ def test_noble_blade_skip(noble_state):
 
     # 1. Action
     process_resolution_stack(noble_state)
-    noble_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    noble_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target
     process_resolution_stack(noble_state)

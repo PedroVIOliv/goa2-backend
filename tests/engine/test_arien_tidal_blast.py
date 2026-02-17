@@ -92,7 +92,7 @@ def test_tidal_blast_push_3_spaces(tidal_blast_state):
 
     # 1. Action
     process_resolution_stack(tidal_blast_state)
-    tidal_blast_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    tidal_blast_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target Enemy Hero
     process_resolution_stack(tidal_blast_state)

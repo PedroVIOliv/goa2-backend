@@ -49,7 +49,9 @@ class TestSubmitInput:
         resp = InputResponse(selection="hero_a")
         submit_input(empty_state, resp)
         assert empty_state.execution_stack[-1].pending_input is not None
-        assert empty_state.execution_stack[-1].pending_input.get("selection") == "hero_a"
+        assert (
+            empty_state.execution_stack[-1].pending_input.get("selection") == "hero_a"
+        )
 
     def test_empty_stack_raises(self, empty_state):
         """submit_input with no pending step raises ValueError."""
@@ -231,8 +233,13 @@ def _make_response_dict(req: InputRequest) -> dict:
     rt = req.request_type.value
 
     if rt in ("CHOOSE_ACTION", "ACTION_CHOICE"):
-        return {"choice_id": sel}
-    elif rt in ("DEFENSE_CARD", "SELECT_CARD_OR_PASS", "UPGRADE_CHOICE", "UPGRADE_PHASE"):
+        return {"selection": sel}
+    elif rt in (
+        "DEFENSE_CARD",
+        "SELECT_CARD_OR_PASS",
+        "UPGRADE_CHOICE",
+        "UPGRADE_PHASE",
+    ):
         return {"selected_card_id": sel}
     elif rt == "TIE_BREAKER":
         return {"winner_id": sel}
@@ -240,10 +247,10 @@ def _make_response_dict(req: InputRequest) -> dict:
         return {"selected_hero_id": sel}
     elif rt in ("CHOOSE_RESPAWN", "CHOOSE_RESPAWN_HEX"):
         if sel in ("RESPAWN", "PASS"):
-            return {"choice": sel}
+            return {"selection": sel}
         return {"spawn_hex": sel}
     elif rt == "CONFIRM_PASSIVE":
-        return {"choice": sel}
+        return {"selection": sel}
     elif rt == "SELECT_HEX":
         # Hex options store the hex dict in metadata
         if opt and "hex" in opt.metadata:

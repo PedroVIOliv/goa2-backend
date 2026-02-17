@@ -58,7 +58,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["player_id"] == "A"
     
     # Simulate Card Choice (Hold)
-    complex_tie_state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     # Pass 3: A finishes. Finalize -> FindNext (Empty).
     req = process_resolution_stack(complex_tie_state)
@@ -83,7 +83,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     req = process_resolution_stack(complex_tie_state)
     assert req["type"] == "CHOOSE_ACTION"
     
-    complex_tie_state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     req = process_resolution_stack(complex_tie_state)
     assert req is None
@@ -105,7 +105,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "D"
     
-    complex_tie_state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     req = process_resolution_stack(complex_tie_state)
     assert req is None
@@ -121,7 +121,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "C"
     
-    complex_tie_state.execution_stack[-1].pending_input = {"choice_id": "HOLD"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     req = process_resolution_stack(complex_tie_state)
     assert req is None

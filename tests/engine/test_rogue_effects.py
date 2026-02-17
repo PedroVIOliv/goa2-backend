@@ -89,7 +89,7 @@ def test_venom_strike_applies_debuffs(rogue_state):
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Venom Strike)
-    rogue_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. ResolveCardStep -> ResolveCardTextStep -> AttackSequenceStep -> SelectStep
     req = process_resolution_stack(rogue_state)
@@ -141,7 +141,7 @@ def test_slippery_ground_limits_movement(rogue_state):
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Slippery Ground)
-    rogue_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. Resolve steps
     process_resolution_stack(rogue_state)
@@ -212,7 +212,7 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select ATTACK (Magnetic Dagger)
-    rogue_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 4. Resolve steps until SELECT_UNIT (Attack Target)
     req = process_resolution_stack(rogue_state)
@@ -323,7 +323,7 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Rogue Skill Gold)
-    rogue_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. Resolve steps until SELECT_UNIT (Target Hero)
     req = process_resolution_stack(rogue_state)

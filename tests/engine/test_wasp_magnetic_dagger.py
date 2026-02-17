@@ -93,7 +93,7 @@ def test_magnetic_dagger_flow(wasp_magnetic_state):
     # 1. Action Choice (Attack)
     req = process_resolution_stack(wasp_magnetic_state)
     assert req["type"] == "CHOOSE_ACTION"
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory) -> e1
     req = process_resolution_stack(wasp_magnetic_state)
@@ -130,7 +130,7 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
 
     # Attack e1
     process_resolution_stack(wasp_magnetic_state)
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     process_resolution_stack(wasp_magnetic_state)
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
     process_resolution_stack(wasp_magnetic_state)
@@ -176,7 +176,7 @@ def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
 
     # Attack e1
     process_resolution_stack(wasp_magnetic_state)
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     process_resolution_stack(wasp_magnetic_state)
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
     process_resolution_stack(wasp_magnetic_state)

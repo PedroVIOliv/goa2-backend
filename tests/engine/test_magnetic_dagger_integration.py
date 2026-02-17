@@ -113,7 +113,7 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
     req = process_resolution_stack(state)
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "rogue"
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     req = process_resolution_stack(state)
     assert req["type"] == "SELECT_UNIT"  # Attack Target
@@ -133,7 +133,7 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
 
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "arien"
-    state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     req = process_resolution_stack(state)
     assert req["type"] == "SELECT_HEX"

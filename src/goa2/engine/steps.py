@@ -1481,7 +1481,10 @@ class DefeatUnitStep(GameStep):
                                     GameEvent(
                                         event_type=GameEventType.GOLD_GAINED,
                                         actor_id=ally.id,
-                                        metadata={"amount": assist_gold, "reason": "assist"},
+                                        metadata={
+                                            "amount": assist_gold,
+                                            "reason": "assist",
+                                        },
                                     )
                                 )
 
@@ -1593,7 +1596,9 @@ class ResolveCombatStep(GameStep):
         attack_val = self.damage
         actor_id = state.current_actor_id
 
-        def _combat_event(outcome: str, defense: Optional[int] = None, modifier: int = 0) -> GameEvent:
+        def _combat_event(
+            outcome: str, defense: Optional[int] = None, modifier: int = 0
+        ) -> GameEvent:
             return GameEvent(
                 event_type=GameEventType.COMBAT_RESOLVED,
                 actor_id=str(actor_id) if actor_id else None,
@@ -2477,7 +2482,7 @@ class ResolveCardStep(GameStep):
                 )
 
         if self.pending_input:
-            choice_id = self.pending_input.get("choice_id")
+            choice_id = self.pending_input.get("selection")
             selected_opt = next((o for o in options if o["id"] == choice_id), None)
 
             if selected_opt:

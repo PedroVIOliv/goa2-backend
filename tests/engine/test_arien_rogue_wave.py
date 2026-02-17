@@ -92,7 +92,7 @@ def test_rogue_wave_attack_and_push_2_spaces(rogue_wave_state):
     # 1. Choose Action
     req = process_resolution_stack(rogue_wave_state)
     assert req["type"] == "CHOOSE_ACTION"
-    rogue_wave_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (in range 2)
     req = process_resolution_stack(rogue_wave_state)
@@ -138,7 +138,7 @@ def test_rogue_wave_push_1_space(rogue_wave_state):
 
     # 1. Action
     process_resolution_stack(rogue_wave_state)
-    rogue_wave_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target the enemy_hero (range 2), so minion survives for push
     process_resolution_stack(rogue_wave_state)
@@ -170,7 +170,7 @@ def test_rogue_wave_skip_push(rogue_wave_state):
 
     # 1. Action
     process_resolution_stack(rogue_wave_state)
-    rogue_wave_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target
     process_resolution_stack(rogue_wave_state)

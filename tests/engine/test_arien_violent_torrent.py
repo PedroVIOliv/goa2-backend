@@ -137,7 +137,7 @@ def test_violent_torrent_repeat_flow(violent_torrent_state):
 
     # 1. Action Choice -> ATTACK
     process_resolution_stack(violent_torrent_state)
-    violent_torrent_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target 1 -> minion1
     req = process_resolution_stack(violent_torrent_state)
@@ -200,7 +200,7 @@ def test_violent_torrent_no_repeat(violent_torrent_state):
     push_steps(violent_torrent_state, [step])
 
     process_resolution_stack(violent_torrent_state)
-    violent_torrent_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target 1
     process_resolution_stack(violent_torrent_state)
@@ -240,7 +240,7 @@ def test_violent_torrent_defeat_condition(violent_torrent_state):
     push_steps(violent_torrent_state, [step])
 
     process_resolution_stack(violent_torrent_state)
-    violent_torrent_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     process_resolution_stack(violent_torrent_state)
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
@@ -343,7 +343,7 @@ def test_violent_torrent_alignment_filter():
     push_steps(state, [step])
 
     process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Select Target
     process_resolution_stack(state)
@@ -427,7 +427,7 @@ def test_violent_torrent_repeat_no_valid_targets():
     push_steps(state, [step])
 
     process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion
     process_resolution_stack(state)
@@ -526,7 +526,7 @@ def test_violent_torrent_repeat_vs_heavy_minion():
     push_steps(state, [step])
 
     process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion1 (gets defeated)
     process_resolution_stack(state)

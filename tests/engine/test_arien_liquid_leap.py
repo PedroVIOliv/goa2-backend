@@ -82,7 +82,7 @@ def test_liquid_leap_filters(leap_state):
     # 1. Select Action
     req = process_resolution_stack(leap_state)
     assert req["type"] == "CHOOSE_ACTION"
-    leap_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    leap_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 2. Select Hex
     req = process_resolution_stack(leap_state)
@@ -110,7 +110,7 @@ def test_liquid_leap_execution(leap_state):
 
     # 1. Select Action
     process_resolution_stack(leap_state)
-    leap_state.execution_stack[-1].pending_input = {"choice_id": "SKILL"}
+    leap_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 2. Select Hex
     process_resolution_stack(leap_state)

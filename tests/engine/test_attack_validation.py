@@ -202,7 +202,7 @@ def test_secondary_attack_respects_immunity(base_state):
     assert req["type"] == "CHOOSE_ACTION"
     
     # 5. Select Secondary ATTACK
-    base_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    base_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     
     # 6. Next step should be SelectStep (from AttackSequenceStep expansion)
     req2 = process_resolution_stack(base_state)

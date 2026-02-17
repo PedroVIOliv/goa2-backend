@@ -151,7 +151,7 @@ def test_charged_boomerang_valid_targets(wasp_boomerang_state):
     # 1. Action Choice (Attack)
     req = process_resolution_stack(wasp_boomerang_state)
     assert req["type"] == "CHOOSE_ACTION"
-    wasp_boomerang_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target - should only include diagonal enemies
     req = process_resolution_stack(wasp_boomerang_state)
@@ -183,7 +183,7 @@ def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
 
     # Action Choice
     req = process_resolution_stack(wasp_boomerang_state)
-    wasp_boomerang_state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Select diagonal target
     req = process_resolution_stack(wasp_boomerang_state)
@@ -257,7 +257,7 @@ def test_charged_boomerang_no_valid_targets():
 
     # Action Choice
     req = process_resolution_stack(state)
-    state.execution_stack[-1].pending_input = {"choice_id": "ATTACK"}
+    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Should abort because no valid targets (mandatory attack with no options)
     # The stack should be empty or the step should indicate abort
