@@ -964,6 +964,8 @@ class MoveUnitStep(GameStep):
                 start=start_hex,
                 end=dest_hex,
                 max_steps=self.range_val,
+                state=state,
+                actor_id=str(state.current_actor_id) if state.current_actor_id else None,
             )
 
         if not is_valid:
@@ -2066,7 +2068,7 @@ class PushUnitStep(GameStep):
             tile = state.board.get_tile(next_hex)
             # Use context-aware obstacle check for Static Barrier support
             is_obs = state.validator.is_obstacle_for_actor(
-                state, next_hex, actual_target_id
+                state, next_hex, str(state.current_actor_id) if state.current_actor_id else actual_target_id
             )
             if is_obs:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")

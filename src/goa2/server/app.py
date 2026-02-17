@@ -20,6 +20,11 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.ws import router as ws_router
 
+# Register card effects — these modules use @register_effect decorators
+import goa2.scripts.arien_effects  # noqa: F401
+import goa2.scripts.wasp_effects  # noqa: F401
+import goa2.scripts.rogue_effects  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 

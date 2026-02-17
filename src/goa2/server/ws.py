@@ -56,6 +56,22 @@ async def broadcast(game: ManagedGame, registry: GameRegistry) -> None:
         game.ws_connections.pop(t, None)
 
 
+def _log_ws_result(game: ManagedGame, result) -> None:
+    """Log a SessionResult from a WebSocket action."""
+    gl = game.game_logger
+    if not gl:
+        return
+    state = game.session.state
+    gl.log_phase_change(result.current_phase.value, state.round, state.turn)
+    events = [ev.model_dump() for ev in result.events]
+    if events:
+        gl.log_events(events)
+    if result.input_request:
+        gl.log_input_request(result.input_request.to_dict())
+    if result.winner:
+        gl.log_game_over(result.winner)
+
+
 async def _handle_submit_input(
     game: ManagedGame, hero_id: str, data: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -69,8 +85,11 @@ async def _handle_submit_input(
         request_id=data.get("request_id", ""),
         selection=data.get("selection"),
     )
+    if game.game_logger:
+        game.game_logger.log_input_response(hero_id, data.get("selection"))
     result = game.session.advance(response)
     game.last_result = result
+    _log_ws_result(game, result)
     return {
         "type": "ACTION_RESULT",
         "result_type": result.result_type.value,
@@ -100,6 +119,9 @@ async def _handle_commit_card(
 
     result = session.commit_card(hero_id, card)
     game.last_result = result
+    if game.game_logger:
+        game.game_logger.log_card_commit(hero_id, card_id)
+    _log_ws_result(game, result)
     return {
         "type": "ACTION_RESULT",
         "result_type": result.result_type.value,
@@ -120,6 +142,9 @@ async def _handle_pass_turn(
 
     result = session.pass_turn(hero_id)
     game.last_result = result
+    if game.game_logger:
+        game.game_logger.log_pass_turn(hero_id)
+    _log_ws_result(game, result)
     return {
         "type": "ACTION_RESULT",
         "result_type": result.result_type.value,
@@ -160,6 +185,9 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
 
     # Register connection
     game.ws_connections[token] = websocket
+
+    if game.game_logger:
+        game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
 
     # Send initial state
     initial = _build_state_update(game, hero_id if not is_spectator else None)
@@ -210,10 +238,14 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     await broadcast(game, registry)
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError) as exc:
+                if game.game_logger:
+                    game.game_logger.log_error(str(exc), hero_id)
                 await websocket.send_json(
                     {"type": "ERROR", "detail": str(exc)}
                 )
             except ValueError as exc:
+                if game.game_logger:
+                    game.game_logger.log_error(str(exc), hero_id)
                 await websocket.send_json(
                     {"type": "ERROR", "detail": str(exc)}
                 )
@@ -222,3 +254,5 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
         pass
     finally:
         game.ws_connections.pop(token, None)
+        if game.game_logger:
+            game.game_logger.log_ws_disconnect(hero_id if not is_spectator else None, is_spectator)

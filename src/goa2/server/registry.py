@@ -13,6 +13,7 @@ from fastapi import WebSocket
 
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
+from goa2.server.game_logger import GameLogger, create_game_logger
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class ManagedGame:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_result: Optional[SessionResult] = None
     ws_connections: Dict[str, WebSocket] = field(default_factory=dict)
+    game_logger: Optional[GameLogger] = None
 
 
 class GameRegistry:
@@ -55,6 +57,7 @@ class GameRegistry:
             player_tokens=player_tokens,
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
+            game_logger=create_game_logger(game_id),
         )
         self._games[game_id] = game
 
@@ -131,6 +134,7 @@ class GameRegistry:
                 hero_to_token=data["hero_to_token"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
+                game_logger=create_game_logger(data["game_id"]),
             )
             self._games[game.game_id] = game
             count += 1

@@ -559,7 +559,9 @@ class MovementPathFilter(FilterCondition):
         from goa2.engine import rules
 
         return rules.validate_movement_path(
-            board=state.board, start=start_hex, end=candidate, max_steps=self.range_val
+            board=state.board, start=start_hex, end=candidate, max_steps=self.range_val,
+            state=state,
+            actor_id=str(state.current_actor_id) if state.current_actor_id else None,
         )
 
 

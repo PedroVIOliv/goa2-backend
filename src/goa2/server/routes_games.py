@@ -41,6 +41,23 @@ def _map_path(map_name: str) -> str:
     return path
 
 
+def _log_result(game, result: SessionResult, hero_id: str | None = None,
+                 action: str | None = None, detail: str | None = None) -> None:
+    """Log a SessionResult to the game's logger."""
+    gl = game.game_logger
+    if not gl:
+        return
+    state = game.session.state
+    gl.log_phase_change(result.current_phase.value, state.round, state.turn)
+    events = [ev.model_dump() for ev in result.events]
+    if events:
+        gl.log_events(events)
+    if result.input_request:
+        gl.log_input_request(result.input_request.to_dict())
+    if result.winner:
+        gl.log_game_over(result.winner)
+
+
 def _result_to_response(result: SessionResult) -> ActionResultResponse:
     return ActionResultResponse(
         result_type=result.result_type.value,
@@ -68,6 +85,9 @@ async def create_game(
             hero_ids.append(hero.id)
 
     game = registry.create_game(session, hero_ids)
+
+    if game.game_logger:
+        game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
 
     return CreateGameResponse(
         game_id=game.game_id,
@@ -121,6 +141,9 @@ async def commit_card(
 
         result = session.commit_card(player.hero_id, card)
         game.last_result = result
+        if game.game_logger:
+            game.game_logger.log_card_commit(player.hero_id, body.card_id)
+        _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)
 
@@ -142,6 +165,9 @@ async def pass_turn(
 
         result = session.pass_turn(player.hero_id)
         game.last_result = result
+        if game.game_logger:
+            game.game_logger.log_pass_turn(player.hero_id)
+        _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)
 
@@ -168,8 +194,11 @@ async def submit_input(
             request_id=body.request_id,
             selection=body.selection,
         )
+        if game.game_logger:
+            game.game_logger.log_input_response(player.hero_id, body.selection)
         result = game.session.advance(response)
         game.last_result = result
+        _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)
 
@@ -187,5 +216,6 @@ async def advance(
     async with game.lock:
         result = game.session.advance()
         game.last_result = result
+        _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)
