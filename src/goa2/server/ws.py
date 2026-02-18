@@ -76,9 +76,10 @@ async def _handle_submit_input(
     game: ManagedGame, hero_id: str, data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Handle SUBMIT_INPUT message."""
+    # Turn validation (skip for simultaneous phases like UPGRADE_PHASE)
     if game.last_result and game.last_result.input_request:
         expected = game.last_result.input_request.player_id
-        if expected != hero_id:
+        if expected != "simultaneous" and expected != hero_id:
             raise NotYourTurnError(hero_id, expected)
 
     response = InputResponse(

@@ -18,7 +18,7 @@ from goa2.engine.steps import (
     ResolveUpgradesStep,
     apply_hero_upgrade,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_resolution_stack, push_steps, submit_input
 
 
 @pytest.fixture
@@ -158,6 +158,7 @@ def test_resolve_upgrades_options(upgrade_state):
 
     req = process_resolution_stack(upgrade_state)
     assert req["type"] == "UPGRADE_PHASE"
+    assert req["player_id"] == "simultaneous"
 
     h1_data = req["players"]["h1"]
     assert h1_data["remaining"] == 2
@@ -208,18 +209,18 @@ def test_upgrade_loop_to_completion(upgrade_state):
     req = process_resolution_stack(upgrade_state)
     assert req["type"] == "UPGRADE_PHASE"
 
-    # 3. Simulate Choice 1: Red
-    apply_hero_upgrade(upgrade_state, "h1", "r2a")
+    # 3. Submit Choice 1: Red via submit_input
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "r2a"}})
 
-    # 4. ResolveUpgrades again (since it's still on stack)
+    # 4. ResolveUpgrades processes input, then returns next request
     req2 = process_resolution_stack(upgrade_state)
     assert req2 is not None
     assert req2["players"]["h1"]["remaining"] == 1
 
-    # 5. Simulate Choice 2: Blue
-    apply_hero_upgrade(upgrade_state, "h1", "b2a")
+    # 5. Submit Choice 2: Blue via submit_input
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "b2a"}})
 
-    # 6. ResolveUpgrades again -> All done -> Spawns RoundReset
+    # 6. ResolveUpgrades processes input -> All done -> Spawns RoundReset
     process_resolution_stack(upgrade_state)
 
     # 7. RoundReset runs
@@ -334,23 +335,23 @@ def test_simultaneous_multi_player_upgrades(upgrade_state):
     assert "h1" in req["players"]
     assert "h2" in req["players"]
 
-    # 3. Simulate H2 (1 level) picking their card
-    apply_hero_upgrade(upgrade_state, "h2", "h2_b2a")
+    # 3. Submit H2 (1 level) picking their card via submit_input
+    submit_input(upgrade_state, {"selection": {"hero_id": "h2", "card_id": "h2_b2a"}})
 
     # 4. Resolve again - H2 should be GONE from the broadcast, H1 still there with 2
     req2 = process_resolution_stack(upgrade_state)
     assert "h2" not in req2["players"]
     assert req2["players"]["h1"]["remaining"] == 2
 
-    # 5. Simulate H1 first pick
-    apply_hero_upgrade(upgrade_state, "h1", "r2a")
+    # 5. Submit H1 first pick via submit_input
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "r2a"}})
 
     # 6. Resolve again - H1 still there with 1
     req3 = process_resolution_stack(upgrade_state)
     assert req3["players"]["h1"]["remaining"] == 1
 
-    # 7. Simulate H1 final pick
-    apply_hero_upgrade(upgrade_state, "h1", "b2a")
+    # 7. Submit H1 final pick via submit_input
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "b2a"}})
 
     # 8. Resolve again - All done, should reset round
     process_resolution_stack(upgrade_state)  # ResolveUpgrades finishes

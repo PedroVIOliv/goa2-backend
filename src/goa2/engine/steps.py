@@ -3542,6 +3542,16 @@ class ResolveUpgradesStep(GameStep):
     type: StepType = StepType.RESOLVE_UPGRADES
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Process input if provided
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if isinstance(selection, dict):
+                hero_id = selection.get("hero_id")
+                card_id = selection.get("card_id")
+                if hero_id and card_id:
+                    apply_hero_upgrade(state, hero_id, card_id)
+            self.pending_input = None
+
         if not state.pending_upgrades:
             print("   [PHASE] All upgrades complete.")
             return StepResult(is_finished=True, new_steps=[RoundResetStep()])
@@ -3555,9 +3565,7 @@ class ResolveUpgradesStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.UPGRADE_PHASE,
-                player_id=list(state.pending_upgrades.keys())[0]
-                if state.pending_upgrades
-                else "system",
+                player_id="simultaneous",
                 prompt="Mandatory Upgrade Phase",
                 players=broadcast_data,
             ),

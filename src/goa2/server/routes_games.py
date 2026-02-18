@@ -184,10 +184,10 @@ async def submit_input(
     game = registry.get(game_id)
 
     async with game.lock:
-        # Turn validation
+        # Turn validation (skip for simultaneous phases like UPGRADE_PHASE)
         if game.last_result and game.last_result.input_request:
             expected = game.last_result.input_request.player_id
-            if expected != player.hero_id:
+            if expected != "simultaneous" and expected != player.hero_id:
                 raise NotYourTurnError(player.hero_id, expected)
 
         response = InputResponse(
