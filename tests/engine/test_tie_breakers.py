@@ -56,7 +56,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["team"] == TeamColor.RED
     
     # Simulate Red choosing A
-    complex_tie_state.execution_stack[-1].pending_input = {"selected_hero_id": "A"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "A"}
     
     # Pass 2: A is winner. Spawns ResolveCardStep(A).
     req = process_resolution_stack(complex_tie_state)
@@ -83,7 +83,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["team"] == TeamColor.BLUE
     
     # Simulate Blue choosing B
-    complex_tie_state.execution_stack[-1].pending_input = {"selected_hero_id": "B"}
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "B"}
     
     # Pass 5: B Card Choice
     req = process_resolution_stack(complex_tie_state)

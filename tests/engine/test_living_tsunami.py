@@ -271,7 +271,7 @@ class TestOfferPassiveStep:
             is_optional=True,
             prompt="Living Tsunami: Move 1 space before attacking?",
         )
-        step.pending_input = {"choice": "YES"}
+        step.pending_input = {"selection": "YES"}
         result = step.resolve(state, {})
 
         assert result.is_finished
@@ -298,7 +298,7 @@ class TestOfferPassiveStep:
             is_optional=True,
             prompt="Living Tsunami: Move 1 space before attacking?",
         )
-        step.pending_input = {"choice": "NO"}
+        step.pending_input = {"selection": "NO"}
         result = step.resolve(state, {})
 
         assert result.is_finished

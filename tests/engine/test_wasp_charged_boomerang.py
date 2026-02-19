@@ -196,7 +196,7 @@ def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
     req = process_resolution_stack(wasp_boomerang_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
     wasp_boomerang_state.execution_stack[-1].pending_input = {
-        "selected_card_id": "PASS"
+        "selection": "PASS"
     }
 
     # Finish resolution

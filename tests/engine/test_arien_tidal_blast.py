@@ -100,7 +100,7 @@ def test_tidal_blast_push_3_spaces(tidal_blast_state):
 
     # 3. Reaction
     process_resolution_stack(tidal_blast_state)
-    tidal_blast_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    tidal_blast_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Select Push Target (Minion)
     process_resolution_stack(tidal_blast_state)

@@ -104,7 +104,7 @@ def test_magnetic_dagger_flow(wasp_magnetic_state):
     # 3. Reaction Window
     req = process_resolution_stack(wasp_magnetic_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Finish resolution
     process_resolution_stack(wasp_magnetic_state)
@@ -134,7 +134,7 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
     process_resolution_stack(wasp_magnetic_state)
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
     process_resolution_stack(wasp_magnetic_state)
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
     process_resolution_stack(wasp_magnetic_state)
 
     # Finalize card to activate effects
@@ -180,7 +180,7 @@ def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
     process_resolution_stack(wasp_magnetic_state)
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
     process_resolution_stack(wasp_magnetic_state)
-    wasp_magnetic_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
     process_resolution_stack(wasp_magnetic_state)
 
     # Finalize card to activate effects

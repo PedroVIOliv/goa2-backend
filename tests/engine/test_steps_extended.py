@@ -150,12 +150,12 @@ def test_reaction_window_full(steps_state):
     assert ctx_minion["defense_value"] is None
 
     # Pass
-    rw.pending_input = {"selected_card_id": "PASS"}
+    rw.pending_input = {"selection": "PASS"}
     res_pass = rw.resolve(steps_state, ctx)
     assert ctx["defense_value"] is None
 
     # Use Primary Defense
-    rw.pending_input = {"selected_card_id": "def1"}
+    rw.pending_input = {"selection": "def1"}
     res_def = rw.resolve(steps_state, ctx)
     assert ctx["defense_value"] == 3
 
@@ -174,7 +174,7 @@ def test_reaction_window_full(steps_state):
         is_facedown=False,
     )
     h2.hand.append(sec_card)
-    rw.pending_input = {"selected_card_id": "sec1"}
+    rw.pending_input = {"selection": "sec1"}
     rw.resolve(steps_state, ctx)
     assert ctx["defense_value"] == 2
 
@@ -222,13 +222,13 @@ def test_respawn_hero_variations(steps_state):
         location=Hex(q=0, r=0, s=0), team=TeamColor.RED, type=SpawnType.HERO
     )
     steps_state.board.tiles[Hex(q=0, r=0, s=0)].spawn_point = sp
-    rh.pending_input = {"choice": "PASS"}
+    rh.pending_input = {"selection": "PASS"}
     ctx = {}
     assert rh.resolve(steps_state, ctx).is_finished is True
     assert ctx.get("skipped_respawn") is True
 
     # Success respawn
-    rh.pending_input = {"spawn_hex": {"q": 0, "r": 0, "s": 0}}
+    rh.pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
     assert rh.resolve(steps_state, {}).is_finished is True
     assert steps_state.entity_locations["h1"] == Hex(q=0, r=0, s=0)
 
@@ -274,12 +274,12 @@ def test_respawn_minion_variations(steps_state):
 
     # Success respawn with input
     steps_state.teams[TeamColor.RED].minions = old_minions
-    rm.pending_input = {"spawn_hex": {"q": 1, "r": 0, "s": -1}}
+    rm.pending_input = {"selection": {"q": 1, "r": 0, "s": -1}}
     assert rm.resolve(steps_state, {}).is_finished is True
     assert steps_state.entity_locations["m_red_1"] == Hex(q=1, r=0, s=-1)
 
     # Error: Occupied
-    rm.pending_input = {"spawn_hex": {"q": 1, "r": 0, "s": -1}}
+    rm.pending_input = {"selection": {"q": 1, "r": 0, "s": -1}}
     # m_red_1 is not on board yet (remove it)
     steps_state.remove_entity("m_red_1")
     steps_state.place_entity("blocker", Hex(q=1, r=0, s=-1))

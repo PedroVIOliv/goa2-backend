@@ -142,7 +142,7 @@ def test_displacement_multi_unit_selection(displacement_state):
 
     # Input: Select m_disp_2 first
     displacement_state.execution_stack[-1].pending_input = {
-        "selected_unit_id": "m_disp_2"
+        "selection": "m_disp_2"
     }
 
     # Run 2: Spawns recursive steps. Resolve(m_disp_2) runs.

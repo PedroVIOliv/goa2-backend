@@ -154,7 +154,7 @@ class TestReactionWindowSetsDefenseType:
         }
 
         step = ReactionWindowStep(target_player_key="victim_id")
-        step.pending_input = {"selected_card_id": "defense_card"}
+        step.pending_input = {"selection": "defense_card"}
         step.resolve(state_with_defender, context)
 
         assert context.get("current_action_type") == ActionType.DEFENSE
@@ -167,7 +167,7 @@ class TestReactionWindowSetsDefenseType:
         }
 
         step = ReactionWindowStep(target_player_key="victim_id")
-        step.pending_input = {"selected_card_id": "defense_card"}
+        step.pending_input = {"selection": "defense_card"}
         step.resolve(state_with_defender, context)
 
         assert "action_type_stack" in context
@@ -181,7 +181,7 @@ class TestReactionWindowSetsDefenseType:
         }
 
         step = ReactionWindowStep(target_player_key="victim_id")
-        step.pending_input = {"selected_card_id": "PASS"}
+        step.pending_input = {"selection": "PASS"}
         step.resolve(state_with_defender, context)
 
         assert context.get("current_action_type") == ActionType.ATTACK

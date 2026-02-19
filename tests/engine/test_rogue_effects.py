@@ -104,7 +104,7 @@ def test_venom_strike_applies_debuffs(rogue_state):
     assert req["type"] == "SELECT_CARD_OR_PASS"
 
     # 7. Provide Input: PASS reaction
-    rogue_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     process_resolution_stack(rogue_state)
 
@@ -222,7 +222,7 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     # 5. Resolve steps until SELECT_CARD_OR_PASS (Reaction)
     req = process_resolution_stack(rogue_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    rogue_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 6. Finish resolution
     process_resolution_stack(rogue_state)

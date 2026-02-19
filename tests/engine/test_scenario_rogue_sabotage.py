@@ -183,7 +183,7 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     assert req["player_id"] == rogue.id
 
     # 5. Rogue Reaction -> Pass
-    state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    state.execution_stack[-1].pending_input = {"selection": "PASS"}
     process_resolution_stack(state)
 
     # Finalize Arien

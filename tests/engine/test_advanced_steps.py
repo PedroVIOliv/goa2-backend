@@ -94,7 +94,7 @@ def test_respawn_minion_occupied(base_state):
     
     # Attempt Respawn
     step = RespawnMinionStep(team=TeamColor.RED, minion_type=MinionType.MELEE)
-    step.pending_input = {"spawn_hex": {"q": 0, "r": 0, "s": 0}}
+    step.pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
     
     res = step.resolve(base_state, {})
     
@@ -144,7 +144,7 @@ def test_respawn_hero_step(base_state):
     res = step.resolve(base_state, {})
     assert res.requires_input
 
-    step.pending_input = {"choice": "RESPAWN", "spawn_hex": {"q": -3, "r": 0, "s": 3}}
+    step.pending_input = {"selection": {"q": -3, "r": 0, "s": 3}}
     res = step.resolve(base_state, {})
     assert res.is_finished
     assert base_state.entity_locations["h1"] == spawn_hex
@@ -166,7 +166,7 @@ def test_respawn_minion_step(base_state):
     res = step.resolve(base_state, {})
     assert res.requires_input
     
-    step.pending_input = {"spawn_hex": {"q": 2, "r": 0, "s": -2}}
+    step.pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
     res = step.resolve(base_state, {})
     assert res.is_finished
     assert base_state.entity_locations["m1"] == spawn_hex

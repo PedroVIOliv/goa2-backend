@@ -104,7 +104,7 @@ def test_rogue_wave_attack_and_push_2_spaces(rogue_wave_state):
     # 3. Reaction Window (enemy_hero)
     req = process_resolution_stack(rogue_wave_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    rogue_wave_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Combat resolves, then Select push target (optional)
     req = process_resolution_stack(rogue_wave_state)
@@ -146,7 +146,7 @@ def test_rogue_wave_push_1_space(rogue_wave_state):
 
     # 3. Reaction
     process_resolution_stack(rogue_wave_state)
-    rogue_wave_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Push target - select the adjacent minion
     process_resolution_stack(rogue_wave_state)
@@ -178,7 +178,7 @@ def test_rogue_wave_skip_push(rogue_wave_state):
 
     # 3. Reaction
     process_resolution_stack(rogue_wave_state)
-    rogue_wave_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    rogue_wave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Push target (skip)
     req = process_resolution_stack(rogue_wave_state)

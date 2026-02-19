@@ -499,7 +499,7 @@ class OfferPassiveStep(GameStep):
 
         # Handle player input for optional passives
         if self.pending_input:
-            choice = self.pending_input.get("choice")
+            choice = self.pending_input.get("selection")
             if choice == "YES":
                 return execute_passive()
             else:  # "NO" or "SKIP"
@@ -1177,7 +1177,7 @@ class ReactionWindowStep(GameStep):
         valid_ids = [c.id for c in valid_defense_cards]
 
         if self.pending_input:
-            card_id = self.pending_input.get("selected_card_id")
+            card_id = self.pending_input.get("selection")
 
             # Case A: PASS
             if card_id == "PASS":
@@ -1211,6 +1211,9 @@ class ReactionWindowStep(GameStep):
                     ActionType.DEFENSE,
                     ActionType.DEFENSE_SKILL,
                 )
+
+                # Discard the defense card from hand
+                target_hero.discard_card(selected_card, from_hand=True)
 
                 print(
                     f"   [REACTION] Player {target_id} defends with {card_id} "
@@ -2130,13 +2133,13 @@ class RespawnHeroStep(GameStep):
             return StepResult(is_finished=True)
 
         if self.pending_input:
-            choice = self.pending_input.get("choice")
-            if choice == "PASS":
+            selection = self.pending_input.get("selection")
+            if selection == "PASS":
                 print(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
                 context["skipped_respawn"] = True
                 return StepResult(is_finished=True)
 
-            selected_hex_dict = self.pending_input.get("spawn_hex")
+            selected_hex_dict = selection if isinstance(selection, dict) else None
             if selected_hex_dict:
                 selected_hex = Hex(**selected_hex_dict)
                 print(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
@@ -2171,7 +2174,7 @@ class RespawnHeroStep(GameStep):
             return StepResult(is_finished=True)
 
         # If user already chose RESPAWN but hasn't picked hex yet, show hexes
-        if self.pending_input and self.pending_input.get("choice") == "RESPAWN":
+        if self.pending_input and self.pending_input.get("selection") == "RESPAWN":
             return StepResult(
                 requires_input=True,
                 input_request=create_input_request(
@@ -2234,8 +2237,8 @@ class RespawnMinionStep(GameStep):
             return StepResult(is_finished=True)
 
         if self.pending_input:
-            selected_hex_dict = self.pending_input.get("spawn_hex")
-            if selected_hex_dict:
+            selected_hex_dict = self.pending_input.get("selection")
+            if isinstance(selected_hex_dict, dict):
                 selected_hex = Hex(**selected_hex_dict)
                 tile = state.board.get_tile(selected_hex)
                 if tile and tile.is_occupied:
@@ -2633,7 +2636,7 @@ class ResolveDisplacementStep(GameStep):
             return StepResult(is_finished=True)
 
         if self.pending_input:
-            sel_uid = self.pending_input.get("selected_unit_id")
+            sel_uid = self.pending_input.get("selection")
             if sel_uid:
                 target_tuple = next((u for u in active_group if u[0] == sel_uid), None)
                 if target_tuple:
@@ -3342,7 +3345,7 @@ class ResolveTieBreakerStep(GameStep):
 
         if needs_input:
             if self.pending_input:
-                winner_id = self.pending_input.get("selected_hero_id")
+                winner_id = self.pending_input.get("selection")
                 print(
                     f"   [TIE] Team {target_team.name} chose {winner_id} to act first."
                 )

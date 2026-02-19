@@ -153,7 +153,7 @@ def test_reaction_window_validation(combat_state):
     assert "PASS" in req["options"]
 
     # Pass 2: Select Invalid Card
-    combat_state.execution_stack[-1].pending_input = {"selected_card_id": "def_card_1"}
+    combat_state.execution_stack[-1].pending_input = {"selection": "def_card_1"}
     process_resolution_stack(combat_state)
 
     assert combat_state.execution_context["defense_value"] == 5

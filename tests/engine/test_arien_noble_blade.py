@@ -115,7 +115,7 @@ def test_noble_blade_flow(noble_state):
     # 5. Reaction Window (E1)
     req = process_resolution_stack(noble_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    noble_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    noble_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 6. Combat (Resolve)
     res = process_resolution_stack(noble_state)
@@ -150,7 +150,7 @@ def test_noble_blade_skip(noble_state):
     # 4. Reaction (Should jump straight here, skipping Hex Select and Place)
     req = process_resolution_stack(noble_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"  # Reaction Window
-    noble_state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
+    noble_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 5. End
     process_resolution_stack(noble_state)
