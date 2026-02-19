@@ -23,32 +23,50 @@ class GameLogger:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        prefix = f"{game_id}_{timestamp}"
-        self.log_file = self.log_dir / f"{prefix}.log"
-        self.json_file = self.log_dir / f"{prefix}.json"
+        self.log_file = self.log_dir / f"{game_id}.log"
+        self.json_file = self.log_dir / f"{game_id}.json"
+
+        # Detect if this is a fresh log or a restore (before adding handler)
+        is_new = not self.log_file.exists() or self.log_file.stat().st_size == 0
 
         # Python logger — one per game, writes to its own file
         self.logger = logging.getLogger(f"goa2.game.{game_id}")
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False  # don't pollute root logger
 
-        fh = logging.FileHandler(self.log_file)
+        # Remove any stale handlers from a previous GameLogger instance
+        for h in self.logger.handlers[:]:
+            h.close()
+            self.logger.removeHandler(h)
+
+        fh = logging.FileHandler(self.log_file, mode="a")
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(
             logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s")
         )
         self.logger.addHandler(fh)
 
-        # Structured events for JSON export
-        self.events: List[Dict[str, Any]] = []
+        # Structured events for JSON export — load existing if restoring
+        if not is_new and self.json_file.exists():
+            try:
+                with open(self.json_file) as f:
+                    self.events: List[Dict[str, Any]] = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                self.events = []
+        else:
+            self.events = []
         self._round = 0
         self._turn = 0
         self._phase = ""
 
-        self.logger.info("=" * 60)
-        self.logger.info("GAME %s STARTED", game_id)
-        self.logger.info("=" * 60)
+        if is_new:
+            self.logger.info("=" * 60)
+            self.logger.info("GAME %s STARTED", game_id)
+            self.logger.info("=" * 60)
+        else:
+            self.logger.info("-" * 60)
+            self.logger.info("GAME %s RESTORED", game_id)
+            self.logger.info("-" * 60)
 
     # ------------------------------------------------------------------
     # Public logging methods
@@ -222,3 +240,12 @@ def create_game_logger(game_id: str, log_dir: Optional[str] = None) -> GameLogge
     """Create a GameLogger, using GOA2_LOG_DIR env var or default."""
     directory = log_dir or os.environ.get("GOA2_LOG_DIR", "logs/games")
     return GameLogger(game_id, log_dir=directory)
+
+
+def delete_game_logs(game_id: str, log_dir: str = "logs/games") -> None:
+    """Remove log and json files for a game (including old timestamped files)."""
+    d = Path(log_dir)
+    if not d.is_dir():
+        return
+    for f in d.glob(f"{game_id}*"):
+        f.unlink()

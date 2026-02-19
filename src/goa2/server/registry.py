@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import WebSocket
@@ -139,7 +141,28 @@ class GameRegistry:
             self._games[game.game_id] = game
             count += 1
             logger.info("Restored game %s", game.game_id)
+
+        self._cleanup_orphaned_logs()
         return count
+
+    def _cleanup_orphaned_logs(self) -> None:
+        """Remove log files for games that no longer have a save file."""
+        from goa2.server.game_logger import delete_game_logs
+
+        log_dir = os.environ.get("GOA2_LOG_DIR", "logs/games")
+        log_path = Path(log_dir)
+        if not log_path.is_dir():
+            return
+        seen_ids: set[str] = set()
+        for f in log_path.iterdir():
+            if not f.is_file():
+                continue
+            # Extract game_id: either "{game_id}.log" or legacy "{game_id}_{ts}.log"
+            game_id = f.stem.split("_")[0]
+            if game_id not in self._games and game_id not in seen_ids:
+                seen_ids.add(game_id)
+                delete_game_logs(game_id, log_dir)
+                logger.info("Cleaned up orphaned logs for game %s", game_id)
 
     def __len__(self) -> int:
         return len(self._games)
