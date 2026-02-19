@@ -21,6 +21,9 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
         print(f"   [!] Error: Hero {hero_id} not found.")
         return
 
+    if hero_id in state.pending_inputs:
+        raise ValueError(f"{hero_id} has already committed a card this turn")
+
     # Check if card is in hand
     if card not in hero.hand:
         print(f"   [!] {hero_id} tried to play card {card.id} which is NOT in hand.")
@@ -197,7 +200,16 @@ def end_turn(state: GameState):
         state.turn += 1
         state.phase = GamePhase.PLANNING
         print(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
-        # Ready for new inputs
+        # Auto-pass heroes with no cards in hand
+        auto_passed = False
+        for team in state.teams.values():
+            for hero in team.heroes:
+                if len(hero.hand) == 0:
+                    state.pending_inputs[hero.id] = None
+                    print(f"   [Planning] {hero.id} auto-passed (empty hand).")
+                    auto_passed = True
+        if auto_passed:
+            _check_phase_transition(state)
     else:
         start_end_phase(state)
 

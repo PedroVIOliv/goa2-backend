@@ -6,9 +6,17 @@ from goa2.domain.types import HeroID
 from goa2.engine.phases import start_resolution_phase
 from goa2.engine.handler import process_resolution_stack
 
+def _filler_cards():
+    """Return dummy hand cards so heroes aren't auto-passed for empty hands."""
+    return [Card(
+        id=f"filler_{i}", name=f"Filler {i}", tier=CardTier.I, color=CardColor.RED,
+        initiative=1, primary_action=ActionType.SKILL, primary_action_value=None,
+        effect_id="e", effect_text="t",
+    ) for i in range(3)]
+
 def create_hero(id_str, team, initiative):
     # Return JUST the hero, card assignment happens on state object
-    hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
+    hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[], hand=_filler_cards())
     return hero
 
 def create_card(id_str, initiative):

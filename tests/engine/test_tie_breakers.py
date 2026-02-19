@@ -7,12 +7,18 @@ from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveTieBreakerStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 
+def _filler_cards():
+    """Return dummy hand cards so heroes aren't auto-passed for empty hands."""
+    return [Card(id=f"filler_{i}", name=f"Filler {i}", tier=CardTier.I, color=CardColor.RED,
+                 initiative=1, primary_action=ActionType.SKILL, primary_action_value=None,
+                 effect_id="e", effect_text="t") for i in range(3)]
+
 @pytest.fixture
 def complex_tie_state():
-    hero_a = Hero(id=HeroID("A"), name="Alpha", team=TeamColor.RED, deck=[])
-    hero_b = Hero(id=HeroID("B"), name="Bravo", team=TeamColor.BLUE, deck=[])
-    hero_c = Hero(id=HeroID("C"), name="Charlie", team=TeamColor.BLUE, deck=[])
-    hero_d = Hero(id=HeroID("D"), name="Delta", team=TeamColor.RED, deck=[])
+    hero_a = Hero(id=HeroID("A"), name="Alpha", team=TeamColor.RED, deck=[], hand=_filler_cards())
+    hero_b = Hero(id=HeroID("B"), name="Bravo", team=TeamColor.BLUE, deck=[], hand=_filler_cards())
+    hero_c = Hero(id=HeroID("C"), name="Charlie", team=TeamColor.BLUE, deck=[], hand=_filler_cards())
+    hero_d = Hero(id=HeroID("D"), name="Delta", team=TeamColor.RED, deck=[], hand=_filler_cards())
     
     state = GameState(
         board=Board(),

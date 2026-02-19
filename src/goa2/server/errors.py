@@ -27,6 +27,14 @@ class InvalidPhaseError(Exception):
         super().__init__(f"Expected phase {expected}, but game is in {actual}")
 
 
+class AlreadyCommittedError(Exception):
+    """Raised when a hero tries to commit a card twice in the same turn."""
+
+    def __init__(self, hero_id: str):
+        self.hero_id = hero_id
+        super().__init__(f"{hero_id} has already committed a card this turn")
+
+
 class NotYourTurnError(Exception):
     """Raised when a player submits input meant for another player."""
 

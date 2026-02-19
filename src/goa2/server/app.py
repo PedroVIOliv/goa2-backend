@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from goa2.server.errors import (
+    AlreadyCommittedError,
     CardNotInHandError,
     GameNotFoundError,
     InvalidPhaseError,
@@ -51,6 +52,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(GameNotFoundError)
     async def _game_not_found(request: Request, exc: GameNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(AlreadyCommittedError)
+    async def _already_committed(request: Request, exc: AlreadyCommittedError):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(CardNotInHandError)
     async def _card_not_in_hand(request: Request, exc: CardNotInHandError):

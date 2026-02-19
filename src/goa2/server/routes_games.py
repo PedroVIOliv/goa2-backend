@@ -14,6 +14,7 @@ from goa2.engine.session import GameSession, SessionResult
 from goa2.engine.setup import GameSetup
 from goa2.server.auth import PlayerContext, get_current_player, get_registry
 from goa2.server.errors import (
+    AlreadyCommittedError,
     CardNotInHandError,
     InvalidPhaseError,
     NotYourTurnError,
@@ -138,6 +139,9 @@ async def commit_card(
         card = next((c for c in hero.hand if c.id == body.card_id), None)
         if card is None:
             raise CardNotInHandError(body.card_id, player.hero_id)
+
+        if player.hero_id in session.state.pending_inputs:
+            raise AlreadyCommittedError(player.hero_id)
 
         result = session.commit_card(player.hero_id, card)
         game.last_result = result
