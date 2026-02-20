@@ -361,14 +361,18 @@ class SetActorStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         # Save current actor
-        context[self.save_key] = str(state.current_actor_id) if state.current_actor_id else None
+        context[self.save_key] = (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
         # Determine new actor
         new_id = self.actor_id
         if self.actor_key:
             new_id = context.get(self.actor_key)
         if new_id:
             state.current_actor_id = HeroID(str(new_id))
-            print(f"   [SET_ACTOR] Set current_actor_id={new_id} (saved previous to {self.save_key})")
+            print(
+                f"   [SET_ACTOR] Set current_actor_id={new_id} (saved previous to {self.save_key})"
+            )
         return StepResult(is_finished=True)
 
 
@@ -1337,9 +1341,17 @@ class ResolveDefenseTextStep(GameStep):
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
-                    [SetActorStep(actor_key="defender_id", save_key="_pre_defense_actor")]
+                    [
+                        SetActorStep(
+                            actor_key="defender_id", save_key="_pre_defense_actor"
+                        )
+                    ]
                     + list(defense_steps)
-                    + [SetActorStep(actor_key="_pre_defense_actor", save_key="_discard")]
+                    + [
+                        SetActorStep(
+                            actor_key="_pre_defense_actor", save_key="_discard"
+                        )
+                    ]
                 )
                 return StepResult(is_finished=True, new_steps=wrapped)
             else:
@@ -1395,9 +1407,17 @@ class ResolveOnBlockEffectStep(GameStep):
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
-                    [SetActorStep(actor_key="defender_id", save_key="_pre_onblock_actor")]
+                    [
+                        SetActorStep(
+                            actor_key="defender_id", save_key="_pre_onblock_actor"
+                        )
+                    ]
                     + list(on_block_steps)
-                    + [SetActorStep(actor_key="_pre_onblock_actor", save_key="_discard")]
+                    + [
+                        SetActorStep(
+                            actor_key="_pre_onblock_actor", save_key="_discard"
+                        )
+                    ]
                 )
                 return StepResult(is_finished=True, new_steps=wrapped)
 
@@ -1772,7 +1792,10 @@ class FinalizeHeroTurnStep(GameStep):
 
         return StepResult(
             is_finished=True,
-            new_steps=[FindNextActorStep()],
+            new_steps=[
+                ReturnMinionToZoneStep(),
+                FindNextActorStep(),
+            ],
             events=[
                 GameEvent(
                     event_type=GameEventType.TURN_ENDED,
@@ -3403,9 +3426,7 @@ class ChooseMinionRemovalStep(GameStep):
         if self.pending_input:
             chosen_id = self.pending_input.get("selection")
             if chosen_id:
-                print(
-                    f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}."
-                )
+                print(f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}.")
                 new_steps: List[GameStep] = [
                     RemoveUnitStep(unit_id=str(chosen_id)),
                     ChooseMinionRemovalStep(
@@ -3424,6 +3445,118 @@ class ChooseMinionRemovalStep(GameStep):
                 player_id=f"team:{self.losing_team}",
                 prompt=f"Team {self.losing_team}, choose a minion to remove ({self.remaining_to_remove} remaining).",
                 options=[str(m.id) for m in valid],
+            ),
+        )
+
+
+class ReturnMinionToZoneStep(GameStep):
+    """
+    Returns minions that ended up outside the active zone.
+
+    Per manual: "If any minion miniature ends up outside the Battle Zone
+    after you perform an action, move it by the shortest path of empty
+    spaces to an empty space in the same Battle Zone."
+
+    If multiple shortest paths exist, the minion's team chooses.
+    Processes minions in tie-breaker coin order.
+    """
+
+    type: StepType = StepType.RETURN_MINION_TO_ZONE
+
+    def _get_minions_outside_zone(
+        self, state: GameState
+    ) -> List[Tuple[str, TeamColor]]:
+        """Find all minions outside the active zone."""
+        if not state.active_zone_id:
+            return []
+
+        zone = state.board.zones.get(state.active_zone_id)
+        if not zone:
+            return []
+
+        outside = []
+        for team in state.teams.values():
+            for minion in team.minions:
+                loc = state.unit_locations.get(minion.id)
+                if loc and loc not in zone.hexes:
+                    outside.append((str(minion.id), minion.team))
+        return outside
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        outside_minions = self._get_minions_outside_zone(state)
+
+        if not outside_minions:
+            return StepResult(is_finished=True)
+
+        # Sort by tie-breaker: favored team's minions first
+        favored = state.tie_breaker_team
+        outside_minions.sort(key=lambda x: (0 if x[1] == favored else 1, str(x[0])))
+
+        # Process first minion
+        minion_id, team = outside_minions[0]
+        remaining = outside_minions[1:]
+
+        loc = state.entity_locations.get(BoardEntityID(minion_id))
+        if not loc:
+            # Minion somehow has no location, skip
+            if remaining:
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[ReturnMinionToZoneStep()],
+                )
+            return StepResult(is_finished=True)
+
+        from goa2.engine.map_logic import find_nearest_empty_hexes
+
+        candidates = find_nearest_empty_hexes(state, loc, state.active_zone_id)
+
+        if not candidates:
+            print(f"   [ZONE] No empty space in zone for {minion_id}!")
+            # Skip this minion, process remaining
+            if remaining:
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[ReturnMinionToZoneStep()],
+                )
+            return StepResult(is_finished=True)
+
+        # If pending input, process it
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if selection:
+                if isinstance(selection, dict):
+                    target_hex = Hex(**selection)
+                else:
+                    target_hex = selection
+
+                if target_hex in candidates:
+                    print(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
+                    new_steps: List[GameStep] = [
+                        PlaceUnitStep(unit_id=minion_id, target_hex_arg=target_hex),
+                    ]
+                    if remaining:
+                        new_steps.append(ReturnMinionToZoneStep())
+                    return StepResult(is_finished=True, new_steps=new_steps)
+
+        # Auto-move if only one candidate
+        if len(candidates) == 1:
+            target = candidates[0]
+            print(f"   [ZONE] Auto-returning {minion_id} to zone at {target}")
+            new_steps = [
+                PlaceUnitStep(unit_id=minion_id, target_hex_arg=target),
+            ]
+            if remaining:
+                new_steps.append(ReturnMinionToZoneStep())
+            return StepResult(is_finished=True, new_steps=new_steps)
+
+        # Multiple candidates - need team input
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_HEX,
+                player_id=f"team:{team.value}",
+                prompt=f"Team {team.value}, choose destination for {minion_id} to return to Battle Zone.",
+                options=candidates,
             ),
         )
 

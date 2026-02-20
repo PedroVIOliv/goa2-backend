@@ -146,6 +146,7 @@ class StepType(str, Enum):
     COMBINE_BOOLEAN_CONTEXT = "combine_boolean_context"
     SET_ACTOR = "set_actor"
     CHOOSE_MINION_REMOVAL = "choose_minion_removal"
+    RETURN_MINION_TO_ZONE = "return_minion_to_zone"
 
 
 class FilterType(str, Enum):

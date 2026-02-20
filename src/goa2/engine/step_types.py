@@ -57,6 +57,7 @@ from goa2.engine.steps import (
     RespawnHeroStep,
     RespawnMinionStep,
     RestoreActionTypeStep,
+    ReturnMinionToZoneStep,
     RoundResetStep,
     SelectStep,
     SetActorStep,
@@ -72,6 +73,7 @@ from goa2.domain.models.enums import StepType
 # ---------------------------------------------------------------------------
 # Callable discriminator: reads "type" from dict or object, returns tag string
 # ---------------------------------------------------------------------------
+
 
 def _step_discriminator(v: Any) -> str:
     if isinstance(v, dict):
@@ -90,10 +92,14 @@ AnyStep = Annotated[
         Annotated[CancelEffectsStep, Tag(StepType.CANCEL_EFFECTS.value)],
         Annotated[CheckAdjacencyStep, Tag(StepType.CHECK_ADJACENCY.value)],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
-        Annotated[CheckPassiveAbilitiesStep, Tag(StepType.CHECK_PASSIVE_ABILITIES.value)],
+        Annotated[
+            CheckPassiveAbilitiesStep, Tag(StepType.CHECK_PASSIVE_ABILITIES.value)
+        ],
         Annotated[CheckUnitTypeStep, Tag(StepType.CHECK_UNIT_TYPE.value)],
         Annotated[ChooseMinionRemovalStep, Tag(StepType.CHOOSE_MINION_REMOVAL.value)],
-        Annotated[CombineBooleanContextStep, Tag(StepType.COMBINE_BOOLEAN_CONTEXT.value)],
+        Annotated[
+            CombineBooleanContextStep, Tag(StepType.COMBINE_BOOLEAN_CONTEXT.value)
+        ],
         Annotated[CreateEffectStep, Tag(StepType.CREATE_EFFECT.value)],
         Annotated[DefeatUnitStep, Tag(StepType.DEFEAT_UNIT.value)],
         Annotated[DiscardCardStep, Tag(StepType.DISCARD_CARD.value)],
@@ -103,7 +109,9 @@ AnyStep = Annotated[
         Annotated[FastTravelStep, Tag(StepType.FAST_TRAVEL.value)],
         Annotated[FinalizeHeroTurnStep, Tag(StepType.FINALIZE_HERO_TURN.value)],
         Annotated[FindNextActorStep, Tag(StepType.FIND_NEXT_ACTOR.value)],
-        Annotated[ForceDiscardOrDefeatStep, Tag(StepType.FORCE_DISCARD_OR_DEFEAT.value)],
+        Annotated[
+            ForceDiscardOrDefeatStep, Tag(StepType.FORCE_DISCARD_OR_DEFEAT.value)
+        ],
         Annotated[ForceDiscardStep, Tag(StepType.FORCE_DISCARD.value)],
         Annotated[ForEachStep, Tag(StepType.FOR_EACH.value)],
         Annotated[LanePushStep, Tag(StepType.LANE_PUSH.value)],
@@ -126,12 +134,15 @@ AnyStep = Annotated[
         Annotated[ResolveCardTextStep, Tag(StepType.RESOLVE_CARD_TEXT.value)],
         Annotated[ResolveDefenseTextStep, Tag(StepType.RESOLVE_DEFENSE_TEXT.value)],
         Annotated[ResolveDisplacementStep, Tag(StepType.RESOLVE_DISPLACEMENT.value)],
-        Annotated[ResolveOnBlockEffectStep, Tag(StepType.RESOLVE_ON_BLOCK_EFFECT.value)],
+        Annotated[
+            ResolveOnBlockEffectStep, Tag(StepType.RESOLVE_ON_BLOCK_EFFECT.value)
+        ],
         Annotated[ResolveTieBreakerStep, Tag(StepType.RESOLVE_TIE_BREAKER.value)],
         Annotated[ResolveUpgradesStep, Tag(StepType.RESOLVE_UPGRADES.value)],
         Annotated[RespawnHeroStep, Tag(StepType.RESPAWN_HERO.value)],
         Annotated[RespawnMinionStep, Tag(StepType.RESPAWN_MINION.value)],
         Annotated[RestoreActionTypeStep, Tag(StepType.RESTORE_ACTION_TYPE.value)],
+        Annotated[ReturnMinionToZoneStep, Tag(StepType.RETURN_MINION_TO_ZONE.value)],
         Annotated[RoundResetStep, Tag(StepType.ROUND_RESET.value)],
         Annotated[SelectStep, Tag(StepType.SELECT.value)],
         Annotated[SetActorStep, Tag(StepType.SET_ACTOR.value)],
@@ -192,12 +203,18 @@ AnyFilter = Annotated[
         Annotated[AdjacencyToContextFilter, Tag(FilterType.ADJACENCY_TO_CONTEXT.value)],
         Annotated[ExcludeIdentityFilter, Tag(FilterType.EXCLUDE_IDENTITY.value)],
         Annotated[HasEmptyNeighborFilter, Tag(FilterType.HAS_EMPTY_NEIGHBOR.value)],
-        Annotated[ForcedMovementByEnemyFilter, Tag(FilterType.FORCED_MOVEMENT_BY_ENEMY.value)],
-        Annotated[CanBePlacedByActorFilter, Tag(FilterType.CAN_BE_PLACED_BY_ACTOR.value)],
+        Annotated[
+            ForcedMovementByEnemyFilter, Tag(FilterType.FORCED_MOVEMENT_BY_ENEMY.value)
+        ],
+        Annotated[
+            CanBePlacedByActorFilter, Tag(FilterType.CAN_BE_PLACED_BY_ACTOR.value)
+        ],
         Annotated[MovementPathFilter, Tag(FilterType.MOVEMENT_PATH.value)],
         Annotated[LineBehindTargetFilter, Tag(FilterType.LINE_BEHIND_TARGET.value)],
         Annotated[NotInStraightLineFilter, Tag(FilterType.NOT_IN_STRAIGHT_LINE.value)],
-        Annotated[FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)],
+        Annotated[
+            FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)
+        ],
         Annotated[PreserveDistanceFilter, Tag(FilterType.PRESERVE_DISTANCE.value)],
     ],
     Discriminator(_filter_discriminator),
