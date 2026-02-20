@@ -345,6 +345,33 @@ class SetContextFlagStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class SetActorStep(GameStep):
+    """
+    Swaps current_actor_id, saving the previous value to context.
+
+    Used to temporarily change the acting player for defense card effects,
+    so that filters like TeamFilter(relation="ENEMY") resolve relative to
+    the defender rather than the attacker.
+    """
+
+    type: StepType = StepType.SET_ACTOR
+    actor_key: Optional[str] = None  # context key to read new actor from
+    actor_id: Optional[str] = None  # literal new actor ID
+    save_key: str = "saved_actor_id"  # context key to save previous actor
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Save current actor
+        context[self.save_key] = str(state.current_actor_id) if state.current_actor_id else None
+        # Determine new actor
+        new_id = self.actor_id
+        if self.actor_key:
+            new_id = context.get(self.actor_key)
+        if new_id:
+            state.current_actor_id = HeroID(str(new_id))
+            print(f"   [SET_ACTOR] Set current_actor_id={new_id} (saved previous to {self.save_key})")
+        return StepResult(is_finished=True)
+
+
 class RestoreActionTypeStep(GameStep):
     """
     Restores the previous action type from the stack after defense resolution.
@@ -965,7 +992,9 @@ class MoveUnitStep(GameStep):
                 end=dest_hex,
                 max_steps=self.range_val,
                 state=state,
-                actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                actor_id=str(state.current_actor_id)
+                if state.current_actor_id
+                else None,
             )
 
         if not is_valid:
@@ -1262,6 +1291,10 @@ class ResolveDefenseTextStep(GameStep):
         defender_id = context.get("defender_id")
         is_primary = context.get("is_primary_defense", False)
 
+        print(
+            f"   [DEFENSE TEXT] card_id={card_id}, defender_id={defender_id}, is_primary={is_primary}"
+        )
+
         # Only trigger effects for primary DEFENSE
         if not card_id or not is_primary or not defender_id:
             print("   [DEFENSE] No primary defense card - skipping effect resolution.")
@@ -1271,14 +1304,20 @@ class ResolveDefenseTextStep(GameStep):
         if not defender:
             return StepResult(is_finished=True)
 
-        # Find the card in defender's hand
+        # Find the card in defender's hand (defense cards are moved to discard after ReactionWindowStep)
         card = next((c for c in defender.hand if c.id == card_id), None)
+
+        # If not in hand, check discard pile
+        if not card:
+            card = next((c for c in defender.discard_pile if c.id == card_id), None)
 
         if not card or not card.effect_id:
             print(
                 f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense."
             )
             return StepResult(is_finished=True)
+
+        print(f"   [DEFENSE] Looking up effect_id={card.effect_id}")
 
         from goa2.engine.effects import CardEffectRegistry
 
@@ -1296,7 +1335,17 @@ class ResolveDefenseTextStep(GameStep):
                 print(
                     f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.effect_id}"
                 )
-                return StepResult(is_finished=True, new_steps=defense_steps)
+                # Wrap steps so current_actor_id is the defender during execution
+                wrapped = (
+                    [SetActorStep(actor_key="defender_id", save_key="_pre_defense_actor")]
+                    + list(defense_steps)
+                    + [SetActorStep(actor_key="_pre_defense_actor", save_key="_discard")]
+                )
+                return StepResult(is_finished=True, new_steps=wrapped)
+            else:
+                print(f"   [DEFENSE] defense_steps is None/empty for {card.effect_id}")
+        else:
+            print(f"   [DEFENSE] No defense_steps returned for {card.effect_id}")
 
         return StepResult(is_finished=True)
 
@@ -1344,7 +1393,13 @@ class ResolveOnBlockEffectStep(GameStep):
                 print(
                     f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.effect_id}"
                 )
-                return StepResult(is_finished=True, new_steps=on_block_steps)
+                # Wrap steps so current_actor_id is the defender during execution
+                wrapped = (
+                    [SetActorStep(actor_key="defender_id", save_key="_pre_onblock_actor")]
+                    + list(on_block_steps)
+                    + [SetActorStep(actor_key="_pre_onblock_actor", save_key="_discard")]
+                )
+                return StepResult(is_finished=True, new_steps=wrapped)
 
         return StepResult(is_finished=True)
 
@@ -1593,7 +1648,7 @@ class ResolveCombatStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         target_id = context.get(self.target_key)
         if not target_id:
-            print("   [COMBAT] No target selected. Combat cancelled.")
+            print("[COMBAT] No target selected. Combat cancelled.")
             context["block_succeeded"] = False
             return StepResult(is_finished=True)
 
@@ -1615,6 +1670,10 @@ class ResolveCombatStep(GameStep):
                     "outcome": outcome,
                 },
             )
+
+        print(
+            f"   [COMBAT] Checking context flags: auto_block={context.get('auto_block')}, defense_invalid={context.get('defense_invalid')}"
+        )
 
         # Check for defense_invalid (e.g., stop_projectiles vs melee attack)
         if context.get("defense_invalid"):
@@ -2071,7 +2130,11 @@ class PushUnitStep(GameStep):
             tile = state.board.get_tile(next_hex)
             # Use context-aware obstacle check for Static Barrier support
             is_obs = state.validator.is_obstacle_for_actor(
-                state, next_hex, str(state.current_actor_id) if state.current_actor_id else actual_target_id
+                state,
+                next_hex,
+                str(state.current_actor_id)
+                if state.current_actor_id
+                else actual_target_id,
             )
             if is_obs:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
@@ -3425,6 +3488,9 @@ class AttackSequenceStep(GameStep):
         context["attack_is_ranged"] = self.range_val > 1
         context["attacker_id"] = (
             str(state.current_actor_id) if state.current_actor_id else None
+        )
+        print(
+            f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, range_val={self.range_val}"
         )
 
         new_steps: List[GameStep] = []

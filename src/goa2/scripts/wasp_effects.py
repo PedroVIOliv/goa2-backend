@@ -65,9 +65,15 @@ class StopProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
+        print(
+            f"   [DEFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        )
+        print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
+            print(f"   [DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
+            print(f"   [DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
 
@@ -407,9 +413,15 @@ class ReflectProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
+        print(
+            f"   [REFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        )
+        print(f"   [REFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
+            print(f"   [REFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
+            print(f"   [REFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(
@@ -454,9 +466,15 @@ class DeflectProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
+        print(
+            f"   [DEFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        )
+        print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
+            print(f"   [DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
+            print(f"   [DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(

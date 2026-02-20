@@ -144,6 +144,7 @@ class StepType(str, Enum):
     FORCE_DISCARD = "force_discard"
     FORCE_DISCARD_OR_DEFEAT = "force_discard_or_defeat"
     COMBINE_BOOLEAN_CONTEXT = "combine_boolean_context"
+    SET_ACTOR = "set_actor"
 
 
 class FilterType(str, Enum):
