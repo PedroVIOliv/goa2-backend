@@ -18,6 +18,7 @@ from goa2.server.errors import (
     CardNotInHandError,
     InvalidPhaseError,
     NotYourTurnError,
+    validate_input_turn,
 )
 from goa2.server.models import (
     ActionResultResponse,
@@ -191,8 +192,7 @@ async def submit_input(
         # Turn validation (skip for simultaneous phases like UPGRADE_PHASE)
         if game.last_result and game.last_result.input_request:
             expected = game.last_result.input_request.player_id
-            if expected != "simultaneous" and expected != player.hero_id:
-                raise NotYourTurnError(player.hero_id, expected)
+            validate_input_turn(expected, player.hero_id, game.session.state)
 
         response = InputResponse(
             request_id=body.request_id,

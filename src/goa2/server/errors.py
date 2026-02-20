@@ -1,5 +1,12 @@
 """Server-specific exception classes."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from goa2.domain.state import GameState
+
 
 class GameNotFoundError(Exception):
     """Raised when a game_id doesn't exist in the registry."""
@@ -44,3 +51,23 @@ class NotYourTurnError(Exception):
         super().__init__(
             f"Input expected from '{expected_hero}', not '{authenticated_hero}'"
         )
+
+
+def validate_input_turn(expected: str, hero_id: str, state: GameState) -> None:
+    """Check that hero_id is allowed to respond to the current input request.
+
+    Supports:
+    - ``"simultaneous"`` – anyone may respond
+    - exact hero id match
+    - ``"team:RED"`` / ``"team:BLUE"`` – any hero on that team
+    """
+    if expected == "simultaneous" or expected == hero_id:
+        return
+    if expected.startswith("team:"):
+        team_name = expected[5:]
+        from goa2.domain.types import HeroID
+
+        hero = state.get_hero(HeroID(hero_id))
+        if hero and hero.team.value == team_name:
+            return
+    raise NotYourTurnError(hero_id, expected)

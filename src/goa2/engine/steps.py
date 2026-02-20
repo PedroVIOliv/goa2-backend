@@ -3287,9 +3287,10 @@ class EndPhaseStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [ROUND END] Processing End Phase (Battle)...")
 
-        self._resolve_minion_battle(state)
-
         new_steps: List[GameStep] = []
+
+        battle_steps = self._resolve_minion_battle(state)
+        new_steps.extend(battle_steps)
 
         from goa2.engine.map_logic import check_lane_push_trigger
 
@@ -3302,49 +3303,129 @@ class EndPhaseStep(GameStep):
 
         return StepResult(is_finished=True, new_steps=new_steps)
 
-    def _resolve_minion_battle(self, state: GameState):
+    def _resolve_minion_battle(self, state: GameState) -> List["GameStep"]:
         """
-        Compare minion counts in active zone. Loser removes difference.
-        Heavy minions must be last to be removed.
+        Compare minion counts in active zone.
+        Returns ChooseMinionRemovalStep(s) for the losing team.
         """
         if not state.active_zone_id:
-            return
+            return []
 
         zone = state.board.zones.get(state.active_zone_id)
         if not zone:
-            return
+            return []
 
-        red_minions = []
-        blue_minions = []
+        red_count = 0
+        blue_count = 0
 
         for unit_id, loc in state.unit_locations.items():
             if loc in zone.hexes:
                 unit = state.get_unit(UnitID(unit_id))
                 if unit and hasattr(unit, "type") and hasattr(unit, "is_heavy"):
                     if unit.team == TeamColor.RED:
-                        red_minions.append(unit)
+                        red_count += 1
                     elif unit.team == TeamColor.BLUE:
-                        blue_minions.append(unit)
+                        blue_count += 1
 
-        r_count = len(red_minions)
-        b_count = len(blue_minions)
-        diff = abs(r_count - b_count)
+        diff = abs(red_count - blue_count)
 
         if diff == 0:
             print("   [BATTLE] Minion count tied. No removals.")
-            return
+            return []
 
-        loser_team = TeamColor.RED if r_count < b_count else TeamColor.BLUE
-        loser_minions = red_minions if loser_team == TeamColor.RED else blue_minions
-
+        loser_team = TeamColor.RED if red_count < blue_count else TeamColor.BLUE
         print(f"   [BATTLE] {loser_team.name} loses {diff} minion(s).")
 
-        loser_minions.sort(key=lambda m: m.is_heavy)
+        return [
+            ChooseMinionRemovalStep(
+                losing_team=loser_team.value,
+                remaining_to_remove=diff,
+                zone_id=state.active_zone_id,
+            )
+        ]
 
-        removals = loser_minions[:diff]
-        for m in removals:
-            print(f"   [BATTLE] Removing {m.id} ({m.type.name})")
-            state.remove_unit(m.id)
+
+class ChooseMinionRemovalStep(GameStep):
+    """
+    Self-looping step: the losing team chooses which minion to remove.
+    Heavy minions can only be chosen once all non-heavy minions are gone.
+    Skips player choice when remaining_to_remove >= total_loser_minions - 1
+    (no meaningful choice).
+    """
+
+    type: StepType = StepType.CHOOSE_MINION_REMOVAL
+    losing_team: str  # "RED" or "BLUE"
+    remaining_to_remove: int
+    zone_id: str
+
+    def _get_loser_minions(self, state: GameState) -> list:
+        """Get losing team's minions in the active zone."""
+        zone = state.board.zones.get(self.zone_id)
+        if not zone:
+            return []
+        team_color = TeamColor(self.losing_team)
+        minions = []
+        for unit_id, loc in state.unit_locations.items():
+            if loc in zone.hexes:
+                unit = state.get_unit(UnitID(unit_id))
+                if unit and hasattr(unit, "type") and hasattr(unit, "is_heavy"):
+                    if unit.team == team_color:
+                        minions.append(unit)
+        return minions
+
+    def _get_valid_choices(self, minions: list) -> list:
+        """Return selectable minions: non-heavy first, heavy only when no non-heavy remain."""
+        non_heavy = [m for m in minions if not m.is_heavy]
+        if non_heavy:
+            return non_heavy
+        return minions
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.remaining_to_remove <= 0:
+            return StepResult(is_finished=True)
+
+        minions = self._get_loser_minions(state)
+        if not minions:
+            return StepResult(is_finished=True)
+
+        n = len(minions)
+
+        # Skip condition: no meaningful choice
+        if self.remaining_to_remove >= n - 1:
+            # Auto-remove all, sorted non-heavy first
+            minions.sort(key=lambda m: m.is_heavy)
+            removal_steps: List[GameStep] = []
+            for m in minions[: self.remaining_to_remove]:
+                removal_steps.append(RemoveUnitStep(unit_id=str(m.id)))
+            return StepResult(is_finished=True, new_steps=removal_steps)
+
+        # Player choice needed
+        if self.pending_input:
+            chosen_id = self.pending_input.get("selection")
+            if chosen_id:
+                print(
+                    f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}."
+                )
+                new_steps: List[GameStep] = [
+                    RemoveUnitStep(unit_id=str(chosen_id)),
+                    ChooseMinionRemovalStep(
+                        losing_team=self.losing_team,
+                        remaining_to_remove=self.remaining_to_remove - 1,
+                        zone_id=self.zone_id,
+                    ),
+                ]
+                return StepResult(is_finished=True, new_steps=new_steps)
+
+        valid = self._get_valid_choices(minions)
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_UNIT,
+                player_id=f"team:{self.losing_team}",
+                prompt=f"Team {self.losing_team}, choose a minion to remove ({self.remaining_to_remove} remaining).",
+                options=[str(m.id) for m in valid],
+            ),
+        )
 
 
 class ResolveTieBreakerStep(GameStep):
@@ -3423,7 +3504,7 @@ class ResolveTieBreakerStep(GameStep):
                     requires_input=True,
                     input_request=create_input_request(
                         request_type=InputRequestType.CHOOSE_ACTOR,
-                        player_id=candidates[0] if candidates else "unknown",
+                        player_id=f"team:{target_team.value}",
                         prompt=f"Team {target_team.name}, choose who acts first between {candidates}.",
                         options=candidates,
                         team=target_team,
