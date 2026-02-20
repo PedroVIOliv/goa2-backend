@@ -170,6 +170,49 @@ These components form the public API that clients depend on. Breaking changes he
 
 **Do not rename, remove, or restructure these without updating the client integration guide.**
 
+## Input Request Types
+
+When a step needs player input, use `create_input_request()` from `domain/input.py`:
+
+| Type | Use Case | Selection Value |
+|------|----------|-----------------|
+| `SELECT_UNIT` | Choose unit on board | Unit ID string (`"minion_1"`) |
+| `SELECT_HEX` | Choose hex on board | Hex dict (`{"q": 0, "r": 0, "s": 0}`) |
+| `SELECT_CARD` | Choose card from hand | Card ID string |
+| `SELECT_NUMBER` | Choose numeric value | Integer |
+| `CHOOSE_ACTION` | Choose named action | Option ID string |
+| `SELECT_OPTION` | Generic choice | Option ID string |
+| `CONFIRM_PASSIVE` | Yes/No prompt | `"YES"` or `"NO"` |
+
+**Skip behavior:** For optional selections, clients submit `"SKIP"` (string), not `null`.
+
+**Team-level input:** Use `player_id=f"team:{TeamColor.RED.value}"` for decisions any team member can make. The `server/errors.py:validate_input_turn()` helper handles this format.
+
+For full parameters, see `domain/input.py:create_input_request()`.
+
+## Where to Hook New Game Logic
+
+| Trigger | Step to Modify | How |
+|---------|----------------|-----|
+| End of hero turn | `FinalizeHeroTurnStep` | Add to `new_steps` before `FindNextActorStep` |
+| End of round | `EndPhaseStep` | Add to `_resolve_*` methods |
+| After card effect | Card effect class | Add steps in `build_steps()` |
+| During attack | `AttackSequenceStep` | Add pre/post steps via `new_steps` |
+| On unit movement | `MoveUnitStep` / `PlaceUnitStep` | Emit events or spawn follow-up steps in `resolve()` |
+
+**Pattern:** Return `StepResult(new_steps=[...])` from the appropriate step's `resolve()` method.
+
+## Client API Contract Ownership
+
+The `CLIENT_INTEGRATION_GUIDE.md` is the frontend's source of truth for the API.
+
+**Backend owns this document.** When you change any of the following, update it:
+- New `InputRequestType` values or fields
+- New `GameEventType` values or `GameEvent` fields
+- New response shapes in `server/models.py`
+- New `player_id` formats (e.g., `team:XXX`)
+- Changes to special values (e.g., `"SKIP"` for skipping)
+
 ## Before Making Changes
 
 1. **Read before writing** — Always read the files you intend to modify. Understand existing patterns before changing code.
@@ -260,7 +303,7 @@ src/goa2/
 
 ## Testing
 
-673 tests organized by domain:
+692 tests organized by domain:
 - `tests/domain/` - Models, card lifecycle, entity registration
 - `tests/engine/` - Steps, phases, combat, card effects, session, input contract
 - `tests/server/` - REST endpoints, WebSocket protocol, auth, registry, persistence
