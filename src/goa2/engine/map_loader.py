@@ -90,6 +90,13 @@ def load_map(file_path: str) -> Board:
                         minion_type=m_type 
                     ))
 
+    # Distribute spawn points to their respective zones
+    for sp in spawn_points:
+        for z_id, zone in zones.items():
+            if sp.location in zone.hexes:
+                zone.spawn_points.append(sp)
+                break
+
     board = Board(
         zones=zones,
         spawn_points=spawn_points

@@ -354,8 +354,8 @@ class TestDefeatUnitStepWithVictimKey:
         result = step.resolve(state, context)
 
         assert result.is_finished
-        # Should spawn RemoveUnitStep and CheckLanePushStep
-        assert len(result.new_steps) == 2
+        # Should spawn RemoveUnitStep (which itself spawns CheckLanePushStep)
+        assert len(result.new_steps) == 1
 
     def test_defeat_unit_skips_when_key_missing(self, game_state_with_wasp):
         """DefeatUnitStep should skip when victim_key is not in context."""

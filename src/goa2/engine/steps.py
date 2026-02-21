@@ -1476,6 +1476,7 @@ class RemoveUnitStep(GameStep):
         state.remove_unit(UnitID(self.unit_id))
         return StepResult(
             is_finished=True,
+            new_steps=[CheckLanePushStep()],
             events=[
                 GameEvent(
                     event_type=GameEventType.UNIT_REMOVED,
@@ -1660,10 +1661,9 @@ class DefeatUnitStep(GameStep):
                     )
                 )
 
-        # Execution Order: RemoveUnitStep -> CheckLanePushStep
         return StepResult(
             is_finished=True,
-            new_steps=[RemoveUnitStep(unit_id=actual_victim_id), CheckLanePushStep()],
+            new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
             events=events,
         )
 
