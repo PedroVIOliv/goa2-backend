@@ -366,7 +366,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
             tile = state.board.get_tile(n)
             if tile and tile.spawn_point:
                 if self.is_empty:
-                    if not tile.is_occupied:
+                    if not state.validator.is_obstacle_for_actor(state, n, str(state.current_actor_id) if state.current_actor_id else None, context):
                         has_adj = True
                         break
                 else:

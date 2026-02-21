@@ -103,6 +103,10 @@ def load_map(file_path: str) -> Board:
     )
     board.populate_tiles_from_zones()
     
+    for sp in spawn_points:
+        if sp.location in board.tiles:
+            board.tiles[sp.location].spawn_point = sp
+
     for h_obs in obstacles:
         if h_obs not in board.tiles:
             board.tiles[h_obs] = Tile(hex=h_obs, is_terrain=True)
