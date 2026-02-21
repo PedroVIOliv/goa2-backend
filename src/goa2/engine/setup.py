@@ -16,13 +16,17 @@ class GameSetup:
 
     @staticmethod
     def create_game(
-        map_path: str, red_heroes: List[str], blue_heroes: List[str]
+        map_path: str,
+        red_heroes: List[str],
+        blue_heroes: List[str],
+        cheats_enabled: bool = False,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
         :param map_path: Path to the JSON map file.
         :param red_heroes: List of Hero Names for Red Team.
         :param blue_heroes: List of Hero Names for Blue Team.
+        :param cheats_enabled: Whether cheats are enabled for this game.
         """
 
         # 1. Load Map
@@ -48,6 +52,7 @@ class GameSetup:
             },
             wave_counter=5,
             phase=GamePhase.SETUP,
+            cheats_enabled=cheats_enabled,
         )
 
         # 4. Determine Lane & Battle Zone

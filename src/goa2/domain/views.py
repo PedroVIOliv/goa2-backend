@@ -60,6 +60,7 @@ def build_view(
         "current_actor_id": state.current_actor_id,
         "unresolved_hero_ids": list(state.unresolved_hero_ids),
         "active_zone_id": state.active_zone_id,
+        "cheats_enabled": state.cheats_enabled,
         "teams": teams_view,
         "board": board_view,
         "effects": effects_view,

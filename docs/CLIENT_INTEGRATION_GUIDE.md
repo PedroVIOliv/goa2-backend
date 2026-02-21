@@ -126,7 +126,8 @@ Create a new game. No authentication required.
 {
   "map_name": "forgotten_island",
   "red_heroes": ["arien"],
-  "blue_heroes": ["knight"]
+  "blue_heroes": ["knight"],
+  "cheats_enabled": false
 }
 ```
 
@@ -135,6 +136,7 @@ Create a new game. No authentication required.
 | `map_name` | string | `"forgotten_island"` | Map to use (must exist in `data/maps/`) |
 | `red_heroes` | string[] | required | Hero IDs for the red team |
 | `blue_heroes` | string[] | required | Hero IDs for the blue team |
+| `cheats_enabled` | boolean | `false` | Enable cheats for this game (unlocks gold cheat API) |
 
 **Response:** `201 Created`
 
@@ -210,6 +212,31 @@ Advance the game state without submitting input. Used when the engine needs to c
 **Request body:** empty
 
 **Response:** `200 OK` — returns `ActionResultResponse`.
+
+### `POST /games/{game_id}/cheats/gold`
+
+Give gold to a hero (cheats must be enabled and game must be in PLANNING phase).
+
+**Request body:**
+
+```json
+{
+  "hero_id": "hero_arien",
+  "amount": 5
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hero_id` | string | ID of the hero to give gold to |
+| `amount` | integer | Amount of gold to give (must be positive) |
+
+**Response:** `200 OK` — returns `ActionResultResponse` with a `GOLD_GAINED` event.
+
+**Error conditions:**
+- `403` — Cheats not enabled for this game, spectator token used, or not in PLANNING phase
+- `404` — Hero not found
+- `400` — Amount is not a positive integer
 
 ### ActionResultResponse shape
 
@@ -299,6 +326,24 @@ Request a fresh state update (available to both players and spectators):
   "type": "GET_VIEW"
 }
 ```
+
+#### `CHEATS_GOLD`
+
+Give gold to a hero (cheats must be enabled and game must be in PLANNING phase):
+
+```json
+{
+  "type": "CHEATS_GOLD",
+  "hero_id": "hero_arien",
+  "amount": 5
+}
+```
+
+**Error responses:**
+- `Cheats are not enabled for this game` — Cheats were not enabled at game creation
+- `Expected phase PLANNING, but game is in RESOLUTION` — Gold cheat only works during PLANNING phase
+- `Hero 'X' not found` — The specified hero_id does not exist
+- `Amount must be a positive integer` — The amount must be > 0
 
 ### Server-to-client messages
 
@@ -430,6 +475,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `current_actor_id` | string/null | Hero currently acting during RESOLUTION |
 | `unresolved_hero_ids` | string[] | Heroes that haven't acted yet this round |
 | `active_zone_id` | string/null | Currently active zone (if applicable) |
+| `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 
 ### Team data
 

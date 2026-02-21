@@ -28,7 +28,9 @@ from goa2.server.models import (
     GameViewResponse,
     PlayerToken,
     SubmitInputRequest,
+    GiveGoldRequest,
 )
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.server.registry import GameRegistry
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -43,8 +45,13 @@ def _map_path(map_name: str) -> str:
     return path
 
 
-def _log_result(game, result: SessionResult, hero_id: str | None = None,
-                 action: str | None = None, detail: str | None = None) -> None:
+def _log_result(
+    game,
+    result: SessionResult,
+    hero_id: str | None = None,
+    action: str | None = None,
+    detail: str | None = None,
+) -> None:
     """Log a SessionResult to the game's logger."""
     gl = game.game_logger
     if not gl:
@@ -78,7 +85,9 @@ async def create_game(
     body: CreateGameRequest, registry: GameRegistry = Depends(get_registry)
 ) -> CreateGameResponse:
     map_path = _map_path(body.map_name)
-    state = GameSetup.create_game(map_path, body.red_heroes, body.blue_heroes)
+    state = GameSetup.create_game(
+        map_path, body.red_heroes, body.blue_heroes, body.cheats_enabled
+    )
     session = GameSession(state)
 
     hero_ids: List[str] = []
@@ -89,7 +98,9 @@ async def create_game(
     game = registry.create_game(session, hero_ids)
 
     if game.game_logger:
-        game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
+        game.game_logger.log_game_created(
+            body.red_heroes, body.blue_heroes, body.map_name
+        )
 
     return CreateGameResponse(
         game_id=game.game_id,
@@ -223,3 +234,59 @@ async def advance(
         _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)
+
+
+@router.post("/{game_id}/cheats/gold", response_model=ActionResultResponse)
+async def give_gold_cheat(
+    game_id: str,
+    body: GiveGoldRequest,
+    player: PlayerContext = Depends(get_current_player),
+    registry: GameRegistry = Depends(get_registry),
+) -> ActionResultResponse:
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot use cheats")
+    game = registry.get(game_id)
+
+    async with game.lock:
+        session = game.session
+
+        if not session.state.cheats_enabled:
+            raise HTTPException(
+                status_code=403, detail="Cheats are not enabled for this game"
+            )
+
+        if session.current_phase != GamePhase.PLANNING:
+            raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+        hero = session.state.get_hero(body.hero_id)
+        if hero is None:
+            raise HTTPException(
+                status_code=404, detail=f"Hero '{body.hero_id}' not found"
+            )
+
+        if body.amount <= 0:
+            raise HTTPException(
+                status_code=400, detail="Amount must be a positive integer"
+            )
+
+        hero.gold += body.amount
+
+        event = GameEvent(
+            event_type=GameEventType.GOLD_GAINED,
+            actor_id=hero.id,
+            metadata={"amount": body.amount, "reason": "cheat"},
+        )
+
+        result = ActionResultResponse(
+            result_type="ACTION_COMPLETE",
+            current_phase=session.current_phase.value,
+            events=[event.model_dump()],
+            input_request=None,
+            winner=None,
+        )
+
+        if game.game_logger:
+            game.game_logger.log_events([event.model_dump()])
+
+        registry.save_game(game_id)
+        return result

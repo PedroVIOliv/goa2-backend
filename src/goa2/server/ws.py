@@ -11,6 +11,7 @@ from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
 from goa2.domain.views import build_view
 from goa2.engine.session import SessionResultType
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.server.errors import (
     CardNotInHandError,
     GameNotFoundError,
@@ -96,7 +97,9 @@ async def _handle_submit_input(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict() if result.input_request else None,
+        "input_request": result.input_request.to_dict()
+        if result.input_request
+        else None,
         "winner": result.winner,
     }
 
@@ -128,14 +131,14 @@ async def _handle_commit_card(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict() if result.input_request else None,
+        "input_request": result.input_request.to_dict()
+        if result.input_request
+        else None,
         "winner": result.winner,
     }
 
 
-async def _handle_pass_turn(
-    game: ManagedGame, hero_id: str
-) -> Dict[str, Any]:
+async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
     """Handle PASS_TURN message."""
     session = game.session
     if session.current_phase != GamePhase.PLANNING:
@@ -151,8 +154,52 @@ async def _handle_pass_turn(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict() if result.input_request else None,
+        "input_request": result.input_request.to_dict()
+        if result.input_request
+        else None,
         "winner": result.winner,
+    }
+
+
+async def _handle_cheats_gold(
+    game: ManagedGame, hero_id: str, data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Handle CHEATS_GOLD message."""
+    session = game.session
+
+    if not session.state.cheats_enabled:
+        return {"type": "ERROR", "detail": "Cheats are not enabled for this game"}
+
+    if session.current_phase != GamePhase.PLANNING:
+        raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+    target_hero_id = data.get("hero_id", "")
+    hero = session.state.get_hero(target_hero_id)
+    if hero is None:
+        return {"type": "ERROR", "detail": f"Hero '{target_hero_id}' not found"}
+
+    amount = data.get("amount", 0)
+    if amount <= 0:
+        return {"type": "ERROR", "detail": "Amount must be a positive integer"}
+
+    hero.gold += amount
+
+    event = GameEvent(
+        event_type=GameEventType.GOLD_GAINED,
+        actor_id=hero.id,
+        metadata={"amount": amount, "reason": "cheat"},
+    )
+
+    if game.game_logger:
+        game.game_logger.log_events([event.model_dump()])
+
+    return {
+        "type": "ACTION_RESULT",
+        "result_type": "ACTION_COMPLETE",
+        "current_phase": session.current_phase.value,
+        "events": [event.model_dump()],
+        "input_request": None,
+        "winner": None,
     }
 
 
@@ -188,7 +235,9 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     game.ws_connections[token] = websocket
 
     if game.game_logger:
-        game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
+        game.game_logger.log_ws_connect(
+            hero_id if not is_spectator else None, is_spectator
+        )
 
     # Send initial state
     initial = _build_state_update(game, hero_id if not is_spectator else None)
@@ -200,9 +249,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send_json(
-                    {"type": "ERROR", "detail": "Invalid JSON"}
-                )
+                await websocket.send_json({"type": "ERROR", "detail": "Invalid JSON"})
                 continue
 
             msg_type = data.get("type", "")
@@ -221,39 +268,52 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         reply = await _handle_commit_card(game, hero_id, data)
                     elif msg_type == "PASS_TURN":
                         reply = await _handle_pass_turn(game, hero_id)
+                    elif msg_type == "CHEATS_GOLD":
+                        reply = await _handle_cheats_gold(game, hero_id, data)
                     elif msg_type == "GET_VIEW":
                         hid = hero_id if not is_spectator else None
                         reply = _build_state_update(game, hid)
                     else:
-                        reply = {"type": "ERROR", "detail": f"Unknown message type: {msg_type}"}
+                        reply = {
+                            "type": "ERROR",
+                            "detail": f"Unknown message type: {msg_type}",
+                        }
 
                 # Auto-save after mutations
-                if msg_type in ("SUBMIT_INPUT", "COMMIT_CARD", "PASS_TURN"):
+                if msg_type in (
+                    "SUBMIT_INPUT",
+                    "COMMIT_CARD",
+                    "PASS_TURN",
+                    "CHEATS_GOLD",
+                ):
                     registry.save_game(game.game_id)
 
                 # Send reply to sender
                 await websocket.send_json(reply)
 
                 # Broadcast state to others after mutations
-                if msg_type in ("SUBMIT_INPUT", "COMMIT_CARD", "PASS_TURN"):
+                if msg_type in (
+                    "SUBMIT_INPUT",
+                    "COMMIT_CARD",
+                    "PASS_TURN",
+                    "CHEATS_GOLD",
+                ):
                     await broadcast(game, registry)
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError) as exc:
                 if game.game_logger:
                     game.game_logger.log_error(str(exc), hero_id)
-                await websocket.send_json(
-                    {"type": "ERROR", "detail": str(exc)}
-                )
+                await websocket.send_json({"type": "ERROR", "detail": str(exc)})
             except ValueError as exc:
                 if game.game_logger:
                     game.game_logger.log_error(str(exc), hero_id)
-                await websocket.send_json(
-                    {"type": "ERROR", "detail": str(exc)}
-                )
+                await websocket.send_json({"type": "ERROR", "detail": str(exc)})
 
     except WebSocketDisconnect:
         pass
     finally:
         game.ws_connections.pop(token, None)
         if game.game_logger:
-            game.game_logger.log_ws_disconnect(hero_id if not is_spectator else None, is_spectator)
+            game.game_logger.log_ws_disconnect(
+                hero_id if not is_spectator else None, is_spectator
+            )

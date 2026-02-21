@@ -161,7 +161,11 @@ def test_ws_commit_card(client, game_data):
         ws.send_json({"type": "COMMIT_CARD", "card_id": card_id})
         msg = ws.receive_json()
         assert msg["type"] == "ACTION_RESULT"
-        assert msg["result_type"] in ("ACTION_COMPLETE", "PHASE_CHANGED", "INPUT_NEEDED")
+        assert msg["result_type"] in (
+            "ACTION_COMPLETE",
+            "PHASE_CHANGED",
+            "INPUT_NEEDED",
+        )
 
 
 # ---- Full WS flow ----
@@ -208,3 +212,162 @@ def test_ws_full_planning_flow(client, game_data):
         msg = ws_w.receive_json()
         assert msg["type"] == "ACTION_RESULT"
         assert msg["current_phase"] != "PLANNING"
+
+
+# ---- Cheats WebSocket tests ----
+
+
+def test_ws_cheats_gold_success(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        ws.receive_json()  # initial state
+
+        # Give gold to Arien
+        ws.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": 5})
+        msg = ws.receive_json()
+        assert msg["type"] == "ACTION_RESULT"
+        assert msg["result_type"] == "ACTION_COMPLETE"
+        assert msg["events"]
+        assert msg["events"][0]["event_type"] == "GOLD_GAINED"
+        assert msg["events"][0]["metadata"]["amount"] == 5
+        assert msg["events"][0]["metadata"]["reason"] == "cheat"
+
+
+def test_ws_cheats_gold_disabled(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": False,
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        ws.receive_json()  # initial state
+
+        # Try to give gold when cheats are disabled
+        ws.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": 5})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+        assert "Cheats are not enabled" in msg["detail"]
+
+
+def test_ws_cheats_gold_invalid_hero(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        ws.receive_json()  # initial state
+
+        # Try to give gold to non-existent hero
+        ws.send_json(
+            {"type": "CHEATS_GOLD", "hero_id": "hero_does_not_exist", "amount": 5}
+        )
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+        assert "not found" in msg["detail"]
+
+
+def test_ws_cheats_gold_negative_amount(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        ws.receive_json()  # initial state
+
+        # Try to give negative gold
+        ws.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": -5})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+        assert "Amount must be a positive integer" in msg["detail"]
+
+
+def test_ws_cheats_gold_broadcasts_state(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+    wasp_token = _token_for(data, "hero_wasp")
+
+    # Connect both players
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws_a,
+        client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws_w,
+    ):
+        ws_a.receive_json()  # initial Arien
+        ws_w.receive_json()  # initial Wasp
+
+        # Arien gives gold
+        ws_a.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": 5})
+
+        # Arien gets ACTION_RESULT
+        msg_a1 = ws_a.receive_json()
+        assert msg_a1["type"] == "ACTION_RESULT"
+        assert msg_a1["events"][0]["event_type"] == "GOLD_GAINED"
+
+        # Both get STATE_UPDATE broadcast
+        msg_a2 = ws_a.receive_json()
+        assert msg_a2["type"] == "STATE_UPDATE"
+
+        msg_w = ws_w.receive_json()
+        assert msg_w["type"] == "STATE_UPDATE"
+
+        # Verify gold was updated in both views
+        arien_gold = None
+        for team_data in msg_a2["view"]["teams"].values():
+            for hero in team_data["heroes"]:
+                if hero["id"] == "hero_arien":
+                    arien_gold = hero["gold"]
+        assert arien_gold == 5
+
+        wasp_view_arien_gold = None
+        for team_data in msg_w["view"]["teams"].values():
+            for hero in team_data["heroes"]:
+                if hero["id"] == "hero_arien":
+                    wasp_view_arien_gold = hero["gold"]
+        assert wasp_view_arien_gold == 5

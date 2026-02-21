@@ -91,9 +91,7 @@ def test_create_game_bad_map(client):
 
 def test_get_game_view(client, game_data):
     token = _token_for(game_data, "hero_arien")
-    resp = client.get(
-        f"/games/{game_data['game_id']}", headers=_auth(token)
-    )
+    resp = client.get(f"/games/{game_data['game_id']}", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
     assert "view" in body
@@ -247,3 +245,242 @@ def test_full_planning_flow(client, game_data):
     # After both commit, phase should change
     body = resp2.json()
     assert body["current_phase"] != "PLANNING"
+
+
+# ---- Cheats ----
+
+
+def test_create_game_with_cheats_enabled(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+
+    # Verify cheats_enabled is in the view
+    arien_token = _token_for(data, "hero_arien")
+    view_resp = client.get(f"/games/{data['game_id']}", headers=_auth(arien_token))
+    assert view_resp.status_code == 200
+    view = view_resp.json()
+    assert view["view"]["cheats_enabled"] is True
+
+
+def test_create_game_without_cheats(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+
+    # Verify cheats_enabled defaults to False
+    arien_token = _token_for(data, "hero_arien")
+    view_resp = client.get(f"/games/{data['game_id']}", headers=_auth(arien_token))
+    assert view_resp.status_code == 200
+    view = view_resp.json()
+    assert view["view"]["cheats_enabled"] is False
+
+
+def test_give_gold_cheat_success(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    # Give gold to Arien
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": 5},
+        headers=_auth(arien_token),
+    )
+    assert cheat_resp.status_code == 200
+    result = cheat_resp.json()
+    assert result["result_type"] == "ACTION_COMPLETE"
+    assert result["events"]
+    assert result["events"][0]["event_type"] == "GOLD_GAINED"
+    assert result["events"][0]["metadata"]["amount"] == 5
+    assert result["events"][0]["metadata"]["reason"] == "cheat"
+
+    # Verify gold was added
+    view_resp = client.get(f"/games/{game_id}", headers=_auth(arien_token))
+    view = view_resp.json()
+    arien_gold = None
+    for team_data in view["view"]["teams"].values():
+        for hero in team_data["heroes"]:
+            if hero["id"] == "hero_arien":
+                arien_gold = hero["gold"]
+    assert arien_gold == 5
+
+
+def test_give_gold_cheat_disabled(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": False,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    # Try to give gold when cheats are disabled
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": 5},
+        headers=_auth(arien_token),
+    )
+    assert cheat_resp.status_code == 403
+    assert "Cheats are not enabled" in cheat_resp.json()["detail"]
+
+
+def test_give_gold_cheat_wrong_phase(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+    wasp_token = _token_for(data, "hero_wasp")
+
+    # Get Arien's hand
+    view_resp = client.get(f"/games/{game_id}", headers=_auth(arien_token))
+    view = view_resp.json()
+    arien_card_id = None
+    for team_data in view["view"]["teams"].values():
+        for hero in team_data["heroes"]:
+            if hero["id"] == "hero_arien" and hero["hand"]:
+                arien_card_id = hero["hand"][0]["id"]
+
+    # Get Wasp's hand
+    view_resp = client.get(f"/games/{game_id}", headers=_auth(wasp_token))
+    view = view_resp.json()
+    wasp_card_id = None
+    for team_data in view["view"]["teams"].values():
+        for hero in team_data["heroes"]:
+            if hero["id"] == "hero_wasp" and hero["hand"]:
+                wasp_card_id = hero["hand"][0]["id"]
+
+    # Both players commit cards to move to REVELATION phase
+    client.post(
+        f"/games/{game_id}/cards",
+        json={"card_id": arien_card_id},
+        headers=_auth(arien_token),
+    )
+    client.post(
+        f"/games/{game_id}/cards",
+        json={"card_id": wasp_card_id},
+        headers=_auth(wasp_token),
+    )
+
+    # Try to give gold in non-PLANNING phase
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": 5},
+        headers=_auth(arien_token),
+    )
+    assert cheat_resp.status_code == 409
+    assert "Expected phase PLANNING" in cheat_resp.json()["detail"]
+
+
+def test_give_gold_cheat_invalid_hero(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    # Try to give gold to non-existent hero
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_does_not_exist", "amount": 5},
+        headers=_auth(arien_token),
+    )
+    assert cheat_resp.status_code == 404
+
+
+def test_give_gold_cheat_negative_amount(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+
+    # Try to give negative gold
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": -5},
+        headers=_auth(arien_token),
+    )
+    assert cheat_resp.status_code == 400
+    assert "Amount must be a positive integer" in cheat_resp.json()["detail"]
+
+
+def test_give_gold_cheat_spectator_blocked(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "cheats_enabled": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game_id = data["game_id"]
+    spectator_token = data["spectator_token"]
+
+    # Try to use cheats as spectator
+    cheat_resp = client.post(
+        f"/games/{game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": 5},
+        headers=_auth(spectator_token),
+    )
+    assert cheat_resp.status_code == 403
+    assert "Spectators cannot use cheats" in cheat_resp.json()["detail"]

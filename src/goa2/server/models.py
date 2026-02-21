@@ -14,6 +14,7 @@ class CreateGameRequest(BaseModel):
     map_name: str = "forgotten_island"
     red_heroes: List[str]
     blue_heroes: List[str]
+    cheats_enabled: bool = False
 
 
 class CommitCardRequest(BaseModel):
@@ -23,6 +24,11 @@ class CommitCardRequest(BaseModel):
 class SubmitInputRequest(BaseModel):
     request_id: str = ""
     selection: Any = None
+
+
+class GiveGoldRequest(BaseModel):
+    hero_id: str
+    amount: int
 
 
 # -- Responses --
