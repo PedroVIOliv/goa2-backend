@@ -957,6 +957,11 @@ class MoveUnitStep(GameStep):
 
         actor_id = state.current_actor_id or target_unit_id
 
+        start_hex = state.entity_locations.get(BoardEntityID(target_unit_id))
+        if not start_hex:
+            print(f"   [ERROR] Unit {target_unit_id} has no location on board.")
+            return StepResult(is_finished=True)
+
         displacement_validation = state.validator.can_be_moved(
             state=state,
             unit_id=target_unit_id,
@@ -969,10 +974,17 @@ class MoveUnitStep(GameStep):
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
+        # Calculate actual distance for MOVEMENT_ZONE effect validation
+        from goa2.engine.topology import topology_distance
+
+        actual_distance = topology_distance(start_hex, dest_hex, state)
+        if actual_distance == float("inf"):
+            actual_distance = 0  # Unreachable, will fail pathfinding check below
+
         move_validation = state.validator.can_move(
             state,
             target_unit_id,
-            self.range_val,
+            actual_distance,
             context,
             is_movement_action=self.is_movement_action,
         )
@@ -980,11 +992,6 @@ class MoveUnitStep(GameStep):
             print(f"   [BLOCKED] MoveUnitStep: {move_validation.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
-            return StepResult(is_finished=True)
-
-        start_hex = state.entity_locations.get(BoardEntityID(target_unit_id))
-        if not start_hex:
-            print(f"   [ERROR] Unit {target_unit_id} has no location on board.")
             return StepResult(is_finished=True)
 
         if start_hex == dest_hex:
@@ -1041,8 +1048,38 @@ class MoveSequenceStep(GameStep):
     destination_key: str = "target_hex"
     is_mandatory: bool = True
 
+    def _get_effective_range(self, state: GameState, unit_id: str) -> int:
+        """Get effective movement range, considering MOVEMENT_ZONE effects."""
+        from goa2.domain.models.effect import EffectType
+
+        max_range = self.range_val
+
+        unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
+        if not unit_loc:
+            return max_range
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.MOVEMENT_ZONE:
+                continue
+            if not state.validator._is_effect_active(effect, state):
+                continue
+            if not state.validator._is_in_scope(effect, unit_id, unit_loc, state):
+                continue
+            # Only applies to movement actions (MoveSequenceStep is always a movement action)
+            if effect.max_value is not None:
+                max_range = min(max_range, effect.max_value)
+
+        return max_range
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = self.unit_id or state.current_actor_id
+
+        # Calculate effective range (capped by MOVEMENT_ZONE effects)
+        effective_range = (
+            self._get_effective_range(state, str(actor_id))
+            if actor_id
+            else self.range_val
+        )
 
         # If we already have the destination in context, just move
         if context.get(self.destination_key):
@@ -1052,7 +1089,7 @@ class MoveSequenceStep(GameStep):
                     MoveUnitStep(
                         unit_id=actor_id,
                         destination_key=self.destination_key,
-                        range_val=self.range_val,
+                        range_val=effective_range,
                         is_mandatory=self.is_mandatory,
                         is_movement_action=True,  # This IS a movement action
                     )
@@ -1067,20 +1104,20 @@ class MoveSequenceStep(GameStep):
         # to ensure other units block movement but the moving unit doesn't block itself.
         filters = [
             ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
-            MovementPathFilter(range_val=self.range_val, unit_id=actor_id),
+            MovementPathFilter(range_val=effective_range, unit_id=actor_id),
         ]
 
         # If range is 0, MovementPathFilter will only allow current hex.
         # OccupiedFilter will also allow it because of exclude_id.
 
-        print(f"   [MACRO] Expanding Move Sequence (Range: {self.range_val})")
+        print(f"   [MACRO] Expanding Move Sequence (Range: {effective_range})")
 
         return StepResult(
             is_finished=True,
             new_steps=[
                 SelectStep(
                     target_type=TargetType.HEX,
-                    prompt=f"Select Movement Destination (Range {self.range_val})",
+                    prompt=f"Select Movement Destination (Range {effective_range})",
                     output_key=self.destination_key,
                     filters=filters,
                     is_mandatory=self.is_mandatory,
@@ -1088,7 +1125,7 @@ class MoveSequenceStep(GameStep):
                 MoveUnitStep(
                     unit_id=actor_id,
                     destination_key=self.destination_key,
-                    range_val=self.range_val,
+                    range_val=effective_range,
                     is_mandatory=self.is_mandatory,
                     is_movement_action=True,  # This IS a movement action
                 ),

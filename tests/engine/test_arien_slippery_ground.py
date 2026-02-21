@@ -11,9 +11,15 @@ from goa2.domain.models import (
     ActionType,
     SpawnPoint,
     SpawnType,
+    EffectType,
+    EffectScope,
+    Shape,
+    AffectsFilter,
+    DurationType,
+    ActiveEffect,
 )
 from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.engine.steps import ResolveCardStep, MoveSequenceStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.arien_effects
@@ -26,6 +32,9 @@ def slippery_state():
     # 1,0,-1: Adjacent Enemy (e1)
     # 2,0,-2: Distant Enemy (e2)
     # 3,0,-3: Empty spawn point (for fast travel)
+    # Extra hexes for e1 movement options
+    # 1,1,-2: Empty hex adjacent to e1
+    # 1,-1,0: Empty hex adjacent to e1
 
     hexes = {
         Hex(q=0, r=0, s=0),
@@ -33,6 +42,10 @@ def slippery_state():
         Hex(q=2, r=0, s=-2),
         Hex(q=3, r=0, s=-3),
         Hex(q=4, r=0, s=-4),
+        Hex(q=1, r=1, s=-2),  # Adjacent to e1
+        Hex(q=1, r=-1, s=0),  # Adjacent to e1
+        Hex(q=0, r=1, s=-1),  # Adjacent to e1
+        Hex(q=2, r=-1, s=-1),  # Adjacent to e1
     }
     z1 = Zone(id="z1", hexes=hexes, neighbors=[])
 
@@ -162,3 +175,56 @@ def test_slippery_ground_movement_limited(slippery_state):
         slippery_state, "e1", distance=1, is_movement_action=True
     )
     assert res.allowed == True
+
+
+def test_move_sequence_step_caps_range_from_effect(slippery_state):
+    """MoveSequenceStep should cap range based on MOVEMENT_ZONE effects."""
+    # Setup effect
+    slippery_state.current_actor_id = "arien"
+    step = ResolveCardStep(hero_id="arien")
+    push_steps(slippery_state, [step])
+
+    process_resolution_stack(slippery_state)
+    slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
+
+    process_resolution_stack(slippery_state)
+    slippery_state.execution_stack[-1].pending_input = {
+        "selection": {"q": 0, "r": 0, "s": 0}
+    }
+
+    while slippery_state.execution_stack:
+        process_resolution_stack(slippery_state)
+
+    # Activate the effect
+    hero = slippery_state.get_hero("arien")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(slippery_state, card_id)
+
+    # e1 (adjacent to Arien) tries to move via MoveSequenceStep with range 2
+    # Should be capped to range 1 by the MOVEMENT_ZONE effect
+    slippery_state.execution_context.clear()
+    slippery_state.current_actor_id = "e1"
+    move_step = MoveSequenceStep(unit_id="e1", range_val=2)
+    push_steps(slippery_state, [move_step])
+
+    result = process_resolution_stack(slippery_state)
+
+    # The input request should show Range 1, not Range 2
+    assert result is not None
+    assert result["type"] == "SELECT_HEX"
+    assert "Range 1" in result["prompt"], (
+        f"Expected Range 1 in prompt, got: {result['prompt']}"
+    )
+
+    # Valid hexes should only include distance 1 hexes
+    # e1 is at (1, 0, -1), so valid distance-1 hexes are:
+    # (0, 0, 0) - occupied by Arien
+    # (2, 0, -2) - occupied by e2
+    # (1, 1, -2), (2, -1, -1), (0, 1, -1), (1, -1, 0)
+    # Only empty ones should be valid
+    valid_hexes = result["valid_hexes"]
+    for h in valid_hexes:
+        hex_obj = Hex(**h)
+        dist = hex_obj.distance(Hex(q=1, r=0, s=-1))
+        assert dist <= 1, f"Hex {h} is at distance {dist}, should be <= 1"
