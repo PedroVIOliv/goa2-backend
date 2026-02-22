@@ -1246,6 +1246,18 @@ class ReactionWindowStep(GameStep):
 
         valid_ids = [c.id for c in valid_defense_cards]
 
+        # Build InputOption objects with computed defense values
+        options = []
+        for card in valid_defense_cards:
+            base_def = card.get_base_stat_value(StatType.DEFENSE)
+            total_def = get_computed_stat(state, target_id, StatType.DEFENSE, base_def)
+            options.append(InputOption(
+                id=card.id,
+                text=f"{card.name} (Def: {total_def})",
+                metadata={"defense_value": total_def, "base_defense": base_def},
+            ))
+        options.append(InputOption(id="PASS", text="PASS"))
+
         if self.pending_input:
             card_id = self.pending_input.get("selection")
 
@@ -1305,13 +1317,31 @@ class ReactionWindowStep(GameStep):
 
                 return StepResult(is_finished=True)
 
+        # Compute combat info for the input request
+        from goa2.engine.stats import calculate_minion_defense_modifier
+
+        attack_value = context.get("attack_damage")
+        minion_modifier = calculate_minion_defense_modifier(state, target_id)
+        defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
+
+        prompt = f"Player {target_id}, select a Defense card."
+        if attack_value is not None:
+            prompt = (
+                f"Player {target_id}, select a Defense card. "
+                f"Attack: {attack_value}, Defense needed: {defense_needed} "
+                f"(minion mod: {minion_modifier:+d})"
+            )
+
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_CARD_OR_PASS,
                 player_id=str(target_id),
-                prompt=f"Player {target_id}, select a Defense card.",
-                options=valid_ids + ["PASS"],
+                prompt=prompt,
+                options=options,
+                attack_value=attack_value,
+                minion_modifier=minion_modifier,
+                defense_needed=defense_needed,
             ),
         )
 
@@ -3740,6 +3770,7 @@ class AttackSequenceStep(GameStep):
         context["attacker_id"] = (
             str(state.current_actor_id) if state.current_actor_id else None
         )
+        context["attack_damage"] = self.damage
         print(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, range_val={self.range_val}"
         )
@@ -3825,6 +3856,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
         f"   [UPGRADE] Adding {chosen_card.id} (Tier {chosen_card.tier.name}) to hand."
     )
     chosen_card.state = CardState.HAND
+    chosen_card.is_facedown = False
     hero.hand.append(chosen_card)
 
     if pair_card:

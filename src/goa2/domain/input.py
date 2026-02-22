@@ -260,8 +260,11 @@ class InputRequest(BaseModel):
                 {"id": opt.id, "text": opt.text, **opt.metadata} for opt in self.options
             ]
         elif self.request_type == InputRequestType.SELECT_CARD_OR_PASS:
-            # Card or pass expects options as list of card IDs + "PASS"
-            result["options"] = [opt.id for opt in self.options]
+            # Card or pass options as objects with id, text, and metadata
+            result["options"] = [
+                {"id": opt.id, "text": opt.text, **opt.metadata}
+                for opt in self.options
+            ]
         elif self.request_type == InputRequestType.CHOOSE_ACTOR:
             # Actor choice expects player_ids list
             result["player_ids"] = [opt.id for opt in self.options]

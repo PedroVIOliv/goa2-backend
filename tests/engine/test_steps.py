@@ -149,8 +149,8 @@ def test_reaction_window_validation(combat_state):
     # Pass 1: Request Input
     req = process_resolution_stack(combat_state)
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    assert "def_card_1" in req["options"]
-    assert "PASS" in req["options"]
+    assert any(o["id"] == "def_card_1" for o in req["options"])
+    assert any(o["id"] == "PASS" for o in req["options"])
 
     # Pass 2: Select Invalid Card
     combat_state.execution_stack[-1].pending_input = {"selection": "def_card_1"}

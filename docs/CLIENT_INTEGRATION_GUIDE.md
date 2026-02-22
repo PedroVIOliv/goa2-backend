@@ -629,7 +629,7 @@ The `type` field determines what kind of input is needed and what options fields
 | `SELECT_CARD` | `valid_options` | `"card_id"` | Choose a card by ID |
 | `CHOOSE_ACTION` | `options` (list of `{id, text}`) | `"ATTACK"` | Choose from named actions |
 | `SELECT_OPTION` | `options` (list of `{id, text}`) | `"option_id"` | Choose from generic options |
-| `DEFENSE_CARD` | `valid_options` | `"card_id"` | Choose a defense card in reaction |
+| `SELECT_CARD_OR_PASS` | `options` (list of `{id, text, ...}`) | `"card_id"` or `"PASS"` | Choose a defense card in reaction. Includes combat context fields and per-card metadata (see below) |
 | `CHOOSE_ACTOR` | `player_ids` | `"hero_arien"` | Choose which hero acts next |
 | `UPGRADE_PHASE` | `players` (special structure) | upgrade selection | Choose card upgrades |
 | `CONFIRM_PASSIVE` | `options` (`["YES", "NO"]`) | `"YES"` or `"NO"` | Confirm a passive ability |
@@ -663,6 +663,49 @@ If `can_skip` is `true` in the input request, the player can skip by submitting 
 ```json
 {"selection": null}
 ```
+
+### Defense card context
+
+When a `SELECT_CARD_OR_PASS` input request is sent for defense, it includes additional combat context fields so the client can display attack/defense information to the player:
+
+```json
+{
+  "type": "SELECT_CARD_OR_PASS",
+  "player_id": "hero_knight",
+  "prompt": "Player hero_knight, select a Defense card. Attack: 3, Defense needed: 2 (minion mod: +1)",
+  "options": [
+    {
+      "id": "knight_shield_wall_1",
+      "text": "Shield Wall (Def: 3)",
+      "defense_value": 3,
+      "base_defense": 2
+    },
+    {"id": "PASS", "text": "PASS"}
+  ],
+  "attack_value": 3,
+  "minion_modifier": 1,
+  "defense_needed": 2
+}
+```
+
+**Top-level combat context fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attack_value` | int \| null | The incoming attack's damage value |
+| `minion_modifier` | int | Defense bonus from adjacent friendly minions |
+| `defense_needed` | int \| null | Minimum card defense value to block (`attack_value - minion_modifier`) |
+
+**Per-card option fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Card ID (or `"PASS"`) |
+| `text` | string | Display text for the option |
+| `defense_value` | int | Total computed defense (base + items + modifiers). Only on card options, not `"PASS"`. |
+| `base_defense` | int | Card's base defense stat before modifiers. Only on card options, not `"PASS"`. |
+
+The `"PASS"` option is always available — submit `"PASS"` if the player chooses not to defend.
 
 ---
 
