@@ -160,11 +160,14 @@ Get the current game view for the authenticated player.
 ```json
 {
   "view": { ... },
-  "input_request": null
+  "input_request": null,
+  "winner": "RED"
 }
 ```
 
 The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present when the server is waiting for this player's input.
+
+The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `response.get("winner")` rather than assuming it exists.
 
 ### `POST /games/{game_id}/cards`
 
@@ -355,11 +358,14 @@ Sent on connection, on `GET_VIEW` requests, and broadcast to all connected clien
 {
   "type": "STATE_UPDATE",
   "view": { ... },
-  "input_request": { ... }
+  "input_request": { ... },
+  "winner": "RED"
 }
 ```
 
 The `input_request` key is only present when there is a pending input request. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
+
+The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `msg.get("winner")` rather than assuming it exists.
 
 #### `ACTION_RESULT`
 

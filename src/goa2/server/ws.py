@@ -28,12 +28,15 @@ def _build_state_update(game: ManagedGame, hero_id: str | None) -> Dict[str, Any
     """Build a STATE_UPDATE message for a specific player."""
     view = build_view(game.session.state, for_hero_id=hero_id)
     ir = game.last_result.input_request if game.last_result else None
+    winner = game.last_result.winner if game.last_result else None
     msg: Dict[str, Any] = {
         "type": "STATE_UPDATE",
         "view": view,
     }
     if ir:
         msg["input_request"] = ir.to_dict()
+    if winner:
+        msg["winner"] = winner
     return msg
 
 

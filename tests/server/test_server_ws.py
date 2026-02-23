@@ -371,3 +371,55 @@ def test_ws_cheats_gold_broadcasts_state(client):
                 if hero["id"] == "hero_arien":
                     wasp_view_arien_gold = hero["gold"]
         assert wasp_view_arien_gold == 5
+
+
+# ---- Game over tests ----
+
+
+def test_ws_state_update_includes_winner_on_game_over(client):
+    """Verify STATE_UPDATE includes winner field when game ends."""
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+    wasp_token = _token_for(data, "hero_wasp")
+    spectator_token = data["spectator_token"]
+
+    # Connect spectator (non-acting player)
+    with client.websocket_connect(
+        f"/games/{game_id}/ws?token={spectator_token}"
+    ) as ws_s:
+        ws_s.receive_json()  # initial state
+
+        # Access the game and set up game over state
+        app = client.app
+        registry = app.state.registry
+        game = registry.get(game_id)
+
+        # Simulate game over by setting last_result.winner and state phase
+        from goa2.engine.session import SessionResult, SessionResultType
+        from goa2.domain.models import GamePhase
+
+        game.session.state.phase = GamePhase.GAME_OVER
+        game.last_result = SessionResult(
+            result_type=SessionResultType.GAME_OVER,
+            current_phase=GamePhase.GAME_OVER,
+            winner="RED",
+            events=[],
+        )
+
+        # Manually trigger broadcast by sending a GET_VIEW request
+        ws_s.send_json({"type": "GET_VIEW"})
+        msg = ws_s.receive_json()
+
+        # Verify STATE_UPDATE includes winner
+        assert msg["type"] == "STATE_UPDATE"
+        assert msg.get("winner") == "RED"
+        assert msg["view"]["phase"] == "GAME_OVER"

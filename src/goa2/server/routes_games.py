@@ -122,9 +122,11 @@ async def get_game_view(
     hero_id = player.hero_id if not player.is_spectator else None
     view = build_view(game.session.state, for_hero_id=hero_id)
     ir = game.last_result.input_request if game.last_result else None
+    winner = game.last_result.winner if game.last_result else None
     return GameViewResponse(
         view=view,
         input_request=ir.to_dict() if ir else None,
+        winner=winner,
     )
 
 

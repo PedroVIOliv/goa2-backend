@@ -50,6 +50,7 @@ class GameViewResponse(BaseModel):
 
     view: Dict[str, Any]
     input_request: Optional[Dict[str, Any]] = None
+    winner: Optional[str] = None
 
 
 class ActionResultResponse(BaseModel):
