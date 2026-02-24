@@ -297,6 +297,22 @@ class TestExpertDuelistDefenseSteps:
             radius_value = None
             is_ranged = False
 
+            @property
+            def current_primary_action(self):
+                return self.primary_action
+
+            @property
+            def current_primary_action_value(self):
+                return self.primary_action_value
+
+            @property
+            def current_secondary_actions(self):
+                return self.secondary_actions
+
+            @property
+            def current_effect_id(self):
+                return None
+
         context = {"attacker_id": "h_enemy1"}
         steps = effect.get_defense_steps(duelist_state, arien, MockCard(), context)
 
@@ -340,6 +356,22 @@ class TestMasterDuelistDefenseSteps:
             range_value = None
             radius_value = None
             is_ranged = False
+
+            @property
+            def current_primary_action(self):
+                return self.primary_action
+
+            @property
+            def current_primary_action_value(self):
+                return self.primary_action_value
+
+            @property
+            def current_secondary_actions(self):
+                return self.secondary_actions
+
+            @property
+            def current_effect_id(self):
+                return None
 
         context = {"attacker_id": "h_enemy1"}
         steps = effect.get_defense_steps(duelist_state, arien, MockCard(), context)

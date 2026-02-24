@@ -137,6 +137,7 @@ class TestReactionWindowSetsDefenseType:
                     primary_action_value=3,
                     effect_id="defense_effect",
                     effect_text="Defense text",
+                    is_facedown=False,
                 ),
             ],
         )
@@ -185,7 +186,10 @@ class TestReactionWindowSetsDefenseType:
         step.resolve(state_with_defender, context)
 
         assert context.get("current_action_type") == ActionType.ATTACK
-        assert "action_type_stack" not in context or len(context.get("action_type_stack", [])) == 0
+        assert (
+            "action_type_stack" not in context
+            or len(context.get("action_type_stack", [])) == 0
+        )
 
 
 class TestRestoreActionTypeStep:

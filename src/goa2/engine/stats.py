@@ -269,17 +269,17 @@ def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardSta
     result = CardStats()
 
     # 1. Compute primary action value with appropriate stat type
-    base_value = card.primary_action_value or 0
+    base_value = card.current_primary_action_value or 0
 
-    if card.primary_action == ActionType.ATTACK:
+    if card.current_primary_action == ActionType.ATTACK:
         result.primary_value = get_computed_stat(
             state, hero_id, StatType.ATTACK, base_value
         )
-    elif card.primary_action == ActionType.MOVEMENT:
+    elif card.current_primary_action == ActionType.MOVEMENT:
         result.primary_value = get_computed_stat(
             state, hero_id, StatType.MOVEMENT, base_value
         )
-    elif card.primary_action in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL):
+    elif card.current_primary_action in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL):
         result.primary_value = get_computed_stat(
             state, hero_id, StatType.DEFENSE, base_value
         )

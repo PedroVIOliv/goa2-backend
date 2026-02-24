@@ -426,10 +426,10 @@ class CheckPassiveAbilitiesStep(GameStep):
 
         def check_card_for_passive(card: Card) -> None:
             """Helper to check a card for matching passive ability."""
-            if not card.effect_id:
+            if not card.current_effect_id:
                 return
 
-            effect = CardEffectRegistry.get(card.effect_id)
+            effect = CardEffectRegistry.get(card.current_effect_id)
             if not effect:
                 return
 
@@ -501,7 +501,7 @@ class OfferPassiveStep(GameStep):
             print(f"   [PASSIVE] Card {self.card_id} not found")
             return StepResult(is_finished=True)
 
-        effect = CardEffectRegistry.get(card.effect_id)
+        effect = CardEffectRegistry.get(card.current_effect_id)
         if not effect:
             return StepResult(is_finished=True)
 
@@ -1238,9 +1238,9 @@ class ReactionWindowStep(GameStep):
         valid_defense_cards = []
         for card in target_hero.hand:
             if (
-                card.primary_action == ActionType.DEFENSE
-                or card.primary_action == ActionType.DEFENSE_SKILL
-                or ActionType.DEFENSE in card.secondary_actions
+                card.current_primary_action == ActionType.DEFENSE
+                or card.current_primary_action == ActionType.DEFENSE_SKILL
+                or ActionType.DEFENSE in card.current_secondary_actions
             ):
                 valid_defense_cards.append(card)
 
@@ -1251,11 +1251,13 @@ class ReactionWindowStep(GameStep):
         for card in valid_defense_cards:
             base_def = card.get_base_stat_value(StatType.DEFENSE)
             total_def = get_computed_stat(state, target_id, StatType.DEFENSE, base_def)
-            options.append(InputOption(
-                id=card.id,
-                text=f"{card.name} (Def: {total_def})",
-                metadata={"defense_value": total_def, "base_defense": base_def},
-            ))
+            options.append(
+                InputOption(
+                    id=card.id,
+                    text=f"{card.name} (Def: {total_def})",
+                    metadata={"defense_value": total_def, "base_defense": base_def},
+                )
+            )
         options.append(InputOption(id="PASS", text="PASS"))
 
         if self.pending_input:
@@ -1289,7 +1291,7 @@ class ReactionWindowStep(GameStep):
                 )
 
                 # Determine if primary defense (triggers effect text)
-                is_primary = selected_card.primary_action in (
+                is_primary = selected_card.current_primary_action in (
                     ActionType.DEFENSE,
                     ActionType.DEFENSE_SKILL,
                 )
@@ -1322,7 +1324,9 @@ class ReactionWindowStep(GameStep):
 
         attack_value = context.get("attack_damage")
         minion_modifier = calculate_minion_defense_modifier(state, target_id)
-        defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
+        defense_needed = (
+            (attack_value - minion_modifier) if attack_value is not None else None
+        )
 
         prompt = f"Player {target_id}, select a Defense card."
         if attack_value is not None:
@@ -1382,29 +1386,31 @@ class ResolveDefenseTextStep(GameStep):
         if not card:
             card = next((c for c in defender.discard_pile if c.id == card_id), None)
 
-        if not card or not card.effect_id:
+        if not card or not card.current_effect_id:
             print(
                 f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense."
             )
             return StepResult(is_finished=True)
 
-        print(f"   [DEFENSE] Looking up effect_id={card.effect_id}")
+        print(f"   [DEFENSE] Looking up effect_id={card.current_effect_id}")
 
         from goa2.engine.effects import CardEffectRegistry
 
-        effect = CardEffectRegistry.get(card.effect_id)
+        effect = CardEffectRegistry.get(card.current_effect_id)
         if effect:
             # Try defense-specific steps first
             defense_steps = effect.get_defense_steps(state, defender, card, context)
 
             # If None, fall back to get_steps() (for DEFENSE_SKILL cards)
             if defense_steps is None:
-                print(f"   [DEFENSE] Using get_steps() fallback for {card.effect_id}")
+                print(
+                    f"   [DEFENSE] Using get_steps() fallback for {card.current_effect_id}"
+                )
                 defense_steps = effect.get_steps(state, defender, card)
 
             if defense_steps:
                 print(
-                    f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.effect_id}"
+                    f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
@@ -1422,9 +1428,14 @@ class ResolveDefenseTextStep(GameStep):
                 )
                 return StepResult(is_finished=True, new_steps=wrapped)
             else:
-                print(f"   [DEFENSE] defense_steps is None/empty for {card.effect_id}")
-        else:
-            print(f"   [DEFENSE] No defense_steps returned for {card.effect_id}")
+                if not defense_steps:
+                    print(
+                        f"   [DEFENSE] defense_steps is None/empty for {card.current_effect_id}"
+                    )
+                else:
+                    print(
+                        f"   [DEFENSE] No defense_steps returned for {card.current_effect_id}"
+                    )
 
         return StepResult(is_finished=True)
 
@@ -1460,17 +1471,17 @@ class ResolveOnBlockEffectStep(GameStep):
         if not card:
             card = next((c for c in defender.discard_pile if c.id == card_id), None)
 
-        if not card or not card.effect_id:
+        if not card or not card.current_effect_id:
             return StepResult(is_finished=True)
 
         from goa2.engine.effects import CardEffectRegistry
 
-        effect = CardEffectRegistry.get(card.effect_id)
+        effect = CardEffectRegistry.get(card.current_effect_id)
         if effect:
             on_block_steps = effect.get_on_block_steps(state, defender, card, context)
             if on_block_steps:
                 print(
-                    f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.effect_id}"
+                    f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
@@ -2445,12 +2456,12 @@ class ResolveCardTextStep(GameStep):
         context["current_card_id"] = card.id
 
         print(
-            f"   [SCRIPT] Executing logic for '{card.name}' (Effect: {card.effect_id})"
+            f"   [SCRIPT] Executing logic for '{card.name}' (Effect: {card.current_effect_id})"
         )
 
         from goa2.engine.effects import CardEffectRegistry
 
-        effect = CardEffectRegistry.get(card.effect_id)
+        effect = CardEffectRegistry.get(card.current_effect_id)
 
         if effect:
             # We must use a different variable name here or not declare `new_steps` again below
@@ -2458,17 +2469,18 @@ class ResolveCardTextStep(GameStep):
             return StepResult(is_finished=True, new_steps=effect_steps)
 
         # Fallback to standard primary primitives if no specific script found
-        if not card.primary_action:
+        if not card.current_primary_action:
             print("            > No custom script found and no primary action.")
             return StepResult(is_finished=True)
 
         print(
-            f"            > No custom script found. Using standard {card.primary_action.name} logic."
+            f"            > No custom script found. Using standard {card.current_primary_action.name} logic."
         )
+
         # Declared here for the first time in this scope path
         steps_list: List[GameStep] = []
 
-        if card.primary_action == ActionType.MOVEMENT:
+        if card.current_primary_action == ActionType.MOVEMENT:
             # MOVEMENT: Compute Total
             base_val = card.get_base_stat_value(StatType.MOVEMENT)
             total_val = get_computed_stat(
@@ -2478,7 +2490,7 @@ class ResolveCardTextStep(GameStep):
                 MoveSequenceStep(unit_id=self.hero_id, range_val=total_val)
             )
 
-        elif card.primary_action == ActionType.ATTACK:
+        elif card.current_primary_action == ActionType.ATTACK:
             # ATTACK: Compute Damage & Range
             base_dmg = card.get_base_stat_value(StatType.ATTACK)
             total_dmg = get_computed_stat(
@@ -2495,11 +2507,11 @@ class ResolveCardTextStep(GameStep):
 
             steps_list.append(AttackSequenceStep(damage=total_dmg, range_val=total_rng))
 
-        elif card.primary_action == ActionType.DEFENSE:
+        elif card.current_primary_action == ActionType.DEFENSE:
             steps_list.append(
                 LogMessageStep(message=f"{self.hero_id} Defends (Primary).")
             )
-        elif card.primary_action == ActionType.SKILL:
+        elif card.current_primary_action == ActionType.SKILL:
             print(f"            > Skill '{card.name}' has no registered effect!")
             steps_list.append(
                 LogMessageStep(message=f"Skill '{card.name}' did nothing.")
@@ -2651,7 +2663,7 @@ class ResolveCardStep(GameStep):
                 is_primary = act_type == primary_action
                 # DEFENSE_SKILL played as SKILL still uses primary effect
                 if (
-                    card.primary_action == ActionType.DEFENSE_SKILL
+                    card.current_primary_action == ActionType.DEFENSE_SKILL
                     and act_type == ActionType.SKILL
                 ):
                     is_primary = True
@@ -2726,7 +2738,7 @@ class ResolveCardStep(GameStep):
                         )
 
                 # Add AFTER_BASIC_SKILL passive check for Gold/Silver SKILL cards
-                if act_type == ActionType.SKILL and card.color in (
+                if act_type == ActionType.SKILL and card.current_color in (
                     CardColor.GOLD,
                     CardColor.SILVER,
                 ):
