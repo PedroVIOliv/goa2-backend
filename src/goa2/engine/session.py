@@ -137,6 +137,11 @@ class GameSession:
         )
 
     def _determine_winner(self) -> Optional[str]:
+        # Authoritative: TriggerGameOverStep sets state.winner for all victory types
+        if self.state.winner is not None:
+            return self.state.winner.value
+
+        # Fallback: life counter check (annihilation)
         red = self.state.teams.get(TeamColor.RED)
         blue = self.state.teams.get(TeamColor.BLUE)
         if not red or not blue:
