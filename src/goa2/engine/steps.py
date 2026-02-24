@@ -3382,12 +3382,9 @@ class EndPhaseStep(GameStep):
         battle_steps = self._resolve_minion_battle(state)
         new_steps.extend(battle_steps)
 
-        from goa2.engine.map_logic import check_lane_push_trigger
-
-        if state.active_zone_id:
-            losing_team = check_lane_push_trigger(state, state.active_zone_id)
-            if losing_team:
-                new_steps.append(LanePushStep(losing_team=losing_team))
+        # CheckLanePushStep handles the case where one team already has 0 minions
+        # (no battle occurred, so no RemoveUnitStep fired to trigger the check)
+        new_steps.append(CheckLanePushStep())
 
         new_steps.append(EndPhaseCleanupStep())
 

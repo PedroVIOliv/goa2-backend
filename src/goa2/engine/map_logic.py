@@ -70,12 +70,12 @@ def get_push_target_zone_id(
 
     if losing_team == TeamColor.RED:
         new_idx = idx - 1
-        if new_idx < 0:
-            return None, True  # Red Base Lost
+        if new_idx <= 0:
+            return None, True  # Reached Red Base — game over
     else:  # BLUE
         new_idx = idx + 1
-        if new_idx >= len(lane):
-            return None, True  # Blue Base Lost
+        if new_idx >= len(lane) - 1:
+            return None, True  # Reached Blue Base — game over
 
     return lane[new_idx], False
 
