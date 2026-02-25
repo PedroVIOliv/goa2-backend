@@ -61,6 +61,7 @@ def build_view(
         "unresolved_hero_ids": list(state.unresolved_hero_ids),
         "active_zone_id": state.active_zone_id,
         "cheats_enabled": state.cheats_enabled,
+        "tie_breaker_team": state.tie_breaker_team.value,
         "teams": teams_view,
         "board": board_view,
         "effects": effects_view,

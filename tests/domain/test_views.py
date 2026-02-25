@@ -481,6 +481,8 @@ class TestViewStructure:
         assert "phase" in view
         assert "round" in view
         assert "turn" in view
+        assert "tie_breaker_team" in view
+        assert view["tie_breaker_team"] in ["RED", "BLUE"]
         assert "teams" in view
         assert "board" in view
         assert "effects" in view
