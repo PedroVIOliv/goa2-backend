@@ -34,7 +34,6 @@ from goa2.engine.steps import (
     MarkPassiveUsedStep,
     MoveSequenceStep,
 )
-from goa2.engine.handler import process_resolution_stack
 
 # Import to register the effect
 import goa2.scripts.arien_effects  # noqa: F401
@@ -132,7 +131,6 @@ def level_7_arien():
 def game_state_with_hero(level_8_arien):
     """Creates a minimal game state with the level 8 Arien."""
     from goa2.domain.board import Zone
-    from goa2.domain.models.spawn import SpawnPoint, SpawnType
 
     # Create minimal board
     board = Board(

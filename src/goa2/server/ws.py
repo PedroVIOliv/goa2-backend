@@ -10,8 +10,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
 from goa2.domain.views import build_view
-from goa2.engine.session import SessionResultType
 from goa2.domain.events import GameEvent, GameEventType
+from goa2.domain.types import HeroID
 from goa2.server.errors import (
     CardNotInHandError,
     GameNotFoundError,
@@ -26,7 +26,8 @@ router = APIRouter()
 
 def _build_state_update(game: ManagedGame, hero_id: str | None) -> Dict[str, Any]:
     """Build a STATE_UPDATE message for a specific player."""
-    view = build_view(game.session.state, for_hero_id=hero_id)
+    hero_id_typed = HeroID(hero_id) if hero_id else None
+    view = build_view(game.session.state, for_hero_id=hero_id_typed)
     ir = game.last_result.input_request if game.last_result else None
     winner = game.last_result.winner if game.last_result else None
     msg: Dict[str, Any] = {
@@ -100,9 +101,9 @@ async def _handle_submit_input(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict()
-        if result.input_request
-        else None,
+        "input_request": (
+            result.input_request.to_dict() if result.input_request else None
+        ),
         "winner": result.winner,
     }
 
@@ -116,7 +117,7 @@ async def _handle_commit_card(
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
     card_id = data.get("card_id", "")
-    hero = session.state.get_hero(hero_id)
+    hero = session.state.get_hero(HeroID(hero_id))
     if hero is None:
         return {"type": "ERROR", "detail": "Hero not found"}
 
@@ -124,7 +125,7 @@ async def _handle_commit_card(
     if card is None:
         raise CardNotInHandError(card_id, hero_id)
 
-    result = session.commit_card(hero_id, card)
+    result = session.commit_card(HeroID(hero_id), card)
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_card_commit(hero_id, card_id)
@@ -134,9 +135,9 @@ async def _handle_commit_card(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict()
-        if result.input_request
-        else None,
+        "input_request": (
+            result.input_request.to_dict() if result.input_request else None
+        ),
         "winner": result.winner,
     }
 
@@ -147,7 +148,7 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
     if session.current_phase != GamePhase.PLANNING:
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-    result = session.pass_turn(hero_id)
+    result = session.pass_turn(HeroID(hero_id))
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_pass_turn(hero_id)
@@ -157,9 +158,9 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": result.input_request.to_dict()
-        if result.input_request
-        else None,
+        "input_request": (
+            result.input_request.to_dict() if result.input_request else None
+        ),
         "winner": result.winner,
     }
 

@@ -15,22 +15,11 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.engine.steps import (
-    LanePushStep,
-    ResolveDisplacementStep,
-    ResolveCombatStep,
-    DefeatUnitStep,
-    ResolveTieBreakerStep,
     ReactionWindowStep,
-    CheckLanePushStep,
-    MoveUnitStep,
-    LogMessageStep,
-    FinalizeHeroTurnStep,
-    SelectStep,
     FastTravelSequenceStep,
     PlaceUnitStep,
     SwapUnitsStep,
     PushUnitStep,
-    FastTravelStep,
 )
 from goa2.engine.handler import push_steps, process_resolution_stack
 

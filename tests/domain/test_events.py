@@ -1,6 +1,5 @@
 """Tests for Phase 3: GameEvent model and GameEventType enum."""
 
-import pytest
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 

@@ -13,7 +13,6 @@ Phase 1 of Client-Readiness Roadmap:
 
 from typing import Dict, Any, List, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict
-from goa2.domain.types import HeroID
 from enum import Enum
 
 
@@ -262,8 +261,7 @@ class InputRequest(BaseModel):
         elif self.request_type == InputRequestType.SELECT_CARD_OR_PASS:
             # Card or pass options as objects with id, text, and metadata
             result["options"] = [
-                {"id": opt.id, "text": opt.text, **opt.metadata}
-                for opt in self.options
+                {"id": opt.id, "text": opt.text, **opt.metadata} for opt in self.options
             ]
         elif self.request_type == InputRequestType.CHOOSE_ACTOR:
             # Actor choice expects player_ids list

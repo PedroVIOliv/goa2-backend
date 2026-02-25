@@ -14,7 +14,7 @@ from goa2.domain.types import HeroID, UnitID
 from goa2.domain.state import GameState
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board
-from goa2.engine.steps import SelectStep, SwapUnitsStep, CheckAdjacencyStep, StepResult
+from goa2.engine.steps import CheckAdjacencyStep
 from goa2.scripts.arien_effects import EbbAndFlowEffect
 
 

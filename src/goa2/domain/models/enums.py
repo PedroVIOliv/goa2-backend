@@ -13,10 +13,10 @@ class MinionType(str, Enum):
 
 
 class CardTier(str, Enum):
-    I = "I"
-    II = "II"
-    III = "III"
-    IV = "IV"
+    I = "I"  # noqa: E741
+    II = "II"  # noqa: E741
+    III = "III"  # noqa: E741
+    IV = "IV"  # noqa: E741
     UNTIERED = "UNTIERED"
 
 

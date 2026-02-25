@@ -18,7 +18,6 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
-from goa2.domain.factory import EntityFactory
 from goa2.engine.steps import SelectStep, TargetType
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.filters import RangeFilter

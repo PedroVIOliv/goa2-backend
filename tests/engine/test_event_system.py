@@ -6,7 +6,6 @@ from goa2.domain.board import Board, Tile
 from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, GamePhase
 from goa2.domain.models.unit import Hero
-from goa2.domain.models.enums import TargetType
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.engine.handler import process_stack, push_steps, StackResult
 from goa2.engine.steps import (

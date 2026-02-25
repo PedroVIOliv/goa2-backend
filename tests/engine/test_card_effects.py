@@ -5,7 +5,6 @@ from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Card, 
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
-import goa2.scripts.arien_effects # Import to register effects
 
 @pytest.fixture
 def effect_state():

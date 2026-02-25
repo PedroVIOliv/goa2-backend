@@ -24,7 +24,7 @@ from goa2.domain.models import (
     ActionType,
     StatType,
 )
-from goa2.domain.models.unit import Hero, Minion, Unit
+from goa2.domain.models.unit import Hero, Minion
 from goa2.domain.models.card import Card
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.setup import GameSetup
@@ -204,9 +204,9 @@ class GameLogger:
         # Log unit positions
         for entity_id, hex_pos in state.entity_locations.items():
             snapshot["units"][entity_id] = {  # type: ignore[index]
-                "hex": hex_pos.model_dump()
-                if hasattr(hex_pos, "model_dump")
-                else hex_pos,
+                "hex": (
+                    hex_pos.model_dump() if hasattr(hex_pos, "model_dump") else hex_pos
+                ),
                 "type": "HERO" if state.get_hero(HeroID(entity_id)) else "MINION",
             }
 
@@ -833,11 +833,11 @@ def handle_defense_card(state: GameState, request: Dict[str, Any]) -> Dict[str, 
 
     if not defense_cards:
         print(f"  {Colors.DIM}No defense cards available{Colors.RESET}")
-        print(f"  [0] Pass (take the hit)")
+        print("  [0] Pass (take the hit)")
         get_input("Press Enter to continue", valid_range=range(0, 1))
         return {"selected_card_id": None, "pass_defense": True}
 
-    print(f"  [0] Pass (don't defend)")
+    print("  [0] Pass (don't defend)")
 
     choice = get_input("Select", valid_range=range(0, len(defense_cards) + 1))
 
@@ -863,7 +863,7 @@ def handle_upgrade_choice(state: GameState, request: Dict[str, Any]) -> Dict[str
         print(f"  {Colors.DIM}No upgrade options available{Colors.RESET}")
         return {"selected_card_id": None}
 
-    print(f"  Select a card to upgrade to:")
+    print("  Select a card to upgrade to:")
 
     for i, card_id in enumerate(upgrade_options, 1):
         # Try to find card info
@@ -885,7 +885,7 @@ def handle_tie_breaker(state: GameState, request: Dict[str, Any]) -> Dict[str, A
     tied_hero_ids = request.get("tied_hero_ids", [])
 
     print(f"\n{Colors.BOLD}=== TIE BREAKER ==={Colors.RESET}")
-    print(f"  The following heroes are tied:")
+    print("  The following heroes are tied:")
 
     for i, hero_id in enumerate(tied_hero_ids, 1):
         hero = state.get_hero(HeroID(hero_id)) if hero_id else None
@@ -1069,7 +1069,7 @@ def handle_choose_actor(state: GameState, request: Dict[str, Any]) -> Dict[str, 
     tied_hero_ids = request.get("tied_hero_ids", [])
 
     print(f"\n{Colors.BOLD}=== CHOOSE ACTOR ==={Colors.RESET}")
-    print(f"  Select who acts first:")
+    print("  Select who acts first:")
 
     for i, hero_id in enumerate(tied_hero_ids, 1):
         hero = state.get_hero(HeroID(hero_id)) if hero_id else None
@@ -1169,7 +1169,9 @@ def handle_upgrade_phase(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"selected_card_id": valid_options[int(choice) - 1]}
 
 
-def handle_input_request(state: GameState, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def handle_input_request(
+    state: GameState, request: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
     """Route input request to appropriate handler. Returns the response dict."""
     request_type = request.get("type", "UNKNOWN")
     player_id = request.get("player_id", "?")
@@ -1348,7 +1350,7 @@ def run_playtest():
             f"\n  {Colors.DIM}Log saved to: {game_logger.get_log_path()}{Colors.RESET}"
         )
 
-    print(f"\n  Final Score:")
+    print("\n  Final Score:")
     print(f"    {Colors.RED}RED: {red_lives} lives{Colors.RESET}")
     print(f"    {Colors.BLUE}BLUE: {blue_lives} lives{Colors.RESET}")
     print()

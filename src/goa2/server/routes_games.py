@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -11,13 +11,13 @@ from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
 from goa2.domain.views import build_view
 from goa2.engine.session import GameSession, SessionResult
+from goa2.domain.types import HeroID
 from goa2.engine.setup import GameSetup
 from goa2.server.auth import PlayerContext, get_current_player, get_registry
 from goa2.server.errors import (
     AlreadyCommittedError,
     CardNotInHandError,
     InvalidPhaseError,
-    NotYourTurnError,
     validate_input_turn,
 )
 from goa2.server.models import (
@@ -120,7 +120,8 @@ async def get_game_view(
 ) -> GameViewResponse:
     game = registry.get(game_id)
     hero_id = player.hero_id if not player.is_spectator else None
-    view = build_view(game.session.state, for_hero_id=hero_id)
+    hero_id_typed = HeroID(hero_id) if hero_id else None
+    view = build_view(game.session.state, for_hero_id=hero_id_typed)
     ir = game.last_result.input_request if game.last_result else None
     winner = game.last_result.winner if game.last_result else None
     return GameViewResponse(
@@ -146,7 +147,7 @@ async def commit_card(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-        hero = session.state.get_hero(player.hero_id)
+        hero = session.state.get_hero(HeroID(player.hero_id))
         if hero is None:
             raise HTTPException(status_code=404, detail="Hero not found")
 
@@ -157,7 +158,7 @@ async def commit_card(
         if player.hero_id in session.state.pending_inputs:
             raise AlreadyCommittedError(player.hero_id)
 
-        result = session.commit_card(player.hero_id, card)
+        result = session.commit_card(HeroID(player.hero_id), card)
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
@@ -181,7 +182,7 @@ async def pass_turn(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-        result = session.pass_turn(player.hero_id)
+        result = session.pass_turn(HeroID(player.hero_id))
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
@@ -260,7 +261,7 @@ async def give_gold_cheat(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-        hero = session.state.get_hero(body.hero_id)
+        hero = session.state.get_hero(HeroID(body.hero_id))
         if hero is None:
             raise HTTPException(
                 status_code=404, detail=f"Hero '{body.hero_id}' not found"

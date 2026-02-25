@@ -14,14 +14,6 @@ from goa2.domain.models import (
     Hero,
 )
 from goa2.domain.hex import Hex
-from goa2.domain.models.effect import (
-    ActiveEffect,
-    DurationType,
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-)
 from goa2.engine.validation import ValidationResult, ValidationService
 
 

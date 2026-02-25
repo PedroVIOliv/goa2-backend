@@ -1,10 +1,12 @@
 from typing import Dict, List, Optional
 from goa2.domain.models import Hero
 
+
 class HeroRegistry:
     """
     Static registry for Hero definitions (Decks).
     """
+
     _heroes: Dict[str, Hero] = {}
 
     @classmethod
@@ -17,7 +19,7 @@ class HeroRegistry:
         if hero:
             return hero.model_copy(deep=True)
         return None
-    
+
     @classmethod
     def list_heroes(cls) -> List[str]:
         return list(cls._heroes.keys())

@@ -124,13 +124,11 @@ class GameSetup:
             # C. Place on Board
             # Find an empty spawn point
             spawn_loc = None
-            target_sp = None
 
             for sp in available_spawns:
                 tile = state.board.get_tile(sp.location)
                 if tile and not tile.is_occupied:
                     spawn_loc = sp.location
-                    target_sp = sp
                     break
 
             if spawn_loc:

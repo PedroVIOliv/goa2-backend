@@ -1,13 +1,10 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Unit
-from goa2.domain.types import HeroID, UnitID
+from goa2.domain.models import Team, TeamColor
 from goa2.engine.steps import (
-    SelectStep,
     AskConfirmationStep,
     RecordTargetStep,
-    StepResult,
 )
 from goa2.engine.filters import ExcludeIdentityFilter
 

@@ -26,9 +26,11 @@ def get_current_player(
     """Extract and validate bearer token, returning a PlayerContext."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid Authorization header"
+        )
 
-    token = auth[len("Bearer "):]
+    token = auth[len("Bearer ") :]
     result = registry.resolve_token(token)
     if result is None:
         raise HTTPException(status_code=401, detail="Invalid token")

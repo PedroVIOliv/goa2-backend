@@ -105,7 +105,7 @@ def load_game(file_path: str) -> Dict[str, Any]:
 
 def load_all_games(save_dir: str) -> list[Dict[str, Any]]:
     """Load all saved games from a directory, skipping failures."""
-    results = []
+    results: list[Dict[str, Any]] = []
     save_path = Path(save_dir)
     if not save_path.is_dir():
         return results

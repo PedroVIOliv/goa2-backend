@@ -1,6 +1,5 @@
 """Tests for Phase 6: State Persistence — serialization round-trips."""
 
-import json
 import os
 import tempfile
 
@@ -9,16 +8,14 @@ import pytest
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, GamePhase
-from goa2.domain.models.enums import TargetType, FilterType, StepType
+from goa2.domain.models.enums import TargetType
 from goa2.domain.models.unit import Hero
 from goa2.domain.state import GameState
 from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
-    ObstacleFilter,
-    ImmunityFilter,
 )
-from goa2.engine.handler import process_stack, push_steps, submit_input
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.persistence import save_game, load_game, load_all_games, delete_game_save
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
@@ -28,10 +25,6 @@ from goa2.engine.steps import (
     LogMessageStep,
     ForEachStep,
     MayRepeatNTimesStep,
-    AttackSequenceStep,
-    PlaceMarkerStep,
-    CombineBooleanContextStep,
-    FinalizeHeroTurnStep,
 )
 
 MAP_PATH = "src/goa2/data/maps/forgotten_island.json"

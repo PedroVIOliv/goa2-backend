@@ -117,7 +117,9 @@ class GameLogger:
         self.logger.debug("  Prompt: %s", prompt)
 
         # Summarize options for the log
-        options = request.get("options", request.get("valid_options", request.get("valid_hexes", [])))
+        options = request.get(
+            "options", request.get("valid_options", request.get("valid_hexes", []))
+        )
         options_count = len(options) if isinstance(options, list) else 0
 
         self._add_event(
@@ -130,9 +132,7 @@ class GameLogger:
             },
         )
 
-    def log_input_response(
-        self, hero_id: str, selection: Any
-    ) -> None:
+    def log_input_response(self, hero_id: str, selection: Any) -> None:
         safe = str(selection)[:200]
         self.logger.info("INPUT_RESPONSE: %s -> %s", hero_id, safe)
         self._add_event(
@@ -178,19 +178,29 @@ class GameLogger:
     def log_ws_connect(self, hero_id: Optional[str], is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_CONNECT: %s", who)
-        self._add_event("WS_CONNECT", {"hero_id": hero_id, "is_spectator": is_spectator})
+        self._add_event(
+            "WS_CONNECT", {"hero_id": hero_id, "is_spectator": is_spectator}
+        )
 
     def log_ws_disconnect(self, hero_id: Optional[str], is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_DISCONNECT: %s", who)
-        self._add_event("WS_DISCONNECT", {"hero_id": hero_id, "is_spectator": is_spectator})
+        self._add_event(
+            "WS_DISCONNECT", {"hero_id": hero_id, "is_spectator": is_spectator}
+        )
 
     # ------------------------------------------------------------------
     # Convenience: log a full SessionResult
     # ------------------------------------------------------------------
 
-    def log_result(self, result_type: str, phase: str, events: List[Dict[str, Any]],
-                   input_request: Optional[Dict[str, Any]], winner: Optional[str]) -> None:
+    def log_result(
+        self,
+        result_type: str,
+        phase: str,
+        events: List[Dict[str, Any]],
+        input_request: Optional[Dict[str, Any]],
+        winner: Optional[str],
+    ) -> None:
         """Log a complete SessionResult in one call."""
         self.log_phase_change(phase, self._round, self._turn)
         if events:

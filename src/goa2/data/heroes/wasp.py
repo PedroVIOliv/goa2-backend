@@ -8,10 +8,6 @@ def create_wasp() -> Hero:
     """
     Wasp
     """
-    name = "Wasp"
-    title = (
-        "The Warmaiden"  # Assuming title, will verify if visible or just use Warmaiden
-    )
     deck = [
         Card(
             id="electrocute",
@@ -252,25 +248,32 @@ def create_wasp() -> Hero:
             effect_text="Target a unit adjacent to you. After the attack: An enemy hero in radius and not adjacent to you discards a card, if able.",
         ),
     ]
-    
+
     ultimate = Card(
-            id="high_voltage",
-            name="High Voltage",
-            tier=CardTier.IV,
-            color=CardColor.PURPLE,
-            initiative=0,
-            primary_action=ActionType.SKILL,
-            primary_action_value=None,
-            secondary_actions={},
-            radius_value=3,
-            effect_id="high_voltage",
-            effect_text="Each time after you perform a basic skill, you may defeat an enemy minion in radius; an enemy hero who was adjacent to that minion discards a card, if able.",
+        id="high_voltage",
+        name="High Voltage",
+        tier=CardTier.IV,
+        color=CardColor.PURPLE,
+        initiative=0,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={},
+        radius_value=3,
+        effect_id="high_voltage",
+        effect_text="Each time after you perform a basic skill, you may defeat an enemy minion in radius; an enemy hero who was adjacent to that minion discards a card, if able.",
     )
 
     ultimate.is_facedown = False
     ultimate.state = CardState.PASSIVE
 
-    h = Hero(id=HeroID("hero_wasp"), name="Wasp", deck=deck, hand=[], items={}, ultimate_card=ultimate)
+    h = Hero(
+        id=HeroID("hero_wasp"),
+        name="Wasp",
+        deck=deck,
+        hand=[],
+        items={},
+        ultimate_card=ultimate,
+    )
     return h
 
 

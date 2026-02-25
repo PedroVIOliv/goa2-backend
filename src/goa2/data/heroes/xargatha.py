@@ -8,8 +8,6 @@ def create_xargatha() -> Hero:
     """
     Xargatha The Changed
     """
-    name = "Xargatha"
-    title = "The Changed"
 
     # =========================================================================
     # ULTIMATE (Purple/Tier IV) - Stored separately, not in deck

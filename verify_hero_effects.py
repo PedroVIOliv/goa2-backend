@@ -1,7 +1,6 @@
 import sys
 import os
 import importlib
-import glob
 from pathlib import Path
 
 # Add src to python path
@@ -9,7 +8,6 @@ sys.path.append(os.path.join(os.getcwd(), "src"))
 
 from goa2.data.heroes import registry as hero_registry_module
 from goa2.engine.effects import CardEffectRegistry
-import goa2.data.heroes  # Triggers hero registration
 
 
 def import_effect_scripts():

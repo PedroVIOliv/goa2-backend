@@ -1,6 +1,5 @@
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Hero, StatType
 from goa2.domain.models.effect import (
     DurationType,
     ActiveEffect,
@@ -8,7 +7,6 @@ from goa2.domain.models.effect import (
     EffectScope,
     Shape,
 )
-from goa2.engine import stats
 from goa2.engine.phases import end_turn
 from goa2.engine.effect_manager import EffectManager
 

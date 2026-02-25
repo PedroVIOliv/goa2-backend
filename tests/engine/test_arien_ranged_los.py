@@ -5,8 +5,6 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     Hero,
-    Minion,
-    MinionType,
     EffectType,
     EffectScope,
     Shape,
@@ -16,7 +14,7 @@ from goa2.domain.models import (
     CardColor,
     ActionType,
 )
-from goa2.domain.types import HeroID, UnitID, BoardEntityID
+from goa2.domain.types import HeroID, UnitID
 from goa2.domain.hex import Hex
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.steps import SelectStep, AttackSequenceStep

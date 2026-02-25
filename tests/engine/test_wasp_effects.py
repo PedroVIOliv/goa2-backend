@@ -15,7 +15,6 @@ Cards covered:
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
 from goa2.domain.models import (
     Team,
     TeamColor,
@@ -26,14 +25,6 @@ from goa2.domain.models import (
     ActionType,
 )
 from goa2.domain.hex import Hex
-from goa2.engine.steps import (
-    ResolveCardStep,
-    SelectStep,
-    PlaceUnitStep,
-    MayRepeatOnceStep,
-    MayRepeatNTimesStep,
-)
-from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 
 # Register wasp effects
@@ -535,7 +526,6 @@ class TestReflectProjectilesEffect:
 
     def test_reflect_projectiles_blocks_ranged(self, wasp_state):
         """Test that reflect projectiles blocks ranged attacks."""
-        from goa2.engine.stats import CardStats
 
         effect = CardEffectRegistry.get("reflect_projectiles")
         wasp = wasp_state.get_hero("wasp")

@@ -68,6 +68,6 @@ def validate_input_turn(expected: str, hero_id: str, state: GameState) -> None:
         from goa2.domain.types import HeroID
 
         hero = state.get_hero(HeroID(hero_id))
-        if hero and hero.team.value == team_name:
+        if hero and hero.team and hero.team.value == team_name:
             return
     raise NotYourTurnError(hero_id, expected)

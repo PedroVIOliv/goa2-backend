@@ -4,7 +4,6 @@ import pytest
 from goa2.domain.models.marker import (
     Marker,
     MarkerType,
-    MarkerStatEffect,
     MARKER_EFFECTS,
 )
 from goa2.domain.models.enums import StatType

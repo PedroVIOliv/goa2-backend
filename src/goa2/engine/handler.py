@@ -19,9 +19,7 @@ class StackResult:
     events: List[GameEvent] = field(default_factory=list)
 
 
-def submit_input(
-    state: GameState, response: Union[InputResponse, dict]
-) -> None:
+def submit_input(state: GameState, response: Union[InputResponse, dict]) -> None:
     """Validate and apply player input to the pending step on the stack."""
     if not state.execution_stack:
         raise ValueError("No pending step to receive input")

@@ -158,7 +158,8 @@ AnyStep = Annotated[
 
 # ---------------------------------------------------------------------------
 # Same pattern for AnyFilter — override the field-based version in filters.py
-# ---------------------------------------------------------------------------
+# Imports are intentionally here (not at top) to avoid circular deps
+# ruff: noqa: E402
 from goa2.engine.filters import (
     ObstacleFilter,
     TerrainFilter,
@@ -180,7 +181,7 @@ from goa2.engine.filters import (
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
 )
-from goa2.domain.models.enums import FilterType
+from goa2.domain.models.enums import FilterType  # noqa: E402
 
 
 def _filter_discriminator(v: Any) -> str:
@@ -225,7 +226,8 @@ AnyFilter = Annotated[
 # Patch model_fields so Pydantic uses concrete union types for (de)serialization.
 # We must patch model_fields (not just __annotations__) because Pydantic V2
 # reads field info from model_fields, not __annotations__, during model_rebuild.
-# ---------------------------------------------------------------------------
+# Imports are intentionally here (not at top) to avoid circular deps
+# ruff: noqa: E402
 from goa2.domain.state import GameState
 
 # Patch GameState.execution_stack

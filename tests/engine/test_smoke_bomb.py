@@ -5,8 +5,6 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     Hero,
-    Minion,
-    MinionType,
     EffectType,
     EffectScope,
     Shape,

@@ -17,8 +17,6 @@ def create_arien() -> Hero:
     """
     Arien
     """
-    name = "Arien"
-    title = "The Tidemaster"
 
     # =========================================================================
     # ULTIMATE (Purple/Tier IV) - Stored separately, not in deck

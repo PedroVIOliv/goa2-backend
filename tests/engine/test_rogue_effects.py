@@ -5,26 +5,18 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     Hero,
-    Minion,
-    MinionType,
     Card,
     CardTier,
     CardColor,
     ActionType,
     StatType,
     EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.effect_manager import EffectManager
-import goa2.scripts.rogue_effects  # Register rogue effects
-import goa2.scripts.wasp_effects  # Register Wasp effects for shared effect testing
-import goa2.scripts.wasp_effects  # Register Wasp effects for shared effect testing
 
 
 @pytest.fixture

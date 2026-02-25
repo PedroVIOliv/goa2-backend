@@ -20,8 +20,6 @@ from goa2.domain.models import (
     CardColor,
     CardState,
     ActionType,
-    MinionType,
-    StatType,
     GamePhase,
 )
 from goa2.domain.types import HeroID

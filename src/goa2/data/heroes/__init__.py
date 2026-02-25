@@ -1,5 +1,9 @@
 from .registry import HeroRegistry
-# Import modules to register them
-from . import arien
-from . import xargatha
-from . import wasp
+
+# Import modules to register them (side effects only)
+# ruff: noqa: F401
+import goa2.data.heroes.arien
+import goa2.data.heroes.xargatha
+import goa2.data.heroes.wasp
+
+__all__ = ["HeroRegistry"]

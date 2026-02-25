@@ -7,7 +7,7 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
+from goa2.domain.models import Team, TeamColor, Minion, MinionType
 from goa2.domain.models.effect import (
     ActiveEffect,
     EffectType,

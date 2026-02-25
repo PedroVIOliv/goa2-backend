@@ -1,7 +1,6 @@
 """REST integration tests using FastAPI TestClient."""
 
 import os
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient

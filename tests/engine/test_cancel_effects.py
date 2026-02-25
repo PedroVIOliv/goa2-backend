@@ -7,9 +7,6 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
 )
 from goa2.domain.hex import Hex
@@ -18,7 +15,6 @@ from goa2.domain.models.effect import (
     EffectType,
     EffectScope,
     Shape,
-    AffectsFilter,
     ActiveEffect,
 )
 from goa2.engine.steps import CancelEffectsStep

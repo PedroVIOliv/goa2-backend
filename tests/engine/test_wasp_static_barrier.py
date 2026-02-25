@@ -42,7 +42,7 @@ from goa2.domain.models import GamePhase
 from goa2.domain.input import InputResponse
 from goa2.engine.steps import (
     CreateEffectStep, ResolveCardStep, MoveUnitStep, PushUnitStep,
-    FinalizeHeroTurnStep, FindNextActorStep, MoveSequenceStep,
+    FinalizeHeroTurnStep,
 )
 from goa2.engine.filters import MovementPathFilter
 from goa2.engine.handler import process_resolution_stack, process_stack, push_steps, submit_input

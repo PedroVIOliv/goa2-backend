@@ -12,7 +12,6 @@ from goa2.domain.models.enums import (
     CardColor,
     CardState,
     DisplacementType,
-    DisplacementType,
 )
 from goa2.domain.models.effect import (
     ActiveEffect,

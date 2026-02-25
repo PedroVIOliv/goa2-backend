@@ -16,7 +16,6 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
-import goa2.scripts.arien_effects  # Register effects
 
 
 @pytest.fixture

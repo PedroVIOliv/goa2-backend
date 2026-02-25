@@ -11,18 +11,11 @@ from goa2.domain.models import (
     ActionType,
     SpawnPoint,
     SpawnType,
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-    DurationType,
-    ActiveEffect,
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep, MoveSequenceStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.effect_manager import EffectManager
-import goa2.scripts.arien_effects
 
 
 @pytest.fixture

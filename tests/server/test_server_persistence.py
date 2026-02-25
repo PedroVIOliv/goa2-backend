@@ -5,7 +5,6 @@ Tests that games survive server restarts via auto-save and restore.
 
 import os
 
-import pytest
 from fastapi.testclient import TestClient
 
 from goa2.server.app import create_app

@@ -1,6 +1,5 @@
 """Tests for ActiveEffect model and related enums."""
 
-import pytest
 from goa2.domain.models.effect import (
     EffectType,
     AffectsFilter,

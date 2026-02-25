@@ -1,9 +1,8 @@
-from goa2.engine.steps import FastTravelSequenceStep, PlaceUnitStep, SelectStep
+from goa2.engine.steps import FastTravelSequenceStep
 from goa2.domain.models import Hero, TeamColor, Minion, MinionType, Team, ActionType
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
-from goa2.domain.types import HeroID, UnitID, BoardEntityID
+from goa2.domain.types import HeroID, UnitID
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_resolution_stack, push_steps
 

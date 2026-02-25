@@ -12,11 +12,8 @@ from typing import Dict, Any, Optional, List
 
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.domain.models.enums import TeamColor
 from goa2.domain.models.card import Card
-from goa2.domain.models.unit import Hero, Minion, Unit
-from goa2.domain.models.effect import ActiveEffect
-from goa2.domain.hex import Hex
+from goa2.domain.models.unit import Hero, Minion
 
 
 def build_view(
@@ -169,9 +166,9 @@ def _build_card_view(
             "name": card.name,
             "tier": card.tier.value,
             "color": card.color.value if card.color else None,
-            "primary_action": card.primary_action.value
-            if card.primary_action
-            else None,
+            "primary_action": (
+                card.primary_action.value if card.primary_action else None
+            ),
             "primary_action_value": card.primary_action_value,
             "secondary_actions": {
                 k.value: v for k, v in card.secondary_actions.items()
@@ -222,20 +219,24 @@ def _build_board_view(state: GameState) -> Dict[str, Any]:
             "zone_id": tile.zone_id,
             "is_terrain": tile.is_terrain,
             "occupant_id": tile.occupant_id,
-            "spawn_point": {
-                "location": {
-                    "q": tile.spawn_point.location.q,
-                    "r": tile.spawn_point.location.r,
-                    "s": tile.spawn_point.location.s,
-                },
-                "team": tile.spawn_point.team.value,
-                "type": tile.spawn_point.type.value,
-                "minion_type": tile.spawn_point.minion_type.value
-                if tile.spawn_point.minion_type
-                else None,
-            }
-            if tile.spawn_point
-            else None,
+            "spawn_point": (
+                {
+                    "location": {
+                        "q": tile.spawn_point.location.q,
+                        "r": tile.spawn_point.location.r,
+                        "s": tile.spawn_point.location.s,
+                    },
+                    "team": tile.spawn_point.team.value,
+                    "type": tile.spawn_point.type.value,
+                    "minion_type": (
+                        tile.spawn_point.minion_type.value
+                        if tile.spawn_point.minion_type
+                        else None
+                    ),
+                }
+                if tile.spawn_point
+                else None
+            ),
         }
         tiles_view[tile_id] = tile_data
 
@@ -288,9 +289,11 @@ def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
             "scope": {
                 "shape": effect.scope.shape.value,
                 "range": effect.scope.range,
-                "origin": {"q": origin_hex.q, "r": origin_hex.r, "s": origin_hex.s}
-                if origin_hex
-                else None,
+                "origin": (
+                    {"q": origin_hex.q, "r": origin_hex.r, "s": origin_hex.s}
+                    if origin_hex
+                    else None
+                ),
                 "affects": effect.scope.affects.value,
             },
             "stat_type": effect.stat_type.value if effect.stat_type else None,

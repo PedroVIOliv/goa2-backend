@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from fastapi import HTTPException
 
 from goa2.server.auth import get_current_player, PlayerContext
-from goa2.server.registry import GameRegistry, ManagedGame
+from goa2.server.registry import GameRegistry
 from goa2.engine.setup import GameSetup
 from goa2.engine.session import GameSession
 

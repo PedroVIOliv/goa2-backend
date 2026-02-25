@@ -12,9 +12,7 @@ from goa2.domain.models import (
     CardColor,
     ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import DurationType
-from goa2.domain.models.enums import StatType
 from goa2.domain.models.effect import (
     ActiveEffect,
     EffectType,

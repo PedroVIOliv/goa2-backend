@@ -7,7 +7,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import ActionType, DisplacementType
+from goa2.domain.models.enums import DisplacementType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
@@ -70,10 +70,10 @@ class StopProjectilesEffect(CardEffect):
         )
         print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
-            print(f"   [DEFLECT] Returning auto_block=True")
+            print("   [DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print(f"   [DEFLECT] Returning defense_invalid=True")
+            print("   [DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
 
@@ -418,10 +418,10 @@ class ReflectProjectilesEffect(CardEffect):
         )
         print(f"   [REFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
-            print(f"   [REFLECT] Returning auto_block=True")
+            print("   [REFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print(f"   [REFLECT] Returning defense_invalid=True")
+            print("   [REFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(
@@ -471,10 +471,10 @@ class DeflectProjectilesEffect(CardEffect):
         )
         print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
         if context.get("attack_is_ranged"):
-            print(f"   [DEFLECT] Returning auto_block=True")
+            print("   [DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print(f"   [DEFLECT] Returning defense_invalid=True")
+            print("   [DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(

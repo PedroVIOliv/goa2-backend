@@ -34,8 +34,6 @@ from goa2.engine.topology import (
     are_connected,
     are_adjacent,
     get_connected_neighbors,
-    get_connected_ring,
-    get_traversable_neighbors,
     hex_in_scope,
 )
 

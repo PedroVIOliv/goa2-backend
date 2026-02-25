@@ -6,14 +6,7 @@ from goa2.domain.board import Board
 from goa2.domain.models import (
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    GamePhase,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
     ActiveEffect,
     EffectType,

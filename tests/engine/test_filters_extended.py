@@ -6,7 +6,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.filters import (
-    FilterCondition, ObstacleFilter, TerrainFilter, RangeFilter, 
+    FilterCondition, TerrainFilter, RangeFilter, 
     TeamFilter, UnitTypeFilter, AdjacencyFilter, ImmunityFilter
 )
 

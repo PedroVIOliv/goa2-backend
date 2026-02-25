@@ -17,9 +17,6 @@ from goa2.domain.hex import Hex
 from goa2.domain.tile import Tile
 from goa2.engine.handler import process_resolution_stack
 from goa2.engine.phases import commit_card
-import goa2.scripts.arien_effects  # Register Arien effects
-import goa2.scripts.rogue_effects  # Register Rogue effects
-import goa2.scripts.wasp_effects  # Register Wasp effects
 
 
 @pytest.fixture

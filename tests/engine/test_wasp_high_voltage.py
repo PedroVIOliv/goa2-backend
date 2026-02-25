@@ -39,7 +39,6 @@ from goa2.engine.steps import (
     DefeatUnitStep,
     ForceDiscardStep,
 )
-from goa2.engine.handler import process_resolution_stack
 
 # Import to register the effect
 import goa2.scripts.wasp_effects  # noqa: F401

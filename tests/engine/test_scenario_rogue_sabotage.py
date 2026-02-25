@@ -16,11 +16,8 @@ from goa2.domain.types import HeroID
 from goa2.domain.hex import Hex
 from goa2.data.heroes.arien import create_arien
 from goa2.data.heroes.rogue import create_rogue
-from goa2.engine.phases import commit_card, start_revelation_phase
+from goa2.engine.phases import commit_card
 from goa2.engine.handler import process_resolution_stack
-from goa2.engine.steps import FinalizeHeroTurnStep
-import goa2.scripts.rogue_effects  # Register effects
-import goa2.scripts.arien_effects  # Register effects
 
 
 @pytest.fixture

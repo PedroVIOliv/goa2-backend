@@ -1,6 +1,5 @@
 """Tests for hero defeat cleanup and respawn mechanics."""
 
-import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardState
@@ -11,10 +10,9 @@ from goa2.domain.models.effect import (
     EffectScope,
     Shape,
     DurationType,
-    AffectsFilter,
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
-from goa2.domain.types import HeroID, UnitID
+from goa2.domain.types import HeroID
 from goa2.domain.hex import Hex
 from goa2.engine.steps import (
     DefeatUnitStep,

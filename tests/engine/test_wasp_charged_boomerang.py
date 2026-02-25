@@ -20,7 +20,6 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
-from goa2.engine.filters import NotInStraightLineFilter
 import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 
 

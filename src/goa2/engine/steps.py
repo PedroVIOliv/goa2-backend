@@ -169,9 +169,9 @@ class CreateEffectStep(GameStep):
 
         EffectManager.create_effect(
             state=state,
-            source_id=str(state.current_actor_id)
-            if state.current_actor_id
-            else "system",
+            source_id=(
+                str(state.current_actor_id) if state.current_actor_id else "system"
+            ),
             source_card_id=card_id,
             effect_type=self.effect_type,
             scope=self.scope,
@@ -250,7 +250,7 @@ class PlaceMarkerStep(GameStep):
         source_id = str(state.current_actor_id) if state.current_actor_id else "system"
 
         # Place the marker
-        marker = state.place_marker(
+        state.place_marker(
             marker_type=self.marker_type,
             target_id=target,
             value=self.value,
@@ -501,6 +501,9 @@ class OfferPassiveStep(GameStep):
             print(f"   [PASSIVE] Card {self.card_id} not found")
             return StepResult(is_finished=True)
 
+        if card.current_effect_id is None:
+            return StepResult(is_finished=True)
+
         effect = CardEffectRegistry.get(card.current_effect_id)
         if not effect:
             return StepResult(is_finished=True)
@@ -579,6 +582,8 @@ class MarkPassiveUsedStep(GameStep):
         return StepResult(is_finished=True)
 
 
+# Import is intentionally here (not at top) to avoid circular deps
+# ruff: noqa: E402
 from goa2.engine.filters import FilterCondition
 
 
@@ -1003,9 +1008,9 @@ class MoveUnitStep(GameStep):
                 end=dest_hex,
                 max_steps=self.range_val,
                 state=state,
-                actor_id=str(state.current_actor_id)
-                if state.current_actor_id
-                else None,
+                actor_id=(
+                    str(state.current_actor_id) if state.current_actor_id else None
+                ),
             )
 
         if not is_valid:
@@ -1244,7 +1249,7 @@ class ReactionWindowStep(GameStep):
             ):
                 valid_defense_cards.append(card)
 
-        valid_ids = [c.id for c in valid_defense_cards]
+        [c.id for c in valid_defense_cards]
 
         # Build InputOption objects with computed defense values
         options = []
@@ -2228,14 +2233,16 @@ class PushUnitStep(GameStep):
                 was_stopped_by_obstacle = True
                 break
 
-            tile = state.board.get_tile(next_hex)
+            state.board.get_tile(next_hex)
             # Use context-aware obstacle check for Static Barrier support
             is_obs = state.validator.is_obstacle_for_actor(
                 state,
                 next_hex,
-                str(state.current_actor_id)
-                if state.current_actor_id
-                else actual_target_id,
+                (
+                    str(state.current_actor_id)
+                    if state.current_actor_id
+                    else actual_target_id
+                ),
             )
             if is_obs:
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
@@ -2425,9 +2432,9 @@ class RespawnMinionStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
-                player_id=str(state.current_actor_id)
-                if state.current_actor_id
-                else "system",
+                player_id=(
+                    str(state.current_actor_id) if state.current_actor_id else "system"
+                ),
                 prompt=f"Select space to respawn {self.minion_type}.",
                 options=valid_spaces,
             ),
@@ -2460,6 +2467,9 @@ class ResolveCardTextStep(GameStep):
         )
 
         from goa2.engine.effects import CardEffectRegistry
+
+        if card.current_effect_id is None:
+            return StepResult(is_finished=True)
 
         effect = CardEffectRegistry.get(card.current_effect_id)
 
@@ -3555,7 +3565,12 @@ class ReturnMinionToZoneStep(GameStep):
             for minion in team.minions:
                 loc = state.unit_locations.get(minion.id)
                 if loc and loc not in zone.hexes:
-                    outside.append((str(minion.id), minion.team))
+                    if not minion.team:
+                        print(
+                            f"   [WARNING] Minion {minion.id} has no team, skipping zone return"
+                        )
+                    else:
+                        outside.append((str(minion.id), minion.team))
         return outside
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
@@ -3575,6 +3590,15 @@ class ReturnMinionToZoneStep(GameStep):
         loc = state.entity_locations.get(BoardEntityID(minion_id))
         if not loc:
             # Minion somehow has no location, skip
+            if remaining:
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[ReturnMinionToZoneStep()],
+                )
+            return StepResult(is_finished=True)
+
+        if not state.active_zone_id:
+            # No active zone, skip
             if remaining:
                 return StepResult(
                     is_finished=True,
@@ -3724,8 +3748,7 @@ class ResolveTieBreakerStep(GameStep):
         if not winner_id:
             raise ValueError("No winner identified in tie breaker.")
 
-        winner_hero = state.get_hero(HeroID(winner_id))
-        winner_card = winner_hero.current_turn_card if winner_hero else None
+        state.get_hero(HeroID(winner_id))
 
         # CRITICAL: Remove winner from unresolved pool so they don't act again immediately
         if winner_id in state.unresolved_hero_ids:
@@ -4251,7 +4274,7 @@ class MultiSelectStep(GameStep):
 
             # Hit max? Done
             if len(self.selections) >= self.max_selections:
-                print(f"   [MULTI-SELECT] Max reached. Finishing.")
+                print("   [MULTI-SELECT] Max reached. Finishing.")
                 return StepResult(is_finished=True)
 
         # Get remaining valid candidates
@@ -4259,7 +4282,7 @@ class MultiSelectStep(GameStep):
 
         # No more candidates? Finish
         if not candidates:
-            print(f"   [MULTI-SELECT] No more candidates. Finishing.")
+            print("   [MULTI-SELECT] No more candidates. Finishing.")
             context[self.output_key] = list(self.selections)
             # If mandatory and below min, abort
             if self.is_mandatory and len(self.selections) < self.min_selections:

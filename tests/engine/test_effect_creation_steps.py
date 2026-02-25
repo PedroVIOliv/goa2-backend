@@ -13,14 +13,11 @@ from goa2.domain.models import (
     ActionType,
 )
 from goa2.domain.models.effect import DurationType
-from goa2.domain.models.enums import StatType
 from goa2.engine.steps import CreateEffectStep, ResolveCardTextStep
 from goa2.domain.models.effect import (
-    ActiveEffect,
     EffectType,
     EffectScope,
     Shape,
-    AffectsFilter,
 )
 
 
