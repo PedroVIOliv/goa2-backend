@@ -164,6 +164,36 @@ def sample_state():
         ),
     ]
 
+    # Add played cards for hero_b (one facedown, one faceup)
+    hero_b.played_cards = [
+        Card(
+            id="b_played1",
+            name="Played B1 Facedown",
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=3,
+            effect_id="test_effect",
+            effect_text="Test effect",
+            initiative=4,
+            state=CardState.UNRESOLVED,
+            is_facedown=True,
+        ),
+        Card(
+            id="b_played2",
+            name="Played B2 Faceup",
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            primary_action=ActionType.MOVEMENT,
+            primary_action_value=2,
+            effect_id="test_effect",
+            effect_text="Test effect",
+            initiative=5,
+            state=CardState.UNRESOLVED,
+            is_facedown=False,
+        ),
+    ]
+
     # Add discard pile (public info)
     hero_a.discard_pile = [
         Card(
@@ -247,27 +277,52 @@ class TestHeroScopedView:
             assert card["effect_text"] != ""
             assert card["primary_action"] is not None
 
-    def test_other_hero_does_not_see_facedown_hand_cards(self, sample_state):
-        """Hero A looking at Hero B's hand sees only faceup cards."""
+    def test_other_hero_does_not_see_hand_cards(self, sample_state):
+        """Hero A looking at Hero B's hand sees empty array."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
 
         hero_b_view = view["teams"]["BLUE"]["heroes"][0]
         hand_cards = hero_b_view["hand"]
 
-        # Should see both cards
-        assert len(hand_cards) == 2
+        # Should see empty array
+        assert hand_cards == []
 
-        # Facedown card uses current_* pattern (hides details)
-        facedown = [c for c in hand_cards if c["is_facedown"]][0]
-        assert facedown["effect_id"] is None
-        assert facedown["effect_text"] == ""
-        assert facedown["primary_action"] is None
+    def test_other_hero_sees_facedown_played_cards_with_hidden_fields(
+        self, sample_state
+    ):
+        """Hero A looking at Hero B's played cards: facedown cards hide 5 fields."""
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
 
-        # Faceup card shows details
-        faceup = [c for c in hand_cards if not c["is_facedown"]][0]
-        assert faceup["effect_id"] is not None
-        assert faceup["effect_text"] != ""
-        assert faceup["primary_action"] is not None
+        hero_b_view = view["teams"]["BLUE"]["heroes"][0]
+        played_cards = hero_b_view["played_cards"]
+
+        # Should see both played cards
+        assert len(played_cards) == 2
+
+        # Facedown played card hides 5 sensitive fields
+        facedown = [c for c in played_cards if c["is_facedown"]][0]
+        assert "id" not in facedown
+        assert "name" not in facedown
+        assert "is_ranged" not in facedown
+        assert "range_value" not in facedown
+        assert "radius_value" not in facedown
+
+        # But other fields are present
+        assert "tier" in facedown
+        assert "color" in facedown
+        assert "effect_id" in facedown  # Will be None
+        assert "is_facedown" in facedown
+        assert facedown["is_facedown"] is True
+
+        # Faceup played card shows all fields
+        faceup = [c for c in played_cards if not c["is_facedown"]][0]
+        assert "id" in faceup
+        assert "name" in faceup
+        assert faceup["id"] == "b_played2"
+        assert faceup["name"] == "Played B2 Faceup"
+        assert "is_ranged" in faceup
+        assert "range_value" in faceup
+        assert "radius_value" in faceup
 
     def test_own_hero_sees_deck_details(self, sample_state):
         """Hero sees their full deck."""
@@ -335,26 +390,44 @@ class TestSpectatorView:
     """Tests for public/spectator view (for_hero_id=None)."""
 
     def test_spectator_sees_only_faceup_cards(self, sample_state):
-        """Spectator sees only faceup cards from everyone."""
+        """Spectator sees empty hands, and facedown cards in played arrays hide 5 fields."""
         view = build_view(sample_state, for_hero_id=None)
 
         hero_a_hand = view["teams"]["RED"]["heroes"][0]["hand"]
         hero_b_hand = view["teams"]["BLUE"]["heroes"][0]["hand"]
+        hero_a_played = view["teams"]["RED"]["heroes"][0]["played_cards"]
+        hero_b_played = view["teams"]["BLUE"]["heroes"][0]["played_cards"]
 
-        # All facedown cards should hide details
-        facedown_a = [c for c in hero_a_hand if c["is_facedown"]]
-        facedown_b = [c for c in hero_b_hand if c["is_facedown"]]
+        # Hands should be empty
+        assert hero_a_hand == []
+        assert hero_b_hand == []
+
+        # Check facedown cards in played arrays hide 5 fields
+        facedown_a = [c for c in hero_a_played if c["is_facedown"]]
+        facedown_b = [c for c in hero_b_played if c["is_facedown"]]
 
         for card in facedown_a + facedown_b:
+            assert "id" not in card
+            assert "name" not in card
+            assert "is_ranged" not in card
+            assert "range_value" not in card
+            assert "radius_value" not in card
+            # Other fields are present but masked by current_* pattern
             assert card["effect_id"] is None
             assert card["effect_text"] == ""
 
-        # Faceup cards show details
-        faceup_a = [c for c in hero_a_hand if not c["is_facedown"]]
-        faceup_b = [c for c in hero_b_hand if not c["is_facedown"]]
+        # Faceup cards in played arrays show all details
+        faceup_a = [c for c in hero_a_played if not c["is_facedown"]]
+        faceup_b = [c for c in hero_b_played if not c["is_facedown"]]
 
         for card in faceup_a + faceup_b:
+            assert "id" in card
+            assert "name" in card
+            assert "is_ranged" in card
+            assert "range_value" in card
+            assert "radius_value" in card
             assert card["effect_id"] is not None
+            assert card["effect_text"] != ""
 
     def test_spectator_sees_only_deck_counts(self, sample_state):
         """Spectator sees only deck counts."""
@@ -381,8 +454,8 @@ class TestSpectatorView:
 class TestCardViewHelper:
     """Tests for _build_card_view helper function."""
 
-    def test_facedown_card_shows_full_details_when_show_facedown_true(self):
-        """When show_facedown=True, facedown cards show full details."""
+    def test_facedown_card_shows_full_details_when_is_own_hero_true(self):
+        """When is_own_hero=True, facedown cards show full details."""
         from goa2.domain.views import _build_card_view
 
         card = Card(
@@ -399,7 +472,7 @@ class TestCardViewHelper:
             is_facedown=True,
         )
 
-        view = _build_card_view(card, show_facedown=True)
+        view = _build_card_view(card, is_own_hero=True)
 
         assert view["id"] == "test_card"
         assert view["name"] == "Test Card"
@@ -408,8 +481,8 @@ class TestCardViewHelper:
         assert view["primary_action"] == "ATTACK"
         assert view["is_facedown"] is True
 
-    def test_facedown_card_hides_details_when_show_facedown_false(self):
-        """When show_facedown=False, facedown cards hide details."""
+    def test_facedown_card_hides_sensitive_fields_when_not_own_hero(self):
+        """When is_own_hero=False and card is facedown, hide sensitive fields."""
         from goa2.domain.views import _build_card_view
 
         card = Card(
@@ -424,19 +497,31 @@ class TestCardViewHelper:
             initiative=5,
             state=CardState.HAND,
             is_facedown=True,
+            is_ranged=True,
+            range_value=3,
+            radius_value=None,
         )
 
-        view = _build_card_view(card, show_facedown=False)
+        view = _build_card_view(card, is_own_hero=False)
 
-        assert view["id"] == "test_card"
-        assert view["name"] == "Test Card"  # Name is still visible (id-based)
-        assert view["effect_id"] is None  # Hidden
-        assert view["effect_text"] == ""  # Hidden
-        assert view["primary_action"] is None  # Hidden
-        assert view["primary_action_value"] is None  # Hidden
+        # These 5 fields should be hidden
+        assert "id" not in view
+        assert "name" not in view
+        assert "is_ranged" not in view
+        assert "range_value" not in view
+        assert "radius_value" not in view
+
+        # These fields should be present (but may be None/empty due to current_* pattern)
+        assert "tier" in view
+        assert "color" in view
+        assert "effect_id" in view  # Will be None
+        assert "effect_text" in view  # Will be ""
+        assert "primary_action" in view  # Will be None
+        assert "primary_action_value" in view  # Will be None
+        assert "is_facedown" in view
         assert view["is_facedown"] is True
 
-    def test_faceup_card_shows_details_regardless_of_show_facedown(self):
+    def test_faceup_card_shows_details_regardless_of_is_own_hero(self):
         """Faceup cards always show details."""
         from goa2.domain.views import _build_card_view
 
@@ -454,8 +539,8 @@ class TestCardViewHelper:
             is_facedown=False,
         )
 
-        view_true = _build_card_view(card, show_facedown=True)
-        view_false = _build_card_view(card, show_facedown=False)
+        view_true = _build_card_view(card, is_own_hero=True)
+        view_false = _build_card_view(card, is_own_hero=False)
 
         # Both should show details
         for view in [view_true, view_false]:
@@ -467,7 +552,7 @@ class TestCardViewHelper:
         """None card returns None."""
         from goa2.domain.views import _build_card_view
 
-        view = _build_card_view(None, show_facedown=True)
+        view = _build_card_view(None, is_own_hero=True)
         assert view is None
 
 

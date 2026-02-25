@@ -524,7 +524,9 @@ Each team contains:
 The view is player-scoped — what you see depends on your token:
 
 - **Your hero's cards:** Full details visible for all cards (hand, deck, played, current turn card, ultimate)
-- **Other heroes' cards:** Only faceup cards show full details. Facedown cards use `current_*` fields which hide the real values
+- **Other heroes' FACEUP cards:** Full details visible (id, name, tier, action, is_ranged, range_value, radius_value, etc.)
+- **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `is_ranged`, `range_value`, `radius_value`. Shows `tier`, `color`, `primary_action`, `primary_action_value`, `secondary_actions`, `effect_id`, `effect_text`, `initiative`, `state`, `is_facedown`, `item`, `is_active`
+- **Other heroes' hand:** Empty array `[]` (no cards visible at all in hand)
 - **Deck of other heroes:** Shows `{"count": N}` instead of card details
 - **Discard piles:** Always fully visible (public information)
 

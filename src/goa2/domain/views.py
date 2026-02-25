@@ -85,8 +85,8 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
 
     Visibility:
     - If hero.id == for_hero_id: Show all cards (hand, deck, played, current_turn)
-    - Otherwise: Only show faceup cards (use card.current_* pattern)
-    - Discard pile: Always visible
+    - Otherwise: Hand is empty, other card arrays show faceup cards, facedown cards hide sensitive fields
+    - Discard pile: Always visible (public info)
     """
     is_own_hero = hero.id == for_hero_id
 
@@ -98,34 +98,36 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
         "level": hero.level,
         "gold": hero.gold,
         "items": hero.items,
-        # Hand: Own hero sees all, others see only faceup
-        "hand": [
-            _build_card_view(card, show_facedown=is_own_hero) for card in hero.hand
-        ],
+        # Hand: Own hero sees all, others see empty array
+        "hand": (
+            [_build_card_view(card, is_own_hero=True) for card in hero.hand]
+            if is_own_hero
+            else []
+        ),
         # Deck: Own hero sees full deck, others see count only
         "deck": (
-            [_build_card_view(card, show_facedown=False) for card in hero.deck]
+            [_build_card_view(card, is_own_hero=is_own_hero) for card in hero.deck]
             if is_own_hero
             else {"count": len(hero.deck)}
         ),
-        # Played cards: Own hero sees all, others see only faceup
+        # Played cards: Own hero sees all, others see faceup only
         "played_cards": [
-            _build_card_view(card, show_facedown=is_own_hero)
+            _build_card_view(card, is_own_hero=is_own_hero)
             for card in hero.played_cards
         ],
-        # Current turn card: Own hero sees all, others see only faceup
+        # Current turn card: Own hero sees all, others see faceup only
         "current_turn_card": (
-            _build_card_view(hero.current_turn_card, show_facedown=is_own_hero)
+            _build_card_view(hero.current_turn_card, is_own_hero=is_own_hero)
             if hero.current_turn_card
             else None
         ),
-        # Discard pile: Always visible (public info)
+        # Discard pile: Always visible (public info) - use is_own_hero=True so all cards show full info
         "discard_pile": [
-            _build_card_view(card, show_facedown=False) for card in hero.discard_pile
+            _build_card_view(card, is_own_hero=True) for card in hero.discard_pile
         ],
-        # Ultimate card: Own hero sees it, others see only if revealed
+        # Ultimate card: Own hero sees it, others see faceup only
         "ultimate_card": (
-            _build_card_view(hero.ultimate_card, show_facedown=is_own_hero)
+            _build_card_view(hero.ultimate_card, is_own_hero=is_own_hero)
             if hero.ultimate_card
             else None
         ),
@@ -144,15 +146,15 @@ def _build_minion_view(minion: Minion) -> Dict[str, Any]:
 
 
 def _build_card_view(
-    card: Optional[Card], show_facedown: bool = False
+    card: Optional[Card], is_own_hero: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
     Build a view for a single card.
 
     Args:
         card: The card to view (may be None)
-        show_facedown: If True, show all details even if facedown.
-                       If False, use card.current_* pattern (hides facedown info).
+        is_own_hero: If True, show all details even if facedown.
+                     If False, show all for faceup, hide sensitive fields for facedown.
 
     Returns:
         Dict with card details, or None if card is None
@@ -160,8 +162,8 @@ def _build_card_view(
     if card is None:
         return None
 
-    if show_facedown:
-        # Show all details (own hero's view)
+    if is_own_hero or not card.is_facedown:
+        # Own hero or faceup card: show all details
         return {
             "id": card.id,
             "name": card.name,
@@ -186,11 +188,8 @@ def _build_card_view(
             "is_active": card.is_active,
         }
     else:
-        # Use current_* pattern (hides facedown info)
-        # This is what other players see
+        # Other hero's facedown card: use current_* pattern and hide sensitive fields
         return {
-            "id": card.id,
-            "name": card.name,
             "tier": card.current_tier.value,
             "color": card.current_color.value if card.current_color else None,
             "primary_action": (
@@ -207,9 +206,6 @@ def _build_card_view(
             "initiative": card.current_initiative,
             "state": card.state.value,
             "is_facedown": card.is_facedown,
-            "is_ranged": card.is_ranged,
-            "range_value": card.range_value,
-            "radius_value": card.radius_value,
             "item": card.item.value if card.item else None,
             "is_active": card.is_active,
         }
