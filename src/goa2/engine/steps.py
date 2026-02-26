@@ -3258,6 +3258,57 @@ class CheckAdjacencyStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CountAdjacentEnemiesStep(GameStep):
+    """
+    Counts enemy units adjacent to the current actor and stores a computed
+    bonus value in context.
+
+    Formula: bonus = max(0, count - subtract) * multiplier
+
+    where:
+    - count = number of adjacent enemy units
+    - subtract = typically 1 to exclude the attack target from the bonus
+    - multiplier = per-unit bonus value
+
+    Used by Xargatha's adjacency-scaling cards (Threatening Slash, Long Thrust, etc.).
+    """
+
+    type: StepType = StepType.COUNT_ADJACENT_ENEMIES
+    output_key: str = "adjacent_enemy_bonus"
+    multiplier: int = 1
+    subtract: int = 0  # Subtract from count before multiplying (e.g. 1 for "other" enemies)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        actor_id = state.current_actor_id
+        if not actor_id:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        actor = state.get_unit(UnitID(str(actor_id)))
+        actor_hex = state.entity_locations.get(BoardEntityID(str(actor_id)))
+
+        if not actor or not actor_hex or not hasattr(actor, "team"):
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        count = 0
+        for neighbor in actor_hex.neighbors():
+            tile = state.board.get_tile(neighbor)
+            if tile and tile.occupant_id:
+                entity = state.get_unit(tile.occupant_id)
+                if entity and hasattr(entity, "team") and entity.team != actor.team:
+                    count += 1
+
+        bonus = max(0, count - self.subtract) * self.multiplier
+        context[self.output_key] = bonus
+        print(
+            f"   [COUNT] Adjacent enemies: {count}, subtract={self.subtract}, "
+            f"multiplier={self.multiplier}, bonus={bonus}"
+        )
+
+        return StepResult(is_finished=True)
+
+
 class CheckLanePushStep(GameStep):
     """
     Checks if the active zone meets the condition for a Lane Push (0 minions for one team).
@@ -3787,10 +3838,16 @@ class AttackSequenceStep(GameStep):
     target_filters: List[FilterCondition] = Field(
         default_factory=list
     )  # Additional filters for target selection
+    damage_bonus_key: Optional[str] = None  # Add int from context to damage
+    range_bonus_key: Optional[str] = None  # Add int from context to range_val
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Apply dynamic bonuses from context
+        effective_damage = self.damage + int(context.get(self.damage_bonus_key, 0)) if self.damage_bonus_key else self.damage
+        effective_range = self.range_val + int(context.get(self.range_bonus_key, 0)) if self.range_bonus_key else self.range_val
+
         print(
-            f"   [MACRO] Expanding Attack Sequence (Dmg: {self.damage}, Rng: {self.range_val})"
+            f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
         )
 
         from goa2.engine.filters import RangeFilter, TeamFilter
@@ -3798,13 +3855,13 @@ class AttackSequenceStep(GameStep):
         key = self.target_id_key if self.target_id_key else "victim_id"
 
         # Store attack context for defense effect resolution
-        context["attack_is_ranged"] = self.range_val > 1
+        context["attack_is_ranged"] = effective_range > 1
         context["attacker_id"] = (
             str(state.current_actor_id) if state.current_actor_id else None
         )
-        context["attack_damage"] = self.damage
+        context["attack_damage"] = effective_damage
         print(
-            f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, range_val={self.range_val}"
+            f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, range_val={effective_range}"
         )
 
         new_steps: List[GameStep] = []
@@ -3813,7 +3870,7 @@ class AttackSequenceStep(GameStep):
         if not self.target_id_key:
             # Base filters + any custom target_filters
             all_filters: List[FilterCondition] = [
-                RangeFilter(max_range=self.range_val),
+                RangeFilter(max_range=effective_range),
                 TeamFilter(relation="ENEMY"),
             ]
             all_filters.extend(self.target_filters)
@@ -3831,7 +3888,7 @@ class AttackSequenceStep(GameStep):
             [
                 ReactionWindowStep(target_player_key=key),
                 ResolveDefenseTextStep(),  # NEW: Process defense card effects
-                ResolveCombatStep(damage=self.damage, target_key=key),
+                ResolveCombatStep(damage=effective_damage, target_key=key),
                 ResolveOnBlockEffectStep(),  # NEW: Process 'if you do' effects
                 RestoreActionTypeStep(),  # Restore action type after defense resolution
             ]

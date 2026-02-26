@@ -147,6 +147,7 @@ class StepType(str, Enum):
     SET_ACTOR = "set_actor"
     CHOOSE_MINION_REMOVAL = "choose_minion_removal"
     RETURN_MINION_TO_ZONE = "return_minion_to_zone"
+    COUNT_ADJACENT_ENEMIES = "count_adjacent_enemies"
 
 
 class FilterType(str, Enum):

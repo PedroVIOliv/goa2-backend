@@ -19,6 +19,7 @@ from goa2.engine.steps import (
     CheckUnitTypeStep,
     ChooseMinionRemovalStep,
     CombineBooleanContextStep,
+    CountAdjacentEnemiesStep,
     CreateEffectStep,
     DefeatUnitStep,
     DiscardCardStep,
@@ -99,6 +100,9 @@ AnyStep = Annotated[
         Annotated[ChooseMinionRemovalStep, Tag(StepType.CHOOSE_MINION_REMOVAL.value)],
         Annotated[
             CombineBooleanContextStep, Tag(StepType.COMBINE_BOOLEAN_CONTEXT.value)
+        ],
+        Annotated[
+            CountAdjacentEnemiesStep, Tag(StepType.COUNT_ADJACENT_ENEMIES.value)
         ],
         Annotated[CreateEffectStep, Tag(StepType.CREATE_EFFECT.value)],
         Annotated[DefeatUnitStep, Tag(StepType.DEFEAT_UNIT.value)],
