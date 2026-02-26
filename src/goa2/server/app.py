@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -21,12 +23,21 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.ws import router as ws_router
 
-# Register card effects — these modules use @register_effect decorators
-import goa2.scripts.arien_effects  # noqa: F401
-import goa2.scripts.wasp_effects  # noqa: F401
-import goa2.scripts.xargatha_effects #noqa: F401
-
 logger = logging.getLogger(__name__)
+
+
+def register_all_effects():
+    """Auto-discover and import all hero effect modules."""
+    scripts_dir = Path(__file__).parent.parent / "scripts"
+    for script_path in scripts_dir.glob("*_effects.py"):
+        module_name = f"goa2.scripts.{script_path.stem}"
+        try:
+            importlib.import_module(module_name)
+        except Exception as e:
+            logger.warning(f"Failed to load effect module {module_name}: {e}")
+
+
+register_all_effects()
 
 
 @asynccontextmanager
