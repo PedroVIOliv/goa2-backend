@@ -6,11 +6,19 @@ from goa2.engine.steps import (
     CountAdjacentEnemiesStep,
     GameStep,
     MayRepeatOnceStep,
+    MoveUnitStep,
+    SelectStep,
 )
 from goa2.engine.filters import (
     ExcludeIdentityFilter,
+    ForcedMovementByEnemyFilter,
+    MovementPathFilter,
+    ObstacleFilter,
+    RangeFilter,
+    TeamFilter,
     UnitTypeFilter,
 )
+from goa2.domain.models.enums import TargetType
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -191,5 +199,51 @@ class RapidThrustsEffect(CardEffect):
                         ],
                     ),
                 ],
+            ),
+        ]
+
+
+@register_effect("sirens_call")
+class SirensCallEffect(CardEffect):
+    """
+    Card Text: "Target an enemy unit not adjacent to you and in range;
+    if able, move the target up to 3 spaces to a space adjacent to you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Select enemy unit: not adjacent (min_range=2), in range
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy unit not adjacent to you and in range.",
+                output_key="sirens_call_target",
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range, min_range=2),
+                    ForcedMovementByEnemyFilter(),
+                ],
+                is_mandatory=True,
+            ),
+            # 2. Select destination: adjacent to Xargatha, reachable by target
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space adjacent to you to move the target to.",
+                output_key="sirens_call_dest",
+                filters=[
+                    RangeFilter(max_range=1),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=3, unit_key="sirens_call_target"),
+                ],
+                is_mandatory=False,  # "if able"
+            ),
+            # 3. Move target to destination (forced movement, not a movement action)
+            MoveUnitStep(
+                unit_key="sirens_call_target",
+                destination_key="sirens_call_dest",
+                range_val=3,
+                is_movement_action=False,
+                active_if_key="sirens_call_dest",
             ),
         ]
