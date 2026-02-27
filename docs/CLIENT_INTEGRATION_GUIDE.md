@@ -519,6 +519,25 @@ Each team contains:
 }
 ```
 
+**Important:** `played_cards` is a fixed-position array where:
+- Turn 1 card → `played_cards[0]`
+- Turn 2 card → `played_cards[1]`
+- Turn 3 card → `played_cards[2]`
+- etc.
+
+When a card is removed (discarded, returned to hand, etc.), its position becomes `null` but subsequent cards fill their correct turn-based positions:
+
+```json
+"played_cards": [
+  { "id": "card_1", ... },  // Turn 1 card (position 0)
+  null,                        // Turn 2 card was removed
+  { "id": "card_3", ... },  // Turn 3 card (position 2, not 1)
+  { "id": "card_4", ... }   // Turn 4 card (position 3)
+]
+```
+
+Positions reset to empty at the start of each round.
+
 ### Card visibility rules
 
 The view is player-scoped — what you see depends on your token:
