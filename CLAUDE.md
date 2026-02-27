@@ -100,6 +100,11 @@ class LiquidLeapEffect(CardEffect):
     def get_steps(self, state, hero, card) -> List[GameStep]: ...
 ```
 
+## Writing Card Effects
+
+- [Effect Author Reference](docs/EFFECT_AUTHOR_REFERENCE.md) — Step/filter API and copy-paste patterns
+- [Card Effects Guidelines](docs/card_effects_guidelines.md) — Mandatory/optional rules
+
 ## Server & API Layer
 
 The server package (`src/goa2/server/`) wraps the engine with a FastAPI application providing REST and WebSocket interfaces for client integration.
