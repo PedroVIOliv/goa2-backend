@@ -29,12 +29,16 @@ class Hero(Unit):
 
     deck: List[Card]
     hand: List[Card] = Field(default_factory=list)
-    played_cards: List[Card] = Field(
+    played_cards: List[Optional[Card]] = Field(
         default_factory=list,
-        description="Cards currently on the dashboard (Unresolved or Resolved)",
+        description="Resolved cards in fixed positions (turn N at index N-1, None if card was removed)",
     )
     current_turn_card: Optional[Card] = Field(
         default=None, description="The card played for the current turn (Unresolved)"
+    )
+    resolved_turn_count: int = Field(
+        default=0,
+        description="Number of cards resolved this round (determines next played_cards position)",
     )
 
     discard_pile: List[Card] = Field(default_factory=list)
@@ -83,12 +87,19 @@ class Hero(Unit):
     def resolve_current_card(self):
         """
         Moves the current turn card to the resolved 'played_cards' list.
-        Should be called at the end of the turn.
+        Card goes to position = resolved_turn_count (turn 1 at index 0, turn 2 at index 1, etc.).
         """
         if self.current_turn_card:
+            position = self.resolved_turn_count
             self.current_turn_card.state = CardState.RESOLVED
-            self.played_cards.append(self.current_turn_card)
+
+            # Ensure list is long enough
+            while len(self.played_cards) <= position:
+                self.played_cards.append(None)
+
+            self.played_cards[position] = self.current_turn_card
             self.current_turn_card = None
+            self.resolved_turn_count += 1
 
     def discard_card(self, card: Card, from_hand: bool = True):
         """
@@ -103,7 +114,9 @@ class Hero(Unit):
             if self.current_turn_card == card:
                 self.current_turn_card = None
             elif card in self.played_cards:
-                self.played_cards.remove(card)
+                # Set position to None instead of removing
+                idx = self.played_cards.index(card)
+                self.played_cards[idx] = None
 
         card.state = CardState.DISCARD
         card.is_facedown = False  # Open information
@@ -119,12 +132,14 @@ class Hero(Unit):
         def get_loc(c: Card):
             if c in self.hand:
                 return ("list", self.hand, self.hand.index(c))
-            if c in self.played_cards:
-                return ("list", self.played_cards, self.played_cards.index(c))
             if c in self.discard_pile:
                 return ("list", self.discard_pile, self.discard_pile.index(c))
             if c == self.current_turn_card:
                 return ("field", "current_turn_card", None)
+            # Check played_cards (may contain None values)
+            for idx, card in enumerate(self.played_cards):
+                if card == c:
+                    return ("list", self.played_cards, idx)
             return (None, None, None)
 
         type_a, container_a, idx_a = get_loc(card_a)
@@ -163,8 +178,11 @@ class Hero(Unit):
         """
         End of Round: Return Resolved and Discarded cards to hand.
         Resets card states and lifecycle flags.
+        Clears played_cards and resets resolved_turn_count.
         """
-        cards_to_return = self.played_cards + self.discard_pile
+        # Collect non-None cards from played_cards, plus discard and current
+        cards_to_return = [c for c in self.played_cards if c is not None]
+        cards_to_return.extend(self.discard_pile)
         if self.current_turn_card:
             cards_to_return.append(self.current_turn_card)
 
@@ -172,6 +190,10 @@ class Hero(Unit):
             card.is_facedown = False
             card.played_this_round = False  # Reset lifecycle flag
             self.return_card_to_hand(card)
+
+        # Clear played_cards and reset counter for next round
+        self.played_cards.clear()
+        self.resolved_turn_count = 0
 
     def return_card_to_hand(self, card: Card):
         """
@@ -182,8 +204,13 @@ class Hero(Unit):
         card.state = CardState.HAND
         card.is_facedown = False
         self.hand.append(card)
-        if card in self.played_cards:
-            self.played_cards.remove(card)
+
+        # Set played_cards position to None instead of removing
+        for idx, c in enumerate(self.played_cards):
+            if c == card:
+                self.played_cards[idx] = None
+                break
+
         if card in self.discard_pile:
             self.discard_pile.remove(card)
         if card == self.current_turn_card:
