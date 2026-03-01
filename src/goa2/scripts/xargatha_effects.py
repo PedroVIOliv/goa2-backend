@@ -6,6 +6,7 @@ from goa2.engine.steps import (
     CountAdjacentEnemiesStep,
     GameStep,
     MayRepeatOnceStep,
+    MoveSequenceStep,
     MoveUnitStep,
     SelectStep,
 )
@@ -17,6 +18,7 @@ from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
     UnitTypeFilter,
+    MinionTypesFilter
 )
 from goa2.domain.models.enums import TargetType
 
@@ -245,5 +247,229 @@ class SirensCallEffect(CardEffect):
                 range_val=3,
                 is_movement_action=False,
                 active_if_key="sirens_call_dest",
+            ),
+        ]
+
+@register_effect("charm")
+class CharmEffect(CardEffect):
+    """
+    Card Text: "Before or after movement, you may move an enemy ranged minion in radius up to 2 spaces."
+    """
+
+    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+        return [
+           SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy ranged minion in radius (or skip to select after movement instead)",
+                output_key="charmed_minion",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED"])
+                ],
+                is_mandatory=False,
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion",
+                destination_key="charm_dest",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest",
+            ),
+            MoveSequenceStep(
+                range_val=stats.primary_value,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy ranged minion in radius",
+                output_key="charmed_minion_after",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED"])
+                ],
+                is_mandatory=False,
+                skip_if_key="charmed_minion",  # Skip if already used before movement
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest_after",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion_after"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion_after",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion_after",
+                destination_key="charm_dest_after",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest_after",
+            ),
+        ]
+
+@register_effect("control")
+class ControlEffect(CardEffect):
+    """
+    Card Text: "Before or after movement, you may move an enemy ranged or melee minion in radius up to 2 spaces."
+    """
+
+    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+        return [
+           SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy ranged or melee minion in radius (or skip to select after movement instead)",
+                output_key="charmed_minion",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED","MELEE"])
+                ],
+                is_mandatory=False,
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion",
+                destination_key="charm_dest",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest",
+            ),
+            MoveSequenceStep(
+                range_val=stats.primary_value,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy ranged or melee minion in radius",
+                output_key="charmed_minion_after",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED","MELEE"])
+                ],
+                is_mandatory=False,
+                skip_if_key="charmed_minion",  # Skip if already used before movement
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest_after",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion_after"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion_after",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion_after",
+                destination_key="charm_dest_after",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest_after",
+            ),
+        ]
+    
+@register_effect("dominate")
+class DominateEffect(CardEffect):
+    """
+    Card Text: "Before or after movement, you may move an enemy minion in radius up to 2 spaces; ignore heavy minion immunity."
+    """
+
+    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+        return [
+           SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy minion in radius (or skip to select after movement instead)",
+                output_key="charmed_minion",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED","MELEE","HEAVY"])
+                ],
+                is_mandatory=False,
+                skip_immunity_filter=True
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion",
+                destination_key="charm_dest",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest",
+            ),
+            MoveSequenceStep(
+                range_val=stats.primary_value,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy minion in radius",
+                output_key="charmed_minion_after",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    MinionTypesFilter(minion_types=["RANGED","MELEE","HEAVY"])
+                ],
+                is_mandatory=False,
+                skip_if_key="charmed_minion",  # Skip if already used before movement
+                skip_immunity_filter=True,
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space up to 2 spaces away to move the minion to.",
+                output_key="charm_dest_after",
+                filters=[
+                    RangeFilter(max_range=2, origin_key="charmed_minion_after"),
+                    ObstacleFilter(is_obstacle=False),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                ],
+                is_mandatory=False,  # "you may"
+                active_if_key="charmed_minion_after",
+            ),
+            MoveUnitStep(
+                unit_key="charmed_minion_after",
+                destination_key="charm_dest_after",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="charm_dest_after",
             ),
         ]

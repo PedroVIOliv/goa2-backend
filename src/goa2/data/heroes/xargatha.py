@@ -124,7 +124,7 @@ def create_xargatha() -> Hero:
             initiative=3,
             primary_action=ActionType.SKILL,
             primary_action_value=None,
-            secondary_actions={ActionType.MOVEMENT: 3},
+            secondary_actions={ActionType.DEFENSE: 3},
             is_ranged=True,
             range_value=3,
             effect_id="sirens_call",

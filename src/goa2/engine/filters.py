@@ -1,9 +1,9 @@
 # Just updated filters.py to add PreserveDistanceFilter
 from __future__ import annotations
-from abc import ABC
 from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
+from goa2.domain.models.enums import MinionType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.hex import Hex
@@ -15,7 +15,7 @@ from goa2.engine.topology import get_topology_service
 # -----------------------------------------------------------------------------
 
 
-class FilterCondition(BaseModel, ABC):
+class FilterCondition(BaseModel):
     """
     Base class for all selection filters.
     """
@@ -190,7 +190,21 @@ class UnitTypeFilter(FilterCondition):
             return isinstance(entity, Minion)
         return False
 
+class MinionTypesFilter(FilterCondition):
+    type: FilterType = FilterType.MINION_TYPES
+    minion_types: List[MinionType]
 
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        entity = (
+            state.get_entity(BoardEntityID(candidate))
+            if isinstance(candidate, str)
+            else None
+        )
+        if not entity or not isinstance(entity, Minion):
+            return False
+
+        return entity.type in self.minion_types
+         
 class AdjacencyFilter(FilterCondition):
     """
     Requires the target to be adjacent to a unit matching specific tags.

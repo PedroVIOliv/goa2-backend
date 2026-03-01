@@ -165,6 +165,7 @@ AnyStep = Annotated[
 # Imports are intentionally here (not at top) to avoid circular deps
 # ruff: noqa: E402
 from goa2.engine.filters import (
+    MinionTypesFilter,
     ObstacleFilter,
     TerrainFilter,
     RangeFilter,
@@ -221,6 +222,7 @@ AnyFilter = Annotated[
             FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)
         ],
         Annotated[PreserveDistanceFilter, Tag(FilterType.PRESERVE_DISTANCE.value)],
+        Annotated[MinionTypesFilter, Tag(FilterType.MINION_TYPES.value)],
     ],
     Discriminator(_filter_discriminator),
 ]

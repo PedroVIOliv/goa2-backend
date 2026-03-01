@@ -1,5 +1,4 @@
 from __future__ import annotations
-from abc import ABC
 from typing import Optional, Dict, Any, List, Tuple, Sequence, cast
 import copy
 from pydantic import BaseModel, Field
@@ -59,7 +58,7 @@ class StepResult(BaseModel):
     events: List[GameEvent] = Field(default_factory=list)
 
 
-class GameStep(BaseModel, ABC):
+class GameStep(BaseModel):
     """
     Base class for all atomic game operations.
     Each step performs a single logic unit and can manage its own state.
@@ -80,12 +79,20 @@ class GameStep(BaseModel, ABC):
     # Conditional Execution: If set, this step only runs if 'active_if_key' exists in context.
     active_if_key: Optional[str] = None
 
+    # Conditional Skipping: If set, this step is skipped if 'skip_if_key' exists in context.
+    skip_if_key: Optional[str] = None
+
     def should_skip(self, context: Dict[str, Any]) -> bool:
-        """Checks if the step should be skipped based on active_if_key."""
+        """Checks if the step should be skipped based on active_if_key or skip_if_key."""
         if self.active_if_key:
             val = context.get(self.active_if_key)
             # Skip if key is missing or None (falsy is tricky, but usually checking existence/non-None is safer)
             if val is None:
+                return True
+        if self.skip_if_key:
+            val = context.get(self.skip_if_key)
+            # Skip if key exists and is not None
+            if val is not None:
                 return True
         return False
 
