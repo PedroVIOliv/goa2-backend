@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, List
+from typing import Any, Optional, List
 from pydantic import BaseModel, Field
 
 from goa2.domain.models.enums import ActionType, StatType, CardColor, DisplacementType
@@ -37,6 +37,9 @@ class EffectType(str, Enum):
 
     # Actor-conditional obstacle (Wasp)
     STATIC_BARRIER = "static_barrier"  # Hexes become obstacles based on actor location relative to radius
+
+    # Delayed trigger (carries finishing_steps, no spatial effect)
+    DELAYED_TRIGGER = "delayed_trigger"
 
 
 class AffectsFilter(str, Enum):
@@ -147,3 +150,7 @@ class ActiveEffect(BaseModel):
     barrier_origin_id: Optional[str] = (
         None  # Entity ID for radius calculation (Wasp's position)
     )
+
+    # Steps to push onto the execution stack when this effect expires
+    # (for DELAYED_TRIGGER effects). Patched to List[AnyStep] in step_types.py.
+    finishing_steps: List[Any] = Field(default_factory=list)

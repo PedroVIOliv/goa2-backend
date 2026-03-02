@@ -1,7 +1,7 @@
 """EffectManager for creating and expiring effects."""
 
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, List
+from typing import Optional, Tuple, TYPE_CHECKING, List
 
 from goa2.domain.models.effect import (
     ActiveEffect,
@@ -81,18 +81,66 @@ class EffectManager:
             card.is_active = False
 
     @staticmethod
-    def expire_effects(state: "GameState", duration: DurationType):
-        """Remove all effects matching duration type."""
+    def expire_active_turn_effects(
+        state: "GameState",
+    ) -> List[Tuple[str, List]]:
+        """Expire THIS_TURN and active NEXT_TURN effects.
+
+        NEXT_TURN effects are active on created_at_turn + 1 (same round only).
+        Returns [(source_id, finishing_steps)] for expired effects that carry
+        finishing steps.
+        """
+
+        def is_expiring_this_turn(e: ActiveEffect) -> bool:
+            if e.duration == DurationType.THIS_TURN:
+                return True
+            if e.duration == DurationType.NEXT_TURN:
+                return (
+                    state.round == e.created_at_round
+                    and state.turn == e.created_at_turn + 1
+                )
+            return False
+
+        expiring = [e for e in state.active_effects if is_expiring_this_turn(e)]
+        finishing: List[Tuple[str, List]] = [
+            (e.source_id, e.finishing_steps)
+            for e in expiring
+            if e.finishing_steps
+        ]
         affected_card_ids = {
-            e.source_card_id
-            for e in state.active_effects
-            if e.duration == duration and e.source_card_id
+            e.source_card_id for e in expiring if e.source_card_id
+        }
+        state.active_effects = [
+            e for e in state.active_effects if not is_expiring_this_turn(e)
+        ]
+        for card_id in affected_card_ids:
+            EffectManager._update_card_active_status(state, card_id)
+        return finishing
+
+    @staticmethod
+    def expire_effects(
+        state: "GameState", duration: DurationType
+    ) -> List[Tuple[str, List]]:
+        """Remove all effects matching duration type.
+
+        Returns [(source_id, finishing_steps)] for expired effects that carry
+        finishing steps (used by DELAYED_TRIGGER effects).
+        """
+        expiring = [e for e in state.active_effects if e.duration == duration]
+        finishing: List[Tuple[str, List]] = [
+            (e.source_id, e.finishing_steps)
+            for e in expiring
+            if e.finishing_steps
+        ]
+        affected_card_ids = {
+            e.source_card_id for e in expiring if e.source_card_id
         }
         state.active_effects = [
             e for e in state.active_effects if e.duration != duration
         ]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
+        return finishing
 
     @staticmethod
     def expire_by_source(state: "GameState", source_id: str):

@@ -4,7 +4,7 @@ from goa2.domain.models import GamePhase, Card
 from goa2.domain.types import HeroID
 from goa2.domain.models.effect import DurationType
 from goa2.engine.handler import push_steps
-from goa2.engine.steps import ResolveTieBreakerStep, GameStep
+from goa2.engine.steps import FinishedExpiringEffectStep, ResolveTieBreakerStep, GameStep
 
 
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
@@ -189,13 +189,30 @@ def resolve_next_action(state: GameState):
 def end_turn(state: GameState):
     """
     Called when all players have acted in the Resolution Phase.
+    Expires THIS_TURN and active NEXT_TURN effects. If any have finishing
+    steps, those are pushed onto the stack followed by AdvanceTurnStep
+    (deferred advancement). Otherwise, advances synchronously.
     """
     print(f"   [Turn] End of Turn {state.turn}.")
 
     from goa2.engine.effect_manager import EffectManager
 
-    EffectManager.expire_effects(state, DurationType.THIS_TURN)
+    finishing = EffectManager.expire_active_turn_effects(state)
 
+    if finishing:
+        from goa2.engine.steps import SetActorStep, AdvanceTurnStep
+
+        finish_steps: list[GameStep] = []
+        for source_id, steps in finishing:
+            finish_steps.append(SetActorStep(actor_id=source_id))
+            finish_steps.extend(steps)
+            finish_steps.append(FinishedExpiringEffectStep())
+            
+        finish_steps.append(AdvanceTurnStep())
+        push_steps(state, finish_steps)
+        return
+
+    # No finishing steps — advance synchronously (existing behavior)
     if state.turn < 4:
         state.turn += 1
         state.phase = GamePhase.PLANNING

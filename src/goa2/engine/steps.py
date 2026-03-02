@@ -148,6 +148,10 @@ class CreateEffectStep(GameStep):
     barrier_radius: int = 0  # The radius boundary for the barrier
     barrier_origin_id: Optional[str] = None  # Entity ID for radius calculation
 
+    # Steps to execute when this effect expires (for DELAYED_TRIGGER effects)
+    # Patched to List[AnyStep] in step_types.py.
+    finishing_steps: List[GameStep] = Field(default_factory=list)
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -198,6 +202,7 @@ class CreateEffectStep(GameStep):
             origin_action_type=action_type,
             barrier_radius=self.barrier_radius,
             barrier_origin_id=self.barrier_origin_id,
+            finishing_steps=self.finishing_steps,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
@@ -1894,7 +1899,18 @@ class FinalizeHeroTurnStep(GameStep):
             ],
         )
 
+class FinishedExpiringEffectStep(GameStep):
+    """
+    Placeholder step to indicate that an expiring effect has finished resolving.
+    Primarily used to correctly mark the end of abort action cascade.
+    """
 
+    type: StepType = StepType.FINISHED_EXPIRING_EFFECT
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        print("   [EFFECT] Finished resolving expiring effect.")
+        return StepResult(is_finished=True)
+    
 class PlaceUnitStep(GameStep):
     """
     Moves a unit to a target hex directly.
@@ -3449,7 +3465,8 @@ class EndPhaseCleanupStep(GameStep):
 class EndPhaseStep(GameStep):
     """
     Entry point for End Phase.
-    Executes Minion Battle, checks for Lane Push, then queues Cleanup.
+    Expires THIS_ROUND effects (with finishing steps), then queues
+    MinionBattleStep, CheckLanePushStep, and EndPhaseCleanupStep.
     """
 
     type: StepType = StepType.END_PHASE
@@ -3457,24 +3474,42 @@ class EndPhaseStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [ROUND END] Processing End Phase (Battle)...")
 
+        # Expire THIS_ROUND effects and collect finishing steps
+        finishing = EffectManager.expire_effects(state, DurationType.THIS_ROUND)
+
         new_steps: List[GameStep] = []
 
-        battle_steps = self._resolve_minion_battle(state)
-        new_steps.extend(battle_steps)
+        # Inject finishing steps (with SetActorStep wrappers) before battle
+        for source_id, steps in finishing:
+            new_steps.append(SetActorStep(actor_id=source_id))
+            new_steps.extend(steps)
+            new_steps.append(FinishedExpiringEffectStep())
+
+        # Minion battle now computed lazily (after finishing steps execute)
+        new_steps.append(MinionBattleStep())
 
         # CheckLanePushStep handles the case where one team already has 0 minions
-        # (no battle occurred, so no RemoveUnitStep fired to trigger the check)
         new_steps.append(CheckLanePushStep())
 
         new_steps.append(EndPhaseCleanupStep())
 
         return StepResult(is_finished=True, new_steps=new_steps)
 
+
+class MinionBattleStep(GameStep):
+    """
+    Compare minion counts in active zone and queue removals for the losing team.
+    Separated from EndPhaseStep so finishing steps can execute first,
+    ensuring battle counts reflect post-finishing-step state.
+    """
+
+    type: StepType = StepType.MINION_BATTLE
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        battle_steps = self._resolve_minion_battle(state)
+        return StepResult(is_finished=True, new_steps=battle_steps)
+
     def _resolve_minion_battle(self, state: GameState) -> List["GameStep"]:
-        """
-        Compare minion counts in active zone.
-        Returns ChooseMinionRemovalStep(s) for the losing team.
-        """
         if not state.active_zone_id:
             return []
 
@@ -3510,6 +3545,36 @@ class EndPhaseStep(GameStep):
                 zone_id=state.active_zone_id,
             )
         ]
+
+
+class AdvanceTurnStep(GameStep):
+    """
+    Handles turn advancement after finishing steps have executed.
+    Encapsulates the logic from end_turn() so it can be deferred
+    when finishing steps need to run first.
+    """
+
+    type: StepType = StepType.ADVANCE_TURN
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        from goa2.engine.phases import _check_phase_transition, start_end_phase
+
+        if state.turn < 4:
+            state.turn += 1
+            state.phase = GamePhase.PLANNING
+            print(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
+            auto_passed = False
+            for team in state.teams.values():
+                for hero in team.heroes:
+                    if len(hero.hand) == 0:
+                        state.pending_inputs[hero.id] = None
+                        print(f"   [Planning] {hero.id} auto-passed (empty hand).")
+                        auto_passed = True
+            if auto_passed:
+                _check_phase_transition(state)
+        else:
+            start_end_phase(state)
+        return StepResult(is_finished=True)
 
 
 class ChooseMinionRemovalStep(GameStep):

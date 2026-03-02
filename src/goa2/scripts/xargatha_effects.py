@@ -4,6 +4,8 @@ from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CountAdjacentEnemiesStep,
+    CreateEffectStep,
+    DefeatUnitStep,
     GameStep,
     MayRepeatOnceStep,
     MoveSequenceStep,
@@ -18,9 +20,10 @@ from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
     UnitTypeFilter,
-    MinionTypesFilter
+    MinionTypesFilter,
 )
-from goa2.domain.models.enums import TargetType
+from goa2.domain.models.enums import TargetType, MinionType
+from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -471,5 +474,88 @@ class DominateEffect(CardEffect):
                 range_val=2,
                 is_movement_action=False,
                 active_if_key="charm_dest_after",
+            ),
+        ]
+
+
+@register_effect("final_embrace")
+class FinalEmbraceEffect(CardEffect):
+    """
+    Card Text: "End of round: Defeat an enemy melee or ranged minion adjacent to you."
+
+    Creates a DELAYED_TRIGGER effect with finishing steps that execute when the
+    effect expires at end of round. The finishing steps select and defeat an
+    adjacent enemy melee or ranged minion.
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.DELAYED_TRIGGER,
+                duration=DurationType.THIS_ROUND,
+                scope=EffectScope(shape=Shape.POINT),
+                is_active=True,
+                finishing_steps=[
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        filters=[
+                            TeamFilter(relation="ENEMY"),
+                            MinionTypesFilter(
+                                minion_types=[MinionType.MELEE, MinionType.RANGED]
+                            ),
+                            RangeFilter(max_range=1),
+                        ],
+                        output_key="final_embrace_victim",
+                        is_mandatory=True,
+                        prompt="Select enemy melee or ranged minion to defeat (Final Embrace)",
+                    ),
+                    DefeatUnitStep(
+                        victim_key="final_embrace_victim",
+                        active_if_key="final_embrace_victim",
+                    ),
+                ],
+            ),
+        ]
+
+@register_effect("constrict")
+class ConstrictEffect(CardEffect):
+    """
+    Card Text: "End of round: Defeat an enemy melee minion adjacent to you. (Before the end of round minion battle.)"
+
+    Creates a DELAYED_TRIGGER effect with finishing steps that execute when the
+    effect expires at end of round. The finishing steps select and defeat an
+    adjacent enemy melee or ranged minion.
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.DELAYED_TRIGGER,
+                duration=DurationType.THIS_ROUND,
+                scope=EffectScope(shape=Shape.POINT),
+                is_active=True,
+                finishing_steps=[
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        filters=[
+                            TeamFilter(relation="ENEMY"),
+                            MinionTypesFilter(
+                                minion_types=[MinionType.MELEE]
+                            ),
+                            RangeFilter(max_range=1),
+                        ],
+                        output_key="constrict_victim",
+                        is_mandatory=True,
+                        prompt="Select enemy melee minion to defeat (Constrict)",
+                    ),
+                    DefeatUnitStep(
+                        victim_key="constrict_victim",
+                        active_if_key="constrict_victim",
+                    ),
+                ],
             ),
         ]

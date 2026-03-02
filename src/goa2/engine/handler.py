@@ -7,7 +7,7 @@ from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase
 from goa2.domain.input import InputRequest, InputResponse
 from goa2.domain.events import GameEvent
-from goa2.engine.steps import GameStep, StepResult
+from goa2.engine.steps import FinishedExpiringEffectStep, GameStep, StepResult
 import goa2.engine.step_types as _step_types  # noqa: F401 — patches model annotations
 
 
@@ -148,7 +148,7 @@ def _clear_to_finalize(state: GameState):
 
     while state.execution_stack:
         step = state.execution_stack[-1]
-        if isinstance(step, FinalizeHeroTurnStep):
+        if isinstance(step, FinalizeHeroTurnStep) or isinstance(step, FinishedExpiringEffectStep):
             break
         state.execution_stack.pop()
         print(f"   [ENGINE] Skipped step: {step.type}")

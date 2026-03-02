@@ -10,6 +10,7 @@ from typing import Annotated, Any, List, Union
 from pydantic import Discriminator, Tag
 
 from goa2.engine.steps import (
+    AdvanceTurnStep,
     AttackSequenceStep,
     AskConfirmationStep,
     CancelEffectsStep,
@@ -36,6 +37,7 @@ from goa2.engine.steps import (
     LogMessageStep,
     MarkPassiveUsedStep,
     MayRepeatNTimesStep,
+    MinionBattleStep,
     MoveSequenceStep,
     MoveUnitStep,
     MultiSelectStep,
@@ -67,6 +69,7 @@ from goa2.engine.steps import (
     SwapUnitsStep,
     TriggerGameOverStep,
     ValidateRepeatStep,
+    FinishedExpiringEffectStep,
 )
 from goa2.domain.models.enums import StepType
 
@@ -88,6 +91,7 @@ def _step_discriminator(v: Any) -> str:
 
 AnyStep = Annotated[
     Union[
+        Annotated[AdvanceTurnStep, Tag(StepType.ADVANCE_TURN.value)],
         Annotated[AttackSequenceStep, Tag(StepType.ATTACK_SEQUENCE.value)],
         Annotated[AskConfirmationStep, Tag(StepType.ASK_CONFIRMATION.value)],
         Annotated[CancelEffectsStep, Tag(StepType.CANCEL_EFFECTS.value)],
@@ -122,6 +126,7 @@ AnyStep = Annotated[
         Annotated[LogMessageStep, Tag(StepType.LOG_MESSAGE.value)],
         Annotated[MarkPassiveUsedStep, Tag(StepType.MARK_PASSIVE_USED.value)],
         Annotated[MayRepeatNTimesStep, Tag(StepType.MAY_REPEAT_ONCE.value)],
+        Annotated[MinionBattleStep, Tag(StepType.MINION_BATTLE.value)],
         Annotated[MoveSequenceStep, Tag(StepType.MOVE_SEQUENCE.value)],
         Annotated[MoveUnitStep, Tag(StepType.MOVE_UNIT.value)],
         Annotated[MultiSelectStep, Tag(StepType.MULTI_SELECT.value)],
@@ -155,6 +160,9 @@ AnyStep = Annotated[
         Annotated[SwapUnitsStep, Tag(StepType.SWAP_UNITS.value)],
         Annotated[TriggerGameOverStep, Tag(StepType.TRIGGER_GAME_OVER.value)],
         Annotated[ValidateRepeatStep, Tag(StepType.VALIDATE_REPEAT.value)],
+        Annotated[
+            FinishedExpiringEffectStep, Tag(StepType.FINISHED_EXPIRING_EFFECT.value)
+        ],
     ],
     Discriminator(_step_discriminator),
 ]
@@ -235,6 +243,7 @@ AnyFilter = Annotated[
 # Imports are intentionally here (not at top) to avoid circular deps
 # ruff: noqa: E402
 from goa2.domain.state import GameState
+from goa2.domain.models.effect import ActiveEffect
 
 # Patch GameState.execution_stack
 GameState.model_fields["execution_stack"].annotation = List[AnyStep]
@@ -245,6 +254,8 @@ MultiSelectStep.model_fields["filters"].annotation = List[AnyFilter]
 AttackSequenceStep.model_fields["target_filters"].annotation = List[AnyFilter]
 MayRepeatNTimesStep.model_fields["steps_template"].annotation = List[AnyStep]
 ForEachStep.model_fields["steps_template"].annotation = List[AnyStep]
+CreateEffectStep.model_fields["finishing_steps"].annotation = List[AnyStep]
+ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
 
 # Rebuild all patched models (force=True since they were already built).
 # Leaf models first, then models that reference them.
@@ -253,4 +264,6 @@ MultiSelectStep.model_rebuild(force=True)
 AttackSequenceStep.model_rebuild(force=True)
 MayRepeatNTimesStep.model_rebuild(force=True)
 ForEachStep.model_rebuild(force=True)
+CreateEffectStep.model_rebuild(force=True)
+ActiveEffect.model_rebuild(force=True)
 GameState.model_rebuild(force=True)
