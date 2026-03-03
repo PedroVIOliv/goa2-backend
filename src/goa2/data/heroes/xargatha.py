@@ -138,7 +138,7 @@ def create_xargatha() -> Hero:
             initiative=11,
             primary_action=ActionType.ATTACK,
             primary_action_value=4,
-            secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 2},
+            secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 1},
             effect_id="cleave",
             effect_text="Target a unit adjacent to you. After the attack: May repeat once on a different enemy hero. (You may repeat even if the original target was a minion.)",
         ),
