@@ -151,6 +151,9 @@ class StepType(str, Enum):
     MINION_BATTLE = "minion_battle"
     ADVANCE_TURN = "advance_turn"
     FINISHED_EXPIRING_EFFECT = "finished_expiring_effect"
+    COUNT = "count"
+    CHECK_CONTEXT_CONDITION = "check_context_condition"
+    RETRIEVE_CARD = "retrieve_card"
 
 
 class FilterType(str, Enum):

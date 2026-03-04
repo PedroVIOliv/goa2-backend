@@ -33,6 +33,8 @@ class GameEventType(str, Enum):
     # Economy
     GOLD_GAINED = "GOLD_GAINED"
     LIFE_COUNTER_CHANGED = "LIFE_COUNTER_CHANGED"
+    # Cards
+    CARD_RETRIEVED = "CARD_RETRIEVED"
     # Turn flow
     TURN_ENDED = "TURN_ENDED"
     GAME_OVER = "GAME_OVER"

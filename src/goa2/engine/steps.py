@@ -4560,6 +4560,146 @@ class CombineBooleanContextStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CountStep(GameStep):
+    """
+    Counts entities matching filters and stores the count in context.
+    Uses the same target_type + filters system as SelectStep.
+    No input prompt, no mandatory/optional logic — just counts and stores.
+    """
+
+    type: StepType = StepType.COUNT
+    target_type: TargetType = TargetType.UNIT
+    filters: List[FilterCondition] = Field(default_factory=list)
+    output_key: str = "count_result"
+    skip_immunity_filter: bool = True
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+
+        # Gather candidates by target_type (same logic as SelectStep)
+        candidates: List[Any] = []
+        if self.target_type == TargetType.UNIT:
+            all_entities = list(state.entity_locations.keys())
+            candidates = [
+                eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
+            ]
+        elif self.target_type == TargetType.UNIT_OR_TOKEN:
+            candidates = state.get_units_and_tokens()
+        elif self.target_type == TargetType.HEX:
+            candidates = list(state.board.tiles.keys())
+
+        # Build effective filters (auto-add ImmunityFilter for UNIT unless skipped)
+        from goa2.engine.filters import ImmunityFilter
+
+        effective_filters = list(self.filters)
+        if (
+            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
+            and not self.skip_immunity_filter
+        ):
+            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective_filters)
+            if not has_immunity:
+                effective_filters.append(ImmunityFilter())
+
+        # Apply filters
+        count = 0
+        for c in candidates:
+            is_valid = True
+            for f in effective_filters:
+                if not f.apply(c, state, context):
+                    is_valid = False
+                    break
+            if is_valid:
+                count += 1
+
+        context[self.output_key] = count
+        print(f"   [COUNT] {self.target_type.value} matching filters: {count}")
+        return StepResult(is_finished=True)
+
+
+class CheckContextConditionStep(GameStep):
+    """
+    Evaluates context[input_key] against a threshold using an operator.
+    Stores True/False in context[output_key].
+    """
+
+    type: StepType = StepType.CHECK_CONTEXT_CONDITION
+    input_key: str
+    operator: str = ">="  # ">=", ">", "==", "<=", "<", "!="
+    threshold: int = 1
+    output_key: str = "condition_met"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        value = context.get(self.input_key, 0)
+        if not isinstance(value, (int, float)):
+            value = 0
+
+        ops = {
+            ">=": value >= self.threshold,
+            ">": value > self.threshold,
+            "==": value == self.threshold,
+            "<=": value <= self.threshold,
+            "<": value < self.threshold,
+            "!=": value != self.threshold,
+        }
+        result = ops.get(self.operator, False)
+        # Store True or None (not False) so active_if_key checks work correctly:
+        # active_if_key skips when value is None, not when False.
+        context[self.output_key] = True if result else None
+        print(
+            f"   [CHECK] {self.input_key}={value} {self.operator} {self.threshold} -> {result}"
+        )
+        return StepResult(is_finished=True)
+
+
+class RetrieveCardStep(GameStep):
+    """
+    Retrieves a card from discard pile back to hand.
+    Uses context[card_key] for the card ID, and current_actor_id for the hero.
+    """
+
+    type: StepType = StepType.RETRIEVE_CARD
+    card_key: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        card_id = context.get(self.card_key)
+        if not card_id:
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Find card in discard pile
+        target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
+        if not target_card:
+            print(f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s discard pile.")
+            return StepResult(is_finished=True)
+
+        hero.return_card_to_hand(target_card)
+        print(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from discard.")
+
+        event = GameEvent(
+            event_type=GameEventType.CARD_RETRIEVED,
+            actor_id=str(actor_id),
+            metadata={"card_id": card_id, "card_name": target_card.name},
+        )
+        return StepResult(is_finished=True, events=[event])
+
+
 # Rebuild recursive models
 MayRepeatOnceStep.model_rebuild()
 ForEachStep.model_rebuild()

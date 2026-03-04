@@ -3,13 +3,16 @@ from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
+    CheckContextConditionStep,
     CountAdjacentEnemiesStep,
+    CountStep,
     CreateEffectStep,
     DefeatUnitStep,
     GameStep,
     MayRepeatOnceStep,
     MoveSequenceStep,
     MoveUnitStep,
+    RetrieveCardStep,
     SelectStep,
 )
 from goa2.engine.filters import (
@@ -22,7 +25,7 @@ from goa2.engine.filters import (
     UnitTypeFilter,
     MinionTypesFilter,
 )
-from goa2.domain.models.enums import TargetType, MinionType
+from goa2.domain.models.enums import CardContainerType, TargetType, MinionType
 from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
 
 if TYPE_CHECKING:
@@ -557,5 +560,81 @@ class ConstrictEffect(CardEffect):
                         active_if_key="constrict_victim",
                     ),
                 ],
+            ),
+        ]
+
+
+@register_effect("devoted_followers")
+class DevotedFollowersEffect(CardEffect):
+    """
+    Card Text: "If you are adjacent to an enemy unit, you may retrieve a discarded card."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            CountStep(
+                target_type=TargetType.UNIT,
+                filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
+                output_key="adjacent_enemy_count",
+            ),
+            CheckContextConditionStep(
+                input_key="adjacent_enemy_count",
+                operator=">=",
+                threshold=1,
+                output_key="has_adjacent_enemy",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to retrieve",
+                output_key="retrieved_card",
+                is_mandatory=False,
+                active_if_key="has_adjacent_enemy",
+            ),
+            RetrieveCardStep(
+                card_key="retrieved_card",
+                active_if_key="retrieved_card",
+            ),
+        ]
+
+
+@register_effect("fresh_converts")
+class FreshConvertsEffect(CardEffect):
+    """
+    Card Text: "If you are adjacent to an enemy minion, you may retrieve a discarded card."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            CountStep(
+                target_type=TargetType.UNIT,
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="MINION"),
+                ],
+                output_key="adjacent_minion_count",
+            ),
+            CheckContextConditionStep(
+                input_key="adjacent_minion_count",
+                operator=">=",
+                threshold=1,
+                output_key="has_adjacent_minion",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to retrieve",
+                output_key="retrieved_card",
+                is_mandatory=False,
+                active_if_key="has_adjacent_minion",
+            ),
+            RetrieveCardStep(
+                card_key="retrieved_card",
+                active_if_key="retrieved_card",
             ),
         ]

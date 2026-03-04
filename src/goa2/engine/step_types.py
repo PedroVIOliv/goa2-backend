@@ -15,12 +15,14 @@ from goa2.engine.steps import (
     AskConfirmationStep,
     CancelEffectsStep,
     CheckAdjacencyStep,
+    CheckContextConditionStep,
     CheckLanePushStep,
     CheckPassiveAbilitiesStep,
     CheckUnitTypeStep,
     ChooseMinionRemovalStep,
     CombineBooleanContextStep,
     CountAdjacentEnemiesStep,
+    CountStep,
     CreateEffectStep,
     DefeatUnitStep,
     DiscardCardStep,
@@ -60,6 +62,7 @@ from goa2.engine.steps import (
     RespawnHeroStep,
     RespawnMinionStep,
     RestoreActionTypeStep,
+    RetrieveCardStep,
     ReturnMinionToZoneStep,
     RoundResetStep,
     SelectStep,
@@ -96,6 +99,7 @@ AnyStep = Annotated[
         Annotated[AskConfirmationStep, Tag(StepType.ASK_CONFIRMATION.value)],
         Annotated[CancelEffectsStep, Tag(StepType.CANCEL_EFFECTS.value)],
         Annotated[CheckAdjacencyStep, Tag(StepType.CHECK_ADJACENCY.value)],
+        Annotated[CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
         Annotated[
             CheckPassiveAbilitiesStep, Tag(StepType.CHECK_PASSIVE_ABILITIES.value)
@@ -108,6 +112,7 @@ AnyStep = Annotated[
         Annotated[
             CountAdjacentEnemiesStep, Tag(StepType.COUNT_ADJACENT_ENEMIES.value)
         ],
+        Annotated[CountStep, Tag(StepType.COUNT.value)],
         Annotated[CreateEffectStep, Tag(StepType.CREATE_EFFECT.value)],
         Annotated[DefeatUnitStep, Tag(StepType.DEFEAT_UNIT.value)],
         Annotated[DiscardCardStep, Tag(StepType.DISCARD_CARD.value)],
@@ -151,6 +156,7 @@ AnyStep = Annotated[
         Annotated[RespawnHeroStep, Tag(StepType.RESPAWN_HERO.value)],
         Annotated[RespawnMinionStep, Tag(StepType.RESPAWN_MINION.value)],
         Annotated[RestoreActionTypeStep, Tag(StepType.RESTORE_ACTION_TYPE.value)],
+        Annotated[RetrieveCardStep, Tag(StepType.RETRIEVE_CARD.value)],
         Annotated[ReturnMinionToZoneStep, Tag(StepType.RETURN_MINION_TO_ZONE.value)],
         Annotated[RoundResetStep, Tag(StepType.ROUND_RESET.value)],
         Annotated[SelectStep, Tag(StepType.SELECT.value)],
@@ -252,6 +258,7 @@ GameState.model_fields["execution_stack"].annotation = List[AnyStep]
 SelectStep.model_fields["filters"].annotation = List[AnyFilter]
 MultiSelectStep.model_fields["filters"].annotation = List[AnyFilter]
 AttackSequenceStep.model_fields["target_filters"].annotation = List[AnyFilter]
+CountStep.model_fields["filters"].annotation = List[AnyFilter]
 MayRepeatNTimesStep.model_fields["steps_template"].annotation = List[AnyStep]
 ForEachStep.model_fields["steps_template"].annotation = List[AnyStep]
 CreateEffectStep.model_fields["finishing_steps"].annotation = List[AnyStep]
@@ -262,6 +269,7 @@ ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
 SelectStep.model_rebuild(force=True)
 MultiSelectStep.model_rebuild(force=True)
 AttackSequenceStep.model_rebuild(force=True)
+CountStep.model_rebuild(force=True)
 MayRepeatNTimesStep.model_rebuild(force=True)
 ForEachStep.model_rebuild(force=True)
 CreateEffectStep.model_rebuild(force=True)
