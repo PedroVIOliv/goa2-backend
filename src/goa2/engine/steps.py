@@ -469,7 +469,7 @@ class CheckPassiveAbilitiesStep(GameStep):
 
         # 1. Check regular cards: must be RESOLVED and face-up
         for card in hero.played_cards:
-            if card.state == CardState.RESOLVED and not card.is_facedown:
+            if card and card.state == CardState.RESOLVED and not card.is_facedown:
                 check_card_for_passive(card)
 
         # 2. Check ultimate card: active if level >= 8
@@ -505,7 +505,7 @@ class OfferPassiveStep(GameStep):
             return StepResult(is_finished=True)
 
         # Find the card (could be in played_cards or ultimate_card)
-        card = next((c for c in hero.played_cards if c.id == self.card_id), None)
+        card = next((c for c in hero.played_cards if c and c.id == self.card_id), None)
         if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
             card = hero.ultimate_card
 
@@ -581,7 +581,7 @@ class MarkPassiveUsedStep(GameStep):
             return StepResult(is_finished=True)
 
         # Find the card (could be in played_cards or ultimate_card)
-        card = next((c for c in hero.played_cards if c.id == self.card_id), None)
+        card = next((c for c in hero.played_cards if c and c.id == self.card_id), None)
         if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
             card = hero.ultimate_card
 
@@ -694,7 +694,7 @@ class SelectStep(GameStep):
                 if self.card_container == CardContainerType.HAND:
                     source_list = hero.hand
                 elif self.card_container == CardContainerType.PLAYED:
-                    source_list = hero.played_cards
+                    source_list = [c for c in hero.played_cards if c is not None]
                 elif self.card_container == CardContainerType.DISCARD:
                     source_list = hero.discard_pile
                 elif self.card_container == CardContainerType.DECK:
@@ -1875,7 +1875,7 @@ class FinalizeHeroTurnStep(GameStep):
         # Reset passive usage counters for all cards (they reset each turn)
         if hero:
             for card in hero.played_cards:
-                if card.passive_uses_this_turn > 0:
+                if card and card.passive_uses_this_turn > 0:
                     card.passive_uses_this_turn = 0
             # Also reset ultimate card if present
             if hero.ultimate_card and hero.ultimate_card.passive_uses_this_turn > 0:
@@ -2127,7 +2127,7 @@ class SwapCardStep(GameStep):
         # Find the card object
         # We need to search Hand, Discard, Played
         # Simplest is to check all or use a helper, but Hero methods work on objects.
-        target_card = None
+        target_card: Optional[Card] = None
         # Check Hand
         for c in hero.hand:
             if c.id == t_id:
@@ -2139,9 +2139,9 @@ class SwapCardStep(GameStep):
                     target_card = c
                     break
         if not target_card:
-            for c in hero.played_cards:
-                if c.id == t_id:
-                    target_card = c
+            for played_card in hero.played_cards:
+                if played_card is not None and played_card.id == t_id:
+                    target_card = played_card
                     break
 
         if not target_card:
@@ -3402,7 +3402,8 @@ class EndPhaseCleanupStep(GameStep):
             for hero in team.heroes:
                 # Deactivate effects from all cards before retrieval
                 for card in hero.played_cards:
-                    EffectManager.deactivate_effects_by_card(state, card.id)
+                    if card:
+                        EffectManager.deactivate_effects_by_card(state, card.id)
                 if hero.current_turn_card:
                     EffectManager.deactivate_effects_by_card(
                         state, hero.current_turn_card.id

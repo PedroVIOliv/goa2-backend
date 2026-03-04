@@ -293,7 +293,7 @@ class GameState(BaseModel):
                 if hero.current_turn_card and hero.current_turn_card.id == card_id:
                     return hero.current_turn_card
                 for card in hero.played_cards:
-                    if card.id == card_id:
+                    if card and card.id == card_id:
                         return card
                 for card in hero.hand:
                     if card.id == card_id:

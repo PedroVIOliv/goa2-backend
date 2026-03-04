@@ -628,7 +628,7 @@ def render_hand(hero: Hero) -> str:
         )
 
     if hero.played_cards:
-        resolved = [c.name for c in hero.played_cards]
+        resolved = [c.name for c in hero.played_cards if c]
         lines.append(f"  {Colors.DIM}Resolved: {', '.join(resolved)}{Colors.RESET}")
 
     return "\n".join(lines)

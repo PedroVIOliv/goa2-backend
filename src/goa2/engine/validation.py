@@ -604,7 +604,7 @@ class ValidationService:
 
         # Find the card in played_cards (the only place RESOLVED cards live)
         for card in hero.played_cards:
-            if card.id == card_id:
+            if card and card.id == card_id:
                 # Card must be RESOLVED and face-up for effects to be active
                 return card.state == CardState.RESOLVED and not card.is_facedown
 
