@@ -1899,6 +1899,7 @@ class FinalizeHeroTurnStep(GameStep):
             ],
         )
 
+
 class FinishedExpiringEffectStep(GameStep):
     """
     Placeholder step to indicate that an expiring effect has finished resolving.
@@ -1910,7 +1911,8 @@ class FinishedExpiringEffectStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         print("   [EFFECT] Finished resolving expiring effect.")
         return StepResult(is_finished=True)
-    
+
+
 class PlaceUnitStep(GameStep):
     """
     Moves a unit to a target hex directly.
@@ -3299,7 +3301,9 @@ class CountAdjacentEnemiesStep(GameStep):
     type: StepType = StepType.COUNT_ADJACENT_ENEMIES
     output_key: str = "adjacent_enemy_bonus"
     multiplier: int = 1
-    subtract: int = 0  # Subtract from count before multiplying (e.g. 1 for "other" enemies)
+    subtract: int = (
+        0  # Subtract from count before multiplying (e.g. 1 for "other" enemies)
+    )
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         actor_id = state.current_actor_id
@@ -3915,8 +3919,16 @@ class AttackSequenceStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         # Apply dynamic bonuses from context
-        effective_damage = self.damage + int(context.get(self.damage_bonus_key, 0)) if self.damage_bonus_key else self.damage
-        effective_range = self.range_val + int(context.get(self.range_bonus_key, 0)) if self.range_bonus_key else self.range_val
+        effective_damage = (
+            self.damage + int(context.get(self.damage_bonus_key, 0))
+            if self.damage_bonus_key
+            else self.damage
+        )
+        effective_range = (
+            self.range_val + int(context.get(self.range_bonus_key, 0))
+            if self.range_bonus_key
+            else self.range_val
+        )
 
         print(
             f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
@@ -4578,8 +4590,6 @@ class CountStep(GameStep):
             context[self.output_key] = 0
             return StepResult(is_finished=True)
 
-        actor_id = state.current_actor_id
-
         # Gather candidates by target_type (same logic as SelectStep)
         candidates: List[Any] = []
         if self.target_type == TargetType.UNIT:
@@ -4686,7 +4696,9 @@ class RetrieveCardStep(GameStep):
         # Find card in discard pile
         target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
         if not target_card:
-            print(f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s discard pile.")
+            print(
+                f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s discard pile."
+            )
             return StepResult(is_finished=True)
 
         hero.return_card_to_hand(target_card)

@@ -2,9 +2,12 @@ from typing import List, Tuple
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase, Card
 from goa2.domain.types import HeroID
-from goa2.domain.models.effect import DurationType
 from goa2.engine.handler import push_steps
-from goa2.engine.steps import FinishedExpiringEffectStep, ResolveTieBreakerStep, GameStep
+from goa2.engine.steps import (
+    FinishedExpiringEffectStep,
+    ResolveTieBreakerStep,
+    GameStep,
+)
 
 
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
@@ -207,7 +210,7 @@ def end_turn(state: GameState):
             finish_steps.append(SetActorStep(actor_id=source_id))
             finish_steps.extend(steps)
             finish_steps.append(FinishedExpiringEffectStep())
-            
+
         finish_steps.append(AdvanceTurnStep())
         push_steps(state, finish_steps)
         return

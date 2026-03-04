@@ -201,9 +201,7 @@ class RapidThrustsEffect(CardEffect):
                         range_bonus_key="adj_rng_bonus",
                         target_filters=[
                             UnitTypeFilter(unit_type="HERO"),
-                            ExcludeIdentityFilter(
-                                exclude_keys=["victim_id"]
-                            ),
+                            ExcludeIdentityFilter(exclude_keys=["victim_id"]),
                         ],
                     ),
                 ],
@@ -256,22 +254,25 @@ class SirensCallEffect(CardEffect):
             ),
         ]
 
+
 @register_effect("charm")
 class CharmEffect(CardEffect):
     """
     Card Text: "Before or after movement, you may move an enemy ranged minion in radius up to 2 spaces."
     """
 
-    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
         return [
-           SelectStep(
+            SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy ranged minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED"])
+                    MinionTypesFilter(minion_types=[MinionType.RANGED]),
                 ],
                 is_mandatory=False,
             ),
@@ -282,7 +283,7 @@ class CharmEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion",
@@ -302,9 +303,9 @@ class CharmEffect(CardEffect):
                 prompt="Select an enemy ranged minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED"])
+                    MinionTypesFilter(minion_types=[MinionType.RANGED]),
                 ],
                 is_mandatory=False,
                 skip_if_key="charmed_minion",  # Skip if already used before movement
@@ -316,7 +317,7 @@ class CharmEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",
@@ -330,22 +331,27 @@ class CharmEffect(CardEffect):
             ),
         ]
 
+
 @register_effect("control")
 class ControlEffect(CardEffect):
     """
     Card Text: "Before or after movement, you may move an enemy ranged or melee minion in radius up to 2 spaces."
     """
 
-    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
         return [
-           SelectStep(
+            SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy ranged or melee minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED","MELEE"])
+                    MinionTypesFilter(
+                        minion_types=[MinionType.RANGED, MinionType.MELEE]
+                    ),
                 ],
                 is_mandatory=False,
             ),
@@ -356,7 +362,7 @@ class ControlEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion",
@@ -376,9 +382,11 @@ class ControlEffect(CardEffect):
                 prompt="Select an enemy ranged or melee minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED","MELEE"])
+                    MinionTypesFilter(
+                        minion_types=[MinionType.RANGED, MinionType.MELEE]
+                    ),
                 ],
                 is_mandatory=False,
                 skip_if_key="charmed_minion",  # Skip if already used before movement
@@ -390,7 +398,7 @@ class ControlEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",
@@ -403,26 +411,35 @@ class ControlEffect(CardEffect):
                 active_if_key="charm_dest_after",
             ),
         ]
-    
+
+
 @register_effect("dominate")
 class DominateEffect(CardEffect):
     """
     Card Text: "Before or after movement, you may move an enemy minion in radius up to 2 spaces; ignore heavy minion immunity."
     """
 
-    def build_steps(self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats") -> List["GameStep"]:
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
         return [
-           SelectStep(
+            SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED","MELEE","HEAVY"])
+                    MinionTypesFilter(
+                        minion_types=[
+                            MinionType.RANGED,
+                            MinionType.MELEE,
+                            MinionType.HEAVY,
+                        ]
+                    ),
                 ],
                 is_mandatory=False,
-                skip_immunity_filter=True
+                skip_immunity_filter=True,
             ),
             SelectStep(
                 target_type=TargetType.HEX,
@@ -431,7 +448,7 @@ class DominateEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion",
@@ -451,9 +468,15 @@ class DominateEffect(CardEffect):
                 prompt="Select an enemy minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius),
+                    RangeFilter(max_range=stats.radius or 2),
                     TeamFilter(relation="ENEMY"),
-                    MinionTypesFilter(minion_types=["RANGED","MELEE","HEAVY"])
+                    MinionTypesFilter(
+                        minion_types=[
+                            MinionType.RANGED,
+                            MinionType.MELEE,
+                            MinionType.HEAVY,
+                        ]
+                    ),
                 ],
                 is_mandatory=False,
                 skip_if_key="charmed_minion",  # Skip if already used before movement
@@ -466,7 +489,7 @@ class DominateEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion")
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",
@@ -522,6 +545,7 @@ class FinalEmbraceEffect(CardEffect):
             ),
         ]
 
+
 @register_effect("constrict")
 class ConstrictEffect(CardEffect):
     """
@@ -546,9 +570,7 @@ class ConstrictEffect(CardEffect):
                         target_type=TargetType.UNIT,
                         filters=[
                             TeamFilter(relation="ENEMY"),
-                            MinionTypesFilter(
-                                minion_types=[MinionType.MELEE]
-                            ),
+                            MinionTypesFilter(minion_types=[MinionType.MELEE]),
                             RangeFilter(max_range=1),
                         ],
                         output_key="constrict_victim",
