@@ -63,7 +63,7 @@ class SpellBreakEffect(CardEffect):
                 effect_type=EffectType.TARGET_PREVENTION,
                 scope=EffectScope(
                     shape=Shape.RADIUS,
-                    range=stats.radius or 3,
+                    range=stats.radius or 0,
                     origin_id=hero.id,
                     affects=AffectsFilter.ENEMY_HEROES,
                 ),
@@ -571,7 +571,7 @@ class DelugeEffect(CardEffect):
                 effect_type=EffectType.MOVEMENT_ZONE,
                 scope=EffectScope(
                     shape=Shape.RADIUS,
-                    range=stats.radius or 1,
+                    range=stats.radius or 0,
                     origin_id=hero.id,
                     affects=AffectsFilter.ENEMY_HEROES,
                 ),

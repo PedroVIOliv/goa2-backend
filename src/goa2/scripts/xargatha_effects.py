@@ -157,7 +157,7 @@ class LongThrustEffect(CardEffect):
             ),
             AttackSequenceStep(
                 damage=stats.primary_value,
-                range_val=stats.range or 1,
+                range_val=stats.range or 0,
                 range_bonus_key="adj_rng_bonus",
             ),
         ]
@@ -176,7 +176,7 @@ class RapidThrustsEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        base_range = stats.range or 1
+        base_range = stats.range or 0
         return [
             # 1. Count adjacent enemies for range bonus
             CountAdjacentEnemiesStep(
@@ -270,7 +270,7 @@ class CharmEffect(CardEffect):
                 prompt="Select an enemy ranged minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(minion_types=[MinionType.RANGED]),
                 ],
@@ -303,7 +303,7 @@ class CharmEffect(CardEffect):
                 prompt="Select an enemy ranged minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(minion_types=[MinionType.RANGED]),
                 ],
@@ -347,7 +347,7 @@ class ControlEffect(CardEffect):
                 prompt="Select an enemy ranged or melee minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(
                         minion_types=[MinionType.RANGED, MinionType.MELEE]
@@ -382,7 +382,7 @@ class ControlEffect(CardEffect):
                 prompt="Select an enemy ranged or melee minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(
                         minion_types=[MinionType.RANGED, MinionType.MELEE]
@@ -428,7 +428,7 @@ class DominateEffect(CardEffect):
                 prompt="Select an enemy minion in radius (or skip to select after movement instead)",
                 output_key="charmed_minion",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(
                         minion_types=[
@@ -468,7 +468,7 @@ class DominateEffect(CardEffect):
                 prompt="Select an enemy minion in radius",
                 output_key="charmed_minion_after",
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                     TeamFilter(relation="ENEMY"),
                     MinionTypesFilter(
                         minion_types=[

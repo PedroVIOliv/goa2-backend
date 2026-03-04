@@ -158,7 +158,7 @@ class ShockEffect(CardEffect):
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=stats.radius or 2, min_range=2),
+                    RangeFilter(max_range=stats.radius or 0, min_range=2),
                 ],
             ),
             # 3. Force discard
@@ -223,7 +223,7 @@ class TelekinesisEffect(CardEffect):
                 output_key="telekinesis_target",
                 is_mandatory=True,
                 filters=[
-                    RangeFilter(max_range=stats.range or 3),
+                    RangeFilter(max_range=stats.range or 0),
                     NotInStraightLineFilter(),
                 ],
             ),
@@ -270,7 +270,7 @@ class MassTelekinesisEffect(CardEffect):
                 output_key="telekinesis_target",
                 is_mandatory=True,
                 filters=[
-                    RangeFilter(max_range=stats.range or 3),
+                    RangeFilter(max_range=stats.range or 0),
                     NotInStraightLineFilter(),
                 ],
             ),
@@ -359,7 +359,7 @@ class ThunderBoomerangEffect(CardEffect):
             # 2. Attack using pre-selected target
             AttackSequenceStep(
                 damage=stats.primary_value,
-                range_val=stats.range or 3,
+                range_val=stats.range or 0,
                 target_id_key="thunder_target_1",
             ),
             # 3. Check if target was a hero
@@ -386,7 +386,7 @@ class ThunderBoomerangEffect(CardEffect):
                     ),
                     AttackSequenceStep(
                         damage=stats.primary_value,
-                        range_val=stats.range or 3,
+                        range_val=stats.range or 0,
                         target_id_key="thunder_target_2",
                     ),
                 ],
@@ -543,7 +543,7 @@ class LiftUpEffect(CardEffect):
                 output_key="lift_target",
                 is_mandatory=True,
                 filters=[
-                    RangeFilter(max_range=stats.radius or 2),
+                    RangeFilter(max_range=stats.radius or 0),
                 ],
             ),
         ]
@@ -602,7 +602,7 @@ class CenterOfMassEffect(LiftUpEffect):
                 output_key="lift_target",
                 is_mandatory=True,
                 filters=[
-                    RangeFilter(max_range=stats.radius or 3),
+                    RangeFilter(max_range=stats.radius or 0),
                 ],
             ),
         ]
@@ -782,7 +782,7 @@ class StaticBarrierEffect(CardEffect):
                     affects=AffectsFilter.ENEMY_HEROES,
                 ),
                 duration=DurationType.THIS_TURN,
-                barrier_radius=stats.radius or 2,
+                barrier_radius=stats.radius or 0,
                 barrier_origin_id=hero.id,
             ),
         ]
@@ -838,7 +838,7 @@ class HighVoltageEffect(CardEffect):
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=card.radius_value or 3),
+                    RangeFilter(max_range=card.radius_value or 0),
                 ],
                 output_key="hv_minion",
                 is_mandatory=False,
