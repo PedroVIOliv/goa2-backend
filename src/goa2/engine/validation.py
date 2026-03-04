@@ -513,6 +513,41 @@ class ValidationService:
 
         return False
 
+    def is_terrain_hex(
+        self,
+        state: "GameState",
+        hex_pos: "Hex",
+    ) -> bool:
+        """
+        Check if a hex counts as terrain, accounting for PETRIFY effects.
+        Returns True if the hex is terrain (static or from PETRIFY effects).
+        """
+        tile = state.board.get_tile(hex_pos)
+        if not tile:
+            return False
+
+        if tile.is_terrain:
+            return True
+
+        occupant_id = tile.occupant_id
+        if not occupant_id:
+            return False
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.PETRIFY:
+                continue
+            if not self._is_effect_active(effect, state):
+                continue
+            # For PETRIFY, check if the OCCUPANT is in scope, not if the hex is in scope
+            # Get the occupant's position to check against effect's spatial radius
+            occupant_loc = state.entity_locations.get(BoardEntityID(str(occupant_id)))
+            if not occupant_loc:
+                return False
+            if self._is_in_scope(effect, str(occupant_id), occupant_loc, state):
+                return True
+
+        return False
+
     def _check_displacement_prevention(
         self,
         state: "GameState",

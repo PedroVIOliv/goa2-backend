@@ -25,8 +25,19 @@ from goa2.engine.filters import (
     UnitTypeFilter,
     MinionTypesFilter,
 )
-from goa2.domain.models.enums import CardContainerType, TargetType, MinionType
-from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+from goa2.domain.models.enums import (
+    CardContainerType,
+    TargetType,
+    MinionType,
+    ActionType,
+)
+from goa2.domain.models.effect import (
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+    AffectsFilter,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -660,3 +671,36 @@ class FreshConvertsEffect(CardEffect):
                 active_if_key="retrieved_card",
             ),
         ]
+
+
+@register_effect("turn_into_statues")
+class TurnIntoStatuesEffect(CardEffect):
+    """Next turn: Enemy heroes in radius count as terrain and cannot move."""
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.PETRIFY,
+                duration=DurationType.NEXT_TURN,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                restrictions=[ActionType.MOVEMENT, ActionType.FAST_TRAVEL],
+                is_active=True,
+            ),
+        ]
+
+
+@register_effect("petrifying_stare")
+class PetrifyingStareEffect(TurnIntoStatuesEffect):
+    pass
+
+
+@register_effect("stone_gaze")
+class StoneGazeEffect(TurnIntoStatuesEffect):
+    pass

@@ -38,6 +38,9 @@ class EffectType(str, Enum):
     # Actor-conditional obstacle (Wasp)
     STATIC_BARRIER = "static_barrier"  # Hexes become obstacles based on actor location relative to radius
 
+    # Petrify (Xargatha) - affected heroes count as terrain
+    PETRIFY = "petrify"
+
     # Delayed trigger (carries finishing_steps, no spatial effect)
     DELAYED_TRIGGER = "delayed_trigger"
 

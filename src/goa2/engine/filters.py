@@ -71,7 +71,12 @@ class TerrainFilter(FilterCondition):
             tile = state.board.get_tile(candidate)
             if not tile:
                 return self.is_terrain
-            return tile.is_terrain == self.is_terrain
+            is_t = (
+                state.validator.is_terrain_hex(state, candidate)
+                if state.validator
+                else tile.is_terrain
+            )
+            return is_t == self.is_terrain
         return self.is_terrain
 
 
@@ -190,6 +195,7 @@ class UnitTypeFilter(FilterCondition):
             return isinstance(entity, Minion)
         return False
 
+
 class MinionTypesFilter(FilterCondition):
     type: FilterType = FilterType.MINION_TYPES
     minion_types: List[MinionType]
@@ -204,7 +210,8 @@ class MinionTypesFilter(FilterCondition):
             return False
 
         return entity.type in self.minion_types
-         
+
+
 class AdjacencyFilter(FilterCondition):
     """
     Requires the target to be adjacent to a unit matching specific tags.
@@ -305,9 +312,7 @@ class ImmunityFilter(FilterCondition):
 
         # Check 2: ATTACK_IMMUNITY effects
         # Only applies when current action is ATTACK
-        current_action = context.get(
-            "current_action_type"
-        )  
+        current_action = context.get("current_action_type")
         if current_action == ActionType.ATTACK:
             current_actor_id = (
                 str(state.current_actor_id) if state.current_actor_id else None
