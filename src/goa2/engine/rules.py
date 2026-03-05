@@ -17,6 +17,7 @@ def validate_movement_path(
     active_zone_id: Optional[str] = None,
     state: Optional[GameState] = None,
     actor_id: Optional[str] = None,
+    pass_through_obstacles: bool = False,
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -59,7 +60,8 @@ def validate_movement_path(
         # Get neighbors - topology-aware if state provided, otherwise geometric
         if topology and state:
             neighbors = topology.get_traversable_neighbors(
-                current, state, end, actor_id
+                current, state, end, actor_id,
+                pass_through_obstacles=pass_through_obstacles,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -67,7 +69,7 @@ def validate_movement_path(
         for neighbor in neighbors:
             if neighbor not in visited:
                 # Skip obstacles (unless using topology which already filters)
-                if not (topology and state):
+                if not (topology and state) and not pass_through_obstacles:
                     # Use context-aware check if state is available, otherwise base check
                     if state and state.validator:
                         is_obs = state.validator.is_obstacle_for_actor(

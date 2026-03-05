@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
-from goa2.engine.effects import CardEffect, register_effect
+from typing import List, Optional, TYPE_CHECKING
+from goa2.engine.effects import CardEffect, MovementAura, StatAura, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -27,6 +27,7 @@ from goa2.engine.filters import (
 )
 from goa2.domain.models.enums import (
     CardContainerType,
+    StatType,
     TargetType,
     MinionType,
     ActionType,
@@ -704,3 +705,33 @@ class PetrifyingStareEffect(TurnIntoStatuesEffect):
 @register_effect("stone_gaze")
 class StoneGazeEffect(TurnIntoStatuesEffect):
     pass
+
+
+@register_effect("metamorphosis")
+class MetamorphosisEffect(CardEffect):
+    """
+    Ultimate: "Gain +1 Movement and +1 Initiative for each enemy unit
+    adjacent to you. You may move through obstacles."
+    """
+
+    def get_stat_auras(self) -> List[StatAura]:
+        return [
+            StatAura(
+                stat_type=StatType.MOVEMENT,
+                count_filters=[TeamFilter(relation="ENEMY"), RangeFilter(max_range=1)],
+                multiplier=1,
+            ),
+            StatAura(
+                stat_type=StatType.INITIATIVE,
+                count_filters=[TeamFilter(relation="ENEMY"), RangeFilter(max_range=1)],
+                multiplier=1,
+            ),
+        ]
+
+    def get_movement_aura(self) -> Optional[MovementAura]:
+        return MovementAura(pass_through_obstacles=True)
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return []

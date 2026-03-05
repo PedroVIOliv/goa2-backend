@@ -944,6 +944,7 @@ class MoveUnitStep(GameStep):
 
     range_val: int = 1
     is_movement_action: bool = False
+    pass_through_obstacles: bool = False
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1023,6 +1024,7 @@ class MoveUnitStep(GameStep):
                 actor_id=(
                     str(state.current_actor_id) if state.current_actor_id else None
                 ),
+                pass_through_obstacles=self.pass_through_obstacles,
             )
 
         if not is_valid:
@@ -1064,6 +1066,7 @@ class MoveSequenceStep(GameStep):
     range_val: int = 1
     destination_key: str = "target_hex"
     is_mandatory: bool = True
+    pass_through_obstacles: bool = False
 
     def _get_effective_range(self, state: GameState, unit_id: str) -> int:
         """Get effective movement range, considering MOVEMENT_ZONE effects."""
@@ -1098,6 +1101,19 @@ class MoveSequenceStep(GameStep):
             else self.range_val
         )
 
+        # Auto-detect pass_through_obstacles from hero's active movement auras
+        pass_through = self.pass_through_obstacles
+        if not pass_through and actor_id:
+            hero = state.get_hero(HeroID(str(actor_id)))
+            if hero:
+                from goa2.engine.effects import get_active_aura_effects
+
+                for _, effect in get_active_aura_effects(state, hero):
+                    aura = effect.get_movement_aura()
+                    if aura and aura.pass_through_obstacles:
+                        pass_through = True
+                        break
+
         # If we already have the destination in context, just move
         if context.get(self.destination_key):
             return StepResult(
@@ -1108,7 +1124,8 @@ class MoveSequenceStep(GameStep):
                         destination_key=self.destination_key,
                         range_val=effective_range,
                         is_mandatory=self.is_mandatory,
-                        is_movement_action=True,  # This IS a movement action
+                        is_movement_action=True,
+                        pass_through_obstacles=pass_through,
                     )
                 ],
             )
@@ -1121,7 +1138,11 @@ class MoveSequenceStep(GameStep):
         # to ensure other units block movement but the moving unit doesn't block itself.
         filters = [
             ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
-            MovementPathFilter(range_val=effective_range, unit_id=actor_id),
+            MovementPathFilter(
+                range_val=effective_range,
+                unit_id=actor_id,
+                pass_through_obstacles=pass_through,
+            ),
         ]
 
         # If range is 0, MovementPathFilter will only allow current hex.
@@ -1144,7 +1165,8 @@ class MoveSequenceStep(GameStep):
                     destination_key=self.destination_key,
                     range_val=effective_range,
                     is_mandatory=self.is_mandatory,
-                    is_movement_action=True,  # This IS a movement action
+                    is_movement_action=True,
+                    pass_through_obstacles=pass_through,
                 ),
             ],
         )

@@ -149,6 +149,7 @@ class TopologyService:
         state: "GameState",
         end_hex: Optional[Hex] = None,
         actor_id: Optional[str] = None,
+        pass_through_obstacles: bool = False,
     ) -> List[Hex]:
         """
         Returns neighbors that can be traversed during movement.
@@ -156,7 +157,8 @@ class TopologyService:
         Combines three checks:
         1. Topology: Must be connected (not split off)
         2. Map bounds: Must be on the game map
-        3. Obstacles: Must not be blocked (unless it's the destination)
+        3. Obstacles: Must not be blocked (unless it's the destination
+           or pass_through_obstacles is True)
            - Includes STATIC_BARRIER effects if actor_id is provided
 
         Args:
@@ -164,6 +166,8 @@ class TopologyService:
             state: Game state
             end_hex: Optional destination (obstacles are allowed if it's the end)
             actor_id: Optional actor ID for context-aware obstacle checking
+            pass_through_obstacles: If True, allow traversing through obstacles
+                (but not landing on them — destination check is separate)
 
         Returns:
             List of hexes that can be moved to from the current position
@@ -178,21 +182,23 @@ class TopologyService:
             if not state.board.is_on_map(n):
                 continue
 
-            # Check obstacles (unless it's the destination)
-            # Use context-aware check if validator available
-            is_obs = False
-            if state.validator:
-                is_obs = state.validator.is_obstacle_for_actor(state, n, actor_id)
-            else:
-                tile = state.board.get_tile(n)
-                is_obs = tile.is_obstacle if tile else True
-
-            if is_obs:
-                # Allow if this is the destination (for attacks, etc.)
-                if end_hex is not None and n == end_hex:
-                    pass  # Allow
+            # Skip obstacle check entirely if pass_through_obstacles is enabled
+            if not pass_through_obstacles:
+                # Check obstacles (unless it's the destination)
+                # Use context-aware check if validator available
+                is_obs = False
+                if state.validator:
+                    is_obs = state.validator.is_obstacle_for_actor(state, n, actor_id)
                 else:
-                    continue
+                    tile = state.board.get_tile(n)
+                    is_obs = tile.is_obstacle if tile else True
+
+                if is_obs:
+                    # Allow if this is the destination (for attacks, etc.)
+                    if end_hex is not None and n == end_hex:
+                        pass  # Allow
+                    else:
+                        continue
 
             result.append(n)
         return result

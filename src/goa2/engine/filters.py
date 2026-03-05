@@ -553,6 +553,7 @@ class MovementPathFilter(FilterCondition):
     range_val: int
     unit_id: Optional[str] = None
     unit_key: Optional[str] = None
+    pass_through_obstacles: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -589,6 +590,7 @@ class MovementPathFilter(FilterCondition):
             max_steps=self.range_val,
             state=state,
             actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+            pass_through_obstacles=self.pass_through_obstacles,
         )
 
 

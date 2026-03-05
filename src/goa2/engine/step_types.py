@@ -264,6 +264,11 @@ ForEachStep.model_fields["steps_template"].annotation = List[AnyStep]
 CreateEffectStep.model_fields["finishing_steps"].annotation = List[AnyStep]
 ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
 
+# Patch StatAura.count_filters to use AnyFilter for serialization
+from goa2.engine.effects import StatAura  # noqa: E402
+
+StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
+
 # Rebuild all patched models (force=True since they were already built).
 # Leaf models first, then models that reference them.
 SelectStep.model_rebuild(force=True)
@@ -274,4 +279,5 @@ MayRepeatNTimesStep.model_rebuild(force=True)
 ForEachStep.model_rebuild(force=True)
 CreateEffectStep.model_rebuild(force=True)
 ActiveEffect.model_rebuild(force=True)
+StatAura.model_rebuild(force=True)
 GameState.model_rebuild(force=True)

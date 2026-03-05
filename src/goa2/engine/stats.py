@@ -20,6 +20,7 @@ from goa2.engine.topology import (
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card
+    from goa2.engine.effects import StatAura
 
 
 def _is_effect_active(effect: ActiveEffect, state: GameState) -> bool:
@@ -168,6 +169,25 @@ def get_computed_stat(
             continue
         total += effect.stat_value
 
+    # 3. Add filter-based aura effects (for heroes with active auras)
+    if isinstance(unit, Hero):
+        from goa2.engine.effects import get_active_aura_effects
+
+        for _card, effect in get_active_aura_effects(state, unit):
+            for aura in effect.get_stat_auras():
+                if aura.stat_type != stat_type:
+                    continue
+                hero_hex = state.entity_locations.get(BoardEntityID(str(unit_id)))
+                if not hero_hex:
+                    continue
+                saved_actor = state.current_actor_id
+                state.current_actor_id = unit_id
+                try:
+                    count = _count_matching_units(state, aura)
+                finally:
+                    state.current_actor_id = saved_actor
+                total += count * aura.multiplier
+
     # 4. Add Marker effects (for heroes with markers on them)
     if isinstance(unit, Hero):
         for marker in state.get_markers_on_hero(str(unit_id)):
@@ -176,6 +196,16 @@ def get_computed_stat(
                     total += marker_value
 
     return total
+
+
+def _count_matching_units(state: GameState, aura: "StatAura") -> int:
+    """Count all units on the board that match all aura filters.
+    Range is handled by RangeFilter within count_filters."""
+    count = 0
+    for entity_id in state.entity_locations:
+        if all(f.apply(str(entity_id), state, {}) for f in aura.count_filters):
+            count += 1
+    return count
 
 
 def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:

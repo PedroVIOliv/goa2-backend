@@ -1,7 +1,10 @@
 from __future__ import annotations
 from abc import ABC
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from typing import List, Dict, Any, Tuple, TYPE_CHECKING, Optional
 from pydantic import BaseModel
+
+from goa2.domain.models.enums import StatType
+from goa2.engine.filters import FilterCondition
 
 if TYPE_CHECKING:
     from goa2.engine.steps import GameStep
@@ -9,6 +12,25 @@ if TYPE_CHECKING:
     from goa2.domain.models import Hero, Card
     from goa2.domain.models.enums import PassiveTrigger
     from goa2.engine.stats import CardStats
+
+
+class StatAura(BaseModel):
+    """Filter-based always-on stat modifier for passive abilities.
+
+    Uses the existing filter system to count matching units,
+    then applies multiplier * count as a stat bonus.
+    Range is controlled via RangeFilter in count_filters.
+    """
+
+    stat_type: "StatType"
+    count_filters: List["FilterCondition"] = []
+    multiplier: int = 1
+
+
+class MovementAura(BaseModel):
+    """Data-driven movement rule modification for passive abilities."""
+
+    pass_through_obstacles: bool = False
 
 
 class PassiveConfig(BaseModel):
@@ -186,6 +208,18 @@ class CardEffect(ABC):
         return []
 
     # -------------------------------------------------------------------------
+    # Aura methods (always-on stat/movement modifiers)
+    # -------------------------------------------------------------------------
+
+    def get_stat_auras(self) -> List["StatAura"]:
+        """Return always-on stat auras. Counted via filters. Default: none."""
+        return []
+
+    def get_movement_aura(self) -> Optional["MovementAura"]:
+        """Return movement rule modifications. Default: none."""
+        return None
+
+    # -------------------------------------------------------------------------
     # Passive ability methods (unchanged)
     # -------------------------------------------------------------------------
 
@@ -254,3 +288,25 @@ def register_effect(effect_id: str):
         return cls
 
     return decorator
+
+
+def get_active_aura_effects(
+    state: "GameState", hero: "Hero"
+) -> List[Tuple["Card", CardEffect]]:
+    """Get all CardEffects with active auras for a hero."""
+    from goa2.domain.models.enums import CardState
+
+    results: List[Tuple["Card", CardEffect]] = []
+    # Check ultimate (level >= 8)
+    if hero.level >= 8 and hero.ultimate_card and hero.ultimate_card.current_effect_id:
+        effect = CardEffectRegistry.get(hero.ultimate_card.current_effect_id)
+        if effect:
+            results.append((hero.ultimate_card, effect))
+    # Check resolved face-up cards (future passive auras)
+    for card in hero.played_cards:
+        if card and card.state == CardState.RESOLVED and not card.is_facedown:
+            if card.current_effect_id:
+                effect = CardEffectRegistry.get(card.current_effect_id)
+                if effect:
+                    results.append((card, effect))
+    return results
