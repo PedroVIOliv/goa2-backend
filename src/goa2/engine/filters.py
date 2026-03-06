@@ -617,7 +617,8 @@ class LineBehindTargetFilter(FilterCondition):
         target_hex = state.entity_locations.get(BoardEntityID(target_id))
         if not target_hex:
             return False
-
+        if isinstance(target_id, Hex):
+            target_hex = target_id
         # Resolve Origin Location
         origin_uid = self.origin_id or state.current_actor_id
         if not origin_uid:
