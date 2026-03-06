@@ -199,6 +199,8 @@ from goa2.engine.filters import (
     NotInStraightLineFilter,
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
+    OrFilter,
+    AndFilter,
 )
 from goa2.domain.models.enums import FilterType  # noqa: E402
 
@@ -237,6 +239,8 @@ AnyFilter = Annotated[
         ],
         Annotated[PreserveDistanceFilter, Tag(FilterType.PRESERVE_DISTANCE.value)],
         Annotated[MinionTypesFilter, Tag(FilterType.MINION_TYPES.value)],
+        Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
+        Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
     ],
     Discriminator(_filter_discriminator),
 ]
@@ -268,9 +272,13 @@ ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
 from goa2.engine.effects import StatAura  # noqa: E402
 
 StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
+OrFilter.model_fields["filters"].annotation = List[AnyFilter]
+AndFilter.model_fields["filters"].annotation = List[AnyFilter]
 
 # Rebuild all patched models (force=True since they were already built).
 # Leaf models first, then models that reference them.
+OrFilter.model_rebuild(force=True)
+AndFilter.model_rebuild(force=True)
 SelectStep.model_rebuild(force=True)
 MultiSelectStep.model_rebuild(force=True)
 AttackSequenceStep.model_rebuild(force=True)

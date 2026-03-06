@@ -177,6 +177,8 @@ class FilterType(str, Enum):
     NOT_IN_STRAIGHT_LINE = "not_in_straight_line_filter"
     PRESERVE_DISTANCE = "preserve_distance_filter"
     MINION_TYPES = "minion_type_filter"
+    OR_FILTER = "or_filter"
+    AND_FILTER = "and_filter"
 
 
 class TargetType(str, Enum):

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from goa2.domain.models.enums import MinionType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
+from goa2.domain.models.token import Token
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.topology import get_topology_service
@@ -178,7 +179,7 @@ class TeamFilter(FilterCondition):
 
 class UnitTypeFilter(FilterCondition):
     type: FilterType = FilterType.UNIT_TYPE
-    unit_type: Literal["HERO", "MINION"]
+    unit_type: Literal["HERO", "MINION", "TOKEN"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         entity = (
@@ -193,6 +194,8 @@ class UnitTypeFilter(FilterCondition):
             return isinstance(entity, Hero)
         elif self.unit_type == "MINION":
             return isinstance(entity, Minion)
+        elif self.unit_type == "TOKEN":
+            return isinstance(entity, Token)
         return False
 
 
@@ -809,3 +812,23 @@ class PreserveDistanceFilter(FilterCondition):
         new_dist = topology.distance(origin_hex, cand_hex, state)
 
         return current_dist == new_dist
+
+
+class OrFilter(FilterCondition):
+    """Passes if ANY child filter passes (logical OR)."""
+
+    type: FilterType = FilterType.OR_FILTER
+    filters: List["FilterCondition"] = []
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        return any(f.apply(candidate, state, context) for f in self.filters)
+
+
+class AndFilter(FilterCondition):
+    """Passes if ALL child filters pass (logical AND)."""
+
+    type: FilterType = FilterType.AND_FILTER
+    filters: List["FilterCondition"] = []
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        return all(f.apply(candidate, state, context) for f in self.filters)
