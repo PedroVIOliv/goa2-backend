@@ -99,7 +99,9 @@ AnyStep = Annotated[
         Annotated[AskConfirmationStep, Tag(StepType.ASK_CONFIRMATION.value)],
         Annotated[CancelEffectsStep, Tag(StepType.CANCEL_EFFECTS.value)],
         Annotated[CheckAdjacencyStep, Tag(StepType.CHECK_ADJACENCY.value)],
-        Annotated[CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)],
+        Annotated[
+            CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)
+        ],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
         Annotated[
             CheckPassiveAbilitiesStep, Tag(StepType.CHECK_PASSIVE_ABILITIES.value)
@@ -109,9 +111,7 @@ AnyStep = Annotated[
         Annotated[
             CombineBooleanContextStep, Tag(StepType.COMBINE_BOOLEAN_CONTEXT.value)
         ],
-        Annotated[
-            CountAdjacentEnemiesStep, Tag(StepType.COUNT_ADJACENT_ENEMIES.value)
-        ],
+        Annotated[CountAdjacentEnemiesStep, Tag(StepType.COUNT_ADJACENT_ENEMIES.value)],
         Annotated[CountStep, Tag(StepType.COUNT.value)],
         Annotated[CreateEffectStep, Tag(StepType.CREATE_EFFECT.value)],
         Annotated[DefeatUnitStep, Tag(StepType.DEFEAT_UNIT.value)],
@@ -197,6 +197,7 @@ from goa2.engine.filters import (
     MovementPathFilter,
     LineBehindTargetFilter,
     NotInStraightLineFilter,
+    InStraightLineFilter,
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
     OrFilter,
@@ -234,6 +235,7 @@ AnyFilter = Annotated[
         Annotated[MovementPathFilter, Tag(FilterType.MOVEMENT_PATH.value)],
         Annotated[LineBehindTargetFilter, Tag(FilterType.LINE_BEHIND_TARGET.value)],
         Annotated[NotInStraightLineFilter, Tag(FilterType.NOT_IN_STRAIGHT_LINE.value)],
+        Annotated[InStraightLineFilter, Tag(FilterType.IN_STRAIGHT_LINE.value)],
         Annotated[
             FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)
         ],

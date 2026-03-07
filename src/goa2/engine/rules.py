@@ -60,7 +60,10 @@ def validate_movement_path(
         # Get neighbors - topology-aware if state provided, otherwise geometric
         if topology and state:
             neighbors = topology.get_traversable_neighbors(
-                current, state, end, actor_id,
+                current,
+                state,
+                end,
+                actor_id,
                 pass_through_obstacles=pass_through_obstacles,
             )
         else:
@@ -150,12 +153,13 @@ def validate_target(
     if not s_loc or not t_loc:
         return False
 
-    if requires_straight_line:
-        if not s_loc.is_straight_line(t_loc):
-            return False
-
     # Use topology-aware distance (respects reality splits)
     topology = get_topology_service()
+
+    if requires_straight_line:
+        if not topology.is_straight_line(s_loc, t_loc, state):
+            return False
+
     dist = topology.distance(s_loc, t_loc, state)
     if dist > range_val:
         return False

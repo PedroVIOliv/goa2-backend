@@ -203,6 +203,26 @@ class TopologyService:
             result.append(n)
         return result
 
+    def is_straight_line(self, origin: Hex, target: Hex, state: "GameState") -> bool:
+        """
+        Check if two hexes form a straight line and are in the same reality.
+
+        Two hexes are considered aligned if:
+        1. They share at least one cube coordinate (q, r, or s), AND
+        2. They are connected by topology (same reality)
+
+        Args:
+            origin: Starting hex
+            target: Target hex
+            state: Game state for topology check
+
+        Returns:
+            True if the hexes are aligned in a straight line and connected
+        """
+        if not origin.is_straight_line(target):
+            return False
+        return self.are_connected(origin, target, state)
+
     def hex_in_scope(
         self,
         origin: Hex,
@@ -245,7 +265,7 @@ class TopologyService:
             return dist <= scope_range
 
         if scope_shape == Shape.LINE:
-            if not origin.is_straight_line(target):
+            if not self.is_straight_line(origin, target, state):
                 return False
             dist = self.distance(origin, target, state)
             return dist <= scope_range
@@ -398,6 +418,11 @@ def get_traversable_neighbors(
 def get_connected_ring(center: Hex, radius: int, state: "GameState") -> List[Hex]:
     """Module-level convenience for TopologyService.get_connected_ring()."""
     return get_topology_service().get_connected_ring(center, radius, state)
+
+
+def is_straight_line(origin: Hex, target: Hex, state: "GameState") -> bool:
+    """Module-level convenience for TopologyService.is_straight_line()."""
+    return get_topology_service().is_straight_line(origin, target, state)
 
 
 def hex_in_scope(

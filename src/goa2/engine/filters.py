@@ -662,7 +662,7 @@ class LineBehindTargetFilter(FilterCondition):
 class NotInStraightLineFilter(FilterCondition):
     """
     Excludes targets in a straight line from the actor.
-    Uses Hex.is_straight_line() for the check.
+    Uses topology-aware is_straight_line() (respects reality splits).
 
     Per card text: "Units adjacent to you are in a straight line from you."
     Adjacent hexes are always in a straight line in cube coordinates.
@@ -702,9 +702,59 @@ class NotInStraightLineFilter(FilterCondition):
         if not target_hex:
             return False
 
-        # Use existing Hex.is_straight_line() method
+        # Use topology-aware is_straight_line (respects reality splits)
         # Returns True if NOT in straight line (i.e., valid target)
-        return not origin_hex.is_straight_line(target_hex)
+        return not get_topology_service().is_straight_line(
+            origin_hex, target_hex, state
+        )
+
+
+class InStraightLineFilter(FilterCondition):
+    """
+    Includes targets in a straight line from the actor.
+    Uses topology-aware is_straight_line() (respects reality splits).
+
+    Per card text: "Units adjacent to you are in a straight line from you."
+    Adjacent hexes are always in a straight line in cube coordinates.
+
+    Used by: Cards that require targets to be aligned with the actor
+    """
+
+    type: FilterType = FilterType.IN_STRAIGHT_LINE
+    origin_id: Optional[str] = None  # Literal ID (defaults to current actor)
+    origin_key: Optional[str] = None  # Key in context to find ID
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # Resolve origin
+        origin_uid = None
+        if self.origin_id:
+            origin_uid = self.origin_id
+        elif self.origin_key:
+            origin_uid = context.get(self.origin_key)
+
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        # Resolve candidate hex
+        target_hex = None
+        if isinstance(candidate, Hex):
+            target_hex = candidate
+        elif isinstance(candidate, str):
+            target_hex = state.entity_locations.get(BoardEntityID(candidate))
+
+        if not target_hex:
+            return False
+
+        # Use topology-aware is_straight_line (respects reality splits)
+        # Returns True if IN straight line (i.e., valid target)
+        return get_topology_service().is_straight_line(origin_hex, target_hex, state)
 
 
 class FastTravelDestinationFilter(FilterCondition):
