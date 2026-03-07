@@ -4,6 +4,7 @@ from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CountCardsStep,
     CountStep,
     CreateEffectStep,
     DiscardCardStep,
@@ -19,6 +20,8 @@ from goa2.engine.steps import (
     SetContextFlagStep,
 )
 from goa2.engine.filters import (
+    AdjacencyFilter,
+    InStraightLineFilter,
     ObstacleFilter,
     OrFilter,
     RangeFilter,
@@ -367,26 +370,28 @@ class MadDashEffect(CardEffect):
     Card text: "Before the attack: Move 2 spaces in a straight line to a
     space adjacent to an enemy unit, then target that unit.
     (If you cannot make this move, you cannot attack.)"
-
-    TODO: Needs a StraightLineChargeStep or equivalent that:
-    1. Shows valid straight-line destinations exactly N spaces away
-    2. Each destination must be adjacent to at least one enemy unit
-    3. After moving, auto-selects the adjacent enemy as attack target
-       (or lets player choose if multiple adjacent enemies)
-
-    Requires new filters:
-    - StraightLineDestinationFilter(distance=N) - hex exactly N in straight line
-    - AdjacentToEnemyFilter() - destination must neighbor an enemy unit
-    Or a composite StraightLineChargeStep that handles all of this.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement straight-line charge mechanic
-        # Placeholder: basic adjacent attack (charge portion not yet implemented)
         return [
-            # TODO: StraightLineChargeStep(distance=2, output_target_key="charge_victim")
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space to move to",
+                output_key="dash_destination",
+                filters=[
+                    RangeFilter(min_range=2, max_range=2),
+                    InStraightLineFilter(origin_id=hero.id),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
+                    ObstacleFilter(is_obstacle=False)
+                ]
+            ),
+            MoveUnitStep(
+                unit_id=hero.id,
+                destination_key="dash_destination",
+                range_val=99,
+            ),
             AttackSequenceStep(
                 damage=stats.primary_value, range_val=1
             ),
@@ -403,16 +408,28 @@ class BullrushEffect(CardEffect):
     """
     Card text: "Before the attack: Move 2 or 3 spaces in a straight line to a
     space adjacent to an enemy unit, then target that unit."
-
-    TODO: Same StraightLineChargeStep as Mad Dash, but with distance choice (2 or 3).
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement straight-line charge with distance choice
         return [
-            # TODO: SelectStep(NUMBER, options=[2,3]) → StraightLineChargeStep
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space to move to",
+                output_key="rush_destination",
+                filters=[
+                    RangeFilter(min_range=2, max_range=3),
+                    InStraightLineFilter(origin_id=hero.id),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
+                    ObstacleFilter(is_obstacle=False)
+                ]
+            ),
+            MoveUnitStep(
+                unit_id=hero.id,
+                destination_key="rush_destination",
+                range_val=99,
+            ),
             AttackSequenceStep(
                 damage=stats.primary_value, range_val=1
             ),
@@ -429,16 +446,28 @@ class FuriousChargeEffect(CardEffect):
     """
     Card text: "Before the attack: Move 2, 3, or 4 spaces in a straight line to
     a space adjacent to an enemy unit, then target that unit."
-
-    TODO: Same StraightLineChargeStep as Mad Dash, but with distance choice (2, 3, or 4).
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement straight-line charge with distance choice
         return [
-            # TODO: SelectStep(NUMBER, options=[2,3,4]) → StraightLineChargeStep
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space to move to",
+                output_key="charge_destination",
+                filters=[
+                    RangeFilter(min_range=2, max_range=4),
+                    InStraightLineFilter(origin_id=hero.id),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
+                    ObstacleFilter(is_obstacle=False)
+                ]
+            ),
+            MoveUnitStep(
+                unit_id=hero.id,
+                destination_key="charge_destination",
+                range_val=99,
+            ),
             AttackSequenceStep(
                 damage=stats.primary_value, range_val=1
             ),
@@ -459,12 +488,6 @@ class ThrowingAxeEffect(CardEffect):
 
     Implementation: Player chooses option 1 (melee) or 2 (ranged).
     Uses CheckContextConditionStep to branch execution.
-
-    TODO: Needs AttackSequenceStep to respect should_skip/active_if_key,
-    OR needs two separate SelectSteps writing to the same victim key
-    with a single AttackSequenceStep reading the pre-selected target.
-    Also for option 2: "you MAY discard" means if they choose option 2
-    but skip the discard, they get no attack.
     """
 
     def build_steps(
@@ -496,7 +519,7 @@ class ThrowingAxeEffect(CardEffect):
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select adjacent unit to attack",
-                output_key="victim_id",
+                output_key="meelee_victim_id",
                 is_mandatory=True,
                 active_if_key="chose_melee",
                 filters=[
@@ -504,35 +527,30 @@ class ThrowingAxeEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                 ],
             ),
-            # 3b. Ranged: discard a card first ("you may" - but choosing option 2 implies intent)
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                target_id_key="meelee_victim_id",
+                range_val=1,
+                active_if_key="chose_melee",
+            ),
+            # 3b. Ranged: optionally discard, then select target in range
             SelectStep(
                 target_type=TargetType.CARD,
                 card_container=CardContainerType.HAND,
-                prompt="Select a card to discard for ranged attack",
+                prompt="You may discard a card (for ranged attack)",
                 output_key="discard_for_range",
-                is_mandatory=True,
+                is_mandatory=False,
                 active_if_key="chose_ranged",
             ),
             DiscardCardStep(
                 card_key="discard_for_range",
                 hero_id=hero.id,
-                active_if_key="chose_ranged",
+                active_if_key="discard_for_range",
             ),
-            # 3b cont. Ranged: select target in range
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select unit in range to attack",
-                output_key="victim_id",
-                is_mandatory=True,
-                active_if_key="chose_ranged",
-                filters=[
-                    RangeFilter(max_range=stats.range),
-                    TeamFilter(relation="ENEMY"),
-                ],
-            ),
-            # 4. Attack with pre-selected target
             AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=stats.range
+                damage=stats.primary_value,
+                range_val=stats.range,
+                active_if_key="discard_for_range",
             ),
         ]
 
@@ -562,13 +580,15 @@ class ThrowingSpearEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
         return [
+            # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent, 2 = Discard a card to attack in range",
+                prompt="Choose: 1 = Attack adjacent, 2 = May discard for ranged attack",
                 output_key="attack_choice",
                 number_options=[1, 2],
                 is_mandatory=True,
             ),
+            # 2. Branch flags
             CheckContextConditionStep(
                 input_key="attack_choice",
                 operator="==",
@@ -581,11 +601,11 @@ class ThrowingSpearEffect(CardEffect):
                 threshold=2,
                 output_key="chose_ranged",
             ),
-            # Melee branch
+            # 3a. Melee path: select adjacent enemy → attack
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select adjacent unit to attack",
-                output_key="victim_id",
+                output_key="melee_victim_id",
                 is_mandatory=True,
                 active_if_key="chose_melee",
                 filters=[
@@ -593,11 +613,17 @@ class ThrowingSpearEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                 ],
             ),
-            # Ranged branch: optionally discard, then must have card in discard
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                target_id_key="melee_victim_id",
+                range_val=1,
+                active_if_key="chose_melee",
+            ),
+            # 3b. Ranged path: optionally discard, then check discard pile
             SelectStep(
                 target_type=TargetType.CARD,
                 card_container=CardContainerType.HAND,
-                prompt="You may discard a card (for ranged attack)",
+                prompt="You may discard a card",
                 output_key="discard_for_range",
                 is_mandatory=False,
                 active_if_key="chose_ranged",
@@ -607,21 +633,24 @@ class ThrowingSpearEffect(CardEffect):
                 hero_id=hero.id,
                 active_if_key="discard_for_range",
             ),
-            # TODO: Check if hero has at least 1 card in discard pile
-            # (may already have one from a previous turn, or just discarded one)
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select unit in range to attack",
-                output_key="victim_id",
-                is_mandatory=True,
+            # Count cards in discard pile (includes the one just discarded)
+            CountCardsStep(
+                hero_id=hero.id,
+                card_container=CardContainerType.DISCARD,
+                output_key="discard_count",
                 active_if_key="chose_ranged",
-                filters=[
-                    RangeFilter(max_range=stats.range),
-                    TeamFilter(relation="ENEMY"),
-                ],
             ),
+            CheckContextConditionStep(
+                input_key="discard_count",
+                operator=">=",
+                threshold=1,
+                output_key="has_discard",
+            ),
+            # Attack in range only if discard pile has ≥1 card
             AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=stats.range
+                damage=stats.primary_value,
+                range_val=stats.range,
+                active_if_key="has_discard",
             ),
         ]
 

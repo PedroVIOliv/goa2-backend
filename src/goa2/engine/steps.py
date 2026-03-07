@@ -3941,6 +3941,9 @@ class AttackSequenceStep(GameStep):
     range_bonus_key: Optional[str] = None  # Add int from context to range_val
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
         # Apply dynamic bonuses from context
         effective_damage = (
             self.damage + int(context.get(self.damage_bonus_key, 0))
@@ -4733,6 +4736,54 @@ class RetrieveCardStep(GameStep):
             metadata={"card_id": card_id, "card_name": target_card.name},
         )
         return StepResult(is_finished=True, events=[event])
+
+
+class CountCardsStep(GameStep):
+    """
+    Counts cards in a hero's container (hand, discard, deck, played)
+    and stores the count in context[output_key].
+    """
+
+    type: StepType = StepType.COUNT_CARDS
+    hero_id: Optional[str] = None
+    hero_key: Optional[str] = None
+    card_container: CardContainerType = CardContainerType.DISCARD
+    output_key: str = "card_count"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        h_id = self.hero_id
+        if not h_id and self.hero_key:
+            h_id = context.get(self.hero_key)
+        if not h_id:
+            h_id = state.current_actor_id
+
+        if not h_id:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(h_id)))
+        if not hero:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        if self.card_container == CardContainerType.HAND:
+            count = len(hero.hand)
+        elif self.card_container == CardContainerType.DISCARD:
+            count = len(hero.discard_pile)
+        elif self.card_container == CardContainerType.DECK:
+            count = len(hero.deck)
+        elif self.card_container == CardContainerType.PLAYED:
+            count = len([c for c in hero.played_cards if c is not None])
+        else:
+            count = 0
+
+        context[self.output_key] = count
+        print(f"   [COUNT_CARDS] {h_id} {self.card_container.value}: {count}")
+        return StepResult(is_finished=True)
 
 
 # Rebuild recursive models

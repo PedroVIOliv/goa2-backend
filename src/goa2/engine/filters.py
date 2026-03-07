@@ -222,7 +222,7 @@ class AdjacencyFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.ADJACENCY
-    target_tags: List[str]  # ["FRIENDLY", "HERO"]
+    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]] 
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
