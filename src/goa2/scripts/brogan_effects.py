@@ -31,6 +31,7 @@ from goa2.engine.filters import (
 from goa2.domain.models import (
     TargetType,
     ActionType,
+    CardColor,
 )
 from goa2.domain.models.enums import (
     CardContainerType,
@@ -666,34 +667,22 @@ class ShieldEffect(CardEffect):
     Card text: "This round: When any friendly minion in radius is defeated
     you may discard a silver card. If you do, the minion is not removed.
     (The enemy hero still gains the coins for defeating the minion.)"
-
-    TODO: Needs a new MINION_PROTECTION EffectType that:
-    1. Creates a round-long triggered effect scoped to friendly minions in radius
-    2. When a friendly minion in scope would be defeated, interrupts to ask
-       if Brogan wants to discard a silver card
-    3. If discarded, cancels the minion removal (but NOT the gold reward)
-
-    This requires deep integration with DefeatUnitStep to check for
-    active MINION_PROTECTION effects before removing the minion.
-    Requires: new EffectType, new handling in DefeatUnitStep, card color
-    filter for the discard choice.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement minion protection effect
         return [
-            # Placeholder: creates a delayed trigger as marker
             CreateEffectStep(
-                effect_type=EffectType.DELAYED_TRIGGER,
+                effect_type=EffectType.MINION_PROTECTION,
                 duration=DurationType.THIS_ROUND,
                 scope=EffectScope(
                     shape=Shape.RADIUS,
-                    range=stats.radius or 0,
+                    range=stats.radius or 1,
                     origin_id=hero.id,
                     affects=AffectsFilter.FRIENDLY_UNITS,
                 ),
+                allowed_discard_colors=[CardColor.SILVER],
                 is_active=True,
             ),
         ]
@@ -710,8 +699,7 @@ class BolsterEffect(ShieldEffect):
     Card text: "This round: When any friendly minion in radius is defeated
     you may discard a silver card. If you do, the minion is not removed."
 
-    Same as Shield but at Tier II (stats differ via card definition).
-    TODO: Same MINION_PROTECTION infrastructure as Shield.
+    Same as Shield but at Tier II (stats differ via card definition — radius=2).
     """
 
     pass
@@ -730,23 +718,22 @@ class FortifyEffect(CardEffect):
 
     Same mechanic as Shield/Bolster but allows discarding ANY basic card
     (Gold or Silver) instead of only Silver.
-    TODO: Same MINION_PROTECTION infrastructure, with basic card filter.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement with basic card (gold/silver) discard condition
         return [
             CreateEffectStep(
-                effect_type=EffectType.DELAYED_TRIGGER,
+                effect_type=EffectType.MINION_PROTECTION,
                 duration=DurationType.THIS_ROUND,
                 scope=EffectScope(
                     shape=Shape.RADIUS,
-                    range=stats.radius or 0,
+                    range=stats.radius or 2,
                     origin_id=hero.id,
                     affects=AffectsFilter.FRIENDLY_UNITS,
                 ),
+                allowed_discard_colors=[CardColor.GOLD, CardColor.SILVER],
                 is_active=True,
             ),
         ]

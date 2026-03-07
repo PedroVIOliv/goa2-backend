@@ -44,6 +44,9 @@ class EffectType(str, Enum):
     # Delayed trigger (carries finishing_steps, no spatial effect)
     DELAYED_TRIGGER = "delayed_trigger"
 
+    # Minion protection (Brogan Shield/Bolster/Fortify)
+    MINION_PROTECTION = "minion_protection"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""
@@ -153,6 +156,9 @@ class ActiveEffect(BaseModel):
     barrier_origin_id: Optional[str] = (
         None  # Entity ID for radius calculation (Wasp's position)
     )
+
+    # Allowed discard colors for MINION_PROTECTION effects (Brogan)
+    allowed_discard_colors: List[CardColor] = Field(default_factory=list)
 
     # Steps to push onto the execution stack when this effect expires
     # (for DELAYED_TRIGGER effects). Patched to List[AnyStep] in step_types.py.

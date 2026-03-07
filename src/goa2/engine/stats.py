@@ -126,7 +126,7 @@ def _matches_affects_filter(
     return False
 
 
-def _is_unit_in_effect_scope(
+def is_unit_in_effect_scope(
     effect: ActiveEffect, unit_id: str, state: GameState
 ) -> bool:
     """Check if a unit is within an effect's scope (spatial + relational)."""
@@ -165,7 +165,7 @@ def get_computed_stat(
             continue
         if not _is_effect_active(effect, state):
             continue
-        if not _is_unit_in_effect_scope(effect, str(unit_id), state):
+        if not is_unit_in_effect_scope(effect, str(unit_id), state):
             continue
         total += effect.stat_value
 

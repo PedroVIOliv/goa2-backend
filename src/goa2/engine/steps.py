@@ -148,6 +148,9 @@ class CreateEffectStep(GameStep):
     barrier_radius: int = 0  # The radius boundary for the barrier
     barrier_origin_id: Optional[str] = None  # Entity ID for radius calculation
 
+    # Allowed discard colors for MINION_PROTECTION effects (Brogan)
+    allowed_discard_colors: List[CardColor] = Field(default_factory=list)
+
     # Steps to execute when this effect expires (for DELAYED_TRIGGER effects)
     # Patched to List[AnyStep] in step_types.py.
     finishing_steps: List[GameStep] = Field(default_factory=list)
@@ -203,6 +206,7 @@ class CreateEffectStep(GameStep):
             barrier_radius=self.barrier_radius,
             barrier_origin_id=self.barrier_origin_id,
             finishing_steps=self.finishing_steps,
+            allowed_discard_colors=self.allowed_discard_colors,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
@@ -1741,10 +1745,152 @@ class DefeatUnitStep(GameStep):
                     )
                 )
 
+            # Check for active MINION_PROTECTION effects covering this minion
+            from goa2.engine.stats import is_unit_in_effect_scope, _is_effect_active
+
+            has_protection = any(
+                e.effect_type == EffectType.MINION_PROTECTION
+                and _is_effect_active(e, state)
+                and is_unit_in_effect_scope(e, actual_victim_id, state)
+                for e in state.active_effects
+            )
+            if has_protection:
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[
+                        CheckMinionProtectionStep(minion_id=actual_victim_id)
+                    ],
+                    events=events,
+                )
+
         return StepResult(
             is_finished=True,
             new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
             events=events,
+        )
+
+
+class CheckMinionProtectionStep(GameStep):
+    """
+    Checks if any MINION_PROTECTION effect can save a defeated minion.
+    Asks the protecting hero if they want to discard a qualifying card.
+    If yes: discard card, emit MINION_PROTECTED event, minion stays.
+    If no/skip: try next effect, or push RemoveUnitStep.
+    """
+
+    type: StepType = StepType.CHECK_MINION_PROTECTION
+    minion_id: str
+    tried_effect_ids: List[str] = Field(default_factory=list)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        from goa2.engine.stats import is_unit_in_effect_scope, _is_effect_active
+
+        # Find an untried active MINION_PROTECTION effect covering this minion
+        protection = None
+        for e in state.active_effects:
+            if e.effect_type != EffectType.MINION_PROTECTION:
+                continue
+            if e.id in self.tried_effect_ids:
+                continue
+            if not _is_effect_active(e, state):
+                continue
+            if not is_unit_in_effect_scope(e, self.minion_id, state):
+                continue
+            protection = e
+            break
+
+        if not protection:
+            # No more protection effects - remove the minion
+            return StepResult(
+                is_finished=True,
+                new_steps=[RemoveUnitStep(unit_id=self.minion_id)],
+            )
+
+        # Check if protector has qualifying cards in hand
+        protector = state.get_hero(HeroID(protection.source_id))
+        if not protector:
+            return self._try_next(protection.id)
+
+        qualifying_cards = [
+            c
+            for c in protector.hand
+            if c.color in protection.allowed_discard_colors
+        ]
+
+        if not qualifying_cards:
+            print(
+                f"   [PROTECT] {protector.id} has no qualifying cards for protection."
+            )
+            return self._try_next(protection.id)
+
+        # Ask protector if they want to discard
+        if self.pending_input is None:
+            options = [
+                InputOption(
+                    id=c.id,
+                    text=c.name,
+                    metadata={"card_id": c.id, "color": c.color.value},
+                )
+                for c in qualifying_cards
+            ]
+            return StepResult(
+                is_finished=False,
+                requires_input=True,
+                input_request=create_input_request(
+                    request_type=InputRequestType.SELECT_CARD,
+                    prompt=f"Discard a card to protect {self.minion_id}?",
+                    options=options,
+                    player_id=protector.id,
+                    can_skip=True,
+                ),
+            )
+
+        # Process input
+        selection = self.pending_input
+        if isinstance(selection, dict):
+            selection = selection.get("selected_card_id") or selection.get("selection")
+
+        if selection == "SKIP" or selection is None:
+            print(f"   [PROTECT] {protector.id} declined to protect {self.minion_id}.")
+            return self._try_next(protection.id)
+
+        # Find and discard the selected card
+        card_to_discard = next(
+            (c for c in qualifying_cards if c.id == selection), None
+        )
+        if not card_to_discard:
+            return self._try_next(protection.id)
+
+        protector.discard_card(card_to_discard, from_hand=True)
+        print(
+            f"   [PROTECT] {protector.id} discards {card_to_discard.name} to protect {self.minion_id}!"
+        )
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.MINION_PROTECTED,
+                    actor_id=protector.id,
+                    target_id=self.minion_id,
+                    metadata={
+                        "discarded_card_id": card_to_discard.id,
+                        "effect_id": protection.id,
+                    },
+                )
+            ],
+        )
+
+    def _try_next(self, effect_id: str) -> StepResult:
+        """Try the next protection effect."""
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                CheckMinionProtectionStep(
+                    minion_id=self.minion_id,
+                    tried_effect_ids=self.tried_effect_ids + [effect_id],
+                )
+            ],
         )
 
 

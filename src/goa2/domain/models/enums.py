@@ -155,6 +155,7 @@ class StepType(str, Enum):
     CHECK_CONTEXT_CONDITION = "check_context_condition"
     RETRIEVE_CARD = "retrieve_card"
     COUNT_CARDS = "count_cards"
+    CHECK_MINION_PROTECTION = "check_minion_protection"
 
 
 class FilterType(str, Enum):

@@ -17,6 +17,7 @@ from goa2.engine.steps import (
     CheckAdjacencyStep,
     CheckContextConditionStep,
     CheckLanePushStep,
+    CheckMinionProtectionStep,
     CheckPassiveAbilitiesStep,
     CheckUnitTypeStep,
     ChooseMinionRemovalStep,
@@ -104,6 +105,9 @@ AnyStep = Annotated[
             CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)
         ],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
+        Annotated[
+            CheckMinionProtectionStep, Tag(StepType.CHECK_MINION_PROTECTION.value)
+        ],
         Annotated[
             CheckPassiveAbilitiesStep, Tag(StepType.CHECK_PASSIVE_ABILITIES.value)
         ],
