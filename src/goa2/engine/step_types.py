@@ -204,6 +204,7 @@ from goa2.engine.filters import (
     LineBehindTargetFilter,
     NotInStraightLineFilter,
     InStraightLineFilter,
+    StraightLinePathFilter,
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
     OrFilter,
@@ -242,6 +243,7 @@ AnyFilter = Annotated[
         Annotated[LineBehindTargetFilter, Tag(FilterType.LINE_BEHIND_TARGET.value)],
         Annotated[NotInStraightLineFilter, Tag(FilterType.NOT_IN_STRAIGHT_LINE.value)],
         Annotated[InStraightLineFilter, Tag(FilterType.IN_STRAIGHT_LINE.value)],
+        Annotated[StraightLinePathFilter, Tag(FilterType.STRAIGHT_LINE_PATH.value)],
         Annotated[
             FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)
         ],

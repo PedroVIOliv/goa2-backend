@@ -757,6 +757,80 @@ class InStraightLineFilter(FilterCondition):
         return get_topology_service().is_straight_line(origin_hex, target_hex, state)
 
 
+class StraightLinePathFilter(FilterCondition):
+    """
+    Validates that the straight-line path between origin and candidate is
+    traversable — every intermediate hex must exist on the board and be clear.
+
+    Unlike MovementPathFilter (BFS-based), this checks only the direct
+    straight-line path, blocking if any intermediate hex is occupied or missing.
+    """
+
+    type: FilterType = FilterType.STRAIGHT_LINE_PATH
+    origin_id: Optional[str] = None
+    origin_key: Optional[str] = None
+    pass_through_units: bool = False
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        # Resolve origin
+        origin_uid = None
+        if self.origin_id:
+            origin_uid = self.origin_id
+        elif self.origin_key:
+            origin_uid = context.get(self.origin_key)
+
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        # Not in straight line → reject
+        if not origin_hex.is_straight_line(candidate):
+            return False
+
+        # Get intermediate hexes (line_to returns origin-exclusive, destination-inclusive)
+        try:
+            path = origin_hex.line_to(candidate)
+        except ValueError:
+            return False
+
+        # Check all intermediate hexes (everything except the final destination)
+        for hex_pos in path[:-1]:
+            # Hex must exist on the board (not a virtual off-map tile)
+            if hex_pos not in state.board.tiles:
+                return False
+
+            tile = state.board.tiles[hex_pos]
+            if tile.is_terrain:
+                return False
+
+            if not tile.is_occupied:
+                continue
+
+            # Occupied — check if we can pass through
+            if self.pass_through_units:
+                # Allow passing through units, but not terrain obstacles
+                occupant_id = tile.occupant_id
+                if occupant_id:
+                    unit = state.get_unit(UnitID(str(occupant_id)))
+                    if unit is not None:
+                        continue
+                # Not a unit (terrain obstacle) → blocked
+                return False
+            else:
+                return False
+
+        return True
+
+
 class FastTravelDestinationFilter(FilterCondition):
     """
     Filters hexes to only valid Fast Travel destinations.

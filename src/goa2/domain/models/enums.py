@@ -182,6 +182,7 @@ class FilterType(str, Enum):
     MINION_TYPES = "minion_type_filter"
     OR_FILTER = "or_filter"
     AND_FILTER = "and_filter"
+    STRAIGHT_LINE_PATH = "straight_line_path_filter"
 
 
 class TargetType(str, Enum):

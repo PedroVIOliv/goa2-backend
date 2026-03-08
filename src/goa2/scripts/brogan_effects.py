@@ -22,6 +22,7 @@ from goa2.engine.steps import (
 from goa2.engine.filters import (
     AdjacencyFilter,
     InStraightLineFilter,
+    StraightLinePathFilter,
     ObstacleFilter,
     OrFilter,
     RangeFilter,
@@ -385,7 +386,8 @@ class MadDashEffect(CardEffect):
                     RangeFilter(min_range=2, max_range=2),
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
-                    ObstacleFilter(is_obstacle=False)
+                    ObstacleFilter(is_obstacle=False),
+                    StraightLinePathFilter(origin_id=hero.id)
                 ]
             ),
             MoveUnitStep(
@@ -423,7 +425,8 @@ class BullrushEffect(CardEffect):
                     RangeFilter(min_range=2, max_range=3),
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
-                    ObstacleFilter(is_obstacle=False)
+                    ObstacleFilter(is_obstacle=False),
+                    StraightLinePathFilter(origin_id=hero.id)
                 ]
             ),
             MoveUnitStep(
@@ -461,7 +464,8 @@ class FuriousChargeEffect(CardEffect):
                     RangeFilter(min_range=2, max_range=4),
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
-                    ObstacleFilter(is_obstacle=False)
+                    ObstacleFilter(is_obstacle=False),
+                    StraightLinePathFilter(origin_id=hero.id)
                 ]
             ),
             MoveUnitStep(
