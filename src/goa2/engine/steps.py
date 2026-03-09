@@ -3698,6 +3698,22 @@ class EndPhaseStep(GameStep):
         return StepResult(is_finished=True, new_steps=new_steps)
 
 
+def _one_man_army_bonus(state: GameState, zone) -> Dict[TeamColor, int]:
+    """Check for heroes with active one_man_army ultimate in the zone."""
+    bonus = {TeamColor.RED: 0, TeamColor.BLUE: 0}
+    for team in state.teams.values():
+        for hero in team.heroes:
+            if hero.level < 8 or not hero.ultimate_card:
+                continue
+            if hero.ultimate_card.effect_id != "one_man_army":
+                continue
+            hero_loc = state.entity_locations.get(hero.id)
+            if hero_loc and hero_loc in zone.hexes:
+                bonus[hero.team] += 1
+                print(f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)")
+    return bonus
+
+
 class MinionBattleStep(GameStep):
     """
     Compare minion counts in active zone and queue removals for the losing team.
@@ -3730,6 +3746,11 @@ class MinionBattleStep(GameStep):
                         red_count += 1
                     elif unit.team == TeamColor.BLUE:
                         blue_count += 1
+
+        # One Man Army: heroes with active ultimate count as +1 minion
+        bonus = _one_man_army_bonus(state, zone)
+        red_count += bonus[TeamColor.RED]
+        blue_count += bonus[TeamColor.BLUE]
 
         diff = abs(red_count - blue_count)
 

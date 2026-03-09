@@ -875,21 +875,17 @@ class OneManArmyEffect(CardEffect):
     Card text: "During minion battle you count as a heavy minion;
     if you would be removed, lose the push instead."
 
-    TODO: This is the most complex effect. Requires deep integration with
-    MinionBattleStep to:
-    1. Include Brogan as a "heavy minion" when calculating minion battle
-    2. When minion battle would remove Brogan (as a minion proxy),
-       instead of removing him, the team loses the lane push
-    3. Needs a new passive trigger (DURING_MINION_BATTLE) or a special
-       flag on the hero that MinionBattleStep checks
+    This effect has no steps or passive config. The logic is implemented
+    directly in MinionBattleStep via _one_man_army_bonus(), which checks
+    for heroes with effect_id "one_man_army" at level >= 8 in the active
+    zone and adds +1 to their team's minion count.
 
-    This is an always-active passive (no trigger, no uses_per_turn).
-    It modifies the minion battle resolution rules themselves.
+    "Lose the push instead" is handled implicitly: CheckLanePushStep
+    counts real minions only, so if all real minions die the push still
+    triggers (Brogan isn't removed, but his team loses the zone).
     """
 
     def get_passive_config(self) -> Optional["PassiveConfig"]:
-        # TODO: Needs a new PassiveTrigger for minion battle integration
-        # or a completely different mechanism (hero flag checked by MinionBattleStep)
         return None
 
     def build_steps(
