@@ -15,6 +15,7 @@ from goa2.engine.steps import (
     MoveUnitStep,
     PlaceUnitStep,
     PushUnitStep,
+    RecordHexStep,
     RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
@@ -73,10 +74,7 @@ class BrutalJabEffect(CardEffect):
             SelectStep(
                 target_type=TargetType.HEX,
                 prompt="Select a space to move to",
-                filters=[
-                    RangeFilter(max_range=1),
-                    ObstacleFilter()
-                ],
+                filters=[RangeFilter(max_range=1), ObstacleFilter()],
                 is_mandatory=False,
                 output_key="selected_hex",
             ),
@@ -85,7 +83,6 @@ class BrutalJabEffect(CardEffect):
                 unit_id=hero.id,
                 destination_key="selected_hex",
             ),
-
             # 2. Select adjacent enemy unit or token to push
             SelectStep(
                 target_type=TargetType.UNIT_OR_TOKEN,
@@ -93,10 +90,12 @@ class BrutalJabEffect(CardEffect):
                 output_key="push_target_id",
                 filters=[
                     RangeFilter(max_range=1),
-                    OrFilter(filters=[
-                        TeamFilter(relation="ENEMY"),
-                        UnitTypeFilter(unit_type="TOKEN"),
-                    ]),
+                    OrFilter(
+                        filters=[
+                            TeamFilter(relation="ENEMY"),
+                            UnitTypeFilter(unit_type="TOKEN"),
+                        ]
+                    ),
                 ],
             ),
             # 3. Choose push distance (0 or 1)
@@ -135,10 +134,7 @@ class MightyPunchEffect(CardEffect):
             SelectStep(
                 target_type=TargetType.HEX,
                 prompt="Select a space to move to",
-                filters=[
-                    RangeFilter(max_range=1),
-                    ObstacleFilter()
-                ],
+                filters=[RangeFilter(max_range=1), ObstacleFilter()],
                 is_mandatory=False,
                 output_key="selected_hex",
             ),
@@ -154,10 +150,12 @@ class MightyPunchEffect(CardEffect):
                 is_mandatory=False,
                 filters=[
                     RangeFilter(max_range=1),
-                    OrFilter(filters=[
-                        TeamFilter(relation="ENEMY"),
-                        UnitTypeFilter(unit_type="TOKEN"),
-                    ]),
+                    OrFilter(
+                        filters=[
+                            TeamFilter(relation="ENEMY"),
+                            UnitTypeFilter(unit_type="TOKEN"),
+                        ]
+                    ),
                 ],
             ),
             SelectStep(
@@ -192,14 +190,11 @@ class SavageKickEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
         return [
-            # Move up to 2 
+            # Move up to 2
             SelectStep(
                 target_type=TargetType.HEX,
                 prompt="Select a space to move to",
-                filters=[
-                    RangeFilter(max_range=2),
-                    ObstacleFilter()
-                ],
+                filters=[RangeFilter(max_range=2), ObstacleFilter()],
                 is_mandatory=False,
                 output_key="selected_hex",
             ),
@@ -215,10 +210,12 @@ class SavageKickEffect(CardEffect):
                 is_mandatory=False,
                 filters=[
                     RangeFilter(max_range=1),
-                    OrFilter(filters=[
-                        TeamFilter(relation="ENEMY"),
-                        UnitTypeFilter(unit_type="TOKEN"),
-                    ]),
+                    OrFilter(
+                        filters=[
+                            TeamFilter(relation="ENEMY"),
+                            UnitTypeFilter(unit_type="TOKEN"),
+                        ]
+                    ),
                 ],
             ),
             SelectStep(
@@ -247,14 +244,6 @@ class OnslaughtEffect(CardEffect):
     """
     Card text: "Target a unit adjacent to you. After the attack:
     Move into the space it occupied, if able."
-
-    TODO: Needs a step to record the target's hex position BEFORE the attack
-    resolves (since the target may be pushed/defeated), then PlaceUnitStep
-    into that recorded hex after the attack. Requires either:
-    - A new RecordHexStep(unit_key="victim_id", output_key="victim_hex")
-    - Or extending AttackSequenceStep to record target position in context
-
-    For now, implements the attack portion only.
     """
 
     def build_steps(
@@ -272,14 +261,19 @@ class OnslaughtEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                 ],
             ),
-            # TODO: RecordHexStep(unit_key="victim_id", output_key="victim_hex")
-            # 2. Attack using pre-selected target
+            # 2. Record victim's hex position before attack
+            RecordHexStep(unit_key="victim_id", output_key="victim_hex"),
+            # 3. Attack using pre-selected target
             AttackSequenceStep(
                 damage=stats.primary_value, target_id_key="victim_id", range_val=1
             ),
-            # 3. Move into target's former space (optional, "if able")
-            # TODO: PlaceUnitStep(unit_id=hero.id, destination_key="victim_hex")
-            #       with active_if_key and obstacle check
+            # 4. Move into target's former space (optional, "if able")
+            MoveUnitStep(
+                unit_id=hero.id,
+                destination_key="victim_hex",
+                is_mandatory=False,
+                range_val=1,
+            )
         ]
 
 
@@ -387,17 +381,15 @@ class MadDashEffect(CardEffect):
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
-                    StraightLinePathFilter(origin_id=hero.id)
-                ]
+                    StraightLinePathFilter(origin_id=hero.id),
+                ],
             ),
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="dash_destination",
                 range_val=99,
             ),
-            AttackSequenceStep(
-                damage=stats.primary_value, range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
 
 
@@ -426,17 +418,15 @@ class BullrushEffect(CardEffect):
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
-                    StraightLinePathFilter(origin_id=hero.id)
-                ]
+                    StraightLinePathFilter(origin_id=hero.id),
+                ],
             ),
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="rush_destination",
                 range_val=99,
             ),
-            AttackSequenceStep(
-                damage=stats.primary_value, range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
 
 
@@ -465,17 +455,15 @@ class FuriousChargeEffect(CardEffect):
                     InStraightLineFilter(origin_id=hero.id),
                     AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
-                    StraightLinePathFilter(origin_id=hero.id)
-                ]
+                    StraightLinePathFilter(origin_id=hero.id),
+                ],
             ),
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="charge_destination",
                 range_val=99,
             ),
-            AttackSequenceStep(
-                damage=stats.primary_value, range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
 
 

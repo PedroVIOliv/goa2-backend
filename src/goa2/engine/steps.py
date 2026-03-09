@@ -1757,9 +1757,7 @@ class DefeatUnitStep(GameStep):
             if has_protection:
                 return StepResult(
                     is_finished=True,
-                    new_steps=[
-                        CheckMinionProtectionStep(minion_id=actual_victim_id)
-                    ],
+                    new_steps=[CheckMinionProtectionStep(minion_id=actual_victim_id)],
                     events=events,
                 )
 
@@ -1812,9 +1810,7 @@ class CheckMinionProtectionStep(GameStep):
             return self._try_next(protection.id)
 
         qualifying_cards = [
-            c
-            for c in protector.hand
-            if c.color in protection.allowed_discard_colors
+            c for c in protector.hand if c.color in protection.allowed_discard_colors
         ]
 
         if not qualifying_cards:
@@ -1855,9 +1851,7 @@ class CheckMinionProtectionStep(GameStep):
             return self._try_next(protection.id)
 
         # Find and discard the selected card
-        card_to_discard = next(
-            (c for c in qualifying_cards if c.id == selection), None
-        )
+        card_to_discard = next((c for c in qualifying_cards if c.id == selection), None)
         if not card_to_discard:
             return self._try_next(protection.id)
 
@@ -3295,6 +3289,35 @@ class RecordTargetStep(GameStep):
             if isinstance(context[self.output_list_key], list):
                 context[self.output_list_key].append(target_id)
                 print(f"   [LOGIC] Recorded {target_id} to {self.output_list_key}")
+        return StepResult(is_finished=True)
+
+
+class RecordHexStep(GameStep):
+    """
+    Records a unit's current hex position to context.
+    Used to remember a unit's position before it moves or is defeated,
+    so that another unit can move into that space later (e.g., Onslaught).
+
+    The hex is stored as a dict (q, r, s) for JSON serialization.
+    """
+
+    type: StepType = StepType.RECORD_HEX
+    unit_key: str  # The key holding the unit/entity ID in context
+    output_key: str  # The key where hex dict will be stored
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        unit_id = context.get(self.unit_key)
+        if not unit_id:
+            print(f"   [RECORD_HEX] No unit_id found for {self.unit_key}")
+            return StepResult(is_finished=True)
+
+        entity_hex = state.entity_locations.get(BoardEntityID(unit_id))
+        if not entity_hex:
+            print(f"   [RECORD_HEX] Unit {unit_id} not on board")
+            return StepResult(is_finished=True)
+
+        context[self.output_key] = entity_hex.model_dump()
+        print(f"   [RECORD_HEX] Recorded hex for {unit_id} at {entity_hex}")
         return StepResult(is_finished=True)
 
 

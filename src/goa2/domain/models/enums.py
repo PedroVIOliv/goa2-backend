@@ -156,6 +156,7 @@ class StepType(str, Enum):
     RETRIEVE_CARD = "retrieve_card"
     COUNT_CARDS = "count_cards"
     CHECK_MINION_PROTECTION = "check_minion_protection"
+    RECORD_HEX = "record_hex"
 
 
 class FilterType(str, Enum):
