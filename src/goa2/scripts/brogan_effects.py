@@ -23,6 +23,7 @@ from goa2.engine.steps import (
 from goa2.engine.filters import (
     AdjacencyFilter,
     InStraightLineFilter,
+    PlayedCardFilter,
     StraightLinePathFilter,
     ObstacleFilter,
     OrFilter,
@@ -287,14 +288,6 @@ class ShieldBashEffect(CardEffect):
     """
     Card text: "An enemy hero adjacent to you who has played an attack card
     this turn discards a card, if able."
-
-    TODO: Needs a new filter (PlayedAttackThisTurnFilter) that checks if an
-    enemy hero's current_turn_card or played_cards[] has ActionType.ATTACK as primary_action.
-    This filter would need to inspect the hero's played_cards or
-    current_turn_card for the current turn.
-
-    For now, uses basic adjacent enemy hero selection. The client/engine
-    should restrict valid targets to those who played attack cards.
     """
 
     def build_steps(
@@ -311,7 +304,7 @@ class ShieldBashEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
-                    # TODO: PlayedAttackThisTurnFilter()
+                    PlayedCardFilter(action_type=ActionType.ATTACK),
                 ],
             ),
             # 2. Force discard (if able)
@@ -331,8 +324,6 @@ class CounterattackEffect(CardEffect):
     this turn discards a card, or is defeated."
 
     Same targeting as Shield Bash, but uses ForceDiscardOrDefeatStep.
-
-    TODO: Same PlayedAttackThisTurnFilter needed as Shield Bash.
     """
 
     def build_steps(
@@ -348,7 +339,7 @@ class CounterattackEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
-                    # TODO: PlayedAttackThisTurnFilter()
+                    PlayedCardFilter(action_type=ActionType.ATTACK),
                 ],
             ),
             ForceDiscardOrDefeatStep(victim_key="counter_victim"),
@@ -852,6 +843,25 @@ class BulwarkEffect(CardEffect):
                     range=stats.radius or 0,
                     origin_id=hero.id,
                     affects=AffectsFilter.FRIENDLY_UNITS,
+                ),
+                duration=DurationType.THIS_TURN,
+                displacement_blocks=[
+                    DisplacementType.MOVE,
+                    DisplacementType.PUSH,
+                    DisplacementType.SWAP,
+                    DisplacementType.PLACE,
+                ],
+                blocks_enemy_actors=True,
+                blocks_friendly_actors=False,
+                blocks_self=False,
+            ),
+            CreateEffectStep(
+                effect_type=EffectType.PLACEMENT_PREVENTION,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.SELF,
                 ),
                 duration=DurationType.THIS_TURN,
                 displacement_blocks=[

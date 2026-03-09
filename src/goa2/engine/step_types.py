@@ -209,6 +209,7 @@ from goa2.engine.filters import (
     StraightLinePathFilter,
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
+    PlayedCardFilter,
     OrFilter,
     AndFilter,
 )
@@ -251,6 +252,7 @@ AnyFilter = Annotated[
         ],
         Annotated[PreserveDistanceFilter, Tag(FilterType.PRESERVE_DISTANCE.value)],
         Annotated[MinionTypesFilter, Tag(FilterType.MINION_TYPES.value)],
+        Annotated[PlayedCardFilter, Tag(FilterType.PLAYED_CARD.value)],
         Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
         Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
     ],

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
-from goa2.domain.models.enums import MinionType
+from goa2.domain.models.enums import ActionType, CardColor, MinionType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.models.token import Token
@@ -957,3 +957,51 @@ class AndFilter(FilterCondition):
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return all(f.apply(candidate, state, context) for f in self.filters)
+
+
+# -----------------------------------------------------------------------------
+# Played Card Filter
+# -----------------------------------------------------------------------------
+
+
+class PlayedCardFilter(FilterCondition):
+    """
+    Checks if a candidate hero played a card matching criteria in the current turn.
+
+    Uses masked properties (current_primary_action, current_color) so facedown
+    cards naturally don't match.
+    """
+
+    type: FilterType = FilterType.PLAYED_CARD
+    action_type: Optional[ActionType] = None
+    card_color: Optional[CardColor] = None
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        hero = state.get_hero(str(candidate))
+        if not hero:
+            return False
+
+        actor = state.get_hero(state.current_actor_id)
+        if not actor:
+            return False
+        current_turn_index = actor.resolved_turn_count
+
+        cards_to_check = []
+
+        # Card from current turn if already resolved
+        if current_turn_index < len(hero.played_cards):
+            card = hero.played_cards[current_turn_index]
+            if card:
+                cards_to_check.append(card)
+
+        # Card from current turn if not yet resolved (respects facedown)
+        if hero.current_turn_card:
+            cards_to_check.append(hero.current_turn_card)
+
+        for card in cards_to_check:
+            if self.action_type and card.current_primary_action != self.action_type:
+                continue
+            if self.card_color and card.current_color != self.card_color:
+                continue
+            return True
+        return False
