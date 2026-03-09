@@ -16,6 +16,7 @@ from goa2.engine.steps import (
     CancelEffectsStep,
     CheckAdjacencyStep,
     CheckContextConditionStep,
+    CheckHeroDefeatedThisRoundStep,
     CheckLanePushStep,
     CheckMinionProtectionStep,
     CheckPassiveAbilitiesStep,
@@ -37,6 +38,7 @@ from goa2.engine.steps import (
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
     ForEachStep,
+    GainCoinsStep,
     LanePushStep,
     LogMessageStep,
     MarkPassiveUsedStep,
@@ -105,6 +107,10 @@ AnyStep = Annotated[
         Annotated[
             CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)
         ],
+        Annotated[
+            CheckHeroDefeatedThisRoundStep,
+            Tag(StepType.CHECK_HERO_DEFEATED_THIS_ROUND.value),
+        ],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
         Annotated[
             CheckMinionProtectionStep, Tag(StepType.CHECK_MINION_PROTECTION.value)
@@ -134,6 +140,7 @@ AnyStep = Annotated[
         ],
         Annotated[ForceDiscardStep, Tag(StepType.FORCE_DISCARD.value)],
         Annotated[ForEachStep, Tag(StepType.FOR_EACH.value)],
+        Annotated[GainCoinsStep, Tag(StepType.GAIN_COINS.value)],
         Annotated[LanePushStep, Tag(StepType.LANE_PUSH.value)],
         Annotated[LogMessageStep, Tag(StepType.LOG_MESSAGE.value)],
         Annotated[MarkPassiveUsedStep, Tag(StepType.MARK_PASSIVE_USED.value)],

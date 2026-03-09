@@ -1639,6 +1639,12 @@ class DefeatUnitStep(GameStep):
         if HeroID(actual_victim_id) in state.unresolved_hero_ids:
             state.unresolved_hero_ids.remove(HeroID(actual_victim_id))
 
+        # Track hero defeats for round-scoped effects (e.g., War Drummer)
+        if hasattr(victim, "level"):
+            hero_id = HeroID(actual_victim_id)
+            if hero_id not in state.heroes_defeated_this_round:
+                state.heroes_defeated_this_round.append(hero_id)
+
         if hasattr(victim, "level"):  # Is Hero
             level = getattr(victim, "level", 1)
 
@@ -4249,6 +4255,7 @@ class RoundResetStep(GameStep):
         state.round += 1
         state.turn = 1
         state.phase = GamePhase.PLANNING
+        state.heroes_defeated_this_round.clear()
         print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
         return StepResult(is_finished=True)
 
@@ -4952,6 +4959,52 @@ class CountCardsStep(GameStep):
 
         context[self.output_key] = count
         print(f"   [COUNT_CARDS] {h_id} {self.card_container.value}: {count}")
+        return StepResult(is_finished=True)
+
+
+class GainCoinsStep(GameStep):
+    """Grants gold to a hero identified by a context key."""
+
+    type: StepType = StepType.GAIN_COINS
+    hero_key: str  # context key → hero ID
+    amount: int = 0  # static amount
+    amount_key: str = ""  # context key → dynamic amount (overrides static)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+        hero_id = context.get(self.hero_key)
+        if not hero_id:
+            return StepResult(is_finished=True)
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+        coins = context.get(self.amount_key, self.amount) if self.amount_key else self.amount
+        hero.gold += coins
+        print(f"   [COINS] {hero_id} gains {coins} gold")
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.GOLD_GAINED,
+                    actor_id=str(hero_id),
+                    metadata={"amount": coins, "reason": "effect"},
+                )
+            ],
+        )
+
+
+class CheckHeroDefeatedThisRoundStep(GameStep):
+    """Sets context[output_key] to True if any hero was defeated this round, else None."""
+
+    type: StepType = StepType.CHECK_HERO_DEFEATED_THIS_ROUND
+    output_key: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if state.heroes_defeated_this_round:
+            context[self.output_key] = True
+        else:
+            context[self.output_key] = None
         return StepResult(is_finished=True)
 
 

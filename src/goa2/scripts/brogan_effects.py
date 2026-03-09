@@ -4,12 +4,14 @@ from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckHeroDefeatedThisRoundStep,
     CountCardsStep,
     CountStep,
     CreateEffectStep,
     DiscardCardStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
+    GainCoinsStep,
     GameStep,
     MoveSequenceStep,
     MoveUnitStep,
@@ -554,10 +556,6 @@ class ThrowingSpearEffect(CardEffect):
 
     Similar to Throwing Axe but the discard condition is different:
     Option 2 checks if there's already a card in discard OR you discard one.
-
-    TODO: The "If you have a card in the discard" condition needs a check
-    against the hero's discard pile count. The "you may discard" is optional
-    but having a discard pile card is required for ranged targeting.
     """
 
     def build_steps(
@@ -732,23 +730,11 @@ class WarDrummerEffect(CardEffect):
     """
     Card text: "A friendly hero in range gains 1 coin; if any hero was
     defeated this round, that friendly hero gains 3 coins instead."
-
-    TODO: Needs:
-    1. GainCoinsStep(hero_key="target_hero", amount=N) - new step to grant gold
-    2. A way to check "any hero was defeated this round" - either a state flag
-       or count defeated heroes in the current round
-    3. Conditional coin amount (1 vs 3)
-
-    Could be modeled as:
-    - CheckHeroDefeatedThisRoundStep(output_key="hero_defeated_this_round")
-    - CheckContextConditionStep to set coin amount
-    - GainCoinsStep with amount_key from context
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement coin granting
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -762,8 +748,9 @@ class WarDrummerEffect(CardEffect):
                 ],
                 skip_immunity_filter=True,
             ),
-            # TODO: CheckHeroDefeatedThisRoundStep(output_key="hero_died")
-            # TODO: GainCoinsStep(hero_key="coin_target", amount=1, amount_if_key="hero_died", amount_if=3)
+            CheckHeroDefeatedThisRoundStep(output_key="hero_died"),
+            GainCoinsStep(hero_key="coin_target", amount=3, active_if_key="hero_died"),
+            GainCoinsStep(hero_key="coin_target", amount=1, skip_if_key="hero_died"),
         ]
 
 
@@ -777,15 +764,11 @@ class MasterSkaldEffect(CardEffect):
     """
     Card text: "A friendly hero in range gains 2 coins; if any hero was
     defeated this round, that friendly hero gains 4 coins instead."
-
-    Same pattern as War Drummer with higher coin amounts.
-    TODO: Same GainCoinsStep infrastructure as War Drummer.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
-        # TODO: Implement coin granting (2 or 4)
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -799,7 +782,9 @@ class MasterSkaldEffect(CardEffect):
                 ],
                 skip_immunity_filter=True,
             ),
-            # TODO: GainCoinsStep(hero_key="coin_target", amount=2, amount_if_key="hero_died", amount_if=4)
+            CheckHeroDefeatedThisRoundStep(output_key="hero_died"),
+            GainCoinsStep(hero_key="coin_target", amount=4, active_if_key="hero_died"),
+            GainCoinsStep(hero_key="coin_target", amount=2, skip_if_key="hero_died"),
         ]
 
 

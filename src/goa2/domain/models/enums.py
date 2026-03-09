@@ -157,6 +157,8 @@ class StepType(str, Enum):
     COUNT_CARDS = "count_cards"
     CHECK_MINION_PROTECTION = "check_minion_protection"
     RECORD_HEX = "record_hex"
+    GAIN_COINS = "gain_coins"
+    CHECK_HERO_DEFEATED_THIS_ROUND = "check_hero_defeated_this_round"
 
 
 class FilterType(str, Enum):

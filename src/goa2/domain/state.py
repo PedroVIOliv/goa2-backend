@@ -94,6 +94,9 @@ class GameState(BaseModel):
     # Singleton markers - each MarkerType has exactly one Marker instance
     markers: Dict[MarkerType, Marker] = Field(default_factory=dict)
 
+    # Track heroes defeated in the current round (for coin-granting effects)
+    heroes_defeated_this_round: List[HeroID] = Field(default_factory=list)
+
     # Private field for cached validator (not serialized)
     _validator: Optional[Any] = None
 
