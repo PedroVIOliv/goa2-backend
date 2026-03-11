@@ -17,6 +17,7 @@ from goa2.engine.steps import (
     CheckAdjacencyStep,
     CheckContextConditionStep,
     CheckHeroDefeatedThisRoundStep,
+    ComputeHexStep,
     CheckLanePushStep,
     CheckMinionProtectionStep,
     CheckPassiveAbilitiesStep,
@@ -73,6 +74,7 @@ from goa2.engine.steps import (
     SelectStep,
     SetActorStep,
     SetContextFlagStep,
+    StealCoinsStep,
     SwapCardStep,
     SwapUnitsStep,
     TriggerGameOverStep,
@@ -112,6 +114,7 @@ AnyStep = Annotated[
             Tag(StepType.CHECK_HERO_DEFEATED_THIS_ROUND.value),
         ],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
+        Annotated[ComputeHexStep, Tag(StepType.COMPUTE_HEX.value)],
         Annotated[
             CheckMinionProtectionStep, Tag(StepType.CHECK_MINION_PROTECTION.value)
         ],
@@ -177,6 +180,7 @@ AnyStep = Annotated[
         Annotated[SelectStep, Tag(StepType.SELECT.value)],
         Annotated[SetActorStep, Tag(StepType.SET_ACTOR.value)],
         Annotated[SetContextFlagStep, Tag(StepType.SET_CONTEXT_FLAG.value)],
+        Annotated[StealCoinsStep, Tag(StepType.STEAL_COINS.value)],
         Annotated[SwapCardStep, Tag(StepType.SWAP_CARD.value)],
         Annotated[SwapUnitsStep, Tag(StepType.SWAP_UNITS.value)],
         Annotated[TriggerGameOverStep, Tag(StepType.TRIGGER_GAME_OVER.value)],
@@ -213,6 +217,7 @@ from goa2.engine.filters import (
     LineBehindTargetFilter,
     NotInStraightLineFilter,
     InStraightLineFilter,
+    SpaceBehindEmptyFilter,
     StraightLinePathFilter,
     FastTravelDestinationFilter,
     PreserveDistanceFilter,
@@ -253,6 +258,7 @@ AnyFilter = Annotated[
         Annotated[LineBehindTargetFilter, Tag(FilterType.LINE_BEHIND_TARGET.value)],
         Annotated[NotInStraightLineFilter, Tag(FilterType.NOT_IN_STRAIGHT_LINE.value)],
         Annotated[InStraightLineFilter, Tag(FilterType.IN_STRAIGHT_LINE.value)],
+        Annotated[SpaceBehindEmptyFilter, Tag(FilterType.SPACE_BEHIND_EMPTY.value)],
         Annotated[StraightLinePathFilter, Tag(FilterType.STRAIGHT_LINE_PATH.value)],
         Annotated[
             FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)

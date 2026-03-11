@@ -6,5 +6,6 @@ import goa2.data.heroes.arien
 import goa2.data.heroes.xargatha
 import goa2.data.heroes.wasp
 import goa2.data.heroes.brogan
+import goa2.data.heroes.tigerclaw
 
 __all__ = ["HeroRegistry"]

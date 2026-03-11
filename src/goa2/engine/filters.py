@@ -831,6 +831,57 @@ class StraightLinePathFilter(FilterCondition):
         return True
 
 
+class SpaceBehindEmptyFilter(FilterCondition):
+    """
+    For unit targeting: validates that the hex directly behind the candidate
+    (from the origin's perspective) exists on the board and is not an obstacle.
+
+    Used by Blink Strike to ensure the hero can land behind the selected enemy.
+    """
+
+    type: FilterType = FilterType.SPACE_BEHIND_EMPTY
+    origin_id: Optional[str] = None
+    origin_key: Optional[str] = None
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # Candidate is a unit ID string
+        if not isinstance(candidate, str):
+            return False
+
+        # Resolve origin (hero position)
+        origin_uid = None
+        if self.origin_id:
+            origin_uid = self.origin_id
+        elif self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        # Get candidate unit's hex
+        candidate_hex = state.entity_locations.get(BoardEntityID(str(candidate)))
+        if not candidate_hex:
+            return False
+
+        # Compute behind hex: candidate + (candidate - origin)
+        diff = candidate_hex - origin_hex
+        behind = candidate_hex + diff
+
+        # Must be on the board
+        if behind not in state.board.tiles:
+            return False
+
+        # Must not be an obstacle for the actor
+        actor_id = str(origin_uid)
+        is_obs = state.validator.is_obstacle_for_actor(state, behind, actor_id, context)
+        return not is_obs
+
+
 class FastTravelDestinationFilter(FilterCondition):
     """
     Filters hexes to only valid Fast Travel destinations.

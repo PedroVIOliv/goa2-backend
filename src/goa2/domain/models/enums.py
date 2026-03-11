@@ -159,6 +159,8 @@ class StepType(str, Enum):
     RECORD_HEX = "record_hex"
     GAIN_COINS = "gain_coins"
     CHECK_HERO_DEFEATED_THIS_ROUND = "check_hero_defeated_this_round"
+    STEAL_COINS = "steal_coins"
+    COMPUTE_HEX = "compute_hex"
 
 
 class FilterType(str, Enum):
@@ -187,6 +189,7 @@ class FilterType(str, Enum):
     AND_FILTER = "and_filter"
     STRAIGHT_LINE_PATH = "straight_line_path_filter"
     PLAYED_CARD = "played_card_filter"
+    SPACE_BEHIND_EMPTY = "space_behind_empty_filter"
 
 
 class TargetType(str, Enum):

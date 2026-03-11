@@ -5029,6 +5029,124 @@ class CheckHeroDefeatedThisRoundStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class StealCoinsStep(GameStep):
+    """Takes coins from an enemy hero and gives them to the current actor."""
+
+    type: StepType = StepType.STEAL_COINS
+    victim_key: str  # context key → enemy hero ID
+    amount: int = 1  # static amount to steal
+    amount_key: str = ""  # context key → dynamic amount (overrides static)
+    output_key: str = ""  # if set, stores True in context when coins were stolen
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        victim_id = context.get(self.victim_key)
+        if not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        actor_id = context.get("current_actor_id") or state.current_actor_id
+        actor = state.get_hero(HeroID(str(actor_id)))
+        if not actor:
+            return StepResult(is_finished=True)
+
+        coins_requested = (
+            context.get(self.amount_key, self.amount) if self.amount_key else self.amount
+        )
+        actual_stolen = min(coins_requested, victim.gold)
+
+        if actual_stolen <= 0:
+            return StepResult(is_finished=True)
+
+        victim.gold -= actual_stolen
+        actor.gold += actual_stolen
+        if self.output_key:
+            context[self.output_key] = True
+        print(
+            f"   [STEAL] {actor_id} steals {actual_stolen} coin(s) from {victim_id}"
+        )
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.GOLD_GAINED,
+                    actor_id=str(actor_id),
+                    target_id=str(victim_id),
+                    metadata={"amount": actual_stolen, "reason": "steal"},
+                ),
+            ],
+        )
+
+
+class ComputeHexStep(GameStep):
+    """
+    Generic hex vector arithmetic step.
+
+    Computes a hex position relative to two reference points:
+      result = target + normalize(target - origin) * scale
+
+    Used by Blink Strike to compute the hex behind an enemy.
+    """
+
+    type: StepType = StepType.COMPUTE_HEX
+    origin_key: Optional[str] = None  # context key for origin; None = current actor
+    target_key: str = ""  # context key for reference unit
+    scale: int = 1  # multiplier for direction vector
+    output_key: str = "computed_hex"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Resolve origin hex
+        if self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        else:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return StepResult(is_finished=True)
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return StepResult(is_finished=True)
+
+        # Resolve target hex (from unit position)
+        target_uid = context.get(self.target_key)
+        if not target_uid:
+            return StepResult(is_finished=True)
+
+        target_hex = state.entity_locations.get(BoardEntityID(str(target_uid)))
+        if not target_hex:
+            return StepResult(is_finished=True)
+
+        # Compute direction: normalize(target - origin)
+        diff = target_hex - origin_hex
+        dist = origin_hex.distance(target_hex)
+        if dist == 0:
+            return StepResult(is_finished=True)
+
+        unit_dir = Hex(
+            q=diff.q // dist,
+            r=diff.r // dist,
+            s=diff.s // dist,
+        )
+
+        # Compute result: target + direction * scale
+        result = target_hex + Hex(
+            q=unit_dir.q * self.scale,
+            r=unit_dir.r * self.scale,
+            s=unit_dir.s * self.scale,
+        )
+
+        context[self.output_key] = result
+        return StepResult(is_finished=True)
+
+
 # Rebuild recursive models
 MayRepeatOnceStep.model_rebuild()
 ForEachStep.model_rebuild()
