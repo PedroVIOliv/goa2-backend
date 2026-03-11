@@ -219,10 +219,14 @@ class AdjacencyFilter(FilterCondition):
     """
     Requires the target to be adjacent to a unit matching specific tags.
     E.g. "Adjacent to a Friendly Hero"
+
+    If skip_immune=True, immune units are not counted as valid adjacent matches.
+    This prevents e.g. charge effects from moving next to only immune enemies.
     """
 
     type: FilterType = FilterType.ADJACENCY
-    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]] 
+    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]]
+    skip_immune: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
@@ -279,6 +283,11 @@ class AdjacencyFilter(FilterCondition):
                         matches = False
 
             if matches:
+                if self.skip_immune:
+                    # Check if this adjacent unit is immune (heavy minion
+                    # immunity + ATTACK_IMMUNITY effects)
+                    if not ImmunityFilter().apply(str(occupant.id), state, context):
+                        continue  # Skip immune units
                 return True
 
         return False
