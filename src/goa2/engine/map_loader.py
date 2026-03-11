@@ -1,4 +1,5 @@
 import json
+from collections import deque
 from typing import Dict, List, Set, TYPE_CHECKING
 
 from goa2.domain.board import Board, Zone
@@ -8,6 +9,82 @@ from goa2.domain.models import TeamColor
 
 if TYPE_CHECKING:
     pass
+
+
+def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
+    """
+    Add terrain tiles for holes inside the map and 2-layer padding outside.
+
+    Holes are empty hexes completely enclosed by the map.
+    Padding is terrain surrounding the map (2 layers deep).
+    """
+    if not map_hexes:
+        return
+
+    q_coords = [h.q for h in map_hexes]
+    r_coords = [h.r for h in map_hexes]
+    min_q, max_q = min(q_coords), max(q_coords)
+    min_r, max_r = min(r_coords), max(r_coords)
+
+    padding = 2
+    expanded_min_q = min_q - padding
+    expanded_max_q = max_q + padding
+    expanded_min_r = min_r - padding
+    expanded_max_r = max_r + padding
+
+    def in_expanded_bounds(h: Hex) -> bool:
+        return (
+            expanded_min_q <= h.q <= expanded_max_q
+            and expanded_min_r <= h.r <= expanded_max_r
+        )
+
+    def is_on_map(h: Hex) -> bool:
+        return h in map_hexes
+
+    def flood_fill_outside(start: Hex) -> bool:
+        """
+        Returns True if the flood fill escapes the expanded bounds.
+        This means the starting hex is 'outside' (padding), not a hole.
+        """
+        visited: Set[Hex] = set()
+        queue = deque([start])
+
+        while queue:
+            current = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+
+            if not in_expanded_bounds(current):
+                return True
+
+            for neighbor in current.neighbors():
+                if neighbor not in visited and not is_on_map(neighbor):
+                    queue.append(neighbor)
+
+        return False
+
+    holes: Set[Hex] = set()
+    padding_hexes: Set[Hex] = set()
+
+    q = expanded_min_q
+    while q <= expanded_max_q:
+        r = expanded_min_r
+        while r <= expanded_max_r:
+            s = -q - r
+            h = Hex(q=q, r=r, s=s)
+
+            if not is_on_map(h) and in_expanded_bounds(h):
+                if flood_fill_outside(h):
+                    padding_hexes.add(h)
+                else:
+                    holes.add(h)
+
+            r += 1
+        q += 1
+
+    for h in holes | padding_hexes:
+        board.tiles[h] = Tile(hex=h, is_terrain=True)
 
 
 def load_map(file_path: str) -> Board:
@@ -106,6 +183,9 @@ def load_map(file_path: str) -> Board:
 
     board = Board(zones=zones, spawn_points=spawn_points)
     board.populate_tiles_from_zones()
+
+    map_hexes = set(board.tiles.keys())
+    _add_terrain_padding_and_holes(board, map_hexes)
 
     for sp in spawn_points:
         if sp.location in board.tiles:
