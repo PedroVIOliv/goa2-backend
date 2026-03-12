@@ -17,6 +17,8 @@ Cards covered:
 - Master Thief: Move 2 + steal 1-2 coins + conditional move 2
 - Blend Into Shadows: Terrain-conditional placement + next-turn immunity
 - Blink Strike: Straight-line pass-through attack
+- Poisoned Dagger: Place poison marker (-1 stats) on enemy hero in range
+- Poisoned Dart: Place poison marker (-2 stats) on enemy hero in range
 """
 
 import pytest
@@ -1637,3 +1639,285 @@ class TestBlinkStrikeEffect:
         state.place_entity("blocker", Hex(q=2, r=-2, s=0))
 
         assert f.apply("enemy", state, context) is False
+
+
+# =============================================================================
+# Card Factories for Poison Cards
+# =============================================================================
+
+
+def make_poisoned_dagger_card():
+    return Card(
+        id="poisoned_dagger", name="Poisoned Dagger", tier=CardTier.II,
+        color=CardColor.GREEN, initiative=2, primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 3},
+        is_ranged=True, range_value=3,
+        effect_id="poisoned_dagger",
+        effect_text="Give a hero in range a Poison marker. -1 Initiative, -1 Attack, -1 Defense.",
+        is_facedown=False,
+    )
+
+
+def make_poisoned_dart_card():
+    return Card(
+        id="poisoned_dart", name="Poisoned Dart", tier=CardTier.III,
+        color=CardColor.GREEN, initiative=1, primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 3},
+        is_ranged=True, range_value=3,
+        effect_id="poisoned_dart",
+        effect_text="Give a hero in range a Poison marker. -2 Initiative, -2 Attack, -2 Defense.",
+        is_facedown=False,
+    )
+
+
+# =============================================================================
+# Poisoned Dagger Tests
+# =============================================================================
+
+
+class TestPoisonedDaggerEffect:
+
+    def test_poisoned_dagger_registered(self):
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        assert effect is not None
+
+    def test_poisoned_dagger_structure(self, tigerclaw_state):
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dagger_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+
+        assert len(steps) == 2
+        assert steps[0].__class__.__name__ == "SelectStep"
+        assert steps[1].__class__.__name__ == "PlaceMarkerStep"
+
+    def test_poisoned_dagger_select_enemy_hero_in_range(self, tigerclaw_state):
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dagger_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+        select = steps[0]
+
+        assert select.is_mandatory is True
+        assert select.output_key == "poison_target"
+        has_hero = any(
+            f.__class__.__name__ == "UnitTypeFilter" and f.unit_type == "HERO"
+            for f in select.filters
+        )
+        has_enemy = any(
+            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"
+            for f in select.filters
+        )
+        has_range = any(
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 3
+            for f in select.filters
+        )
+        assert has_hero
+        assert has_enemy
+        assert has_range
+
+    def test_poisoned_dagger_marker_value_minus_1(self, tigerclaw_state):
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dagger_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+        marker_step = steps[1]
+
+        from goa2.domain.models.marker import MarkerType
+        assert marker_step.marker_type == MarkerType.POISON
+        assert marker_step.target_key == "poison_target"
+        assert marker_step.value == -1
+
+    def test_poisoned_dagger_happy_path(self, tigerclaw_state):
+        """Place poison marker on enemy hero → marker placed with value -1."""
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dagger_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+        push_steps(tigerclaw_state, steps)
+
+        # SelectStep: select enemy hero
+        req = process_resolution_stack(tigerclaw_state)
+        assert req is not None
+        assert req["type"] == "SELECT_UNIT"
+
+        tigerclaw_state.execution_stack[-1].pending_input = {"selection": "enemy"}
+
+        # PlaceMarkerStep runs
+        req = process_resolution_stack(tigerclaw_state)
+        assert req is None
+
+        from goa2.domain.models.marker import MarkerType
+        marker = tigerclaw_state.get_marker(MarkerType.POISON)
+        assert marker.target_id == "enemy"
+        assert marker.value == -1
+        assert marker.source_id == "tigerclaw"
+
+    def test_poisoned_dagger_stat_debuffs(self, tigerclaw_state):
+        """Poison marker with value -1 debuffs Attack, Defense, Initiative."""
+        from goa2.domain.models.marker import MarkerType
+        from goa2.domain.models.enums import StatType
+        from goa2.engine.stats import get_computed_stat
+
+        tigerclaw_state.place_marker(
+            MarkerType.POISON, "enemy", -1, "tigerclaw"
+        )
+
+        atk = get_computed_stat(tigerclaw_state, "enemy", StatType.ATTACK, 5)
+        defense = get_computed_stat(tigerclaw_state, "enemy", StatType.DEFENSE, 5)
+        init = get_computed_stat(tigerclaw_state, "enemy", StatType.INITIATIVE, 5)
+
+        assert atk == 4
+        assert defense == 4
+        assert init == 4
+
+    def test_poisoned_dagger_no_valid_target_aborts(self):
+        """No enemy hero in range → mandatory abort."""
+        board = Board()
+        hexes = set()
+        for q in range(-3, 4):
+            for r in range(-3, 4):
+                s = -q - r
+                if abs(s) <= 3:
+                    hexes.add(Hex(q=q, r=r, s=s))
+        z1 = Zone(id="z1", hexes=hexes, neighbors=[])
+        board.zones = {"z1": z1}
+        board.populate_tiles_from_zones()
+
+        tc = Hero(id="tigerclaw", name="Tigerclaw", team=TeamColor.RED, deck=[], level=1)
+
+        state = GameState(
+            board=board,
+            teams={
+                TeamColor.RED: Team(color=TeamColor.RED, heroes=[tc], minions=[]),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+            },
+        )
+        state.place_entity("tigerclaw", Hex(q=0, r=0, s=0))
+        state.current_actor_id = "tigerclaw"
+
+        effect = CardEffectRegistry.get("poisoned_dagger")
+        card = make_poisoned_dagger_card()
+        steps = effect.get_steps(state, tc, card)
+        push_steps(state, steps)
+
+        req = process_resolution_stack(state)
+        assert req is None  # Aborted
+
+
+# =============================================================================
+# Poisoned Dart Tests
+# =============================================================================
+
+
+class TestPoisonedDartEffect:
+
+    def test_poisoned_dart_registered(self):
+        effect = CardEffectRegistry.get("poisoned_dart")
+        assert effect is not None
+
+    def test_poisoned_dart_structure(self, tigerclaw_state):
+        effect = CardEffectRegistry.get("poisoned_dart")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dart_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+
+        assert len(steps) == 2
+        assert steps[0].__class__.__name__ == "SelectStep"
+        assert steps[1].__class__.__name__ == "PlaceMarkerStep"
+
+    def test_poisoned_dart_marker_value_minus_2(self, tigerclaw_state):
+        effect = CardEffectRegistry.get("poisoned_dart")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dart_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+        marker_step = steps[1]
+
+        from goa2.domain.models.marker import MarkerType
+        assert marker_step.marker_type == MarkerType.POISON
+        assert marker_step.value == -2
+
+    def test_poisoned_dart_happy_path(self, tigerclaw_state):
+        """Place poison marker on enemy hero → marker placed with value -2."""
+        effect = CardEffectRegistry.get("poisoned_dart")
+        tc = tigerclaw_state.get_hero("tigerclaw")
+        card = make_poisoned_dart_card()
+
+        steps = effect.get_steps(tigerclaw_state, tc, card)
+        push_steps(tigerclaw_state, steps)
+
+        req = process_resolution_stack(tigerclaw_state)
+        assert req is not None
+        assert req["type"] == "SELECT_UNIT"
+
+        tigerclaw_state.execution_stack[-1].pending_input = {"selection": "enemy"}
+
+        req = process_resolution_stack(tigerclaw_state)
+        assert req is None
+
+        from goa2.domain.models.marker import MarkerType
+        marker = tigerclaw_state.get_marker(MarkerType.POISON)
+        assert marker.target_id == "enemy"
+        assert marker.value == -2
+        assert marker.source_id == "tigerclaw"
+
+    def test_poisoned_dart_stat_debuffs(self, tigerclaw_state):
+        """Poison marker with value -2 debuffs Attack, Defense, Initiative by 2."""
+        from goa2.domain.models.marker import MarkerType
+        from goa2.domain.models.enums import StatType
+        from goa2.engine.stats import get_computed_stat
+
+        tigerclaw_state.place_marker(
+            MarkerType.POISON, "enemy", -2, "tigerclaw"
+        )
+
+        atk = get_computed_stat(tigerclaw_state, "enemy", StatType.ATTACK, 5)
+        defense = get_computed_stat(tigerclaw_state, "enemy", StatType.DEFENSE, 5)
+        init = get_computed_stat(tigerclaw_state, "enemy", StatType.INITIATIVE, 5)
+
+        assert atk == 3
+        assert defense == 3
+        assert init == 3
+
+    def test_poison_singleton_move(self, tigerclaw_state):
+        """Placing poison on hero B removes it from hero A (singleton)."""
+        from goa2.domain.models.marker import MarkerType
+
+        # Add a second enemy
+        enemy2 = Hero(id="enemy2", name="Enemy2", team=TeamColor.BLUE, deck=[], level=1)
+        tigerclaw_state.teams[TeamColor.BLUE].heroes.append(enemy2)
+        tigerclaw_state.place_entity("enemy2", Hex(q=2, r=0, s=-2))
+
+        # Place on first enemy
+        tigerclaw_state.place_marker(MarkerType.POISON, "enemy", -2, "tigerclaw")
+        marker = tigerclaw_state.get_marker(MarkerType.POISON)
+        assert marker.target_id == "enemy"
+
+        # Place on second enemy — singleton moves
+        tigerclaw_state.place_marker(MarkerType.POISON, "enemy2", -2, "tigerclaw")
+        assert marker.target_id == "enemy2"
+
+        # First enemy no longer has marker
+        markers_on_enemy = tigerclaw_state.get_markers_on_hero("enemy")
+        assert len(markers_on_enemy) == 0
+
+    def test_poison_end_of_round_cleanup(self, tigerclaw_state):
+        """End-of-round return_all_markers removes poison marker."""
+        from goa2.domain.models.marker import MarkerType
+
+        tigerclaw_state.place_marker(MarkerType.POISON, "enemy", -2, "tigerclaw")
+        marker = tigerclaw_state.get_marker(MarkerType.POISON)
+        assert marker.is_placed is True
+
+        tigerclaw_state.return_all_markers()
+
+        assert marker.is_placed is False
+        assert marker.target_id is None

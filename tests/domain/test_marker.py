@@ -15,6 +15,9 @@ class TestMarkerType:
     def test_marker_type_has_venom(self):
         assert MarkerType.VENOM == "venom"
 
+    def test_marker_type_has_poison(self):
+        assert MarkerType.POISON == "poison"
+
 
 class TestMarkerStatEffect:
     """Tests for MarkerStatEffect configuration."""
@@ -26,6 +29,20 @@ class TestMarkerStatEffect:
         assert StatType.ATTACK in stat_types
         assert StatType.DEFENSE in stat_types
         assert StatType.INITIATIVE in stat_types
+
+    def test_poison_marker_effects_defined(self):
+        """POISON marker should have effects for Attack, Defense, Initiative."""
+        effects = MARKER_EFFECTS[MarkerType.POISON]
+        stat_types = [e.stat_type for e in effects]
+        assert StatType.ATTACK in stat_types
+        assert StatType.DEFENSE in stat_types
+        assert StatType.INITIATIVE in stat_types
+
+    def test_poison_effects_use_marker_value(self):
+        """POISON effects should use the marker's value field."""
+        effects = MARKER_EFFECTS[MarkerType.POISON]
+        for effect in effects:
+            assert effect.use_marker_value is True
 
     def test_venom_effects_use_marker_value(self):
         """VENOM effects should use the marker's value field."""

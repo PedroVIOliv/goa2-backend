@@ -11,6 +11,7 @@ from goa2.engine.steps import (
     ForceDiscardOrDefeatStep,
     GameStep,
     MoveUnitStep,
+    PlaceMarkerStep,
     PlaceUnitStep,
     RetrieveCardStep,
     SelectStep,
@@ -30,6 +31,7 @@ from goa2.engine.filters import (
 )
 from goa2.domain.models import TargetType
 from goa2.domain.models.enums import CardContainerType
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -909,5 +911,75 @@ class BlinkStrikeEffect(CardEffect):
                 damage=stats.primary_value,
                 target_id_key="blink_victim",
                 range_val=1,
+            ),
+        ]
+
+
+# =============================================================================
+# TIER II - GREEN: Poisoned Dagger
+# =============================================================================
+
+
+@register_effect("poisoned_dagger")
+class PoisonedDaggerEffect(CardEffect):
+    """
+    Card text: "Give a hero in range a Poison marker. The hero with a poison
+    marker has -1 Initiative, -1 Attack and -1 Defense."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero in range to poison",
+                output_key="poison_target",
+                is_mandatory=True,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range),
+                ],
+            ),
+            PlaceMarkerStep(
+                marker_type=MarkerType.POISON,
+                target_key="poison_target",
+                value=-1,
+            ),
+        ]
+
+
+# =============================================================================
+# TIER III - GREEN: Poisoned Dart
+# =============================================================================
+
+
+@register_effect("poisoned_dart")
+class PoisonedDartEffect(CardEffect):
+    """
+    Card text: "Give a hero in range a Poison marker. The hero with a poison
+    marker has -2 Initiative, -2 Attack and -2 Defense."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select enemy hero in range to poison",
+                output_key="poison_target",
+                is_mandatory=True,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range),
+                ],
+            ),
+            PlaceMarkerStep(
+                marker_type=MarkerType.POISON,
+                target_key="poison_target",
+                value=-2,
             ),
         ]

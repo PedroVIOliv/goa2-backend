@@ -12,6 +12,7 @@ class MarkerType(str, Enum):
     """Types of markers in the game. Each type is a singleton."""
 
     VENOM = "venom"  # Rogue's venom marker: debuffs Attack, Defense, Initiative
+    POISON = "poison"  # Tigerclaw's poison marker: debuffs Attack, Defense, Initiative
 
 
 class MarkerStatEffect(BaseModel):
@@ -26,6 +27,11 @@ class MarkerStatEffect(BaseModel):
 # Registry of what effects each marker type applies
 MARKER_EFFECTS: dict[MarkerType, List[MarkerStatEffect]] = {
     MarkerType.VENOM: [
+        MarkerStatEffect(stat_type=StatType.ATTACK, use_marker_value=True),
+        MarkerStatEffect(stat_type=StatType.DEFENSE, use_marker_value=True),
+        MarkerStatEffect(stat_type=StatType.INITIATIVE, use_marker_value=True),
+    ],
+    MarkerType.POISON: [
         MarkerStatEffect(stat_type=StatType.ATTACK, use_marker_value=True),
         MarkerStatEffect(stat_type=StatType.DEFENSE, use_marker_value=True),
         MarkerStatEffect(stat_type=StatType.INITIATIVE, use_marker_value=True),
