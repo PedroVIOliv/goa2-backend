@@ -7,6 +7,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +58,11 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="GoA2 API", version="0.1.0", lifespan=lifespan)
 
+    # Routers
+    app.include_router(heroes_router)
+    app.include_router(games_router)
+    app.include_router(ws_router)
+
     # CORS
     allowed_origins = os.environ.get("GOA2_CORS_ORIGINS", "").split(",")
     allowed_origins = [o.strip() for o in allowed_origins if o.strip()]
@@ -66,11 +74,6 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-
-    # Routers
-    app.include_router(heroes_router)
-    app.include_router(games_router)
-    app.include_router(ws_router)
 
     # Exception handlers
     @app.exception_handler(GameNotFoundError)
