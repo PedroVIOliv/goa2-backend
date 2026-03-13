@@ -145,6 +145,37 @@ class GameRegistry:
         self._cleanup_orphaned_logs()
         return count
 
+    def cleanup_stale_games(self, max_age_seconds: int = 86400) -> int:
+        """Remove games whose save file hasn't been updated in max_age_seconds.
+
+        Returns the number of games removed.
+        """
+        if not self._save_dir:
+            return 0
+
+        save_path = Path(self._save_dir)
+        now = time.time()
+        removed = 0
+
+        for game_id in list(self._games):
+            file_path = save_path / f"{game_id}.json"
+            if file_path.is_file():
+                mtime = file_path.stat().st_mtime
+                if now - mtime > max_age_seconds:
+                    logger.info(
+                        "Removing stale game %s (last updated %.0f hours ago)",
+                        game_id,
+                        (now - mtime) / 3600,
+                    )
+                    self.remove(game_id)
+                    removed += 1
+            else:
+                # No save file — remove from memory
+                self._games.pop(game_id, None)
+                removed += 1
+
+        return removed
+
     def _cleanup_orphaned_logs(self) -> None:
         """Remove log files for games that no longer have a save file."""
         from goa2.server.game_logger import delete_game_logs

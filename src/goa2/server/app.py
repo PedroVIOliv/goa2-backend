@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import os
@@ -44,6 +45,15 @@ def register_all_effects():
 register_all_effects()
 
 
+async def _cleanup_loop(registry: GameRegistry):
+    """Periodically remove games not updated in 24 hours."""
+    while True:
+        await asyncio.sleep(3600)  # Check every hour
+        removed = registry.cleanup_stale_games(max_age_seconds=86400)
+        if removed:
+            logger.info("Cleanup: removed %d stale game(s)", removed)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     save_dir = os.environ.get("GOA2_SAVE_DIR", "data/games")
@@ -52,7 +62,16 @@ async def lifespan(app: FastAPI):
     if count:
         logger.info("Restored %d game(s) from %s", count, save_dir)
     app.state.registry = registry
-    yield
+
+    cleanup_task = asyncio.create_task(_cleanup_loop(registry))
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app() -> FastAPI:
