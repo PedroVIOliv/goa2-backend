@@ -1036,13 +1036,7 @@ class CloakAndDaggersEffect(CardEffect):
             effect_id = context.get("basic_action_effect_id")
             if effect_id:
                 effect = CardEffectRegistry.get(effect_id)
-                card_id = context.get("basic_action_card_id")
-                basic_card = next(
-                    (c for c in hero.played_cards if c and c.id == card_id),
-                    None,
-                )
-                if not basic_card:
-                    basic_card = hero.current_turn_card
+                basic_card = hero.current_turn_card
                 if effect and basic_card:
                     steps = effect.get_steps(state, hero, basic_card)
                     # Inject "cannot target same unit" filter
@@ -1085,5 +1079,13 @@ class CloakAndDaggersEffect(CardEffect):
                     range_val=action_value,
                 ),
             ]
+        elif action_type == ActionType.SKILL.value:
+            effect_id = context.get("basic_action_effect_id")
+            if effect_id:
+                effect = CardEffectRegistry.get(effect_id)
+                basic_card = hero.current_turn_card
+                if effect and basic_card:
+                    return effect.get_steps(state, hero, basic_card)
+            return []
 
         return []
