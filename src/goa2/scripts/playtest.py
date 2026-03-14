@@ -32,6 +32,7 @@ from goa2.engine.session import GameSession, SessionResultType
 
 # Import effect scripts to register card effects
 import goa2.scripts.arien_effects  # noqa: F401
+import goa2.scripts.dodger_effects  # noqa: F401
 import goa2.scripts.wasp_effects  # noqa: F401
 
 

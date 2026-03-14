@@ -190,6 +190,7 @@ class FilterType(str, Enum):
     STRAIGHT_LINE_PATH = "straight_line_path_filter"
     PLAYED_CARD = "played_card_filter"
     SPACE_BEHIND_EMPTY = "space_behind_empty_filter"
+    HAS_CARDS_IN_DISCARD = "has_cards_in_discard_filter"
 
 
 class TargetType(str, Enum):

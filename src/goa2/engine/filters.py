@@ -1024,6 +1024,24 @@ class AndFilter(FilterCondition):
 # -----------------------------------------------------------------------------
 
 
+class HasCardsInDiscardFilter(FilterCondition):
+    """
+    Filters unit candidates to those heroes who have >= min_cards cards in discard.
+    Non-hero candidates are rejected.
+    """
+
+    type: FilterType = FilterType.HAS_CARDS_IN_DISCARD
+    min_cards: int = 1
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        hero = state.get_hero(candidate)
+        if not hero:
+            return False
+        return len(hero.discard_pile) >= self.min_cards
+
+
 class PlayedCardFilter(FilterCondition):
     """
     Checks if a candidate hero played a card matching criteria in the current turn.
