@@ -10,6 +10,7 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     ForceDiscardOrDefeatStep,
     GameStep,
+    MoveSequenceStep,
     MoveUnitStep,
     PlaceMarkerStep,
     PlaceUnitStep,
@@ -29,7 +30,7 @@ from goa2.engine.filters import (
     TerrainFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models import TargetType
+from goa2.domain.models import TargetType, ActionType
 from goa2.domain.models.enums import CardContainerType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.models.effect import (
@@ -367,9 +368,9 @@ class BackstabWithABallistaEffect(CardEffect):
     Card text: "Target a unit in range; if a friendly unit is adjacent to the
     target +2 Attack, and the target cannot perform a primary action to defend."
 
-    NOTE: The "cannot defend with primary action" mechanic requires engine
-    support (a context flag checked by ReactionWindowStep). The flanking
-    bonus reuses the same pattern as Backstab.
+    The flanking bonus reuses the same pattern as Backstab.
+    When flanking applies, block_primary_defense prevents the defender from
+    using primary DEFENSE cards and suppresses defense effect text.
     """
 
     def build_steps(
@@ -496,9 +497,6 @@ class EvadeEffect(CardEffect):
     """
     Card text: "Block a ranged attack. You may move 1 space.
     You may retrieve your resolved or discarded basic skill card."
-
-    NOTE: Card filtering for "basic skill card" is not yet supported.
-    Currently allows retrieving any card from the discard pile.
     """
 
     def build_defense_steps(
@@ -542,13 +540,15 @@ class EvadeEffect(CardEffect):
                 is_movement_action=False,
                 active_if_key="evade_move_hex",
             ),
-            # 2. Retrieve a discarded card (optional)
+            # 2. Retrieve a basic skill card from discard (optional)
             SelectStep(
                 target_type=TargetType.CARD,
-                card_container=CardContainerType.DISCARD,
-                prompt="Select a discarded card to retrieve (optional)",
+                card_containers=[CardContainerType.PLAYED, CardContainerType.DISCARD],
+                prompt="Select a basic skill card to retrieve (optional)",
                 output_key="retrieved_card",
                 is_mandatory=False,
+                card_is_basic=True,
+                card_action_types=[ActionType.SKILL],
             ),
             RetrieveCardStep(
                 card_key="retrieved_card",
@@ -983,3 +983,107 @@ class PoisonedDartEffect(CardEffect):
                 value=-2,
             ),
         ]
+
+
+# =============================================================================
+# ULTIMATE (Purple/Tier IV) - Passive: Cloak and Daggers
+# =============================================================================
+
+
+@register_effect("cloak_and_daggers")
+class CloakAndDaggersEffect(CardEffect):
+    """
+    Card text: "After you perform a basic action, you may repeat it once;
+    if you repeat an attack action, you cannot target the same unit."
+
+    Passive ability that triggers AFTER_BASIC_ACTION (any action on basic cards).
+    Reads the action type, value, and range from context to rebuild the repeat.
+    """
+
+    def get_passive_config(self) -> Optional["PassiveConfig"]:
+        from goa2.engine.effects import PassiveConfig
+        from goa2.domain.models.enums import PassiveTrigger
+
+        return PassiveConfig(
+            trigger=PassiveTrigger.AFTER_BASIC_ACTION,
+            uses_per_turn=1,
+            is_optional=True,
+            prompt="Cloak and Daggers: Repeat the basic action?",
+        )
+
+    def get_passive_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: "PassiveTrigger",
+        context: Dict[str, Any],
+    ) -> List[GameStep]:
+        from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
+
+        if trigger != PassiveTrigger.AFTER_BASIC_ACTION:
+            return []
+
+        action_type = context.get("basic_action_type")
+        action_value = context.get("basic_action_value")
+
+        if not action_type or action_value is None:
+            return []
+
+        if action_type == ActionType.ATTACK.value:
+            # If a primary effect was used, rebuild the full sequence
+            effect_id = context.get("basic_action_effect_id")
+            if effect_id:
+                effect = CardEffectRegistry.get(effect_id)
+                card_id = context.get("basic_action_card_id")
+                basic_card = next(
+                    (c for c in hero.played_cards if c and c.id == card_id),
+                    None,
+                )
+                if not basic_card:
+                    basic_card = hero.current_turn_card
+                if effect and basic_card:
+                    steps = effect.get_steps(state, hero, basic_card)
+                    # Inject "cannot target same unit" filter
+                    for step in steps:
+                        if (
+                            isinstance(step, AttackSequenceStep)
+                            and not step.target_id_key
+                        ):
+                            step.target_filters.append(
+                                ExcludeIdentityFilter(
+                                    exclude_keys=["last_combat_target"]
+                                )
+                            )
+                        elif (
+                            isinstance(step, SelectStep)
+                            and step.target_type == TargetType.UNIT
+                        ):
+                            step.filters.append(
+                                ExcludeIdentityFilter(
+                                    exclude_keys=["last_combat_target"]
+                                )
+                            )
+                    return steps
+
+            # Fallback: secondary/generic attack
+            action_range = context.get("basic_action_range", 1)
+            return [
+                AttackSequenceStep(
+                    damage=action_value,
+                    range_val=action_range,
+                    target_filters=[
+                        ExcludeIdentityFilter(exclude_keys=["last_combat_target"])
+                    ],
+                ),
+            ]
+        elif action_type == ActionType.MOVEMENT.value:
+            return [
+                MoveSequenceStep(
+                    unit_id=hero.id,
+                    range_val=action_value,
+                ),
+            ]
+
+        return []

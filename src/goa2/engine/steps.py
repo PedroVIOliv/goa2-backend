@@ -627,11 +627,19 @@ class SelectStep(GameStep):
     card_container: CardContainerType = (
         CardContainerType.HAND
     )  # "HAND", "PLAYED", "DISCARD", "DECK"
+    card_containers: Optional[List[CardContainerType]] = (
+        None  # When set, merges candidates from multiple containers
+    )
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
     override_player_id_key: Optional[str] = (
         None  # Key in context to find player ID who provides input
     )
+    # Card property filters (applied before candidate extraction for CARD selections)
+    card_action_types: Optional[List[ActionType]] = (
+        None  # Only include cards with primary_action in this list
+    )
+    card_is_basic: Optional[bool] = None  # Only include basic (True) or non-basic (False)
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """
@@ -695,14 +703,30 @@ class SelectStep(GameStep):
             hero = state.get_hero(HeroID(str(target_id)))
             if hero:
                 source_list = []
-                if self.card_container == CardContainerType.HAND:
-                    source_list = hero.hand
-                elif self.card_container == CardContainerType.PLAYED:
-                    source_list = [c for c in hero.played_cards if c is not None]
-                elif self.card_container == CardContainerType.DISCARD:
-                    source_list = hero.discard_pile
-                elif self.card_container == CardContainerType.DECK:
-                    source_list = hero.deck
+                containers = self.card_containers or [self.card_container]
+                for container in containers:
+                    if container == CardContainerType.HAND:
+                        source_list.extend(hero.hand)
+                    elif container == CardContainerType.PLAYED:
+                        source_list.extend(
+                            c for c in hero.played_cards if c is not None
+                        )
+                    elif container == CardContainerType.DISCARD:
+                        source_list.extend(hero.discard_pile)
+                    elif container == CardContainerType.DECK:
+                        source_list.extend(hero.deck)
+
+                # Apply card property filters before extracting IDs
+                if self.card_action_types is not None:
+                    source_list = [
+                        c
+                        for c in source_list
+                        if c.primary_action in self.card_action_types
+                    ]
+                if self.card_is_basic is not None:
+                    source_list = [
+                        c for c in source_list if c.is_basic == self.card_is_basic
+                    ]
 
                 candidates = [c.id for c in source_list]
 
@@ -1278,13 +1302,21 @@ class ReactionWindowStep(GameStep):
             context["is_primary_defense"] = False
             return StepResult(is_finished=True)
 
+        block_primary = context.get("block_primary_defense", False)
+
         valid_defense_cards = []
         for card in target_hero.hand:
-            if (
-                card.current_primary_action == ActionType.DEFENSE
-                or card.current_primary_action == ActionType.DEFENSE_SKILL
-                or ActionType.DEFENSE in card.current_secondary_actions
-            ):
+            is_primary_def = card.current_primary_action in (
+                ActionType.DEFENSE,
+                ActionType.DEFENSE_SKILL,
+            )
+            has_secondary_def = ActionType.DEFENSE in card.current_secondary_actions
+
+            if block_primary and is_primary_def and not has_secondary_def:
+                # Card only usable as primary defense — blocked
+                continue
+
+            if is_primary_def or has_secondary_def:
                 valid_defense_cards.append(card)
 
         [c.id for c in valid_defense_cards]
@@ -1334,9 +1366,14 @@ class ReactionWindowStep(GameStep):
                 )
 
                 # Determine if primary defense (triggers effect text)
-                is_primary = selected_card.current_primary_action in (
-                    ActionType.DEFENSE,
-                    ActionType.DEFENSE_SKILL,
+                # block_primary_defense forces all cards to secondary-only
+                is_primary = (
+                    not block_primary
+                    and selected_card.current_primary_action
+                    in (
+                        ActionType.DEFENSE,
+                        ActionType.DEFENSE_SKILL,
+                    )
                 )
 
                 # Discard the defense card from hand
@@ -1934,6 +1971,10 @@ class ResolveCombatStep(GameStep):
             print("[COMBAT] No target selected. Combat cancelled.")
             context["block_succeeded"] = False
             return StepResult(is_finished=True)
+
+        # Store under a standard key so passives can reference the combat target
+        # regardless of what custom key the effect used (e.g. "blink_victim")
+        context["last_combat_target"] = target_id
 
         defense_card_val = context.get("defense_value", None)
         attack_val = self.damage
@@ -2948,6 +2989,56 @@ class ResolveCardStep(GameStep):
                     steps_list.append(
                         CheckPassiveAbilitiesStep(
                             trigger=PassiveTrigger.AFTER_BASIC_SKILL.value
+                        )
+                    )
+
+                # Add AFTER_BASIC_ACTION passive check for basic card actions
+                if card.is_basic and act_type in (
+                    ActionType.ATTACK,
+                    ActionType.MOVEMENT,
+                    ActionType.SKILL,
+                ):
+                    steps_list.append(
+                        SetContextFlagStep(
+                            key="basic_action_type", value=act_type.value
+                        )
+                    )
+                    steps_list.append(
+                        SetContextFlagStep(key="basic_action_value", value=val)
+                    )
+                    # Store range for attack repeats
+                    if act_type == ActionType.ATTACK:
+                        base_rng_ba = card.get_base_stat_value(StatType.RANGE)
+                        if base_rng_ba == 0:
+                            base_rng_ba = 1
+                        total_rng_ba = get_computed_stat(
+                            state,
+                            UnitID(self.hero_id),
+                            StatType.RANGE,
+                            base_rng_ba,
+                        )
+                        steps_list.append(
+                            SetContextFlagStep(
+                                key="basic_action_range", value=total_rng_ba
+                            )
+                        )
+                    # Store effect info for primary actions so passives can
+                    # rebuild the full effect sequence (e.g. Blink Strike)
+                    if is_primary and card.current_effect_id:
+                        steps_list.append(
+                            SetContextFlagStep(
+                                key="basic_action_effect_id",
+                                value=card.current_effect_id,
+                            )
+                        )
+                        steps_list.append(
+                            SetContextFlagStep(
+                                key="basic_action_card_id", value=card.id
+                            )
+                        )
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(
+                            trigger=PassiveTrigger.AFTER_BASIC_ACTION.value
                         )
                     )
 
@@ -4916,16 +5007,25 @@ class RetrieveCardStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        # Find card in discard pile
-        target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
+        # Find card in played_cards or discard_pile
+        target_card = next(
+            (c for c in hero.played_cards if c is not None and c.id == card_id),
+            None,
+        )
+        source = "played"
+        if not target_card:
+            target_card = next(
+                (c for c in hero.discard_pile if c.id == card_id), None
+            )
+            source = "discard"
         if not target_card:
             print(
-                f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s discard pile."
+                f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s played or discard."
             )
             return StepResult(is_finished=True)
 
         hero.return_card_to_hand(target_card)
-        print(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from discard.")
+        print(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from {source}.")
 
         event = GameEvent(
             event_type=GameEventType.CARD_RETRIEVED,
