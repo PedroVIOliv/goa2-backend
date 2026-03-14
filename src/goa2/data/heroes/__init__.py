@@ -7,5 +7,7 @@ import goa2.data.heroes.xargatha
 import goa2.data.heroes.wasp
 import goa2.data.heroes.brogan
 import goa2.data.heroes.tigerclaw
+import goa2.data.heroes.sabina
+import goa2.data.heroes.dodger
 
 __all__ = ["HeroRegistry"]
