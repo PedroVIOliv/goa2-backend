@@ -1025,6 +1025,11 @@ class CloakAndDaggersEffect(CardEffect):
         if trigger != PassiveTrigger.AFTER_BASIC_ACTION:
             return []
 
+        # Check repeat prevention effects (e.g. Enfeeblement)
+        result = state.validator.can_repeat_action(state, str(hero.id), context)
+        if not result.allowed:
+            return []
+
         action_type = context.get("basic_action_type")
         action_value = context.get("basic_action_value")
 

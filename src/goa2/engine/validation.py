@@ -167,6 +167,8 @@ class ValidationService:
         if actor_loc:
             actor_unit = state.get_unit(UnitID(actor_id))
             for effect in state.active_effects:
+                if effect.effect_type != EffectType.REPEAT_PREVENTION:
+                    continue
                 if not self._is_effect_active(effect, state):
                     continue
                 if not self._is_in_scope(effect, actor_id, actor_loc, state):

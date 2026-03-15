@@ -47,6 +47,9 @@ class EffectType(str, Enum):
     # Minion protection (Brogan Shield/Bolster/Fortify)
     MINION_PROTECTION = "minion_protection"
 
+    # Repeat prevention (Enfeeblement) - blocks action repeats
+    REPEAT_PREVENTION = "repeat_prevention"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""

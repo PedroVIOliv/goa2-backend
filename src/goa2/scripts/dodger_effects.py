@@ -634,26 +634,56 @@ class BurningSkullEffect(CardEffect):
 
 
 # =============================================================================
+# TIER III - BLUE: Enfeeblement (SKILL)
+# =============================================================================
+
+
+@register_effect("enfeeblement")
+class EnfeeblementEffect(CardEffect):
+    """
+    Card Text: "This turn: Enemy heroes in radius have -6 Attack and cannot
+               repeat actions."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            # -6 Attack (same pattern as Weakness)
+            CreateEffectStep(
+                effect_type=EffectType.AREA_STAT_MODIFIER,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                stat_type=StatType.ATTACK,
+                stat_value=-6,
+                is_active=True,
+            ),
+            # Cannot repeat actions
+            CreateEffectStep(
+                effect_type=EffectType.REPEAT_PREVENTION,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.ENEMY_HEROES,
+                ),
+                duration=DurationType.THIS_TURN,
+                is_active=True,
+            ),
+        ]
+
+
+# =============================================================================
 # NOT YET IMPLEMENTED — Cards requiring new infrastructure
 # =============================================================================
 #
-# The following 7 cards are NOT registered. Each section explains the card text,
+# The following 6 cards are NOT registered. Each section explains the card text,
 # what blocks implementation, and what infrastructure is needed.
-#
-# -----------------------------------------------------------------------------
-# enfeeblement (Tier III Blue — SKILL)
-# -----------------------------------------------------------------------------
-# Card Text: "This turn: Enemy heroes in radius have -6 Attack and cannot
-#             repeat actions."
-#
-# The -6 Attack part is trivial (AREA_STAT_MODIFIER, same as weakness).
-# BLOCKER: "cannot repeat actions" has no existing mechanism.
-# NEEDS:
-#   - A new EffectType (e.g. REPEAT_PREVENTION) or a flag on AREA_STAT_MODIFIER
-#   - MayRepeatOnceStep / MayRepeatNTimesStep must check for this effect
-#     before allowing repeats
-#   - Possibly state.validator.can_repeat_action(hero_id) that checks
-#     active effects for REPEAT_PREVENTION targeting that hero
 #
 # -----------------------------------------------------------------------------
 # blazing_skull (Tier III Red — ATTACK)
