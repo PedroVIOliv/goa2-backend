@@ -200,6 +200,40 @@ def test_attack_sequence_expansion(combat_state):
     assert isinstance(current, SelectStep)
 
 
+def test_attack_sequence_is_ranged_false(combat_state):
+    # Test explicit is_ranged=False sets context correctly
+    combat_state.place_entity("hero_blue", Hex(q=1, r=0, s=-1))
+    combat_state.place_entity("hero_red", Hex(q=0, r=0, s=0))
+
+    step = AttackSequenceStep(damage=3, range_val=1, is_ranged=False)
+    step.resolve(combat_state, combat_state.execution_context)
+
+    assert combat_state.execution_context["attack_is_ranged"] is False
+
+
+def test_attack_sequence_is_ranged_true(combat_state):
+    # Test explicit is_ranged=True sets context correctly
+    combat_state.place_entity("hero_blue", Hex(q=3, r=0, s=-3))
+    combat_state.place_entity("hero_red", Hex(q=0, r=0, s=0))
+
+    step = AttackSequenceStep(damage=3, range_val=3, is_ranged=True)
+    step.resolve(combat_state, combat_state.execution_context)
+
+    assert combat_state.execution_context["attack_is_ranged"] is True
+
+
+def test_attack_sequence_default_is_ranged(combat_state):
+    # Test default is_ranged=False (backward compatibility)
+    combat_state.place_entity("hero_blue", Hex(q=3, r=0, s=-3))
+    combat_state.place_entity("hero_red", Hex(q=0, r=0, s=0))
+
+    # Explicit is_ranged not set, should default to False
+    step = AttackSequenceStep(damage=3, range_val=3)
+    step.resolve(combat_state, combat_state.execution_context)
+
+    assert combat_state.execution_context["attack_is_ranged"] is False
+
+
 # --- Pathfinding Tests ---
 
 

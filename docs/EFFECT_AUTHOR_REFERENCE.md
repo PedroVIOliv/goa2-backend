@@ -68,13 +68,14 @@ All steps inherit from `GameStep` which provides these base fields:
 |-----------|------|---------|-------------|
 | `damage` | `int` | *required* | Base attack damage |
 | `range_val` | `int` | `1` | Attack range (1 = adjacent) |
+| `is_ranged` | `bool` | `False` | **Explicit ranged flag.** True = ranged attack, False = melee attack. Effects must set this explicitly for attacks that should be treated as ranged for defense card purposes. |
 | `target_id_key` | `str \| None` | `None` | If set, skips target selection and uses this context key |
 | `target_filters` | `List[FilterCondition]` | `[]` | Additional filters for target selection (added to default `RangeFilter` + `TeamFilter(ENEMY)`) |
 | `damage_bonus_key` | `str \| None` | `None` | Context key containing `int` to add to damage |
 | `range_bonus_key` | `str \| None` | `None` | Context key containing `int` to add to range |
 
 **Context Written:**
-- `attack_is_ranged` → `bool` (True if effective range > 1)
+- `attack_is_ranged` → `bool` (True if `is_ranged=True`, False otherwise)
 - `attacker_id` → `str` (current actor ID)
 - `attack_damage` → `int` (effective damage value)
 - `victim_id` → `str` (selected target, via inner `SelectStep` with `output_key="victim_id"`)

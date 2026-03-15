@@ -298,24 +298,26 @@ class DeathTrapEffect(CardEffect):
                 SetContextFlagStep(key="death_trap_exclude", value=exclude_ids),
             )
 
-        steps.extend([
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select an enemy hero to discard a card (Death Trap)",
-                output_key="death_trap_victim",
-                is_mandatory=False,
-                filters=[
-                    UnitTypeFilter(unit_type="HERO"),
-                    TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=radius),
-                    ExcludeIdentityFilter(
-                        exclude_self=False,
-                        exclude_keys=["death_trap_exclude"],
-                    ),
-                ],
-            ),
-            ForceDiscardStep(victim_key="death_trap_victim"),
-        ])
+        steps.extend(
+            [
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Select an enemy hero to discard a card (Death Trap)",
+                    output_key="death_trap_victim",
+                    is_mandatory=False,
+                    filters=[
+                        UnitTypeFilter(unit_type="HERO"),
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=radius),
+                        ExcludeIdentityFilter(
+                            exclude_self=False,
+                            exclude_keys=["death_trap_exclude"],
+                        ),
+                    ],
+                ),
+                ForceDiscardStep(victim_key="death_trap_victim"),
+            ]
+        )
         return steps
 
 
@@ -359,12 +361,14 @@ class _FingerOfDeathEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
+                is_ranged=True,
                 active_if_key="chose_melee",
             ),
             # 3b. Ranged: target hero in range with cards in discard
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 active_if_key="chose_ranged",
                 target_filters=[
                     UnitTypeFilter(unit_type="HERO"),
@@ -440,6 +444,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
+                is_ranged=True,
                 active_if_key="chose_melee_first",
             ),
             # 3a-follow. Optionally select hero in range with discard (different target)
@@ -464,6 +469,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 target_id_key="mfod_second_victim",
                 active_if_key="mfod_second_victim",
             ),
@@ -472,6 +478,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 active_if_key="chose_ranged_first",
                 target_filters=[
                     UnitTypeFilter(unit_type="HERO"),
@@ -498,6 +505,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
+                is_ranged=True,
                 target_id_key="mfod_second_victim",
                 active_if_key="mfod_second_victim",
             ),
@@ -540,6 +548,7 @@ class DreadRazorEffect(CardEffect):
                 AttackSequenceStep(
                     damage=stats.primary_value,
                     range_val=1,
+                    is_ranged=True,
                 ),
             ]
 
@@ -567,11 +576,13 @@ class DreadRazorEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
+                is_ranged=True,
                 active_if_key="chose_melee",
             ),
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 active_if_key="chose_ranged",
             ),
         ]

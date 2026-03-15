@@ -639,7 +639,9 @@ class SelectStep(GameStep):
     card_action_types: Optional[List[ActionType]] = (
         None  # Only include cards with primary_action in this list
     )
-    card_is_basic: Optional[bool] = None  # Only include basic (True) or non-basic (False)
+    card_is_basic: Optional[bool] = (
+        None  # Only include basic (True) or non-basic (False)
+    )
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """
@@ -3801,7 +3803,9 @@ def _one_man_army_bonus(state: GameState, zone) -> Dict[TeamColor, int]:
             hero_loc = state.entity_locations.get(hero.id)
             if hero_loc and hero_loc in zone.hexes:
                 bonus[hero.team] += 1
-                print(f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)")
+                print(
+                    f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)"
+                )
     return bonus
 
 
@@ -4208,7 +4212,7 @@ class AttackSequenceStep(GameStep):
     Expands into: Select Target -> Reaction Window -> Defense Effect -> Resolve Combat -> On Block Effect.
 
     Stores in context for defense effect resolution:
-    - attack_is_ranged: True if range_val > 1
+    - attack_is_ranged: True if is_ranged=True
     - attacker_id: The ID of the attacking unit
 
     If target_id_key is provided, assumes target is already selected in context and skips selection.
@@ -4218,6 +4222,7 @@ class AttackSequenceStep(GameStep):
     type: StepType = StepType.ATTACK_SEQUENCE
     damage: int
     range_val: int = 1
+    is_ranged: bool = False
     target_id_key: Optional[str] = (
         None  # Optional: Use existing context key instead of selecting
     )
@@ -4252,13 +4257,13 @@ class AttackSequenceStep(GameStep):
         key = self.target_id_key if self.target_id_key else "victim_id"
 
         # Store attack context for defense effect resolution
-        context["attack_is_ranged"] = effective_range > 1
+        context["attack_is_ranged"] = self.is_ranged
         context["attacker_id"] = (
             str(state.current_actor_id) if state.current_actor_id else None
         )
         context["attack_damage"] = effective_damage
         print(
-            f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, range_val={effective_range}"
+            f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )
 
         new_steps: List[GameStep] = []
@@ -5014,9 +5019,7 @@ class RetrieveCardStep(GameStep):
         )
         source = "played"
         if not target_card:
-            target_card = next(
-                (c for c in hero.discard_pile if c.id == card_id), None
-            )
+            target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
             source = "discard"
         if not target_card:
             print(
@@ -5100,7 +5103,11 @@ class GainCoinsStep(GameStep):
         hero = state.get_hero(HeroID(str(hero_id)))
         if not hero:
             return StepResult(is_finished=True)
-        coins = context.get(self.amount_key, self.amount) if self.amount_key else self.amount
+        coins = (
+            context.get(self.amount_key, self.amount)
+            if self.amount_key
+            else self.amount
+        )
         hero.gold += coins
         print(f"   [COINS] {hero_id} gains {coins} gold")
         return StepResult(
@@ -5156,7 +5163,9 @@ class StealCoinsStep(GameStep):
             return StepResult(is_finished=True)
 
         coins_requested = (
-            context.get(self.amount_key, self.amount) if self.amount_key else self.amount
+            context.get(self.amount_key, self.amount)
+            if self.amount_key
+            else self.amount
         )
         actual_stolen = min(coins_requested, victim.gold)
 
@@ -5167,9 +5176,7 @@ class StealCoinsStep(GameStep):
         actor.gold += actual_stolen
         if self.output_key:
             context[self.output_key] = True
-        print(
-            f"   [STEAL] {actor_id} steals {actual_stolen} coin(s) from {victim_id}"
-        )
+        print(f"   [STEAL] {actor_id} steals {actual_stolen} coin(s) from {victim_id}")
         return StepResult(
             is_finished=True,
             events=[

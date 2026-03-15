@@ -170,6 +170,7 @@ class LongThrustEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range or 0,
+                is_ranged=True,
                 range_bonus_key="adj_rng_bonus",
             ),
         ]
@@ -199,6 +200,7 @@ class RapidThrustsEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=base_range,
+                is_ranged=True,
                 range_bonus_key="adj_rng_bonus",
             ),
             # 3. Recount + repeat on different enemy hero
@@ -210,6 +212,7 @@ class RapidThrustsEffect(CardEffect):
                     AttackSequenceStep(
                         damage=stats.primary_value,
                         range_val=base_range,
+                        is_ranged=True,
                         range_bonus_key="adj_rng_bonus",
                         target_filters=[
                             UnitTypeFilter(unit_type="HERO"),

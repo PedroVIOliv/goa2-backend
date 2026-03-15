@@ -344,9 +344,7 @@ class BackstabEffect(CardEffect):
                 output_key="has_flanking",
             ),
             # 4. Set +2 bonus if flanking
-            SetContextFlagStep(
-                key="atk_bonus", value=2, active_if_key="has_flanking"
-            ),
+            SetContextFlagStep(key="atk_bonus", value=2, active_if_key="has_flanking"),
             # 5. Attack with pre-selected target and conditional bonus
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -407,9 +405,7 @@ class BackstabWithABallistaEffect(CardEffect):
                 output_key="has_flanking",
             ),
             # 4. Set +2 bonus if flanking
-            SetContextFlagStep(
-                key="atk_bonus", value=2, active_if_key="has_flanking"
-            ),
+            SetContextFlagStep(key="atk_bonus", value=2, active_if_key="has_flanking"),
             # 5. Set "no primary defense" flag if flanking
             SetContextFlagStep(
                 key="block_primary_defense",
@@ -421,6 +417,7 @@ class BackstabWithABallistaEffect(CardEffect):
                 damage=stats.primary_value,
                 target_id_key="victim_id",
                 range_val=stats.range,
+                is_ranged=True,
                 damage_bonus_key="atk_bonus",
             ),
         ]

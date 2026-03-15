@@ -276,7 +276,7 @@ class OnslaughtEffect(CardEffect):
                 destination_key="victim_hex",
                 is_mandatory=False,
                 range_val=1,
-            )
+            ),
         ]
 
 
@@ -517,6 +517,7 @@ class ThrowingAxeEffect(CardEffect):
                 damage=stats.primary_value,
                 target_id_key="meelee_victim_id",
                 range_val=1,
+                is_ranged=True,
                 active_if_key="chose_melee",
             ),
             # 3b. Ranged: optionally discard, then select target in range
@@ -536,6 +537,7 @@ class ThrowingAxeEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 active_if_key="discard_for_range",
             ),
         ]
@@ -599,6 +601,7 @@ class ThrowingSpearEffect(CardEffect):
                 damage=stats.primary_value,
                 target_id_key="melee_victim_id",
                 range_val=1,
+                is_ranged=True,
                 active_if_key="chose_melee",
             ),
             # 3b. Ranged path: optionally discard, then check discard pile
@@ -632,6 +635,7 @@ class ThrowingSpearEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 active_if_key="has_discard",
             ),
         ]
