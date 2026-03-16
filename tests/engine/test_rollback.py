@@ -298,6 +298,50 @@ class TestCanRollbackFlag:
         assert result.input_request.can_rollback is True
 
 
+# ---- Per-actor rollback isolation ----
+
+
+class TestRollbackPerActorIsolation:
+    def test_rollback_does_not_restore_previous_actors_snapshot(self):
+        """Rollback for player B should restore to B's turn start, not A's."""
+        state = _make_state()
+        session = GameSession(state)
+        _setup_resolution(state)
+
+        # hero_a's action choice (highest initiative goes first)
+        r1 = session.advance()
+        assert r1.input_request.player_id == "hero_a"
+        assert r1.input_request.can_rollback is True
+        snapshot_a = session._rollback_snapshot
+
+        # hero_a chooses HOLD
+        session.advance(InputResponse(selection="HOLD"))
+
+        # hero_a confirms
+        r_confirm = session.advance(InputResponse(selection="CONFIRM"))
+
+        # Now it's hero_b's turn
+        assert r_confirm.input_request is not None
+        assert r_confirm.input_request.player_id == "hero_b"
+        assert r_confirm.input_request.can_rollback is True
+
+        # Snapshot should have been replaced for hero_b
+        assert session._rollback_actor_id == "hero_b"
+        snapshot_b = session._rollback_snapshot
+        assert snapshot_b is not snapshot_a
+
+        # hero_b chooses HOLD
+        session.advance(InputResponse(selection="HOLD"))
+
+        # hero_b rolls back
+        r_rollback = session.rollback()
+        assert r_rollback.input_request is not None
+        assert r_rollback.input_request.player_id == "hero_b"
+
+        # The restored state should have hero_b as current actor, not hero_a
+        assert session.state.current_actor_id == "hero_b"
+
+
 # ---- StepType registration ----
 
 

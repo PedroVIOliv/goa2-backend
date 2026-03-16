@@ -47,6 +47,7 @@ class GameSession:
         self.state = state
         self._last_phase = state.phase
         self._rollback_snapshot: Optional[dict] = None
+        self._rollback_actor_id: Optional[str] = None
 
     @property
     def current_phase(self) -> GamePhase:
@@ -109,11 +110,10 @@ class GameSession:
 
     def _manage_rollback(self, stack_result) -> None:
         """Take snapshots and set can_rollback flag on input requests."""
-        from goa2.engine.handler import StackResult
-
-        # Clear snapshot when the turn ends (actor cleared)
+        # Clear snapshot when no actor (turn ended without next actor)
         if self.state.current_actor_id is None:
             self._rollback_snapshot = None
+            self._rollback_actor_id = None
             return
 
         if stack_result.input_request is None:
@@ -122,12 +122,18 @@ class GameSession:
         actor_id = str(self.state.current_actor_id)
         rollback_disabled = self.state.execution_context.get("rollback_disabled", False)
 
+        # If actor changed, clear old snapshot so a fresh one is taken
+        if self._rollback_actor_id is not None and self._rollback_actor_id != actor_id:
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+
         # Take snapshot on the first input request targeting the current actor
         if (
             self._rollback_snapshot is None
             and stack_result.input_request.player_id == actor_id
         ):
             self._rollback_snapshot = self.state.model_dump(mode="json")
+            self._rollback_actor_id = actor_id
 
         # Set can_rollback flag when applicable
         if (
