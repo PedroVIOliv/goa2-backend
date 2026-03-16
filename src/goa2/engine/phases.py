@@ -166,6 +166,7 @@ def resolve_next_action(state: GameState):
 
         # Convert Card to Steps
         from goa2.engine.steps import (
+            ConfirmResolutionStep,
             FinalizeHeroTurnStep,
             ResolveCardStep,
             RespawnHeroStep,
@@ -175,7 +176,11 @@ def resolve_next_action(state: GameState):
         if hero_id not in state.entity_locations:
             steps.append(RespawnHeroStep(hero_id=hero_id))
         steps.extend(
-            [ResolveCardStep(hero_id=hero_id), FinalizeHeroTurnStep(hero_id=hero_id)]
+            [
+                ResolveCardStep(hero_id=hero_id),
+                ConfirmResolutionStep(hero_id=hero_id),
+                FinalizeHeroTurnStep(hero_id=hero_id),
+            ]
         )
         push_steps(state, steps)
         return

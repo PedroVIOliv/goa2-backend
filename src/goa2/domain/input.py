@@ -131,6 +131,7 @@ class InputRequest(BaseModel):
 
     # Common flags
     can_skip: bool = False  # Whether player can skip/pass
+    can_rollback: bool = False  # Whether player can rollback to action choice
 
     # Legacy/additional context (for backwards compatibility during transition)
     context: Dict[str, Any] = Field(default_factory=dict)
@@ -181,6 +182,10 @@ class InputRequest(BaseModel):
         # Add can_skip if True
         if self.can_skip:
             result["can_skip"] = True
+
+        # Add can_rollback if True
+        if self.can_rollback:
+            result["can_rollback"] = True
 
         # Helper to extract serializable value from option
         def get_serializable_value(opt: InputOption) -> Any:

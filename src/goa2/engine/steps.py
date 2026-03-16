@@ -2062,6 +2062,40 @@ class ResolveCombatStep(GameStep):
             )
 
 
+class ConfirmResolutionStep(GameStep):
+    """
+    Prompts the acting player to confirm their resolution or rollback.
+    Auto-confirms when rollback is disabled (another player was prompted during this turn).
+    """
+
+    type: StepType = StepType.CONFIRM_RESOLUTION
+    hero_id: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        # Auto-confirm when rollback is disabled
+        if context.get("rollback_disabled"):
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            choice = self.pending_input.get("selection", "CONFIRM")
+            # Both CONFIRM and ROLLBACK just finish this step.
+            # Rollback is handled via the dedicated endpoint/message, not through input.
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.CHOOSE_ACTION,
+                player_id=self.hero_id,
+                prompt="Confirm your action or rollback to choose again.",
+                options=[
+                    {"id": "CONFIRM", "text": "Confirm"},
+                    {"id": "ROLLBACK", "text": "Rollback"},
+                ],
+            ),
+        )
+
+
 class FinalizeHeroTurnStep(GameStep):
     """
     Finalizes a hero's turn by moving their current card to the resolved dashboard.
@@ -4201,6 +4235,7 @@ class ResolveTieBreakerStep(GameStep):
         if winner_id not in state.entity_locations:
             new_steps.append(RespawnHeroStep(hero_id=winner_id))
         new_steps.append(ResolveCardStep(hero_id=winner_id))
+        new_steps.append(ConfirmResolutionStep(hero_id=winner_id))
         new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
 
         return StepResult(is_finished=True, new_steps=new_steps)

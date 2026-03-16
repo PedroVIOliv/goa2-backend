@@ -46,6 +46,7 @@ class GameSession:
     def __init__(self, state: GameState):
         self.state = state
         self._last_phase = state.phase
+        self._rollback_snapshot: Optional[dict] = None
 
     @property
     def current_phase(self) -> GamePhase:
@@ -80,11 +81,61 @@ class GameSession:
             submit_input(self.state, response)
 
         stack_result = process_stack(self.state)
+
+        # Snapshot & rollback flag management
+        self._manage_rollback(stack_result)
+
         return self._build_result(
             stack_result.input_request, events=stack_result.events
         )
 
+    def rollback(self) -> SessionResult:
+        """Rollback to the snapshot taken at the start of the current actor's resolution."""
+        if self._rollback_snapshot is None:
+            raise ValueError("No rollback snapshot available")
+
+        self.state = GameState.model_validate(self._rollback_snapshot)
+        # Don't clear snapshot — player may rollback again after re-choosing
+
+        from goa2.engine.handler import process_stack
+
+        stack_result = process_stack(self.state)
+        # After restore, the first input is the action choice again
+        if stack_result.input_request:
+            stack_result.input_request.can_rollback = True
+        return self._build_result(stack_result.input_request, events=stack_result.events)
+
     # -- internals --
+
+    def _manage_rollback(self, stack_result) -> None:
+        """Take snapshots and set can_rollback flag on input requests."""
+        from goa2.engine.handler import StackResult
+
+        # Clear snapshot when the turn ends (actor cleared)
+        if self.state.current_actor_id is None:
+            self._rollback_snapshot = None
+            return
+
+        if stack_result.input_request is None:
+            return
+
+        actor_id = str(self.state.current_actor_id)
+        rollback_disabled = self.state.execution_context.get("rollback_disabled", False)
+
+        # Take snapshot on the first input request targeting the current actor
+        if (
+            self._rollback_snapshot is None
+            and stack_result.input_request.player_id == actor_id
+        ):
+            self._rollback_snapshot = self.state.model_dump(mode="json")
+
+        # Set can_rollback flag when applicable
+        if (
+            self._rollback_snapshot is not None
+            and not rollback_disabled
+            and stack_result.input_request.player_id == actor_id
+        ):
+            stack_result.input_request.can_rollback = True
 
     def _check_after_planning(self) -> SessionResult:
         """After a planning action, check if phase transitioned."""
@@ -92,6 +143,7 @@ class GameSession:
             from goa2.engine.handler import process_stack
 
             stack_result = process_stack(self.state)
+            self._manage_rollback(stack_result)
             result = self._build_result(
                 stack_result.input_request, events=stack_result.events
             )

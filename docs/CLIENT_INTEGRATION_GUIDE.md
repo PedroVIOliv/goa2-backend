@@ -216,6 +216,20 @@ Advance the game state without submitting input. Used when the engine needs to c
 
 **Response:** `200 OK` — returns `ActionResultResponse`.
 
+### `POST /games/{game_id}/rollback`
+
+Rollback the current actor's resolution to the action choice step. Only the current actor can rollback, and only when `can_rollback` is `true` on the current `InputRequest`.
+
+**Request body:** empty
+
+**Response:** `200 OK` — returns `ActionResultResponse`. The `input_request` will be the action choice prompt again.
+
+**Error conditions:**
+- `400` — No active resolution or no rollback snapshot available
+- `403` — Not the current actor, or spectator token used
+
+**When rollback is disabled:** If another player was prompted during the current actor's resolution (e.g., for defense card selection), rollback is permanently disabled for that resolution. The `can_rollback` field on `InputRequest` will be `false`.
+
 ### `POST /games/{game_id}/cheats/gold`
 
 Give gold to a hero (cheats must be enabled and game must be in PLANNING phase).
@@ -329,6 +343,18 @@ Request a fresh state update (available to both players and spectators):
   "type": "GET_VIEW"
 }
 ```
+
+#### `ROLLBACK`
+
+Rollback the current actor's resolution to the action choice. Only the current actor can send this, and only when `can_rollback` is `true` on the current input request.
+
+```json
+{
+  "type": "ROLLBACK"
+}
+```
+
+**Response:** `ACTION_RESULT` with the action choice input request.
 
 #### `CHEATS_GOLD`
 
@@ -693,6 +719,12 @@ If `can_skip` is `true` in the input request, the player can skip by submitting 
 ```json
 {"selection": null}
 ```
+
+### Rollback
+
+If `can_rollback` is `true` in the input request, the client should show a rollback button. When clicked, send a `POST /games/{game_id}/rollback` request (REST) or a `{"type": "ROLLBACK"}` message (WebSocket). This restores the game state to the action choice moment so the player can choose a different action.
+
+Rollback is automatically disabled when another player is prompted during the current actor's turn (e.g., defense card selection). This prevents abuse of information gained from opponent choices. When rollback is disabled, the confirmation step at the end of resolution is also skipped.
 
 ### Defense card context
 

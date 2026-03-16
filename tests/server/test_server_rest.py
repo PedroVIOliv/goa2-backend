@@ -460,6 +460,72 @@ def test_give_gold_cheat_negative_amount(client):
     assert "Amount must be a positive integer" in cheat_resp.json()["detail"]
 
 
+# ---- POST /games/{game_id}/rollback ----
+
+
+def _advance_to_resolution(client, game_data):
+    """Commit cards for both players to transition to RESOLUTION, return tokens."""
+    game_id = game_data["game_id"]
+    arien_token = _token_for(game_data, "hero_arien")
+    wasp_token = _token_for(game_data, "hero_wasp")
+
+    # Get hands
+    view = client.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
+    arien_card = None
+    for td in view["view"]["teams"].values():
+        for h in td["heroes"]:
+            if h["id"] == "hero_arien" and h["hand"]:
+                arien_card = h["hand"][0]["id"]
+
+    view = client.get(f"/games/{game_id}", headers=_auth(wasp_token)).json()
+    wasp_card = None
+    for td in view["view"]["teams"].values():
+        for h in td["heroes"]:
+            if h["id"] == "hero_wasp" and h["hand"]:
+                wasp_card = h["hand"][0]["id"]
+
+    # Commit both
+    client.post(f"/games/{game_id}/cards", json={"card_id": arien_card}, headers=_auth(arien_token))
+    client.post(f"/games/{game_id}/cards", json={"card_id": wasp_card}, headers=_auth(wasp_token))
+    return arien_token, wasp_token
+
+
+def test_rollback_spectator_forbidden(client, game_data):
+    resp = client.post(
+        f"/games/{game_data['game_id']}/rollback",
+        headers=_auth(game_data["spectator_token"]),
+    )
+    assert resp.status_code == 403
+
+
+def test_rollback_no_active_resolution(client, game_data):
+    """Rollback fails when there's no active resolution."""
+    token = _token_for(game_data, "hero_arien")
+    resp = client.post(
+        f"/games/{game_data['game_id']}/rollback",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 400
+
+
+def test_rollback_not_current_actor(client, game_data):
+    """Only the current actor can rollback."""
+    game_id = game_data["game_id"]
+    arien_token, wasp_token = _advance_to_resolution(client, game_data)
+
+    # Check who the current actor is from the input_request
+    view = client.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
+    ir = view.get("input_request")
+    if ir:
+        current_actor = ir["player_id"]
+        non_actor_token = wasp_token if current_actor == "hero_arien" else arien_token
+        resp = client.post(
+            f"/games/{game_id}/rollback",
+            headers=_auth(non_actor_token),
+        )
+        assert resp.status_code == 403
+
+
 def test_give_gold_cheat_spectator_blocked(client):
     resp = client.post(
         "/games",

@@ -423,3 +423,28 @@ def test_ws_state_update_includes_winner_on_game_over(client):
         assert msg["type"] == "STATE_UPDATE"
         assert msg.get("winner") == "RED"
         assert msg["view"]["phase"] == "GAME_OVER"
+
+
+# ---- ROLLBACK ----
+
+
+def test_ws_rollback_spectator_blocked(client, game_data):
+    """Spectators cannot send ROLLBACK messages."""
+    game_id = game_data["game_id"]
+    token = game_data["spectator_token"]
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()  # initial state
+        ws.send_json({"type": "ROLLBACK"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+
+
+def test_ws_rollback_no_active_actor(client, game_data):
+    """ROLLBACK fails when no one is acting (PLANNING phase)."""
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()  # initial state
+        ws.send_json({"type": "ROLLBACK"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"

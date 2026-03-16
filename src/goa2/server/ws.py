@@ -165,6 +165,28 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
     }
 
 
+async def _handle_rollback(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
+    """Handle ROLLBACK message."""
+    session = game.session
+    if session.state.current_actor_id is None:
+        raise NotYourTurnError(hero_id, "(no active actor)")
+    if str(session.state.current_actor_id) != hero_id:
+        raise NotYourTurnError(hero_id, str(session.state.current_actor_id))
+    result = session.rollback()
+    game.last_result = result
+    _log_ws_result(game, result)
+    return {
+        "type": "ACTION_RESULT",
+        "result_type": result.result_type.value,
+        "current_phase": result.current_phase.value,
+        "events": [ev.model_dump() for ev in result.events],
+        "input_request": (
+            result.input_request.to_dict() if result.input_request else None
+        ),
+        "winner": result.winner,
+    }
+
+
 async def _handle_cheats_gold(
     game: ManagedGame, hero_id: str, data: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -272,6 +294,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         reply = await _handle_commit_card(game, hero_id, data)
                     elif msg_type == "PASS_TURN":
                         reply = await _handle_pass_turn(game, hero_id)
+                    elif msg_type == "ROLLBACK":
+                        reply = await _handle_rollback(game, hero_id)
                     elif msg_type == "CHEATS_GOLD":
                         reply = await _handle_cheats_gold(game, hero_id, data)
                     elif msg_type == "GET_VIEW":
@@ -288,6 +312,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
                     "PASS_TURN",
+                    "ROLLBACK",
                     "CHEATS_GOLD",
                 ):
                     registry.save_game(game.game_id)
@@ -300,6 +325,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
                     "PASS_TURN",
+                    "ROLLBACK",
                     "CHEATS_GOLD",
                 ):
                     await broadcast(game, registry)

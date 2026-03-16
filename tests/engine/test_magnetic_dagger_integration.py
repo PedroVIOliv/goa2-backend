@@ -18,6 +18,9 @@ from goa2.domain.tile import Tile
 from goa2.engine.handler import process_resolution_stack
 from goa2.engine.phases import commit_card
 
+import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
+import goa2.scripts.arien_effects  # noqa: F401 - Register liquid_leap effect
+
 
 @pytest.fixture
 def integrated_state():
@@ -121,6 +124,12 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
         state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
         req = process_resolution_stack(state)
 
+    # Handle ConfirmResolutionStep for Rogue if it appears
+    # (no opponent prompted when attacking a minion)
+    if req and req.get("type") == "CHOOSE_ACTION" and req.get("player_id") == "rogue":
+        state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+        req = process_resolution_stack(state)
+
     # Rogue turn finishes. Effect created.
     # Engine automatically loops to FindNextActor -> Arien.
 
@@ -138,7 +147,11 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
         state.execution_stack[-1].pending_input = {"selection": arien_target_hex}
 
     # Execute Placement (will fail if blocked)
-    process_resolution_stack(state)
+    req = process_resolution_stack(state)
+    # Handle ConfirmResolutionStep if it appears (no opponent prompted during Arien's turn)
+    if req and req.get("type") == "CHOOSE_ACTION" and "Confirm" in str(req.get("options", [])):
+        state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+        process_resolution_stack(state)
 
 
 def test_integration_dagger_blocks_leap(integrated_state):

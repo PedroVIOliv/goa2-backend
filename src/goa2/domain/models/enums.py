@@ -161,6 +161,7 @@ class StepType(str, Enum):
     CHECK_HERO_DEFEATED_THIS_ROUND = "check_hero_defeated_this_round"
     STEAL_COINS = "steal_coins"
     COMPUTE_HEX = "compute_hex"
+    CONFIRM_RESOLUTION = "confirm_resolution"
 
 
 class FilterType(str, Enum):

@@ -66,10 +66,14 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     # Simulate Card Choice (Hold)
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
-    # Pass 3: A finishes. Finalize -> FindNext (Empty).
+    # Pass 3: A finishes. Hits ConfirmResolutionStep.
+    req = process_resolution_stack(complex_tie_state)
+    assert req["type"] == "CHOOSE_ACTION"
+    assert req["player_id"] == "A"
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     req = process_resolution_stack(complex_tie_state)
     assert req is None
-    
+
     # Verify Coin
     assert complex_tie_state.tie_breaker_team == TeamColor.BLUE
     
@@ -90,12 +94,15 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["type"] == "CHOOSE_ACTION"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    
+
+    req = process_resolution_stack(complex_tie_state)
+    assert req["type"] == "CHOOSE_ACTION"
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     req = process_resolution_stack(complex_tie_state)
     assert req is None
-    
+
     assert complex_tie_state.tie_breaker_team == TeamColor.RED
-    
+
     # --- Round 3: Re-evaluate [C, D] ---
     step3 = ResolveTieBreakerStep(tied_hero_ids=["C", "D"])
     push_steps(complex_tie_state, [step3])
@@ -112,10 +119,13 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["player_id"] == "D"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    
+
+    req = process_resolution_stack(complex_tie_state)
+    assert req["type"] == "CHOOSE_ACTION"
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     req = process_resolution_stack(complex_tie_state)
     assert req is None
-    
+
     assert complex_tie_state.tie_breaker_team == TeamColor.BLUE
 
     # --- Round 4: Re-evaluate [C] ---
@@ -128,6 +138,9 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     assert req["player_id"] == "C"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    
+
+    req = process_resolution_stack(complex_tie_state)
+    assert req["type"] == "CHOOSE_ACTION"
+    complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     req = process_resolution_stack(complex_tie_state)
     assert req is None

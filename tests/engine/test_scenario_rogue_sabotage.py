@@ -19,6 +19,9 @@ from goa2.data.heroes.rogue import create_rogue
 from goa2.engine.phases import commit_card
 from goa2.engine.handler import process_resolution_stack
 
+import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue_skill_gold effect
+import goa2.scripts.arien_effects  # noqa: F401 - Register arien effects
+
 
 @pytest.fixture
 def sabotage_state():
@@ -140,9 +143,14 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     # 3. Select Card -> Noble Blade
     state.execution_stack[-1].pending_input = {"selection": "noble_blade"}
 
-    # 4. Finalize
-    process_resolution_stack(state)
-    process_resolution_stack(state)  # FinalizeHeroTurnStep
+    # 4. ConfirmResolutionStep (no opponent prompted during Rogue's SKILL turn)
+    req = process_resolution_stack(state)
+    assert req["type"] == "CHOOSE_ACTION"
+    state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+
+    # After confirm, FinalizeHeroTurnStep + FindNextActorStep auto-resolve,
+    # then the next hero's ResolveCardStep prompts.
+    # No extra process_resolution_stack call needed.
 
     # --- CHECK NEXT ACTOR ---
     # Current State:
@@ -151,6 +159,8 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     # Arien: Init 11 (Swapped from 4)
     # Order: Arien (11) > Hero3 (7)
 
+    # We need to process to get to the next actor
+    process_resolution_stack(state)
     assert state.current_actor_id == arien.id
     assert arien.current_turn_card.id == "noble_blade"
 
@@ -236,6 +246,12 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     if req and req["type"] == "SELECT_HEX":
         target = next(opt for opt in req["valid_options"] if opt != Hex(q=0, r=0, s=0))
         state.execution_stack[-1].pending_input = {"selection": target}
+        process_resolution_stack(state)
+
+    # ConfirmResolutionStep (no opponent prompted during Rogue's MOVEMENT turn)
+    req = process_resolution_stack(state)
+    if req and req.get("type") == "CHOOSE_ACTION":
+        state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
         process_resolution_stack(state)
 
     # Finish Rogue Turn

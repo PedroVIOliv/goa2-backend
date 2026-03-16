@@ -239,6 +239,32 @@ async def advance(
         return _result_to_response(result)
 
 
+@router.post("/{game_id}/rollback", response_model=ActionResultResponse)
+async def rollback_action(
+    game_id: str,
+    player: PlayerContext = Depends(get_current_player),
+    registry: GameRegistry = Depends(get_registry),
+) -> ActionResultResponse:
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot rollback")
+    game = registry.get(game_id)
+
+    async with game.lock:
+        session = game.session
+        if session.state.current_actor_id is None:
+            raise HTTPException(status_code=400, detail="No active resolution to rollback")
+        if str(session.state.current_actor_id) != player.hero_id:
+            raise HTTPException(status_code=403, detail="Only the current actor can rollback")
+        try:
+            result = session.rollback()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        game.last_result = result
+        _log_result(game, result)
+        registry.save_game(game_id)
+        return _result_to_response(result)
+
+
 @router.post("/{game_id}/cheats/gold", response_model=ActionResultResponse)
 async def give_gold_cheat(
     game_id: str,

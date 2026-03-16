@@ -58,6 +58,13 @@ def process_stack(state: GameState) -> StackResult:
 
         if result.requires_input:
             state.execution_stack.append(current_step)
+            # Track rollback disabled: if input targets someone other than the current actor
+            if (
+                result.input_request
+                and state.current_actor_id is not None
+                and result.input_request.player_id != str(state.current_actor_id)
+            ):
+                state.execution_context["rollback_disabled"] = True
             return StackResult(
                 input_request=result.input_request, events=collected_events
             )
@@ -122,6 +129,13 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
         if result.requires_input:
             # The step needs input. Put it back.
             state.execution_stack.append(current_step)
+            # Track rollback disabled: if input targets someone other than the current actor
+            if (
+                result.input_request
+                and state.current_actor_id is not None
+                and result.input_request.player_id != str(state.current_actor_id)
+            ):
+                state.execution_context["rollback_disabled"] = True
             _pending_events = collected_events
             # Convert InputRequest to dict for backwards compatibility
             if result.input_request is not None:
@@ -141,14 +155,14 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
 
 def _clear_to_finalize(state: GameState):
     """
-    Clears all steps from the stack until FinalizeHeroTurnStep is found.
-    This effectively aborts the current action chain without skipping turn finalization.
+    Clears all steps from the stack until ConfirmResolutionStep or FinalizeHeroTurnStep is found.
+    Stops at ConfirmResolutionStep so the player can review the abort and optionally rollback.
     """
-    from goa2.engine.steps import FinalizeHeroTurnStep
+    from goa2.engine.steps import FinalizeHeroTurnStep, ConfirmResolutionStep
 
     while state.execution_stack:
         step = state.execution_stack[-1]
-        if isinstance(step, FinalizeHeroTurnStep) or isinstance(step, FinishedExpiringEffectStep):
+        if isinstance(step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)):
             break
         state.execution_stack.pop()
         print(f"   [ENGINE] Skipped step: {step.type}")

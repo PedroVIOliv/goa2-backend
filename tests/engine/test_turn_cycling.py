@@ -71,27 +71,39 @@ def test_automatic_turn_cycling():
     
     # 2. Provide Input (Secondary Hold)
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    
-    # 3. Process until Next Input (B)
+
+    # 3. Process - hits ConfirmResolutionStep
     req = process_resolution_stack(state)
-    
+    assert req["type"] == "CHOOSE_ACTION"
+    assert req["player_id"] == "A"
+    state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+
+    # 4. Process until Next Input (B)
+    req = process_resolution_stack(state)
+
     # Should automatically cycle A -> Finalize -> FindNext -> B -> ResolveCardStep
     assert req is not None
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "B"
-    
+
     # --- Turn B ---
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     req = process_resolution_stack(state)
-    
+    assert req["type"] == "CHOOSE_ACTION"
+    state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+    req = process_resolution_stack(state)
+
     assert req is not None
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "C"
-    
+
     # --- Turn C ---
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     req = process_resolution_stack(state)
-    
+    assert req["type"] == "CHOOSE_ACTION"
+    state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
+    req = process_resolution_stack(state)
+
     # --- End ---
     assert req is None # Finished
     
