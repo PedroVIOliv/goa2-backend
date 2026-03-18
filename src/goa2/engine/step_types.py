@@ -67,6 +67,7 @@ from goa2.engine.steps import (
     ResolveTieBreakerStep,
     ResolveUpgradesStep,
     RespawnHeroStep,
+    RespawnMinionAtHexStep,
     RespawnMinionStep,
     RestoreActionTypeStep,
     RetrieveCardStep,
@@ -174,6 +175,9 @@ AnyStep = Annotated[
         Annotated[ResolveTieBreakerStep, Tag(StepType.RESOLVE_TIE_BREAKER.value)],
         Annotated[ResolveUpgradesStep, Tag(StepType.RESOLVE_UPGRADES.value)],
         Annotated[RespawnHeroStep, Tag(StepType.RESPAWN_HERO.value)],
+        Annotated[
+            RespawnMinionAtHexStep, Tag(StepType.RESPAWN_MINION_AT_HEX.value)
+        ],
         Annotated[RespawnMinionStep, Tag(StepType.RESPAWN_MINION.value)],
         Annotated[RestoreActionTypeStep, Tag(StepType.RESTORE_ACTION_TYPE.value)],
         Annotated[RetrieveCardStep, Tag(StepType.RETRIEVE_CARD.value)],
@@ -225,6 +229,8 @@ from goa2.engine.filters import (
     PreserveDistanceFilter,
     HasCardsInDiscardFilter,
     PlayedCardFilter,
+    BattleZoneFilter,
+    SpawnPointTeamFilter,
     OrFilter,
     AndFilter,
 )
@@ -270,6 +276,8 @@ AnyFilter = Annotated[
         Annotated[MinionTypesFilter, Tag(FilterType.MINION_TYPES.value)],
         Annotated[HasCardsInDiscardFilter, Tag(FilterType.HAS_CARDS_IN_DISCARD.value)],
         Annotated[PlayedCardFilter, Tag(FilterType.PLAYED_CARD.value)],
+        Annotated[BattleZoneFilter, Tag(FilterType.BATTLE_ZONE.value)],
+        Annotated[SpawnPointTeamFilter, Tag(FilterType.SPAWN_POINT_TEAM.value)],
         Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
         Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
     ],
@@ -303,11 +311,13 @@ ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
 from goa2.engine.effects import StatAura  # noqa: E402
 
 StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
+RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = List[AnyFilter]
 OrFilter.model_fields["filters"].annotation = List[AnyFilter]
 AndFilter.model_fields["filters"].annotation = List[AnyFilter]
 
 # Rebuild all patched models (force=True since they were already built).
 # Leaf models first, then models that reference them.
+RespawnMinionAtHexStep.model_rebuild(force=True)
 OrFilter.model_rebuild(force=True)
 AndFilter.model_rebuild(force=True)
 SelectStep.model_rebuild(force=True)

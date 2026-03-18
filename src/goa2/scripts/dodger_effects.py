@@ -6,18 +6,23 @@ from goa2.engine.steps import (
     CheckContextConditionStep,
     CreateEffectStep,
     ForceDiscardStep,
+    ForEachStep,
     GainCoinsStep,
     GameStep,
     MoveUnitStep,
+    MultiSelectStep,
+    RespawnMinionAtHexStep,
     SelectStep,
     SetContextFlagStep,
 )
 from goa2.engine.filters import (
+    BattleZoneFilter,
     ExcludeIdentityFilter,
     HasCardsInDiscardFilter,
     HasEmptyNeighborFilter,
     ObstacleFilter,
     RangeFilter,
+    SpawnPointTeamFilter,
     TeamFilter,
     UnitTypeFilter,
 )
@@ -645,6 +650,71 @@ class BurningSkullEffect(CardEffect):
 
 
 # =============================================================================
+# TIER III - RED: Blazing Skull (ATTACK)
+# =============================================================================
+
+
+@register_effect("blazing_skull")
+class BlazingSkullEffect(CardEffect):
+    """
+    Card Text: "Target a unit in range. After the attack: Move up to 2 minions
+    adjacent to you 1 space each, to spaces not adjacent to you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Ranged attack
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+            ),
+            # 2. Select up to 2 adjacent minions
+            MultiSelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select up to 2 minions adjacent to you to move",
+                output_key="skull_minions",
+                max_selections=2,
+                min_selections=0,
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(max_range=1),
+                    UnitTypeFilter(unit_type="MINION"),
+                ],
+            ),
+            # 3. For each selected minion: pick destination + move
+            ForEachStep(
+                list_key="skull_minions",
+                item_key="current_skull_minion",
+                steps_template=[
+                    # Clear destination from previous iteration
+                    SetContextFlagStep(key="skull_dest", value=None),
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="Select destination (not adjacent to you)",
+                        output_key="skull_dest",
+                        is_mandatory=False,
+                        filters=[
+                            RangeFilter(max_range=1, origin_key="current_skull_minion"),
+                            ObstacleFilter(is_obstacle=False),
+                            RangeFilter(min_range=2, max_range=99),  # Not adjacent to hero
+                        ],
+                    ),
+                    MoveUnitStep(
+                        unit_key="current_skull_minion",
+                        destination_key="skull_dest",
+                        range_val=1,
+                        is_movement_action=False,
+                        active_if_key="skull_dest",
+                    ),
+                ],
+            ),
+        ]
+
+
+# =============================================================================
 # TIER III - BLUE: Enfeeblement (SKILL)
 # =============================================================================
 
@@ -690,50 +760,132 @@ class EnfeeblementEffect(CardEffect):
 
 
 # =============================================================================
+# TIER II - GREEN: Necromancy (SKILL)
+# =============================================================================
+
+
+def _build_respawn_steps(
+    state: "GameState",
+    hero: "Hero",
+    stats: "CardStats",
+    max_range: int,
+) -> List[GameStep]:
+    """
+    Shared logic for Necromancy/Necromastery: find limbo minions, let the
+    player choose one (if multiple), then respawn it at a filtered hex.
+    """
+    team_obj = state.teams.get(hero.team) if hero.team else None
+    if not team_obj:
+        return []
+
+    # Find all friendly limbo minions, one per type
+    seen_types = set()
+    limbo_minions = []
+    for m in team_obj.minions:
+        if m.id not in state.entity_locations and m.type not in seen_types:
+            seen_types.add(m.type)
+            limbo_minions.append(m)
+    if not limbo_minions:
+        return []
+
+    steps: List[GameStep] = []
+
+    if len(limbo_minions) == 1:
+        # Auto-select the only limbo minion
+        steps.append(
+            SetContextFlagStep(key="respawn_minion", value=limbo_minions[0].id),
+        )
+    else:
+        # Let player choose which minion type to respawn
+        number_options = list(range(1, len(limbo_minions) + 1))
+        number_labels = {
+            i + 1: f"{m.type.value} Minion"
+            for i, m in enumerate(limbo_minions)
+        }
+        minion_id_map = {
+            i + 1: m.id for i, m in enumerate(limbo_minions)
+        }
+        steps.append(
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose a minion to respawn",
+                output_key="respawn_choice",
+                number_options=number_options,
+                number_labels=number_labels,
+                is_mandatory=True,
+            ),
+        )
+        # Map the number choice to the minion ID
+        for num, minion_id in minion_id_map.items():
+            steps.append(
+                CheckContextConditionStep(
+                    input_key="respawn_choice",
+                    operator="==",
+                    threshold=num,
+                    output_key=f"chose_minion_{num}",
+                ),
+            )
+            steps.append(
+                SetContextFlagStep(
+                    key="respawn_minion",
+                    value=minion_id,
+                    active_if_key=f"chose_minion_{num}",
+                ),
+            )
+
+    # Respawn at filtered hex
+    steps.append(
+        RespawnMinionAtHexStep(
+            team=hero.team,
+            unit_key="respawn_minion",
+            hex_filters=[
+                SpawnPointTeamFilter(relation="FRIENDLY"),
+                BattleZoneFilter(),
+                ObstacleFilter(is_obstacle=False),
+                RangeFilter(max_range=max_range),
+            ],
+        ),
+    )
+    return steps
+
+
+@register_effect("necromancy")
+class NecromancyEffect(CardEffect):
+    """
+    Card Text: "Respawn a friendly minion in an empty friendly spawn point
+    adjacent to you in the battle zone."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return _build_respawn_steps(state, hero, stats, max_range=1)
+
+
+# =============================================================================
+# TIER III - GREEN: Necromastery (SKILL)
+# =============================================================================
+
+
+@register_effect("necromastery")
+class NecromasteryEffect(CardEffect):
+    """
+    Card Text: "Respawn a friendly minion in an empty friendly spawn point
+    in radius in the battle zone."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return _build_respawn_steps(state, hero, stats, max_range=stats.radius or 0)
+
+
+# =============================================================================
 # NOT YET IMPLEMENTED — Cards requiring new infrastructure
 # =============================================================================
 #
-# The following 6 cards are NOT registered. Each section explains the card text,
+# The following 3 cards are NOT registered. Each section explains the card text,
 # what blocks implementation, and what infrastructure is needed.
-#
-# -----------------------------------------------------------------------------
-# blazing_skull (Tier III Red — ATTACK)
-# -----------------------------------------------------------------------------
-# Card Text: "Target a unit in range. After the attack: Move up to 2 minions
-#             adjacent to you 1 space each, to spaces not adjacent to you."
-#
-# BLOCKER: Moving "up to 2 minions" each to different destinations requires
-# a loop with per-minion hex selection.
-# NEEDS:
-#   - MultiSelectStep(max_selections=2) to pick the minions
-#   - ForEachStep with per-minion SelectStep(HEX) + MoveUnitStep inside
-#   - The "not adjacent to you" filter is the same as burning_skull
-#   - Should work with existing steps but needs careful testing of the
-#     ForEach + nested SelectStep interaction (each iteration needs input)
-#
-# -----------------------------------------------------------------------------
-# necromancy (Tier II Green — SKILL)
-# -----------------------------------------------------------------------------
-# Card Text: "Respawn a friendly minion in an empty friendly spawn point
-#             adjacent to you in the battle zone."
-#
-# BLOCKER: RespawnMinionStep doesn't support restricting the spawn location.
-# NEEDS either:
-#   (a) Extend RespawnMinionStep with filter support (spawn point filters
-#       for team, adjacency, zone, empty) — cleanest long-term solution
-#   (b) Create a new step that: finds a limbo minion, presents a SelectStep(HEX)
-#       filtered to empty friendly spawn points adjacent to hero in the battle
-#       zone, then places the minion via PlaceUnitStep
-# Option (b) is more manual but avoids modifying a core step.
-#
-# -----------------------------------------------------------------------------
-# necromastery (Tier III Green — SKILL)
-# -----------------------------------------------------------------------------
-# Card Text: "Respawn a friendly minion in an empty friendly spawn point
-#             in radius in the battle zone."
-#
-# Same blocker as necromancy but "in radius" instead of "adjacent."
-# Same infrastructure needed.
 #
 # -----------------------------------------------------------------------------
 # darkest_ritual (Tier III Green — SKILL)

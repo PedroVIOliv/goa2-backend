@@ -110,6 +110,7 @@ class StepType(str, Enum):
     PUSH_UNIT = "push_unit"
     RESPAWN_HERO = "respawn_hero"
     RESPAWN_MINION = "respawn_minion"
+    RESPAWN_MINION_AT_HEX = "respawn_minion_at_hex"
     RESOLVE_CARD_TEXT = "resolve_card_text"
     RESOLVE_CARD = "resolve_card"
     RESOLVE_DISPLACEMENT = "resolve_displacement"
@@ -192,6 +193,8 @@ class FilterType(str, Enum):
     PLAYED_CARD = "played_card_filter"
     SPACE_BEHIND_EMPTY = "space_behind_empty_filter"
     HAS_CARDS_IN_DISCARD = "has_cards_in_discard_filter"
+    BATTLE_ZONE = "battle_zone_filter"
+    SPAWN_POINT_TEAM = "spawn_point_team_filter"
 
 
 class TargetType(str, Enum):

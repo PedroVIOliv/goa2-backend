@@ -356,6 +356,8 @@ class SetContextFlagStep(GameStep):
     value: Any = True
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
         context[self.key] = self.value
         print(f"   [CONTEXT] Set {self.key} = {self.value}")
         return StepResult(is_finished=True)
@@ -631,6 +633,7 @@ class SelectStep(GameStep):
         None  # When set, merges candidates from multiple containers
     )
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
+    number_labels: Dict[int, str] = Field(default_factory=dict)  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
     override_player_id_key: Optional[str] = (
         None  # Key in context to find player ID who provides input
@@ -693,7 +696,6 @@ class SelectStep(GameStep):
             # For now, simplistic iteration over all tiles
             candidates = list(state.board.tiles.keys())
         elif self.target_type == TargetType.NUMBER:
-            # Use number_options directly as candidates
             candidates = list(self.number_options)
         elif self.target_type == TargetType.CARD:
             target_id = actor_id
@@ -811,13 +813,21 @@ class SelectStep(GameStep):
         }
         request_type = type_map.get(self.target_type, InputRequestType.SELECT_UNIT)
 
+        # Apply labels to number options if provided
+        options_for_request = valid_candidates
+        if self.target_type == TargetType.NUMBER and self.number_labels:
+            options_for_request = [
+                InputOption(id=str(n), text=self.number_labels.get(n, str(n)), metadata={"raw": n})
+                for n in valid_candidates
+            ]
+
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
                 request_type=request_type,
                 player_id=str(actor_id),
                 prompt=self.prompt,
-                options=valid_candidates,
+                options=options_for_request,
                 can_skip=not self.is_mandatory,
             ),
         )
@@ -2707,6 +2717,100 @@ class RespawnMinionStep(GameStep):
                 ),
                 prompt=f"Select space to respawn {self.minion_type}.",
                 options=valid_spaces,
+            ),
+        )
+
+
+class RespawnMinionAtHexStep(GameStep):
+    """
+    Respawns a specific minion at a hex chosen from filtered candidates.
+
+    Reads the minion ID from context[unit_key], validates it's in limbo,
+    then presents filtered hex options for placement. Emits UNIT_PLACED event.
+    """
+
+    type: StepType = StepType.RESPAWN_MINION_AT_HEX
+    team: TeamColor
+    unit_key: str  # Context key containing minion ID
+    hex_filters: List[FilterCondition] = Field(default_factory=list)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Read minion ID from context
+        minion_id = context.get(self.unit_key)
+        if not minion_id:
+            print(f"   [RESPAWN] No minion ID in context['{self.unit_key}'].")
+            return StepResult(is_finished=True)
+
+        # Verify minion exists and is in limbo
+        team_obj = state.teams.get(self.team)
+        if not team_obj:
+            return StepResult(is_finished=True)
+
+        target_minion = None
+        for m in team_obj.minions:
+            if m.id == minion_id and m.id not in state.entity_locations:
+                target_minion = m
+                break
+
+        if not target_minion:
+            print(f"   [RESPAWN] Minion {minion_id} not found in limbo.")
+            return StepResult(is_finished=True)
+
+        # Handle input
+        if self.pending_input:
+            selected_hex_dict = self.pending_input.get("selection")
+            if isinstance(selected_hex_dict, dict):
+                selected_hex = Hex(**selected_hex_dict)
+                tile = state.board.get_tile(selected_hex)
+                if tile and tile.is_occupied:
+                    print(
+                        f"   [ERROR] Cannot respawn {minion_id} at {selected_hex}. Occupied."
+                    )
+                    return StepResult(is_finished=True)
+
+                state.move_unit(UnitID(target_minion.id), selected_hex)
+                print(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
+                return StepResult(
+                    is_finished=True,
+                    events=[
+                        GameEvent(
+                            event_type=GameEventType.UNIT_PLACED,
+                            actor_id=str(target_minion.id),
+                            from_hex=None,
+                            to_hex=_hex_dict(selected_hex),
+                        )
+                    ],
+                )
+
+        # Collect valid hexes using filters
+        valid_hexes = []
+        for h, tile in state.board.tiles.items():
+            if tile.is_occupied:
+                continue
+            is_valid = True
+            for f in self.hex_filters:
+                if not f.apply(h, state, context):
+                    is_valid = False
+                    break
+            if is_valid:
+                valid_hexes.append(h)
+
+        if not valid_hexes:
+            print(f"   [RESPAWN] No valid hexes for respawn.")
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_HEX,
+                player_id=(
+                    str(state.current_actor_id) if state.current_actor_id else "system"
+                ),
+                prompt=f"Select space to respawn {target_minion.id}.",
+                options=valid_hexes,
             ),
         )
 

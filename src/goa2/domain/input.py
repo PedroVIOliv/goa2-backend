@@ -216,6 +216,13 @@ class InputRequest(BaseModel):
             ]
             # Also add as candidates for MultiSelectStep compatibility
             result["candidates"] = result["valid_options"]
+            # For NUMBER options with labels, include options with text
+            if self.request_type == InputRequestType.SELECT_NUMBER:
+                has_labels = any(opt.text != opt.id for opt in self.options)
+                if has_labels:
+                    result["options"] = [
+                        {"id": opt.id, "text": opt.text} for opt in self.options
+                    ]
         elif self.request_type == InputRequestType.SELECT_HEX:
             # Hex selection expects valid_options as list of hex dicts (JSON-serializable)
             hex_values = [opt.metadata.get("hex", opt.id) for opt in self.options]

@@ -414,6 +414,67 @@ class AdjacentSpawnPointFilter(FilterCondition):
         return has_adj
 
 
+class BattleZoneFilter(FilterCondition):
+    """
+    Filters hexes to the active battle zone only.
+    """
+
+    type: FilterType = FilterType.BATTLE_ZONE
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        active_zone_id = state.active_zone_id
+        if not active_zone_id:
+            return False
+
+        if isinstance(candidate, Hex):
+            tile = state.board.get_tile(candidate)
+            if not tile:
+                return False
+            return tile.zone_id == active_zone_id
+        return False
+
+
+class SpawnPointTeamFilter(FilterCondition):
+    """
+    Filters hexes that have a minion spawn point belonging to a friendly or enemy team.
+    Relation is relative to the current actor.
+    """
+
+    type: FilterType = FilterType.SPAWN_POINT_TEAM
+    relation: Literal["FRIENDLY", "ENEMY"] = "FRIENDLY"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        from goa2.domain.models.spawn import SpawnType
+
+        if not isinstance(candidate, Hex):
+            return False
+
+        tile = state.board.get_tile(candidate)
+        if not tile or not tile.spawn_point:
+            return False
+
+        sp = tile.spawn_point
+        if sp.type != SpawnType.MINION:
+            return False
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return False
+
+        actor = state.get_entity(BoardEntityID(actor_id))
+        if not actor or not hasattr(actor, "team"):
+            return False
+
+        actor_team = getattr(actor, "team", None)
+        if actor_team is None:
+            return False
+
+        is_same_team = sp.team == actor_team
+        if self.relation == "FRIENDLY":
+            return is_same_team
+        return not is_same_team
+
+
 class AdjacencyToContextFilter(FilterCondition):
     """
     Selects units adjacent to the entity ID stored in a context variable.
