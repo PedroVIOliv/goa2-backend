@@ -8,6 +8,71 @@ from goa2.domain.models.unit import Unit
 from goa2.engine.topology import get_topology_service
 
 
+def find_reachable_hexes(
+    board: Board,
+    start: Hex,
+    max_steps: int,
+    ignore_obstacles: bool = False,
+    state: Optional[GameState] = None,
+    actor_id: Optional[str] = None,
+    pass_through_obstacles: bool = False,
+) -> Set[Hex]:
+    """
+    Returns all hexes reachable from start within max_steps via a single BFS.
+    Uses the same traversal rules as validate_movement_path.
+    The start hex is always included in the result.
+    """
+    reachable: Set[Hex] = {start}
+
+    if max_steps <= 0:
+        return reachable
+
+    topology = get_topology_service() if state else None
+    queue: Deque[tuple[Hex, int]] = deque([(start, 0)])
+    visited: Set[Hex] = {start}
+
+    while queue:
+        current, dist = queue.popleft()
+
+        if dist >= max_steps:
+            continue
+
+        if topology and state:
+            neighbors = topology.get_traversable_neighbors(
+                current,
+                state,
+                end_hex=None,
+                actor_id=actor_id,
+                pass_through_obstacles=pass_through_obstacles,
+            )
+        else:
+            neighbors = board.get_neighbors(current)
+
+        for neighbor in neighbors:
+            if neighbor in visited:
+                continue
+
+            is_obs = False
+            if not ignore_obstacles and not pass_through_obstacles:
+                if state and state.validator:
+                    is_obs = state.validator.is_obstacle_for_actor(
+                        state, neighbor, actor_id
+                    )
+                else:
+                    is_obs = board.get_tile(neighbor).is_obstacle
+
+            if is_obs:
+                # Obstacles block movement — can't move to or through them
+                visited.add(neighbor)
+                continue
+
+            reachable.add(neighbor)
+            visited.add(neighbor)
+            queue.append((neighbor, dist + 1))
+
+    return reachable
+
+
 def validate_movement_path(
     board: Board,
     start: Hex,

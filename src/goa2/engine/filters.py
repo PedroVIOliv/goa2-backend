@@ -620,6 +620,7 @@ class CanBePlacedByActorFilter(FilterCondition):
 class MovementPathFilter(FilterCondition):
     """
     Filters hexes to only those reachable via valid movement path.
+    Uses a single BFS to compute all reachable hexes, then does O(1) lookups.
     """
 
     type: FilterType = FilterType.MOVEMENT_PATH
@@ -628,43 +629,43 @@ class MovementPathFilter(FilterCondition):
     unit_key: Optional[str] = None
     pass_through_obstacles: bool = False
 
-    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if not isinstance(candidate, Hex):
-            return False
+    def _get_reachable(self, state: GameState, context: dict) -> set:
+        cache = getattr(self, "_reachable_cache", None)
+        if cache is not None:
+            return cache
 
         uid = self.unit_id
         if not uid and self.unit_key:
             uid = context.get(self.unit_key)
-
         if not uid:
             uid = state.current_actor_id
-
         if not uid:
-            return False
+            object.__setattr__(self, "_reachable_cache", set())
+            return set()
 
         start_hex = state.entity_locations.get(BoardEntityID(str(uid)))
         if not start_hex:
-            return False
-
-        # Always allow selecting the current hex (staying put)
-        if candidate == start_hex:
-            return True
-
-        # If range is 0 or less, only the current hex was allowed (handled above)
-        if self.range_val <= 0:
-            return False
+            object.__setattr__(self, "_reachable_cache", set())
+            return set()
 
         from goa2.engine import rules
 
-        return rules.validate_movement_path(
+        result = rules.find_reachable_hexes(
             board=state.board,
             start=start_hex,
-            end=candidate,
             max_steps=self.range_val,
             state=state,
             actor_id=str(state.current_actor_id) if state.current_actor_id else None,
             pass_through_obstacles=self.pass_through_obstacles,
         )
+        object.__setattr__(self, "_reachable_cache", result)
+        return result
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        return candidate in self._get_reachable(state, context)
 
 
 class LineBehindTargetFilter(FilterCondition):
