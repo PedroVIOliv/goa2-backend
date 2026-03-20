@@ -8,6 +8,7 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     ForEachStep,
     GainCoinsStep,
+    GainItemStep,
     GameStep,
     MoveUnitStep,
     MultiSelectStep,
@@ -45,12 +46,29 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# Shared Helper
+# Shared Helpers
 # =============================================================================
 
 
+def _has_tide_of_darkness(state: "GameState") -> bool:
+    """Check if current actor has Tide of Darkness active (Dodger ultimate, level >= 8)."""
+    actor_id = state.current_actor_id
+    if not actor_id:
+        return False
+    hero = state.get_hero(actor_id)
+    if not hero or hero.level < 8:
+        return False
+    ult = hero.ultimate_card
+    if not ult:
+        return False
+    return ult.effect_id == "tide_of_darkness"
+
+
 def _count_empty_spawn_points(state: "GameState", hero_id: str, radius: int) -> int:
-    """Count empty spawn points within radius of hero, in the active battle zone."""
+    """Count empty spawn points within radius of hero, in the active battle zone.
+
+    With Tide of Darkness active, all non-terrain unoccupied hexes count.
+    """
     from goa2.domain.types import BoardEntityID
     from goa2.engine.topology import get_topology_service
 
@@ -58,22 +76,24 @@ def _count_empty_spawn_points(state: "GameState", hero_id: str, radius: int) -> 
     if not hero_hex:
         return 0
 
+    override = _has_tide_of_darkness(state)
+
     active_zone_id = state.active_zone_id
-    if not active_zone_id:
+    if not active_zone_id and not override:
         return 0
 
     topology = get_topology_service()
     count = 0
     for h, tile in state.board.tiles.items():
-        if not tile.spawn_point:
-            continue
-        # Must be in the active battle zone
-        if tile.zone_id != active_zone_id:
-            continue
-        # Must be unoccupied
+        if not override:
+            if not tile.spawn_point:
+                continue
+            if tile.zone_id != active_zone_id:
+                continue
         if tile.is_occupied:
             continue
-        # Must be within radius
+        if tile.is_terrain:
+            continue
         dist = topology.distance(hero_hex, h, state)
         if dist <= radius:
             count += 1
@@ -83,15 +103,24 @@ def _count_empty_spawn_points(state: "GameState", hero_id: str, radius: int) -> 
 def _is_adjacent_to_empty_spawn_in_battle_zone(
     state: "GameState", unit_hex, active_zone_id: str
 ) -> bool:
-    """Check if a hex is adjacent to an empty spawn point in the battle zone."""
+    """Check if a hex is adjacent to an empty spawn point in the battle zone.
+
+    With Tide of Darkness active, any non-occupied non-terrain neighbor qualifies.
+    """
     from goa2.engine.topology import get_topology_service
 
     topology = get_topology_service()
     neighbors = topology.get_connected_neighbors(unit_hex, state)
+    override = _has_tide_of_darkness(state)
     for n in neighbors:
         tile = state.board.get_tile(n)
-        if tile and tile.spawn_point and tile.zone_id == active_zone_id:
-            if not tile.is_occupied:
+        if not tile:
+            continue
+        if override:
+            if not tile.is_occupied and not tile.is_terrain:
+                return True
+        else:
+            if tile.spawn_point and tile.zone_id == active_zone_id and not tile.is_occupied:
                 return True
     return False
 
@@ -881,46 +910,55 @@ class NecromasteryEffect(CardEffect):
 
 
 # =============================================================================
-# NOT YET IMPLEMENTED — Cards requiring new infrastructure
+# TIER III - GREEN: Darkest Ritual (SKILL)
 # =============================================================================
-#
-# The following 3 cards are NOT registered. Each section explains the card text,
-# what blocks implementation, and what infrastructure is needed.
-#
-# -----------------------------------------------------------------------------
-# darkest_ritual (Tier III Green — SKILL)
-# -----------------------------------------------------------------------------
-# Card Text: "If there are 2 or more empty spawn points in radius in the
-#             battle zone, gain 2 coins. If you have your Ultimate, gain an
-#             Attack item."
-#
-# The coins part is trivial (same pattern as darker_ritual).
-# BLOCKER: "gain an Attack item" has no existing step.
-# NEEDS:
-#   - A new GainItemStep (new StepType.GAIN_ITEM) that does
-#     hero.items[StatType.ATTACK] = hero.items.get(StatType.ATTACK, 0) + 1
-#   - The "if you have your Ultimate" condition = hero.level >= 8
-#     (can be checked at build time since state is available)
-#   - Register new StepType enum + add to AnyStep union in step_types.py
-#
-# -----------------------------------------------------------------------------
-# tide_of_darkness (Ultimate Purple — PASSIVE)
-# -----------------------------------------------------------------------------
-# Card Text: "While you are performing an action, all spaces count as if they
-#             were in the battle zone and had a friendly minion spawn point."
-#
-# This is the most complex card in Dodger's kit.
-# BLOCKER: Global passive override that changes board perception.
-# NEEDS:
-#   - A passive effect (probably EffectType.ZONE_OVERRIDE or similar) that
-#     temporarily modifies how the board/zone system works during Dodger's turn
-#   - All spawn point checks must respect this override:
-#     * _count_empty_spawn_points() helper
-#     * _is_adjacent_to_empty_spawn_in_battle_zone() helper
-#     * SpawnPointFilter / AdjacentSpawnPointFilter
-#     * RespawnMinionStep spawn logic
-#   - All "in the battle zone" checks must treat every hex as in-zone
-#   - Implementation approach: add an active_effects check in the board/zone
-#     query methods (e.g. state.board.get_zone_for_hex could check for
-#     ZONE_OVERRIDE effects on the current actor)
-#   - Should be implemented LAST, after all other Dodger cards work correctly
+
+
+@register_effect("darkest_ritual")
+class DarkestRitualEffect(CardEffect):
+    """
+    Card Text: "If there are 2 or more empty spawn points in radius in the
+    battle zone, gain 2 coins. If you have your Ultimate, gain an Attack item."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        count = _count_empty_spawn_points(state, hero.id, stats.radius or 0)
+        if count < 2:
+            return []
+
+        steps: List[GameStep] = [
+            SetContextFlagStep(key="self", value=hero.id),
+            GainCoinsStep(hero_key="self", amount=2),
+        ]
+
+        # "If you have your Ultimate" = hero has reached level 8
+        if hero.level >= 8:
+            steps.append(
+                GainItemStep(
+                    hero_key="self",
+                    stat_type=StatType.ATTACK,
+                ),
+            )
+
+        return steps
+
+
+# =============================================================================
+# ULTIMATE - PURPLE: Tide of Darkness (PASSIVE)
+# =============================================================================
+
+
+@register_effect("tide_of_darkness")
+class TideOfDarknessEffect(CardEffect):
+    """
+    Ultimate (Purple) - Dodger
+    Card Text: "While you are performing an action, all spaces count as if they
+    were in the battle zone and had a friendly minion spawn point."
+
+    This is a persistent passive — no build_steps needed. The effect is
+    implemented via _has_tide_of_darkness() checks in helpers and filters.
+    """
+
+    pass

@@ -422,13 +422,17 @@ class BattleZoneFilter(FilterCondition):
     type: FilterType = FilterType.BATTLE_ZONE
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        active_zone_id = state.active_zone_id
-        if not active_zone_id:
-            return False
-
         if isinstance(candidate, Hex):
             tile = state.board.get_tile(candidate)
             if not tile:
+                return False
+            # Tide of Darkness: all spaces count as battle zone
+            from goa2.scripts.dodger_effects import _has_tide_of_darkness
+
+            if _has_tide_of_darkness(state):
+                return True
+            active_zone_id = state.active_zone_id
+            if not active_zone_id:
                 return False
             return tile.zone_id == active_zone_id
         return False
@@ -450,7 +454,18 @@ class SpawnPointTeamFilter(FilterCondition):
             return False
 
         tile = state.board.get_tile(candidate)
-        if not tile or not tile.spawn_point:
+        if not tile:
+            return False
+
+        # Tide of Darkness: all spaces have friendly minion spawn point
+        from goa2.scripts.dodger_effects import _has_tide_of_darkness
+
+        if _has_tide_of_darkness(state):
+            if self.relation == "FRIENDLY":
+                return not tile.is_terrain
+            return False
+
+        if not tile.spawn_point:
             return False
 
         sp = tile.spawn_point

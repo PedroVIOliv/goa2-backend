@@ -159,6 +159,7 @@ class StepType(str, Enum):
     CHECK_MINION_PROTECTION = "check_minion_protection"
     RECORD_HEX = "record_hex"
     GAIN_COINS = "gain_coins"
+    GAIN_ITEM = "gain_item"
     CHECK_HERO_DEFEATED_THIS_ROUND = "check_hero_defeated_this_round"
     STEAL_COINS = "steal_coins"
     COMPUTE_HEX = "compute_hex"

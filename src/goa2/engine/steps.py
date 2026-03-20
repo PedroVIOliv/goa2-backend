@@ -5261,6 +5261,40 @@ class GainCoinsStep(GameStep):
         )
 
 
+class GainItemStep(GameStep):
+    """Grants a stat item to a hero identified by a context key."""
+
+    type: StepType = StepType.GAIN_ITEM
+    hero_key: str  # context key → hero ID
+    stat_type: StatType  # which stat to boost
+    amount: int = 1
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+        hero_id = context.get(self.hero_key)
+        if not hero_id:
+            return StepResult(is_finished=True)
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+        hero.items[self.stat_type] = hero.items.get(self.stat_type, 0) + self.amount
+        print(f"   [ITEM] {hero_id} gains +{self.amount} {self.stat_type.name} item")
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.ITEM_GAINED,
+                    actor_id=str(hero_id),
+                    metadata={
+                        "stat_type": self.stat_type.value,
+                        "amount": self.amount,
+                    },
+                )
+            ],
+        )
+
+
 class CheckHeroDefeatedThisRoundStep(GameStep):
     """Sets context[output_key] to True if any hero was defeated this round, else None."""
 
