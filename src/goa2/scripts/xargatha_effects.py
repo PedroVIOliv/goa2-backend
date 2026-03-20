@@ -70,7 +70,10 @@ class CleaveEffect(CardEffect):
                     AttackSequenceStep(
                         damage=stats.primary_value,
                         range_val=1,
-                        target_filters=[UnitTypeFilter(unit_type="HERO")],
+                        target_filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            ExcludeIdentityFilter(exclude_keys=["victim_id"]),
+                        ],
                     ),
                 ],
             ),

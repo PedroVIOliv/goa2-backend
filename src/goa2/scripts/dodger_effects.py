@@ -925,13 +925,16 @@ class DarkestRitualEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
         count = _count_empty_spawn_points(state, hero.id, stats.radius or 0)
-        if count < 2:
-            return []
+        should_gain_coins = count >= 2
+        steps: List[GameStep] = []
 
-        steps: List[GameStep] = [
-            SetContextFlagStep(key="self", value=hero.id),
-            GainCoinsStep(hero_key="self", amount=2),
-        ]
+        if should_gain_coins:
+            steps.extend(
+                [
+                    SetContextFlagStep(key="self", value=hero.id),
+                    GainCoinsStep(hero_key="self", amount=2),
+                ]
+            )
 
         # "If you have your Ultimate" = hero has reached level 8
         if hero.level >= 8:
