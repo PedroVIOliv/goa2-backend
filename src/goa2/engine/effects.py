@@ -3,14 +3,13 @@ from abc import ABC
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING, Optional
 from pydantic import BaseModel
 
-from goa2.domain.models.enums import StatType
+from goa2.domain.models.enums import ActionType, PassiveTrigger, StatType
 from goa2.engine.filters import FilterCondition
 
 if TYPE_CHECKING:
     from goa2.engine.steps import GameStep
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
-    from goa2.domain.models.enums import PassiveTrigger
     from goa2.engine.stats import CardStats
 
 
@@ -20,11 +19,17 @@ class StatAura(BaseModel):
     Uses the existing filter system to count matching units,
     then applies multiplier * count as a stat bonus.
     Range is controlled via RangeFilter in count_filters.
+
+    For flat bonuses, set flat_bonus directly (bypasses count logic).
+    Use basic_only and/or action_type_only to restrict when the aura applies.
     """
 
     stat_type: "StatType"
     count_filters: List["FilterCondition"] = []
     multiplier: int = 1
+    flat_bonus: Optional[int] = None
+    basic_only: bool = False
+    action_type_only: Optional[ActionType] = None
 
 
 class MovementAura(BaseModel):
@@ -48,7 +53,7 @@ class PassiveConfig(BaseModel):
         prompt: Custom UI prompt for optional passives.
     """
 
-    trigger: "PassiveTrigger"
+    trigger: PassiveTrigger
     uses_per_turn: int = 1
     is_optional: bool = True
     prompt: str = ""
@@ -243,7 +248,7 @@ class CardEffect(ABC):
         state: "GameState",
         hero: "Hero",
         card: "Card",
-        trigger: "PassiveTrigger",
+        trigger: PassiveTrigger,
         context: Dict[str, Any],
     ) -> List["GameStep"]:
         """

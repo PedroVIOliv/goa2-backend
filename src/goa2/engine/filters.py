@@ -225,7 +225,7 @@ class AdjacencyFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.ADJACENCY
-    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]]
+    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]] # Tags are checked in AND fashion (must match all)
     skip_immune: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:

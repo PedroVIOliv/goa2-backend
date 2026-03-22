@@ -648,7 +648,6 @@ class BurningSkullEffect(CardEffect):
                 prompt="Select a minion adjacent to you to move",
                 output_key="skull_minion",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     RangeFilter(max_range=1),
                     UnitTypeFilter(unit_type="MINION"),

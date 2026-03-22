@@ -600,7 +600,6 @@ class LightFingeredEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
                 ],
-                skip_immunity_filter=True,
             ),
             # 3. Steal 1 coin
             StealCoinsStep(
@@ -678,7 +677,6 @@ class PickPocketEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
                 ],
-                skip_immunity_filter=True,
             ),
             # 3. Steal 1 coin
             StealCoinsStep(
@@ -756,7 +754,6 @@ class MasterThiefEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
                 ],
-                skip_immunity_filter=True,
             ),
             # 3. Choose amount: 1 or 2
             SelectStep(

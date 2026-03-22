@@ -1601,19 +1601,26 @@ class RemoveUnitStep(GameStep):
     """
 
     type: StepType = StepType.REMOVE_UNIT
-    unit_id: str
+    unit_id: Optional[str] = None
+    unit_key: Optional[str] = None  # Read unit ID from context
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print(f"   [LOGIC] Removing {self.unit_id} from board.")
-        from_hex = state.entity_locations.get(BoardEntityID(self.unit_id))
-        state.remove_unit(UnitID(self.unit_id))
+        target_id = self.unit_id
+        if self.unit_key:
+            target_id = context.get(self.unit_key)
+        if not target_id:
+            return StepResult(is_finished=True)
+
+        print(f"   [LOGIC] Removing {target_id} from board.")
+        from_hex = state.entity_locations.get(BoardEntityID(target_id))
+        state.remove_unit(UnitID(target_id))
         return StepResult(
             is_finished=True,
             new_steps=[CheckLanePushStep()],
             events=[
                 GameEvent(
                     event_type=GameEventType.UNIT_REMOVED,
-                    target_id=self.unit_id,
+                    target_id=target_id,
                     from_hex=_hex_dict(from_hex),
                 )
             ],
@@ -2547,8 +2554,20 @@ class PushUnitStep(GameStep):
                 f"   [PUSH] Collision detected: {was_stopped_by_obstacle} -> {self.collision_output_key}"
             )
 
+        # Fire AFTER_PUSH passive trigger — push happened even if distance is 0
+        # (target blocked immediately is still a valid push)
+        from goa2.domain.models.enums import PassiveTrigger
+
+        context["push_victim_id"] = actual_target_id
+        post_push_steps: List[GameStep] = [
+            CheckPassiveAbilitiesStep(
+                trigger=PassiveTrigger.AFTER_PUSH.value
+            )
+        ]
+
         return StepResult(
             is_finished=True,
+            new_steps=post_push_steps,
             events=[
                 GameEvent(
                     event_type=GameEventType.UNIT_PUSHED,

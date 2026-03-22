@@ -177,16 +177,29 @@ def get_computed_stat(
             for aura in effect.get_stat_auras():
                 if aura.stat_type != stat_type:
                     continue
-                hero_hex = state.entity_locations.get(BoardEntityID(str(unit_id)))
-                if not hero_hex:
-                    continue
-                saved_actor = state.current_actor_id
-                state.current_actor_id = unit_id
-                try:
-                    count = _count_matching_units(state, aura)
-                finally:
-                    state.current_actor_id = saved_actor
-                total += count * aura.multiplier
+                # Check conditional aura restrictions
+                if aura.basic_only or aura.action_type_only is not None:
+                    card = unit.current_turn_card
+                    if not card:
+                        continue
+                    if aura.basic_only and not card.is_basic:
+                        continue
+                    if aura.action_type_only is not None and card.primary_action != aura.action_type_only:
+                        continue
+                # Apply flat bonus or count-based bonus
+                if aura.flat_bonus is not None:
+                    total += aura.flat_bonus
+                else:
+                    hero_hex = state.entity_locations.get(BoardEntityID(str(unit_id)))
+                    if not hero_hex:
+                        continue
+                    saved_actor = state.current_actor_id
+                    state.current_actor_id = unit_id
+                    try:
+                        count = _count_matching_units(state, aura)
+                    finally:
+                        state.current_actor_id = saved_actor
+                    total += count * aura.multiplier
 
     # 4. Add Marker effects (for heroes with markers on them)
     if isinstance(unit, Hero):
