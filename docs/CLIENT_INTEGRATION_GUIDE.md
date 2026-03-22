@@ -482,6 +482,10 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "turn": 1,
   "current_actor_id": null,
   "unresolved_hero_ids": ["hero_arien", "hero_knight"],
+  "unresolved_cards": [
+    { "hero_id": "hero_arien", "initiative": 7, "card": { ... } },
+    { "hero_id": "hero_knight", "initiative": 5, "card": { ... } }
+  ],
   "active_zone_id": null,
   "cheats_enabled": false,
   "tie_breaker_team": "RED",
@@ -508,6 +512,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `turn` | int | Current turn within the round |
 | `current_actor_id` | string/null | Hero currently acting during RESOLUTION |
 | `unresolved_hero_ids` | string[] | Heroes that haven't acted yet this round |
+| `unresolved_cards` | object[] | Cards in resolution order (highest initiative first). Each entry: `{hero_id, initiative, card}`. Only populated during RESOLUTION phase; empty array otherwise. Ties broken by `tie_breaker_team`. Recalculated dynamically — order may change between actions due to modifiers. |
 | `active_zone_id` | string/null | Currently active zone (if applicable) |
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |

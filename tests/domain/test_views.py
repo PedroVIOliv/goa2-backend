@@ -661,3 +661,141 @@ class TestViewStructure:
 
         markers = view["markers"]
         assert isinstance(markers, dict)
+
+    def test_unresolved_cards_present_in_view(self, sample_state):
+        """View contains unresolved_cards field."""
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        assert "unresolved_cards" in view
+
+
+class TestUnresolvedCardsView:
+    """Tests for the unresolved_cards field in the view."""
+
+    def _make_card(self, card_id, name, initiative):
+        return Card(
+            id=card_id,
+            name=name,
+            tier=CardTier.I,
+            color=CardColor.RED,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=3,
+            effect_id="test_effect",
+            effect_text="Test effect",
+            initiative=initiative,
+            state=CardState.UNRESOLVED,
+            is_facedown=False,
+        )
+
+    def test_empty_outside_resolution_phase(self, sample_state):
+        """Returns empty array when not in RESOLUTION phase."""
+        sample_state.phase = GamePhase.PLANNING
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        assert view["unresolved_cards"] == []
+
+    def test_empty_when_no_unresolved_heroes_and_no_actor(self, sample_state):
+        """Returns empty array when no unresolved heroes and no current actor."""
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = []
+        sample_state.current_actor_id = None
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        assert view["unresolved_cards"] == []
+
+    def test_ordered_by_initiative_descending(self, sample_state):
+        """Cards are ordered by computed initiative, highest first."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=3)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=7)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = [HeroID("hero_a"), HeroID("hero_b")]
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        cards = view["unresolved_cards"]
+
+        assert len(cards) == 2
+        assert cards[0]["hero_id"] == "hero_b"
+        assert cards[0]["initiative"] == 7
+        assert cards[1]["hero_id"] == "hero_a"
+        assert cards[1]["initiative"] == 3
+
+    def test_entry_structure(self, sample_state):
+        """Each entry has hero_id, initiative, and card fields."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=5)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = [HeroID("hero_a")]
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        entry = view["unresolved_cards"][0]
+
+        assert "hero_id" in entry
+        assert "initiative" in entry
+        assert "card" in entry
+        assert entry["card"]["id"] == "ca"
+        assert entry["card"]["name"] == "Card A"
+        # Should not leak internal team field
+        assert "team" not in entry
+
+    def test_tie_broken_by_tie_breaker_team(self, sample_state):
+        """Same initiative: hero on tie_breaker_team comes first."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=5)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=5)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = [HeroID("hero_a"), HeroID("hero_b")]
+
+        # Set tie-breaker to BLUE — hero_b (BLUE) should come first
+        sample_state.tie_breaker_team = TeamColor.BLUE
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        cards = view["unresolved_cards"]
+        assert cards[0]["hero_id"] == "hero_b"
+        assert cards[1]["hero_id"] == "hero_a"
+
+        # Flip tie-breaker to RED — hero_a (RED) should come first
+        sample_state.tie_breaker_team = TeamColor.RED
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        cards = view["unresolved_cards"]
+        assert cards[0]["hero_id"] == "hero_a"
+        assert cards[1]["hero_id"] == "hero_b"
+
+    def test_includes_current_actor(self, sample_state):
+        """Current actor's card appears in the list."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=7)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=3)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.current_actor_id = HeroID("hero_a")
+        sample_state.unresolved_hero_ids = [HeroID("hero_b")]
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        cards = view["unresolved_cards"]
+
+        assert len(cards) == 2
+        assert cards[0]["hero_id"] == "hero_a"
+        assert cards[0]["initiative"] == 7
+        assert cards[1]["hero_id"] == "hero_b"
+        assert cards[1]["initiative"] == 3
+
+    def test_only_current_actor_when_last_to_resolve(self, sample_state):
+        """When current actor is the last one, list has just that card."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=5)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.current_actor_id = HeroID("hero_a")
+        sample_state.unresolved_hero_ids = []
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        cards = view["unresolved_cards"]
+
+        assert len(cards) == 1
+        assert cards[0]["hero_id"] == "hero_a"

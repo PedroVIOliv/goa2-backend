@@ -14,6 +14,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.domain.models.card import Card
 from goa2.domain.models.unit import Hero, Minion
+from goa2.domain.models.enums import GamePhase, StatType
 
 
 def build_view(
@@ -50,12 +51,16 @@ def build_view(
     # Build markers view (public info)
     markers_view = _build_markers_view(state)
 
+    # Build unresolved cards view (resolution order for frontend)
+    unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id)
+
     return {
         "phase": state.phase.value,
         "round": state.round,
         "turn": state.turn,
         "current_actor_id": state.current_actor_id,
         "unresolved_hero_ids": list(state.unresolved_hero_ids),
+        "unresolved_cards": unresolved_cards_view,
         "active_zone_id": state.active_zone_id,
         "cheats_enabled": state.cheats_enabled,
         "tie_breaker_team": state.tie_breaker_team.value,
@@ -64,6 +69,55 @@ def build_view(
         "effects": effects_view,
         "markers": markers_view,
     }
+
+
+def _build_unresolved_cards_view(
+    state: GameState, for_hero_id: Optional[HeroID] = None
+) -> List[Dict[str, Any]]:
+    """
+    Build an ordered list of unresolved cards for frontend visualization.
+
+    Returns cards sorted by resolution priority (highest initiative first),
+    with ties broken by tie_breaker_team. Only populated during RESOLUTION phase.
+    """
+    if state.phase != GamePhase.RESOLUTION:
+        return []
+
+    hero_ids = list(state.unresolved_hero_ids)
+    if state.current_actor_id:
+        hero_ids = [state.current_actor_id] + hero_ids
+
+    if not hero_ids:
+        return []
+
+    from goa2.engine.stats import get_computed_stat
+
+    entries = []
+    for h_id in hero_ids:
+        hero = state.get_hero(h_id)
+        if not hero or not hero.current_turn_card:
+            continue
+
+        card = hero.current_turn_card
+        base_init = card.get_base_stat_value(StatType.INITIATIVE)
+        computed_init = get_computed_stat(state, h_id, StatType.INITIATIVE, base_init)
+
+        entries.append({
+            "hero_id": h_id,
+            "initiative": computed_init,
+            "team": hero.team,
+            "card": _build_card_view(card, is_own_hero=(h_id == for_hero_id)),
+        })
+
+    # Sort: highest initiative first, tie-breaker team favored among same initiative
+    tie_breaker = state.tie_breaker_team
+    entries.sort(key=lambda e: (-e["initiative"], 0 if e["team"] == tie_breaker else 1))
+
+    # Remove internal team field before returning
+    for entry in entries:
+        del entry["team"]
+
+    return entries
 
 
 def _build_team_view(team, for_hero_id: Optional[HeroID]) -> Dict[str, Any]:
