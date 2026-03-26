@@ -4,16 +4,19 @@ from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CreateEffectStep,
     GameStep,
     MoveSequenceStep,
     PlaceMarkerStep,
     RemoveMarkerStep,
+    RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
 )
 from goa2.engine.filters import (
     ClearLineOfSightFilter,
     ExcludeIdentityFilter,
+    HasCardsInDiscardFilter,
     HasMarkerFilter,
     InStraightLineFilter,
     RangeFilter,
@@ -21,7 +24,8 @@ from goa2.engine.filters import (
     UnitTypeFilter,
 )
 from goa2.domain.models.marker import MarkerType
-from goa2.domain.models.enums import TargetType
+from goa2.domain.models.enums import CardContainerType, TargetType
+from goa2.domain.models.effect import DurationType, EffectType, EffectScope, Shape
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -414,6 +418,105 @@ class HunterSeekerEffect(CardEffect):
                 is_ranged=True,
                 target_id_key="hs_second_victim",
                 active_if_key="hs_second_victim",
+            ),
+        ]
+
+
+# =============================================================================
+# CARD RETRIEVAL: Drinking Buddies / Another One!
+# =============================================================================
+
+
+def _build_retrieve_steps(stats: "CardStats") -> List["GameStep"]:
+    """Shared retrieve sequence for Drinking Buddies and Another One!.
+
+    1. Optionally select a hero in radius with cards in discard.
+    2. That hero selects a card from their discard (target chooses).
+    3. That hero retrieves the card.
+    4. If step 1 was not skipped, Bain may also select a card from own discard.
+    5. Bain retrieves the card.
+    """
+    return [
+        # 1. Select any hero in radius who has discarded cards (optional)
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="You may have a hero in radius retrieve a discarded card",
+            output_key="retrieve_target",
+            is_mandatory=False,
+            skip_immunity_filter=True,
+            filters=[
+                RangeFilter(max_range=stats.radius),
+                UnitTypeFilter(unit_type="HERO"),
+                HasCardsInDiscardFilter(),
+            ],
+        ),
+        # 2. Target hero selects card from their discard
+        SelectStep(
+            target_type=TargetType.CARD,
+            card_container=CardContainerType.DISCARD,
+            context_hero_id_key="retrieve_target",
+            override_player_id_key="retrieve_target",
+            prompt="Select a discarded card to retrieve",
+            output_key="target_retrieve_card",
+            is_mandatory=True,
+            active_if_key="retrieve_target",
+        ),
+        # 3. Target hero retrieves the card
+        RetrieveCardStep(
+            card_key="target_retrieve_card",
+            hero_key="retrieve_target",
+            active_if_key="retrieve_target",
+        ),
+        # 4. Bain may also select a card from own discard
+        SelectStep(
+            target_type=TargetType.CARD,
+            card_container=CardContainerType.DISCARD,
+            prompt="You may also retrieve a discarded card",
+            output_key="actor_retrieve_card",
+            is_mandatory=False,
+            active_if_key="retrieve_target",
+        ),
+        # 5. Bain retrieves the card
+        RetrieveCardStep(
+            card_key="actor_retrieve_card",
+            active_if_key="actor_retrieve_card",
+        ),
+    ]
+
+
+@register_effect("drinking_buddies")
+class DrinkingBuddiesEffect(CardEffect):
+    """
+    Card Text: "You may have a hero in radius retrieve a discarded card.
+    If they do, you may also retrieve a discarded card."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return _build_retrieve_steps(stats)
+
+
+@register_effect("another_one")
+class AnotherOneEffect(CardEffect):
+    """
+    Card Text: "You may have a hero in radius retrieve a discarded card.
+    If they do, you may also retrieve a discarded card.
+    End of turn: May repeat once."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        return [
+            *_build_retrieve_steps(stats),
+            # Delayed trigger: repeat the retrieve sequence at end of turn
+            CreateEffectStep(
+                effect_type=EffectType.DELAYED_TRIGGER,
+                duration=DurationType.THIS_TURN,
+                scope=EffectScope(shape=Shape.POINT),
+                is_active=True,
+                finishing_steps=_build_retrieve_steps(stats),
             ),
         ]
 

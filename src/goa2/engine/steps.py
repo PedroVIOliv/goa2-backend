@@ -5163,11 +5163,14 @@ class CheckContextConditionStep(GameStep):
 class RetrieveCardStep(GameStep):
     """
     Retrieves a card from discard pile back to hand.
-    Uses context[card_key] for the card ID, and current_actor_id for the hero.
+    Uses context[card_key] for the card ID.
+    If hero_key is set, looks up the hero ID from context; otherwise uses
+    current_actor_id.
     """
 
     type: StepType = StepType.RETRIEVE_CARD
     card_key: str
+    hero_key: Optional[str] = None
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -5177,9 +5180,16 @@ class RetrieveCardStep(GameStep):
         if not card_id:
             return StepResult(is_finished=True)
 
-        actor_id = state.current_actor_id
-        if not actor_id:
-            return StepResult(is_finished=True)
+        # Determine which hero retrieves the card
+        if self.hero_key:
+            hero_id_str = context.get(self.hero_key)
+            if not hero_id_str:
+                return StepResult(is_finished=True)
+            actor_id = hero_id_str
+        else:
+            actor_id = state.current_actor_id
+            if not actor_id:
+                return StepResult(is_finished=True)
 
         hero = state.get_hero(HeroID(str(actor_id)))
         if not hero:
