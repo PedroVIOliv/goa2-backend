@@ -233,6 +233,8 @@ from goa2.engine.filters import (
     PlayedCardFilter,
     BattleZoneFilter,
     SpawnPointTeamFilter,
+    ClearLineOfSightFilter,
+    HasMarkerFilter,
     OrFilter,
     AndFilter,
 )
@@ -280,6 +282,8 @@ AnyFilter = Annotated[
         Annotated[PlayedCardFilter, Tag(FilterType.PLAYED_CARD.value)],
         Annotated[BattleZoneFilter, Tag(FilterType.BATTLE_ZONE.value)],
         Annotated[SpawnPointTeamFilter, Tag(FilterType.SPAWN_POINT_TEAM.value)],
+        Annotated[ClearLineOfSightFilter, Tag(FilterType.CLEAR_LINE_OF_SIGHT.value)],
+        Annotated[HasMarkerFilter, Tag(FilterType.HAS_MARKER.value)],
         Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
         Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
     ],

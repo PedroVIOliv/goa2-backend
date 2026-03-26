@@ -13,6 +13,7 @@ class MarkerType(str, Enum):
 
     VENOM = "venom"  # Rogue's venom marker: debuffs Attack, Defense, Initiative
     POISON = "poison"  # Tigerclaw's poison marker: debuffs Attack, Defense, Initiative
+    BOUNTY = "bounty"  # Bain's bounty marker: extra life counter on defeat
 
 
 class MarkerStatEffect(BaseModel):

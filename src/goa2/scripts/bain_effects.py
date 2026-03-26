@@ -3,16 +3,25 @@ from typing import List, Dict, Any, TYPE_CHECKING, Optional
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
+    CheckContextConditionStep,
     GameStep,
+    MoveSequenceStep,
+    PlaceMarkerStep,
+    RemoveMarkerStep,
+    SelectStep,
     SetContextFlagStep,
 )
 from goa2.engine.filters import (
     ClearLineOfSightFilter,
+    ExcludeIdentityFilter,
+    HasMarkerFilter,
     InStraightLineFilter,
     RangeFilter,
     TeamFilter,
+    UnitTypeFilter,
 )
 from goa2.domain.models.marker import MarkerType
+from goa2.domain.models.enums import TargetType
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -114,29 +123,304 @@ class PerfectGetawayEffect(CardEffect):
         return [SetContextFlagStep(key="defense_invalid", value=True)]
 
 
+@register_effect("close_call")
+class CloseCallEffect(CardEffect):
+    """
+    Card Text: "If a hero in play has a Bounty marker, block the attack and
+    that hero gives the marker to you. (The marker's effect is applied to you.)"
+    """
+
+    def build_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: CardStats,
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        if _bounty_marker_in_play(state):
+            return [
+                SetContextFlagStep(key="auto_block", value=True),
+                PlaceMarkerStep(
+                    marker_type=MarkerType.BOUNTY,
+                    target_id=str(defender.id),
+                    value=0,
+                ),
+            ]
+        return [SetContextFlagStep(key="defense_invalid", value=True)]
+
+
+@register_effect("narrow_escape")
+class NarrowEscapeEffect(CardEffect):
+    """
+    Card Text: "If a hero in play has a Bounty marker, block the attack and
+    retrieve the marker."
+    """
+
+    def build_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: CardStats,
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        if _bounty_marker_in_play(state):
+            return [
+                SetContextFlagStep(key="auto_block", value=True),
+                RemoveMarkerStep(marker_type=MarkerType.BOUNTY),
+            ]
+        return [SetContextFlagStep(key="defense_invalid", value=True)]
+
+
+# =============================================================================
+# MOVEMENT CARDS: Vantage Point / High Ground
+# =============================================================================
+
+
+class _IgnoreObstaclesMovementEffect(CardEffect):
+    """
+    Base for movement cards: "Ignore obstacles. If a hero in play has a
+    Bounty marker, +N movement."
+    """
+
+    bounty_bonus: int = 0
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        movement_value = stats.primary_value
+        if _bounty_marker_in_play(state):
+            movement_value += self.bounty_bonus
+        return [
+            MoveSequenceStep(
+                range_val=movement_value, pass_through_obstacles=True
+            ),
+        ]
+
+
+@register_effect("vantage_point")
+class VantagePointEffect(_IgnoreObstaclesMovementEffect):
+    """
+    Card Text: "Ignore obstacles. If a hero in play has a Bounty marker,
+    +1 movement."
+    """
+
+    bounty_bonus: int = 1
+
+
+@register_effect("high_ground")
+class HighGroundEffect(_IgnoreObstaclesMovementEffect):
+    """
+    Card Text: "Ignore obstacles. If a hero in play has a Bounty marker,
+    +2 movement."
+    """
+
+    bounty_bonus: int = 2
+
+
+# =============================================================================
+# ATTACK CARDS: Dead or Alive / Hand Crossbow / Hunter-Seeker
+# =============================================================================
+
+
+@register_effect("dead_or_alive")
+class DeadOrAliveEffect(CardEffect):
+    """
+    Card Text: "Target a unit adjacent to you.
+    After the attack: You may give an enemy hero in play the Bounty marker.
+    A hero with the Bounty marker spends 1 additional Life counter when defeated."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="You may give an enemy hero the Bounty marker",
+                output_key="bounty_target",
+                is_mandatory=False,
+                skip_immunity_filter=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                ],
+            ),
+            PlaceMarkerStep(
+                marker_type=MarkerType.BOUNTY,
+                target_key="bounty_target",
+                value=0,
+            ),
+        ]
+
+
+@register_effect("hand_crossbow")
+class HandCrossbowEffect(CardEffect):
+    """
+    Card Text: "Choose one —
+    * Target a hero in range with a Bounty marker.
+    * Target a unit adjacent to you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Choose mode
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose: 1 = Target hero with Bounty marker in range, 2 = Target adjacent unit",
+                output_key="hc_choice",
+                number_options=[1, 2],
+                is_mandatory=True,
+            ),
+            # 2. Branch flags
+            CheckContextConditionStep(
+                input_key="hc_choice",
+                operator="==",
+                threshold=1,
+                output_key="chose_bounty",
+            ),
+            CheckContextConditionStep(
+                input_key="hc_choice",
+                operator="==",
+                threshold=2,
+                output_key="chose_adjacent",
+            ),
+            # 3a. Bounty target: hero in range with Bounty marker
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                active_if_key="chose_bounty",
+                target_filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    HasMarkerFilter(marker_type=MarkerType.BOUNTY),
+                ],
+            ),
+            # 3b. Adjacent: standard melee attack
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                active_if_key="chose_adjacent",
+            ),
+        ]
+
+
+@register_effect("hunter_seeker")
+class HunterSeekerEffect(CardEffect):
+    """
+    Card Text: "Choose one, or both, on different targets —
+    * Target a hero in range with a Bounty marker.
+    * Target a unit adjacent to you."
+
+    Two-step flow: player picks which attack to do first, then is optionally
+    offered the other attack on a different target.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Choose which attack to do first
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose: 1 = Target hero with Bounty first, 2 = Target adjacent unit first",
+                output_key="hs_choice",
+                number_options=[1, 2],
+                is_mandatory=True,
+            ),
+            # 2. Branch flags
+            CheckContextConditionStep(
+                input_key="hs_choice",
+                operator="==",
+                threshold=1,
+                output_key="chose_bounty_first",
+            ),
+            CheckContextConditionStep(
+                input_key="hs_choice",
+                operator="==",
+                threshold=2,
+                output_key="chose_adjacent_first",
+            ),
+            # --- PATH A: Bounty target first ---
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                active_if_key="chose_bounty_first",
+                target_filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    HasMarkerFilter(marker_type=MarkerType.BOUNTY),
+                ],
+            ),
+            # Optionally target adjacent unit (different target)
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Optionally target an adjacent unit (different target)",
+                output_key="hs_second_victim",
+                is_mandatory=False,
+                active_if_key="chose_bounty_first",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    ExcludeIdentityFilter(
+                        exclude_self=False,
+                        exclude_keys=["victim_id"],
+                    ),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                target_id_key="hs_second_victim",
+                active_if_key="hs_second_victim",
+            ),
+            # --- PATH B: Adjacent first ---
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                active_if_key="chose_adjacent_first",
+            ),
+            # Optionally target hero in range with bounty (different target)
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Optionally target a hero with Bounty marker in range (different target)",
+                output_key="hs_second_victim",
+                is_mandatory=False,
+                active_if_key="chose_adjacent_first",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range),
+                    HasMarkerFilter(marker_type=MarkerType.BOUNTY),
+                    ExcludeIdentityFilter(
+                        exclude_self=False,
+                        exclude_keys=["victim_id"],
+                    ),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_id_key="hs_second_victim",
+                active_if_key="hs_second_victim",
+            ),
+        ]
+
+
 # =============================================================================
 # UNIMPLEMENTED EFFECTS — High-Level Design Notes
 # =============================================================================
-
-# -----------------------------------------------------------------------------
-# DEAD OR ALIVE (Gold / Untiered) — EASY
-# Card Text: "Target a unit adjacent to you.
-#   After the attack: You may give an enemy hero in play the Bounty marker.
-#   A hero with the Bounty marker spends 1 additional Life counter when defeated."
-#
-# HLD:
-#   1. AttackSequenceStep(damage=stats.primary_value) — standard adjacent attack
-#   2. SelectStep(target_type="UNIT", is_mandatory=False,
-#        filters=[TeamFilter(relation="ENEMY"), UnitTypeFilter(unit_type="HERO")])
-#      — optional, select any enemy hero in play (not just in radius/range)
-#   3. PlaceMarkerStep(marker_type=MarkerType.BOUNTY, target_key="...", value=0)
-#
-# Complexity: LOW — all steps exist. PlaceMarkerStep handles singleton
-#   semantics (auto-removes from previous holder). The "extra life counter"
-#   penalty needs to be checked in DefeatUnitStep or life-counter logic —
-#   verify that defeat handling reads the BOUNTY marker. If not, that's the
-#   only new work needed (small change in DefeatUnitStep).
-# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # GET OVER HERE! (Silver / Untiered) — MEDIUM
@@ -165,121 +449,6 @@ class PerfectGetawayEffect(CardEffect):
 #   adjustments if tokens aren't normally targetable by SelectStep.
 # New engine work: ClearLineOfSightFilter blocked_by_obstacles mode using
 #   is_obstacle_for_actor.
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# HAND CROSSBOW (Red / Tier II) — EASY
-# Card Text: "Choose one — • Target a hero in range with a Bounty marker.
-#   • Target a unit adjacent to you."
-#
-# HLD:
-#   1. SelectStep(target_type="NUMBER", options for choice 1 or 2)
-#   2. CheckContextConditionStep → branch:
-#      Path A (bounty target): AttackSequenceStep with filters:
-#        [RangeFilter, BountyMarkerFilter (NEW or inline check),
-#         UnitTypeFilter(HERO)]
-#      Path B (adjacent): AttackSequenceStep(damage=...) — standard melee
-#
-# Complexity: LOW-MEDIUM — the branching pattern exists (see ThrowingAxeEffect
-#   in brogan_effects.py). The main question is filtering for "has Bounty marker".
-#   Options: (a) new HasMarkerFilter, (b) build target list at effect build time
-#   and pass as allowed_ids. Option (b) is simpler but less robust if marker
-#   moves mid-stack. A small HasMarkerFilter(marker_type=BOUNTY) would be clean
-#   and reusable across all Bain cards.
-# New engine work: HasMarkerFilter + FilterType + AnyFilter union (small).
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# HUNTER-SEEKER (Red / Tier III) — MEDIUM
-# Card Text: "Choose one, or both, on different targets —
-#   • Target a hero in range with a Bounty marker.
-#   • Target a unit adjacent to you."
-#
-# HLD:
-#   Same branching as Hand Crossbow but with THREE paths:
-#   1. SelectStep(target_type="NUMBER", options: [1=bounty only, 2=adjacent only, 3=both])
-#   2. Path "bounty only": AttackSequenceStep with bounty+range filters
-#      Path "adjacent only": AttackSequenceStep with adjacency
-#      Path "both": Two AttackSequenceSteps sequenced, with ExcludeIdentityFilter
-#        on the second to ensure "different targets".
-#
-# Complexity: MEDIUM — the "both on different targets" requires two sequential
-#   attacks where the second excludes the first target. Pattern exists in
-#   MiddlefingerOfDeathEffect (dodger). Needs HasMarkerFilter (same as Hand Crossbow).
-# New engine work: HasMarkerFilter (shared with Hand Crossbow).
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# CLOSE CALL (Green / Tier I) — MEDIUM (needs marker transfer logic)
-# Card Text: "If a hero in play has a Bounty marker, block the attack and that
-#   hero gives the marker to you. (The marker's effect is applied to you.)"
-#
-# HLD:
-#   build_defense_steps:
-#     if _bounty_marker_in_play(state):
-#       return [
-#         SetContextFlagStep(key="auto_block", value=True),
-#         PlaceMarkerStep(marker_type=BOUNTY, target_id=defender.id, value=0)
-#       ]
-#     else:
-#       return [SetContextFlagStep(key="defense_invalid", value=True)]
-#
-# Complexity: LOW-MEDIUM — similar to PerfectGetawayEffect. The marker transfer
-#   is just PlaceMarkerStep on self (Bain), which auto-removes from previous
-#   holder (singleton semantics). The "marker's effect is applied to you" means
-#   Bain now spends +1 life counter if defeated — same defeat penalty logic
-#   needed for Dead or Alive.
-# New engine work: None if Dead or Alive's defeat penalty is already done.
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# NARROW ESCAPE (Green / Tier II) — EASY
-# Card Text: "If a hero in play has a Bounty marker, block the attack and
-#   retrieve the marker."
-#
-# HLD:
-#   build_defense_steps:
-#     if _bounty_marker_in_play(state):
-#       return [
-#         SetContextFlagStep(key="auto_block", value=True),
-#         RemoveMarkerStep(marker_type=MarkerType.BOUNTY)
-#       ]
-#     else:
-#       return [SetContextFlagStep(key="defense_invalid", value=True)]
-#
-# Complexity: LOW — identical pattern to PerfectGetaway + RemoveMarkerStep.
-#   RemoveMarkerStep already exists and returns marker to supply.
-# New engine work: None.
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# VANTAGE POINT (Green / Tier II) — EASY
-# Card Text: "Ignore obstacles. If a hero in play has a Bounty marker,
-#   +1 movement."
-#
-# HLD:
-#   movement_value = stats.primary_value  # base 2
-#   if _bounty_marker_in_play(state):
-#       movement_value += 1
-#   return [
-#     MoveSequenceStep(range_val=movement_value, pass_through_obstacles=True)
-#   ]
-#
-# Complexity: LOW — MoveSequenceStep supports pass_through_obstacles=True.
-#   Conditional bonus is a simple build-time check (bounty in play).
-# New engine work: None.
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# HIGH GROUND (Green / Tier III) — EASY
-# Card Text: "Ignore obstacles. If a hero in play has a Bounty marker,
-#   +2 movement."
-#
-# HLD:
-#   Same as Vantage Point but +2 instead of +1. Can share a helper:
-#   _build_movement_ignore_obstacles(stats, bonus=2)
-# Complexity: LOW — identical pattern.
-# New engine work: None.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------

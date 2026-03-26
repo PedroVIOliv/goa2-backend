@@ -196,6 +196,8 @@ class FilterType(str, Enum):
     HAS_CARDS_IN_DISCARD = "has_cards_in_discard_filter"
     BATTLE_ZONE = "battle_zone_filter"
     SPAWN_POINT_TEAM = "spawn_point_team_filter"
+    CLEAR_LINE_OF_SIGHT = "clear_line_of_sight_filter"
+    HAS_MARKER = "has_marker_filter"
 
 
 class TargetType(str, Enum):

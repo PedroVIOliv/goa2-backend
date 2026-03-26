@@ -4,6 +4,7 @@ from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import ActionType, CardColor, MinionType
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.models.token import Token
@@ -1117,6 +1118,100 @@ class HasCardsInDiscardFilter(FilterCondition):
         if not hero:
             return False
         return len(hero.discard_pile) >= self.min_cards
+
+
+class HasMarkerFilter(FilterCondition):
+    """
+    Filters unit candidates to those that currently hold a specific marker.
+    Non-hero candidates are rejected.
+    """
+
+    type: FilterType = FilterType.HAS_MARKER
+    marker_type: MarkerType
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        marker = state.markers.get(self.marker_type)
+        if marker is None or not marker.is_placed:
+            return False
+        return marker.target_id == candidate
+
+
+class ClearLineOfSightFilter(FilterCondition):
+    """
+    Validates that the straight-line path between origin and candidate has no
+    blocking hexes in between.  Only intermediate hexes are checked — the
+    destination itself is never a blocker.  Candidates not in a straight line
+    from the origin are rejected outright.
+
+    Configurable blockers:
+    - blocked_by_units: occupied hexes block the line
+    - blocked_by_terrain: terrain hexes block the line (uses validator for
+      PETRIFY-awareness)
+
+    Works with both Hex and unit-ID candidates (resolves unit → hex).
+    """
+
+    type: FilterType = FilterType.CLEAR_LINE_OF_SIGHT
+    blocked_by_units: bool = True
+    blocked_by_terrain: bool = True
+    origin_id: Optional[str] = None
+    origin_key: Optional[str] = None
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # Resolve candidate hex
+        cand_hex: Hex | None = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+        if not cand_hex:
+            return False
+
+        # Resolve origin
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        if not origin_hex.is_straight_line(cand_hex):
+            return False
+
+        try:
+            path = origin_hex.line_to(cand_hex)
+        except ValueError:
+            return False
+
+        # Check only intermediate hexes (exclude destination)
+        for hex_pos in path[:-1]:
+            if hex_pos not in state.board.tiles:
+                return False
+
+            tile = state.board.tiles[hex_pos]
+
+            if self.blocked_by_terrain:
+                is_terrain = (
+                    state.validator.is_terrain_hex(state, hex_pos)
+                    if state.validator
+                    else tile.is_terrain
+                )
+                if is_terrain:
+                    return False
+
+            if self.blocked_by_units and tile.occupant_id is not None:
+                # Only units (heroes/minions) block — not tokens
+                if state.get_unit(UnitID(str(tile.occupant_id))) is not None:
+                    return False
+
+        return True
 
 
 class PlayedCardFilter(FilterCondition):

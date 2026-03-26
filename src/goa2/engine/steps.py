@@ -1669,6 +1669,14 @@ class DefeatUnitStep(GameStep):
             )
         ]
 
+        # Check for bounty marker BEFORE markers are returned
+        bounty = state.markers.get(MarkerType.BOUNTY)
+        has_bounty = (
+            bounty is not None
+            and bounty.is_placed
+            and bounty.target_id == actual_victim_id
+        )
+
         # Return markers from the defeated hero
         markers_from = state.return_markers_from_hero(actual_victim_id)
         if markers_from:
@@ -1718,6 +1726,13 @@ class DefeatUnitStep(GameStep):
             kill_gold, assist_gold, penalty_counters = rewards_table.get(
                 level, (level, 1, 1)
             )
+
+            # Bounty marker: defeated hero spends 1 additional life counter
+            if has_bounty:
+                penalty_counters += 1
+                print(
+                    f"   [BOUNTY] {actual_victim_id} has Bounty marker — +1 Life Counter penalty."
+                )
 
             if killer and hasattr(killer, "gold"):
                 killer.gold += kill_gold
