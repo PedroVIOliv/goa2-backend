@@ -278,8 +278,19 @@ class PlaceMarkerStep(GameStep):
             f"(value={self.value}, source={source_id})"
         )
 
+        # Fire AFTER_PLACE_MARKER passive trigger
+        from goa2.domain.models.enums import PassiveTrigger
+
+        context["marker_target_id"] = target
+        post_steps: List[GameStep] = [
+            CheckPassiveAbilitiesStep(
+                trigger=PassiveTrigger.AFTER_PLACE_MARKER.value
+            )
+        ]
+
         return StepResult(
             is_finished=True,
+            new_steps=post_steps,
             events=[
                 GameEvent(
                     event_type=GameEventType.MARKER_PLACED,

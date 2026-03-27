@@ -1173,6 +1173,7 @@ class ClearLineOfSightFilter(FilterCondition):
     type: FilterType = FilterType.CLEAR_LINE_OF_SIGHT
     blocked_by_units: bool = True
     blocked_by_terrain: bool = True
+    blocked_by_obstacles: bool = False
     origin_id: Optional[str] = None
     origin_key: Optional[str] = None
 
@@ -1226,6 +1227,13 @@ class ClearLineOfSightFilter(FilterCondition):
             if self.blocked_by_units and tile.occupant_id is not None:
                 # Only units (heroes/minions) block — not tokens
                 if state.get_unit(UnitID(str(tile.occupant_id))) is not None:
+                    return False
+
+            if self.blocked_by_obstacles and state.validator:
+                actor_uid = str(origin_uid) if origin_uid else None
+                if state.validator.is_obstacle_for_actor(
+                    state, hex_pos, actor_uid
+                ):
                     return False
 
         return True
