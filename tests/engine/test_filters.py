@@ -45,7 +45,10 @@ def filter_state():
 def test_range_filter(filter_state):
     # Select Units in Range 1 (Should be M1 only)
     step = SelectStep(
-        target_type="UNIT", prompt="Test", filters=[RangeFilter(max_range=1)]
+        target_type="UNIT",
+        prompt="Test",
+        filters=[RangeFilter(max_range=1)],
+        skip_self_filter=True,
     )
     res = step.resolve(filter_state, {})
 

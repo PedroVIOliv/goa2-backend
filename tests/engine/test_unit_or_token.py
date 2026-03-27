@@ -139,6 +139,7 @@ class TestSelectStepUnitOrToken:
             output_key="target",
             is_mandatory=False,
             skip_immunity_filter=True,  # Skip immunity for this test
+            skip_self_filter=True,  # Test wants to include the acting hero
         )
 
         push_steps(state_with_units_and_tokens, [step])

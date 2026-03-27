@@ -625,7 +625,8 @@ class SelectStep(GameStep):
     For NUMBER type, use number_options to specify valid choices.
 
     Note: For UNIT selections, ImmunityFilter is automatically applied unless
-    skip_immunity_filter=True is set.
+    skip_immunity_filter=True is set. ExcludeIdentityFilter (self-exclusion) is
+    also auto-applied unless skip_self_filter=True is set.
     """
 
     type: StepType = StepType.SELECT
@@ -646,6 +647,7 @@ class SelectStep(GameStep):
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
     number_labels: Dict[int, str] = Field(default_factory=dict)  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
+    skip_self_filter: bool = False  # Set True to allow selecting self (e.g. "yourself")
     override_player_id_key: Optional[str] = (
         None  # Key in context to find player ID who provides input
     )
@@ -659,22 +661,31 @@ class SelectStep(GameStep):
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """
-        Returns the effective filter list, adding ImmunityFilter for UNIT selections
-        unless skip_immunity_filter is True or ImmunityFilter is already present.
+        Returns the effective filter list, auto-adding filters for UNIT selections:
+        - ExcludeIdentityFilter (self-exclusion) unless skip_self_filter is True
+        - ImmunityFilter unless skip_immunity_filter is True
         """
-        from goa2.engine.filters import ImmunityFilter
+        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
 
         effective = list(self.filters)
 
-        # Auto-add ImmunityFilter for UNIT and UNIT_OR_TOKEN selections
-        if (
-            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
-            and not self.skip_immunity_filter
-        ):
-            # Check if ImmunityFilter is already in the list
-            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
-            if not has_immunity:
-                effective.append(ImmunityFilter())
+        if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
+            # Auto-add ExcludeIdentityFilter for self-exclusion
+            if not self.skip_self_filter:
+                has_self_exclusion = any(
+                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self
+                    for f in effective
+                )
+                if not has_self_exclusion:
+                    effective.append(ExcludeIdentityFilter(exclude_self=True))
+
+            # Auto-add ImmunityFilter
+            if not self.skip_immunity_filter:
+                has_immunity = any(
+                    isinstance(f, ImmunityFilter) for f in effective
+                )
+                if not has_immunity:
+                    effective.append(ImmunityFilter())
 
         return effective
 
@@ -4822,22 +4833,31 @@ class MultiSelectStep(GameStep):
     min_selections: int = 0  # 0 = fully optional
     filters: List[FilterCondition] = Field(default_factory=list)
     skip_immunity_filter: bool = False
+    skip_self_filter: bool = False  # Set True to allow selecting self
 
     # Internal state (preserved when pushed back to stack)
     selections: List[str] = Field(default_factory=list)
 
     def _get_effective_filters(self) -> List[FilterCondition]:
-        """Returns filters, adding ImmunityFilter for UNIT selections if needed."""
-        from goa2.engine.filters import ImmunityFilter
+        """Returns filters, auto-adding ExcludeIdentityFilter and ImmunityFilter for UNIT selections."""
+        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
 
         effective = list(self.filters)
-        if (
-            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
-            and not self.skip_immunity_filter
-        ):
-            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
-            if not has_immunity:
-                effective.append(ImmunityFilter())
+        if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
+            if not self.skip_self_filter:
+                has_self_exclusion = any(
+                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self
+                    for f in effective
+                )
+                if not has_self_exclusion:
+                    effective.append(ExcludeIdentityFilter(exclude_self=True))
+
+            if not self.skip_immunity_filter:
+                has_immunity = any(
+                    isinstance(f, ImmunityFilter) for f in effective
+                )
+                if not has_immunity:
+                    effective.append(ImmunityFilter())
         return effective
 
     def _get_candidates(self, state: GameState, context: Dict[str, Any]) -> List[str]:
@@ -5090,6 +5110,7 @@ class CountStep(GameStep):
     filters: List[FilterCondition] = Field(default_factory=list)
     output_key: str = "count_result"
     skip_immunity_filter: bool = True
+    skip_self_filter: bool = False  # Set True to count self
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -5108,17 +5129,27 @@ class CountStep(GameStep):
         elif self.target_type == TargetType.HEX:
             candidates = list(state.board.tiles.keys())
 
-        # Build effective filters (auto-add ImmunityFilter for UNIT unless skipped)
-        from goa2.engine.filters import ImmunityFilter
+        # Build effective filters
+        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
 
         effective_filters = list(self.filters)
-        if (
-            self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
-            and not self.skip_immunity_filter
-        ):
-            has_immunity = any(isinstance(f, ImmunityFilter) for f in effective_filters)
-            if not has_immunity:
-                effective_filters.append(ImmunityFilter())
+        if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
+            # Auto-add ExcludeIdentityFilter for self-exclusion
+            if not self.skip_self_filter:
+                has_self_exclusion = any(
+                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self
+                    for f in effective_filters
+                )
+                if not has_self_exclusion:
+                    effective_filters.append(ExcludeIdentityFilter(exclude_self=True))
+
+            # Auto-add ImmunityFilter
+            if not self.skip_immunity_filter:
+                has_immunity = any(
+                    isinstance(f, ImmunityFilter) for f in effective_filters
+                )
+                if not has_immunity:
+                    effective_filters.append(ImmunityFilter())
 
         # Apply filters
         count = 0

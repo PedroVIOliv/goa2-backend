@@ -62,7 +62,9 @@ class TestSubmitInput:
 class TestProcessStack:
     def test_returns_input_request(self, empty_state):
         """process_stack returns StackResult with typed InputRequest."""
-        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick a unit")
+        step = SelectStep(
+            target_type=TargetType.UNIT, prompt="Pick a unit", skip_self_filter=True
+        )
         push_steps(empty_state, [step])
         stack_result = process_stack(empty_state)
         assert isinstance(stack_result.input_request, InputRequest)
@@ -143,7 +145,9 @@ class TestGameSessionInit:
         """advance() with no pending input processes the stack."""
         empty_state.phase = GamePhase.RESOLUTION
         session = GameSession(empty_state)
-        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick")
+        step = SelectStep(
+            target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True
+        )
         push_steps(empty_state, [step])
         result = session.advance()
         assert result.result_type == SessionResultType.INPUT_NEEDED
@@ -152,7 +156,9 @@ class TestGameSessionInit:
         """advance(response) applies input then processes stack."""
         empty_state.phase = GamePhase.RESOLUTION
         session = GameSession(empty_state)
-        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick")
+        step = SelectStep(
+            target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True
+        )
         push_steps(empty_state, [step])
         # First advance to get input request
         result = session.advance()
