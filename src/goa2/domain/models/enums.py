@@ -164,6 +164,8 @@ class StepType(str, Enum):
     STEAL_COINS = "steal_coins"
     COMPUTE_HEX = "compute_hex"
     CONFIRM_RESOLUTION = "confirm_resolution"
+    GUESS_CARD_COLOR = "guess_card_color"
+    REVEAL_AND_RESOLVE_GUESS = "reveal_and_resolve_guess"
 
 
 class FilterType(str, Enum):
@@ -193,7 +195,7 @@ class FilterType(str, Enum):
     STRAIGHT_LINE_PATH = "straight_line_path_filter"
     PLAYED_CARD = "played_card_filter"
     SPACE_BEHIND_EMPTY = "space_behind_empty_filter"
-    HAS_CARDS_IN_DISCARD = "has_cards_in_discard_filter"
+    CARDS_IN_CONTAINER = "cards_in_container_filter"
     BATTLE_ZONE = "battle_zone_filter"
     SPAWN_POINT_TEAM = "spawn_point_team_filter"
     CLEAR_LINE_OF_SIGHT = "clear_line_of_sight_filter"

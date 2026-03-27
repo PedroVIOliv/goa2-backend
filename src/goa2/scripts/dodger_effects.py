@@ -19,7 +19,7 @@ from goa2.engine.steps import (
 from goa2.engine.filters import (
     BattleZoneFilter,
     ExcludeIdentityFilter,
-    HasCardsInDiscardFilter,
+    CardsInContainerFilter,
     HasEmptyNeighborFilter,
     ObstacleFilter,
     RangeFilter,
@@ -28,6 +28,7 @@ from goa2.engine.filters import (
     UnitTypeFilter,
 )
 from goa2.domain.models.enums import (
+    CardContainerType,
     StatType,
     TargetType,
 )
@@ -406,7 +407,7 @@ class _FingerOfDeathEffect(CardEffect):
                 active_if_key="chose_ranged",
                 target_filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    HasCardsInDiscardFilter(min_cards=1),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
             ),
         ]
@@ -492,7 +493,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range),
-                    HasCardsInDiscardFilter(min_cards=1),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                     ExcludeIdentityFilter(
                         exclude_self=False,
                         exclude_keys=["victim_id"],
@@ -516,7 +517,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
                 active_if_key="chose_ranged_first",
                 target_filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    HasCardsInDiscardFilter(min_cards=1),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
             ),
             # 3b-follow. Optionally select adjacent unit (different target)

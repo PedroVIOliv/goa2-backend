@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
-from goa2.domain.models.enums import ActionType, CardColor, MinionType
+from goa2.domain.models.enums import ActionType, CardColor, CardContainerType, MinionType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
@@ -1102,14 +1102,17 @@ class AndFilter(FilterCondition):
 # -----------------------------------------------------------------------------
 
 
-class HasCardsInDiscardFilter(FilterCondition):
+class CardsInContainerFilter(FilterCondition):
     """
-    Filters unit candidates to those heroes who have >= min_cards cards in discard.
+    Filters unit candidates to heroes with a card count in a given container
+    that satisfies min_cards and/or max_cards bounds.
     Non-hero candidates are rejected.
     """
 
-    type: FilterType = FilterType.HAS_CARDS_IN_DISCARD
-    min_cards: int = 1
+    type: FilterType = FilterType.CARDS_IN_CONTAINER
+    container: CardContainerType = CardContainerType.HAND
+    min_cards: Optional[int] = None
+    max_cards: Optional[int] = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
@@ -1117,7 +1120,21 @@ class HasCardsInDiscardFilter(FilterCondition):
         hero = state.get_hero(candidate)
         if not hero:
             return False
-        return len(hero.discard_pile) >= self.min_cards
+        if self.container == CardContainerType.HAND:
+            count = len(hero.hand)
+        elif self.container == CardContainerType.DISCARD:
+            count = len(hero.discard_pile)
+        elif self.container == CardContainerType.PLAYED:
+            count = len([c for c in hero.played_cards if c is not None])
+        elif self.container == CardContainerType.DECK:
+            count = len(hero.deck)
+        else:
+            return False
+        if self.min_cards is not None and count < self.min_cards:
+            return False
+        if self.max_cards is not None and count > self.max_cards:
+            return False
+        return True
 
 
 class HasMarkerFilter(FilterCondition):

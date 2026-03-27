@@ -36,6 +36,7 @@ class GameEventType(str, Enum):
     LIFE_COUNTER_CHANGED = "LIFE_COUNTER_CHANGED"
     # Cards
     CARD_RETRIEVED = "CARD_RETRIEVED"
+    CARD_REVEALED = "CARD_REVEALED"
     # Protection
     MINION_PROTECTED = "MINION_PROTECTED"
     # Turn flow

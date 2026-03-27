@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any, List, Tuple, Sequence, cast
+from typing import ClassVar, Optional, Dict, Any, List, Tuple, Sequence, cast
 import copy
 from pydantic import BaseModel, Field
 
@@ -850,6 +850,9 @@ class DiscardCardStep(GameStep):
     hero_key: Optional[str] = None
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
         # Resolve Hero
         h_id = self.hero_id
         if not h_id and self.hero_key:
@@ -5469,6 +5472,108 @@ class ComputeHexStep(GameStep):
 
         context[self.output_key] = result
         return StepResult(is_finished=True)
+
+
+class GuessCardColorStep(GameStep):
+    """Prompts the actor to guess a card color.
+
+    Always offers the 5 standard card colors: BLUE, GOLD, GREEN, RED, SILVER.
+    The actor picks one via SELECT_OPTION.
+    """
+
+    VALID_COLORS: ClassVar[List[str]] = ["BLUE", "GOLD", "GREEN", "RED", "SILVER"]
+
+    type: StepType = StepType.GUESS_CARD_COLOR
+    output_key: str  # where to store the guessed color string
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            context[self.output_key] = selection
+            return StepResult(is_finished=True)
+
+        options = [
+            InputOption(id=color, text=color) for color in self.VALID_COLORS
+        ]
+
+        return StepResult(
+            is_finished=False,
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=str(state.current_actor_id),
+                prompt="Guess the card's color",
+                options=options,
+            ),
+        )
+
+
+class RevealAndResolveGuessStep(GameStep):
+    """Reveals the chosen card and compares its color to the guessed color.
+
+    Sets correct_output_key to True if correct (None otherwise),
+    and wrong_output_key to True if wrong (None otherwise).
+    This dual-flag approach works with active_if_key branching.
+    """
+
+    type: StepType = StepType.REVEAL_AND_RESOLVE_GUESS
+    card_key: str  # context key → chosen card ID
+    guess_key: str  # context key → guessed color string
+    victim_key: str  # context key → victim hero ID
+    correct_output_key: str
+    wrong_output_key: str
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        card_id = context.get(self.card_key)
+        guessed_color = context.get(self.guess_key)
+        victim_id = context.get(self.victim_key)
+
+        if not card_id or not guessed_color or not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        # Find the card in victim's hand
+        target_card = next((c for c in victim.hand if c.id == card_id), None)
+        if not target_card:
+            return StepResult(is_finished=True)
+
+        actual_color = target_card.color.value
+        is_correct = guessed_color == actual_color
+
+        if is_correct:
+            context[self.correct_output_key] = True
+            context[self.wrong_output_key] = None
+            print(f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}")
+        else:
+            context[self.correct_output_key] = None
+            context[self.wrong_output_key] = True
+            print(f"   [GUESS] Wrong! Card is {actual_color}, guessed {guessed_color}")
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.CARD_REVEALED,
+                    actor_id=str(victim_id),
+                    metadata={
+                        "card_id": card_id,
+                        "card_name": target_card.name,
+                        "card_color": actual_color,
+                        "guessed_color": guessed_color,
+                        "guess_correct": is_correct,
+                    },
+                )
+            ],
+        )
 
 
 # Rebuild recursive models

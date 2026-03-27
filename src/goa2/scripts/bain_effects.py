@@ -5,18 +5,22 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CreateEffectStep,
+    DiscardCardStep,
+    GainCoinsStep,
     GameStep,
+    GuessCardColorStep,
     MoveSequenceStep,
     PlaceMarkerStep,
     RemoveMarkerStep,
     RetrieveCardStep,
+    RevealAndResolveGuessStep,
     SelectStep,
     SetContextFlagStep,
 )
 from goa2.engine.filters import (
+    CardsInContainerFilter,
     ClearLineOfSightFilter,
     ExcludeIdentityFilter,
-    HasCardsInDiscardFilter,
     HasMarkerFilter,
     InStraightLineFilter,
     RangeFilter,
@@ -447,7 +451,7 @@ def _build_retrieve_steps(stats: "CardStats") -> List["GameStep"]:
             filters=[
                 RangeFilter(max_range=stats.radius),
                 UnitTypeFilter(unit_type="HERO"),
-                HasCardsInDiscardFilter(),
+                CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
             ],
         ),
         # 2. Target hero selects card from their discard
@@ -519,6 +523,177 @@ class AnotherOneEffect(CardEffect):
                 finishing_steps=_build_retrieve_steps(stats),
             ),
         ]
+
+
+# =============================================================================
+# GUESS MECHANIC: A Game of Chance / Dead Man's Hand / We're Not Done Yet!
+# =============================================================================
+
+
+def _build_guess_steps(
+    stats: "CardStats", consolation_coins: int, prefix: str = ""
+) -> List["GameStep"]:
+    """Shared guess-card-color sequence.
+
+    1. Select enemy hero in radius with 2+ cards in hand.
+    2. That enemy chooses a card from their hand (opponent input).
+    3. Actor guesses the card's color from valid options.
+    4. Reveal and compare.
+    5. If correct: discard that card from enemy's hand.
+    6. If wrong: actor gains consolation_coins gold.
+
+    The prefix parameter namespaces context keys to avoid collisions when
+    the sequence is used multiple times (e.g., repeat mechanic).
+    """
+    p = f"{prefix}_" if prefix else ""
+    return [
+        # Store actor ID for coin gain
+        SetContextFlagStep(key=f"{p}guess_actor", value=None),  # placeholder
+        # 1. Select enemy hero with 2+ cards
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy hero with two or more cards in hand",
+            output_key=f"{p}guess_victim",
+            is_mandatory=True,
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="HERO"),
+                RangeFilter(max_range=stats.radius),
+                CardsInContainerFilter(
+                    container=CardContainerType.HAND, min_cards=2
+                ),
+            ],
+        ),
+        # 2. Enemy chooses a card from their hand
+        SelectStep(
+            target_type=TargetType.CARD,
+            card_container=CardContainerType.HAND,
+            context_hero_id_key=f"{p}guess_victim",
+            override_player_id_key=f"{p}guess_victim",
+            prompt="Choose one of your cards",
+            output_key=f"{p}chosen_card",
+            is_mandatory=True,
+        ),
+        # 3. Actor guesses the card's color
+        GuessCardColorStep(
+            output_key=f"{p}guessed_color",
+        ),
+        # 4. Reveal and resolve
+        RevealAndResolveGuessStep(
+            card_key=f"{p}chosen_card",
+            guess_key=f"{p}guessed_color",
+            victim_key=f"{p}guess_victim",
+            correct_output_key=f"{p}guess_correct",
+            wrong_output_key=f"{p}guess_wrong",
+        ),
+        # 5. If correct: discard that card
+        DiscardCardStep(
+            card_key=f"{p}chosen_card",
+            hero_key=f"{p}guess_victim",
+            active_if_key=f"{p}guess_correct",
+        ),
+        # 6. If wrong: gain coins
+        GainCoinsStep(
+            hero_key=f"{p}guess_actor",
+            amount=consolation_coins,
+            active_if_key=f"{p}guess_wrong",
+        ),
+    ]
+
+
+@register_effect("a_game_of_chance")
+class AGameOfChanceEffect(CardEffect):
+    """
+    Card Text: "An enemy hero in radius with two or more cards in hand
+    chooses one of those cards. Guess that card's color, then reveal it.
+    If you guessed correctly, discard that card; otherwise you gain 1 coin."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        steps = _build_guess_steps(stats, consolation_coins=1)
+        # Patch the actor placeholder with actual hero ID
+        steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
+        return steps
+
+
+@register_effect("dead_mans_hand")
+class DeadMansHandEffect(CardEffect):
+    """
+    Card Text: "An enemy hero in radius with two or more cards in hand
+    chooses one of those cards. Guess that card's color, then reveal it.
+    If you guessed correctly, discard that card; otherwise you gain 2 coins."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        steps = _build_guess_steps(stats, consolation_coins=2)
+        steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
+        return steps
+
+
+@register_effect("were_not_done_yet")
+class WereNotDoneYetEffect(CardEffect):
+    """
+    Card Text: "An enemy hero in radius with two or more cards in hand
+    chooses one of those cards. Guess that card's color, then reveal it.
+    If you guessed correctly, discard that card; otherwise may repeat once
+    or gain 2 coins."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List["GameStep"]:
+        # Build the base guess sequence (without the wrong-guess coin gain)
+        steps = _build_guess_steps(stats, consolation_coins=0)
+        steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
+        # Remove the default GainCoinsStep (last step, amount=0 is useless)
+        steps.pop()
+
+        # On wrong guess: choose repeat or coins
+        steps.extend([
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose: 1 = Repeat the guess, 2 = Gain 2 coins",
+                output_key="wndy_choice",
+                number_options=[1, 2],
+                is_mandatory=True,
+                active_if_key="guess_wrong",
+            ),
+            CheckContextConditionStep(
+                input_key="wndy_choice",
+                operator="==",
+                threshold=1,
+                output_key="chose_repeat",
+            ),
+            CheckContextConditionStep(
+                input_key="wndy_choice",
+                operator="==",
+                threshold=2,
+                output_key="chose_coins",
+            ),
+            # Path A: gain coins
+            GainCoinsStep(
+                hero_key="guess_actor",
+                amount=2,
+                active_if_key="chose_coins",
+            ),
+        ])
+
+        # Path B: repeat the full guess sequence (with prefixed keys)
+        repeat_steps = _build_guess_steps(stats, consolation_coins=2, prefix="r")
+        repeat_steps[0] = SetContextFlagStep(
+            key="r_guess_actor", value=str(hero.id), active_if_key="chose_repeat",
+        )
+        # Gate all repeat steps on chose_repeat
+        for step in repeat_steps:
+            if not step.active_if_key:
+                step.active_if_key = "chose_repeat"
+        steps.extend(repeat_steps)
+
+        return steps
 
 
 # =============================================================================
