@@ -10,5 +10,6 @@ import goa2.data.heroes.tigerclaw
 import goa2.data.heroes.sabina
 import goa2.data.heroes.dodger
 import goa2.data.heroes.bain
+import goa2.data.heroes.whisper
 
 __all__ = ["HeroRegistry"]
