@@ -50,6 +50,9 @@ class EffectType(str, Enum):
     # Repeat prevention (Enfeeblement) - blocks action repeats
     REPEAT_PREVENTION = "repeat_prevention"
 
+    # Full immunity to enemy actions (Death Seeker) - like heavy minion immunity but for heroes
+    IMMUNITY_ENEMY_ACTIONS = "immunity_enemy_actions"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""

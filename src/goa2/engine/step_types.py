@@ -239,6 +239,7 @@ from goa2.engine.filters import (
     SpawnPointTeamFilter,
     ClearLineOfSightFilter,
     HasMarkerFilter,
+    UnitOnSpawnPointFilter,
     OrFilter,
     AndFilter,
 )
@@ -288,6 +289,7 @@ AnyFilter = Annotated[
         Annotated[SpawnPointTeamFilter, Tag(FilterType.SPAWN_POINT_TEAM.value)],
         Annotated[ClearLineOfSightFilter, Tag(FilterType.CLEAR_LINE_OF_SIGHT.value)],
         Annotated[HasMarkerFilter, Tag(FilterType.HAS_MARKER.value)],
+        Annotated[UnitOnSpawnPointFilter, Tag(FilterType.UNIT_ON_SPAWN_POINT.value)],
         Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
         Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
     ],

@@ -369,6 +369,25 @@ class SpawnPointFilter(FilterCondition):
         return False
 
 
+class UnitOnSpawnPointFilter(FilterCondition):
+    """
+    Filters unit candidates to those occupying a hex with a spawn point.
+    """
+
+    type: FilterType = FilterType.UNIT_ON_SPAWN_POINT
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if isinstance(candidate, str):
+            loc = state.entity_locations.get(BoardEntityID(candidate))
+            if not loc:
+                return False
+            tile = state.board.get_tile(loc)
+            if not tile:
+                return False
+            return tile.spawn_point is not None
+        return False
+
+
 class AdjacentSpawnPointFilter(FilterCondition):
     """
     Filters hexes based on proximity to spawn points.
@@ -379,6 +398,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
     must_not_have: bool = (
         True  # True means "not adjacent to", False means "must be adjacent to"
     )
+    battle_zone_only: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
@@ -397,6 +417,13 @@ class AdjacentSpawnPointFilter(FilterCondition):
         for n in neighbors:
             tile = state.board.get_tile(n)
             if tile and tile.spawn_point:
+                if self.battle_zone_only:
+                    from goa2.scripts.dodger_effects import _has_tide_of_darkness
+
+                    if not _has_tide_of_darkness(state):
+                        active_zone_id = state.active_zone_id
+                        if not active_zone_id or tile.zone_id != active_zone_id:
+                            continue
                 if self.is_empty:
                     if not state.validator.is_obstacle_for_actor(
                         state,

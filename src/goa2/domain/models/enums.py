@@ -200,6 +200,7 @@ class FilterType(str, Enum):
     SPAWN_POINT_TEAM = "spawn_point_team_filter"
     CLEAR_LINE_OF_SIGHT = "clear_line_of_sight_filter"
     HAS_MARKER = "has_marker_filter"
+    UNIT_ON_SPAWN_POINT = "unit_on_spawn_point_filter"
 
 
 class TargetType(str, Enum):

@@ -159,6 +159,7 @@ def is_immune(target: Unit, state: GameState) -> bool:
     """
     Checks if a target unit has Immunity.
     Rule 3.2: "Heavy Immunity: Immune to all Actions... until no more friendly minions are present."
+    Also checks IMMUNITY_ENEMY_ACTIONS effects (e.g., Death Seeker).
     """
     if isinstance(target, Minion) and target.is_heavy:
         # "until no more friendly minions are present" (Usually implies in the battle)
@@ -187,6 +188,23 @@ def is_immune(target: Unit, state: GameState) -> bool:
             if m.id in state.entity_locations:
                 loc = state.entity_locations[m.id]
                 if loc in zone.hexes:
+                    return True
+
+    # Check IMMUNITY_ENEMY_ACTIONS effects (e.g., Death Seeker)
+    from goa2.domain.models.effect import EffectType
+
+    actor_id = state.current_actor_id
+    if actor_id:
+        actor = state.get_entity(actor_id)
+        target_team = getattr(target, "team", None)
+        actor_team = getattr(actor, "team", None) if actor else None
+        if target_team is not None and actor_team is not None and target_team != actor_team:
+            for effect in state.active_effects:
+                if effect.effect_type != EffectType.IMMUNITY_ENEMY_ACTIONS:
+                    continue
+                if not effect.is_active:
+                    continue
+                if effect.source_id == str(target.id):
                     return True
 
     return False
