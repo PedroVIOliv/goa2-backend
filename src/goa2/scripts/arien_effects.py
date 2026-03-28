@@ -472,9 +472,10 @@ class RogueWaveEffect(CardEffect):
             # 3. Choose push distance (0, 1, or 2) - only if target selected
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose push distance (0-2)",
+                prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[0, 1, 2],
+                number_labels={0: "Don't Push", 1: "Push 1", 2: "Push 2"},
                 active_if_key="push_target_id",
             ),
             # 4. Execute push - reads target and distance from context
@@ -514,9 +515,10 @@ class TidalBlastEffect(CardEffect):
             # 3. Choose push distance (0-3)
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose push distance (0-3)",
+                prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[0, 1, 2, 3],
+                number_labels={0: "Don't Push", 1: "Push 1", 2: "Push 2", 3: "Push 3"},
                 active_if_key="push_target_id",
             ),
             # 4. Execute push

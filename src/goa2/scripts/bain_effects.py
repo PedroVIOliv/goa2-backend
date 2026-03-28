@@ -285,9 +285,10 @@ class HandCrossbowEffect(CardEffect):
             # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Target hero with Bounty marker in range, 2 = Target adjacent unit",
+                prompt="Choose attack target",
                 output_key="hc_choice",
                 number_options=[1, 2],
+                number_labels={1: "Target Hero with Bounty in Range", 2: "Target Adjacent Unit"},
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -342,9 +343,10 @@ class HunterSeekerEffect(CardEffect):
             # 1. Choose which attack to do first
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Target hero with Bounty first, 2 = Target adjacent unit first",
+                prompt="Choose which attack first",
                 output_key="hs_choice",
                 number_options=[1, 2],
+                number_labels={1: "Target Hero with Bounty First", 2: "Target Adjacent Unit First"},
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -659,9 +661,10 @@ class WereNotDoneYetEffect(CardEffect):
         steps.extend([
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Repeat the guess, 2 = Gain 2 coins",
+                prompt="Choose consolation",
                 output_key="wndy_choice",
                 number_options=[1, 2],
+                number_labels={1: "Repeat the Guess", 2: "Gain 2 Coins"},
                 is_mandatory=True,
                 active_if_key="guess_wrong",
             ),

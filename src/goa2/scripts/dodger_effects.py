@@ -374,9 +374,10 @@ class _FingerOfDeathEffect(CardEffect):
             # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent unit, 2 = Attack hero in range with cards in discard",
+                prompt="Choose attack mode",
                 output_key="fod_choice",
                 number_options=[1, 2],
+                number_labels={1: "Attack Adjacent Unit", 2: "Attack Hero with Discard"},
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -456,9 +457,10 @@ class MiddlefingerOfDeathEffect(CardEffect):
             # 1. Choose which attack to do first
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent unit first, 2 = Attack hero in range with discard first",
+                prompt="Choose which attack first",
                 output_key="mfod_choice",
                 number_options=[1, 2],
+                number_labels={1: "Attack Adjacent Unit First", 2: "Attack Hero with Discard First"},
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -591,9 +593,10 @@ class DreadRazorEffect(CardEffect):
         return [
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent unit, 2 = Attack unit in range",
+                prompt="Choose attack mode",
                 output_key="razor_choice",
                 number_options=[1, 2],
+                number_labels={1: "Attack Adjacent Unit", 2: "Attack Unit in Range"},
                 is_mandatory=True,
             ),
             CheckContextConditionStep(

@@ -104,9 +104,10 @@ class BrutalJabEffect(CardEffect):
             # 3. Choose push distance (0 or 1)
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose push distance (0-1)",
+                prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[0, 1],
+                number_labels={0: "Don't Push", 1: "Push 1"},
                 active_if_key="push_target_id",
             ),
             # 4. Execute push
@@ -163,9 +164,10 @@ class MightyPunchEffect(CardEffect):
             ),
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose push distance (0-2)",
+                prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[0, 1, 2],
+                number_labels={0: "Don't Push", 1: "Push 1", 2: "Push 2"},
                 active_if_key="push_target_id",
             ),
             PushUnitStep(
@@ -223,9 +225,10 @@ class SavageKickEffect(CardEffect):
             ),
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose push distance (0-2)",
+                prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[0, 1, 2],
+                number_labels={0: "Don't Push", 1: "Push 1", 2: "Push 2"},
                 active_if_key="push_target_id",
             ),
             PushUnitStep(
@@ -483,9 +486,10 @@ class ThrowingAxeEffect(CardEffect):
             # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent, 2 = Discard card to attack in range",
+                prompt="Choose attack mode",
                 output_key="attack_choice",
                 number_options=[1, 2],
+                number_labels={1: "Attack Adjacent", 2: "Discard to Attack in Range"},
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -567,9 +571,10 @@ class ThrowingSpearEffect(CardEffect):
             # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose: 1 = Attack adjacent, 2 = May discard for ranged attack",
+                prompt="Choose attack mode",
                 output_key="attack_choice",
                 number_options=[1, 2],
+                number_labels={1: "Attack Adjacent", 2: "May Discard for Ranged Attack"},
                 is_mandatory=True,
             ),
             # 2. Branch flags

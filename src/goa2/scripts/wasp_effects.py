@@ -703,6 +703,7 @@ class KineticBlastEffect(CardEffect):
                 prompt="Choose push distance",
                 output_key="push_distance",
                 number_options=[3, 4],
+                number_labels={3: "Push 3", 4: "Push 4"},
                 is_mandatory=True,
             ),
             # 2. Select up to 2 adjacent enemies

@@ -758,9 +758,10 @@ class MasterThiefEffect(CardEffect):
             # 3. Choose amount: 1 or 2
             SelectStep(
                 target_type=TargetType.NUMBER,
-                prompt="Choose how many coins to take (1 or 2)",
+                prompt="Choose how many coins to take",
                 output_key="steal_amount",
                 number_options=[1, 2],
+                number_labels={1: "1 Coin", 2: "2 Coins"},
                 is_mandatory=True,
                 active_if_key="steal_victim",
             ),
