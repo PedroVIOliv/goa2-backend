@@ -166,6 +166,7 @@ class StepType(str, Enum):
     CONFIRM_RESOLUTION = "confirm_resolution"
     GUESS_CARD_COLOR = "guess_card_color"
     REVEAL_AND_RESOLVE_GUESS = "reveal_and_resolve_guess"
+    FORCE_DEFENSE_CARD_MOVEMENT = "force_defense_card_movement"
 
 
 class FilterType(str, Enum):

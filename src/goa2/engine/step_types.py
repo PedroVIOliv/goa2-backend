@@ -37,6 +37,7 @@ from goa2.engine.steps import (
     FastTravelStep,
     FinalizeHeroTurnStep,
     FindNextActorStep,
+    ForceDefenseCardMovementStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
     ForEachStep,
@@ -144,6 +145,10 @@ AnyStep = Annotated[
         Annotated[FastTravelStep, Tag(StepType.FAST_TRAVEL.value)],
         Annotated[FinalizeHeroTurnStep, Tag(StepType.FINALIZE_HERO_TURN.value)],
         Annotated[FindNextActorStep, Tag(StepType.FIND_NEXT_ACTOR.value)],
+        Annotated[
+            ForceDefenseCardMovementStep,
+            Tag(StepType.FORCE_DEFENSE_CARD_MOVEMENT.value),
+        ],
         Annotated[
             ForceDiscardOrDefeatStep, Tag(StepType.FORCE_DISCARD_OR_DEFEAT.value)
         ],

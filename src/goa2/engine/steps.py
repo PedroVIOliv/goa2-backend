@@ -1132,6 +1132,8 @@ class MoveSequenceStep(GameStep):
     destination_key: str = "target_hex"
     is_mandatory: bool = True
     pass_through_obstacles: bool = False
+    force_straight_line: bool = False
+    force_full_distance: bool = False
 
     def _get_effective_range(self, state: GameState, unit_id: str) -> int:
         """Get effective movement range, considering MOVEMENT_ZONE effects."""
@@ -1201,7 +1203,7 @@ class MoveSequenceStep(GameStep):
         # MovementPathFilter now always allows the current hex.
         # We add OccupiedFilter(is_occupied=False, exclude_id=actor_id)
         # to ensure other units block movement but the moving unit doesn't block itself.
-        filters = [
+        filters: List[FilterCondition] = [
             ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
             MovementPathFilter(
                 range_val=effective_range,
@@ -1209,6 +1211,21 @@ class MoveSequenceStep(GameStep):
                 pass_through_obstacles=pass_through,
             ),
         ]
+
+        # Force straight line: add InStraightLineFilter + StraightLinePathFilter
+        if self.force_straight_line:
+            from goa2.engine.filters import InStraightLineFilter, StraightLinePathFilter
+
+            filters.append(InStraightLineFilter(origin_id=actor_id))
+            filters.append(StraightLinePathFilter(origin_id=actor_id))
+
+        # Force full distance: set min_range = max_range
+        if self.force_full_distance:
+            from goa2.engine.filters import RangeFilter
+
+            filters.append(
+                RangeFilter(min_range=effective_range, max_range=effective_range)
+            )
 
         # If range is 0, MovementPathFilter will only allow current hex.
         # OccupiedFilter will also allow it because of exclude_id.
@@ -5616,6 +5633,117 @@ class RevealAndResolveGuessStep(GameStep):
                 )
             ],
         )
+
+
+class ForceDefenseCardMovementStep(GameStep):
+    """
+    After an attack, forces the defender to perform the movement action
+    from the card they defended with, in a straight line at full distance.
+
+    Reads defense_card_id and defender_id from context. Handles 3 cases:
+    1. No movement on defense card → nothing
+    2. Secondary MOVEMENT → MoveSequenceStep with force_straight_line + force_full_distance
+    3. Primary MOVEMENT → calls card effect's build_steps(), injects
+       force_straight_line + force_full_distance into any MoveSequenceStep
+    """
+
+    type: StepType = StepType.FORCE_DEFENSE_CARD_MOVEMENT
+    defender_key: str = "victim_id"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        defense_card_id = context.get("defense_card_id")
+        defender_id = context.get(self.defender_key) or context.get("defender_id")
+        if not defense_card_id or not defender_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(defender_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Find the defense card (may be in discard or played)
+        card = None
+        for c in hero.discard_pile:
+            if c.id == defense_card_id:
+                card = c
+                break
+        if not card:
+            for c in hero.played_cards:
+                if c is not None and c.id == defense_card_id:
+                    card = c
+                    break
+        if not card:
+            return StepResult(is_finished=True)
+
+        from goa2.domain.models import ActionType
+
+        has_secondary_movement = ActionType.MOVEMENT in card.secondary_actions
+        has_primary_movement = card.primary_action == ActionType.MOVEMENT
+
+        if has_primary_movement:
+            # Case 3: Primary movement — call card effect's build_steps
+            movement_steps = self._build_primary_movement_steps(
+                state, hero, card
+            )
+        elif has_secondary_movement:
+            # Case 2: Secondary movement — MoveSequenceStep
+            move_val = card.secondary_actions[ActionType.MOVEMENT]
+            movement_steps = [
+                MoveSequenceStep(
+                    unit_id=str(defender_id),
+                    range_val=move_val,
+                    destination_key="sj_forced_dest",
+                    is_mandatory=False,
+                    force_straight_line=True,
+                    force_full_distance=True,
+                ),
+            ]
+        else:
+            # Case 1: No movement → nothing
+            return StepResult(is_finished=True)
+
+        # Wrap in actor switch: set defender as actor, push movement, restore
+        new_steps: List[GameStep] = [
+            SetActorStep(
+                actor_id=str(defender_id),
+                save_key="sj_saved_actor",
+            ),
+            *movement_steps,
+            SetActorStep(
+                actor_key="sj_saved_actor",
+                save_key="sj_saved_actor_unused",
+            ),
+        ]
+
+        return StepResult(is_finished=True, new_steps=new_steps)
+
+    def _build_primary_movement_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: "Card",
+    ) -> List[GameStep]:
+        """Build steps from the card's primary effect, injecting straight-line constraints."""
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.engine.stats import compute_card_stats
+
+        effect_id = card.current_effect_id or card.effect_id
+        effect = CardEffectRegistry.get(effect_id) if effect_id else None
+        if not effect:
+            return []
+
+        stats = compute_card_stats(state, hero.id, card)
+        steps = effect.build_steps(state, hero, card, stats)
+
+        # Inject force_straight_line + force_full_distance into any MoveSequenceStep
+        for step in steps:
+            if isinstance(step, MoveSequenceStep):
+                step.force_straight_line = True
+                step.force_full_distance = True
+
+        return steps
 
 
 # Rebuild recursive models

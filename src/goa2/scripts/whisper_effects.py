@@ -4,6 +4,7 @@ from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.steps import (
     GameStep,
     SelectStep,
+    MultiSelectStep,
     PlaceUnitStep,
     MoveUnitStep,
     SwapUnitsStep,
@@ -12,6 +13,13 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     CountStep,
     CheckContextConditionStep,
+    MayRepeatOnceStep,
+    MayRepeatNTimesStep,
+    ForceDiscardStep,
+    ForceDiscardOrDefeatStep,
+    DefeatUnitStep,
+    ForEachStep,
+    ForceDefenseCardMovementStep,
 )
 from goa2.engine.filters import (
     RangeFilter,
@@ -26,6 +34,7 @@ from goa2.engine.filters import (
     UnitOnSpawnPointFilter,
     MovementPathFilter,
     CardsInContainerFilter,
+    ExcludeIdentityFilter,
 )
 from goa2.domain.models import (
     CardState,
@@ -822,8 +831,56 @@ class SealedFateEffect(CruelTwistEffect):
 #  may repeat once on different target."
 # =============================================================================
 
-# @register_effect("blood_fury")
-# class BloodFuryEffect(CardEffect): ...
+@register_effect("blood_fury")
+class BloodFuryEffect(CardEffect):
+    """
+    Card text: "Target a unit adjacent to you. After the attack: If an enemy
+    hero in radius has a card in the discard, may repeat once on a different target."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_id_key="bf_victim_1",
+            ),
+            # Condition check
+            CountStep(
+                target_type=TargetType.UNIT,
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    CardsInContainerFilter(
+                        container=CardContainerType.DISCARD, min_cards=1
+                    ),
+                ],
+                output_key="bf_discard_count",
+            ),
+            CheckContextConditionStep(
+                input_key="bf_discard_count",
+                operator=">=",
+                threshold=1,
+                output_key="bf_can_repeat",
+            ),
+            MayRepeatOnceStep(
+                prompt="Repeat attack on a different target?",
+                active_if_key="bf_can_repeat",
+                steps_template=[
+                    AttackSequenceStep(
+                        damage=stats.primary_value,
+                        range_val=1,
+                        target_id_key="bf_victim_2",
+                        target_filters=[
+                            ExcludeIdentityFilter(exclude_keys=["bf_victim_1"]),
+                        ],
+                    ),
+                ],
+            ),
+        ]
 
 
 # =============================================================================
@@ -832,8 +889,69 @@ class SealedFateEffect(CruelTwistEffect):
 #  repeat up to 5 times on different targets."
 # =============================================================================
 
-# @register_effect("blood_frenzy")
-# class BloodFrenzyEffect(CardEffect): ...
+@register_effect("blood_frenzy")
+class BloodFrenzyEffect(CardEffect):
+    """
+    Card text: "Target a unit adjacent to you. After the attack: If an enemy
+    hero in radius has a card in the discard, repeat up to five times on
+    different targets."
+
+    Builds 5 explicit attack blocks with chained ExcludeIdentityFilter to
+    track all previous victims.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_id_key="bfr_victim_1",
+            ),
+            # Condition check (once, after initial attack)
+            CountStep(
+                target_type=TargetType.UNIT,
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    CardsInContainerFilter(
+                        container=CardContainerType.DISCARD, min_cards=1
+                    ),
+                ],
+                output_key="bfr_discard_count",
+            ),
+            CheckContextConditionStep(
+                input_key="bfr_discard_count",
+                operator=">=",
+                threshold=1,
+                output_key="bfr_can_repeat",
+            ),
+        ]
+
+        # Build 5 explicit repeat blocks with chained exclusions
+        for i in range(2, 7):  # victims 2 through 6
+            exclude_keys = [f"bfr_victim_{j}" for j in range(1, i)]
+            repeat_steps = [
+                AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=1,
+                    target_id_key=f"bfr_victim_{i}",
+                    target_filters=[
+                        ExcludeIdentityFilter(exclude_keys=exclude_keys),
+                    ],
+                ),
+            ]
+            steps.append(
+                MayRepeatOnceStep(
+                    prompt=f"Repeat attack? ({i - 1}/5)",
+                    active_if_key="bfr_can_repeat",
+                    steps_template=repeat_steps,
+                ),
+            )
+
+        return steps
 
 
 # =============================================================================
@@ -842,8 +960,79 @@ class SealedFateEffect(CruelTwistEffect):
 #  an adjacent minion."
 # =============================================================================
 
-# @register_effect("lesser_evil")
-# class LesserEvilEffect(CardEffect): ...
+@register_effect("lesser_evil")
+class LesserEvilEffect(CardEffect):
+    """
+    Card text: "An enemy hero in range chooses one —
+    • That hero discards a card, if able.
+    • You may defeat a minion adjacent to you.
+    (Any option can be chosen, even if it would have no effect.)"
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Select enemy hero target
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero in range",
+                output_key="le_victim",
+                filters=[
+                    RangeFilter(max_range=stats.range),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                ],
+                is_mandatory=True,
+            ),
+            # 2. Victim chooses
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key="le_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Discard a card (if able)",
+                    2: "Opponent may defeat a minion adjacent to them",
+                },
+                override_player_id_key="le_victim",
+                is_mandatory=True,
+            ),
+            # 3a. Discard path
+            CheckContextConditionStep(
+                input_key="le_choice",
+                operator="==",
+                threshold=1,
+                output_key="le_chose_discard",
+            ),
+            ForceDiscardStep(
+                victim_key="le_victim",
+                active_if_key="le_chose_discard",
+            ),
+            # 3b. Defeat minion path — actor selects adjacent minion
+            CheckContextConditionStep(
+                input_key="le_choice",
+                operator="==",
+                threshold=2,
+                output_key="le_chose_defeat",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an adjacent minion to defeat",
+                output_key="le_minion_target",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="MINION"),
+                ],
+                is_mandatory=False,
+                active_if_key="le_chose_defeat",
+            ),
+            DefeatUnitStep(
+                victim_key="le_minion_target",
+                active_if_key="le_minion_target",
+            ),
+        ]
 
 
 # =============================================================================
@@ -852,8 +1041,82 @@ class SealedFateEffect(CruelTwistEffect):
 #  up to 3 adjacent minions."
 # =============================================================================
 
-# @register_effect("greater_good")
-# class GreaterGoodEffect(CardEffect): ...
+@register_effect("greater_good")
+class GreaterGoodEffect(CardEffect):
+    """
+    Card text: "An enemy hero in range chooses one —
+    • That hero discards a card, or is defeated.
+    • You defeat up to 3 minions adjacent to you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            # 1. Select enemy hero target
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero in range",
+                output_key="gg_victim",
+                filters=[
+                    RangeFilter(max_range=stats.range),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                ],
+                is_mandatory=True,
+            ),
+            # 2. Victim chooses
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key="gg_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Discard a card, or be defeated",
+                    2: "Opponent defeats up to 3 minions adjacent to them",
+                },
+                override_player_id_key="gg_victim",
+                is_mandatory=True,
+            ),
+            # 3a. Discard or defeat path
+            CheckContextConditionStep(
+                input_key="gg_choice",
+                operator="==",
+                threshold=1,
+                output_key="gg_chose_discard",
+            ),
+            ForceDiscardOrDefeatStep(
+                victim_key="gg_victim",
+                active_if_key="gg_chose_discard",
+            ),
+            # 3b. Defeat up to 3 adjacent minions path
+            CheckContextConditionStep(
+                input_key="gg_choice",
+                operator="==",
+                threshold=2,
+                output_key="gg_chose_defeat",
+            ),
+            MultiSelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select up to 3 adjacent minions to defeat",
+                output_key="gg_minion_targets",
+                max_selections=3,
+                min_selections=0,
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="MINION"),
+                ],
+                active_if_key="gg_chose_defeat",
+            ),
+            ForEachStep(
+                list_key="gg_minion_targets",
+                item_key="gg_current_minion",
+                steps_template=[
+                    DefeatUnitStep(victim_key="gg_current_minion"),
+                ],
+            ),
+        ]
 
 
 # =============================================================================
@@ -1012,8 +1275,115 @@ class DeathSeekerEffect(CardEffect):
 #  straight-line movement on defense card), OR target adjacent unit."
 # =============================================================================
 
-# @register_effect("swift_justice")
-# class SwiftJusticeEffect(CardEffect): ...
+@register_effect("swift_justice")
+class SwiftJusticeEffect(CardEffect):
+    """
+    Card text: "Choose one —
+    • Target a hero in range with an empty discard. After the attack: If able,
+      that hero performs a movement action on the card they defended with,
+      moving full distance in a straight line.
+    • Target a unit adjacent to you."
+
+    With Grim Reaper ultimate active: after choosing one, optionally do the other.
+    """
+
+    def _has_ultimate(self, hero: Hero) -> bool:
+        return (
+            hero.ultimate_card is not None
+            and hero.ultimate_card.state == CardState.PASSIVE
+        )
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        has_ult = self._has_ultimate(hero)
+
+        steps: List[GameStep] = [
+            # 1. Choose mode
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key="sj_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Target hero in range with empty discard (forced movement)",
+                    2: "Target adjacent unit",
+                },
+                is_mandatory=True,
+            ),
+            # 2a. Path A: ranged attack on hero with empty discard + forced movement
+            CheckContextConditionStep(
+                input_key="sj_choice",
+                operator="==",
+                threshold=1,
+                output_key="sj_chose_ranged",
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                is_ranged=True,
+                range_val=stats.range,
+                target_id_key="sj_victim_a",
+                target_filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    CardsInContainerFilter(
+                        container=CardContainerType.DISCARD, max_cards=0
+                    ),
+                ],
+                active_if_key="sj_chose_ranged",
+            ),
+            ForceDefenseCardMovementStep(
+                defender_key="sj_victim_a",
+                active_if_key="sj_chose_ranged",
+            ),
+            # 2b. Path B: attack adjacent unit
+            CheckContextConditionStep(
+                input_key="sj_choice",
+                operator="==",
+                threshold=2,
+                output_key="sj_chose_adjacent",
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_id_key="sj_victim_b",
+                active_if_key="sj_chose_adjacent",
+                is_ranged=True,
+            ),
+        ]
+
+        # 3. With ultimate: offer the unchosen path
+        if has_ult:
+            # If chose ranged (1), also offer adjacent attack
+            steps.append(
+                AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=1,
+                    target_id_key="sj_ult_victim_b",
+                    active_if_key="sj_chose_ranged",
+                    is_ranged=True,
+                ),
+            )
+            # If chose adjacent (2), also offer ranged attack + forced movement
+            steps.extend([
+                AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=stats.range,
+                    target_id_key="sj_ult_victim_a",
+                    target_filters=[
+                        UnitTypeFilter(unit_type="HERO"),
+                        CardsInContainerFilter(
+                            container=CardContainerType.DISCARD, max_cards=0
+                        ),
+                    ],
+                    active_if_key="sj_chose_adjacent",
+                ),
+                ForceDefenseCardMovementStep(
+                    defender_key="sj_ult_victim_a",
+                    active_if_key="sj_chose_adjacent",
+                ),
+            ])
+
+        return steps
 
 
 # =============================================================================
@@ -1021,5 +1391,18 @@ class DeathSeekerEffect(CardEffect):
 # "When performing basic actions, you may choose one, or both."
 # =============================================================================
 
-# @register_effect("grim_reaper")
-# class GrimReaperEffect(CardEffect): ...
+
+@register_effect("grim_reaper")
+class GrimReaperEffect(CardEffect):
+    """
+    Passive: When performing basic actions, you may choose one, or both.
+
+    This passive's effect is handled at build time by Death Seeker and
+    Swift Justice, which check hero.ultimate_card.state == CardState.PASSIVE
+    and offer the unchosen option when the ultimate is active.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return []
