@@ -12,7 +12,6 @@ from goa2.engine.steps import (
 from goa2.domain.models import (
     TargetType,
     CardContainerType,
-    StatType,
     DurationType,
     EffectType,
     EffectScope,
@@ -24,6 +23,7 @@ from goa2.domain.models import (
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import TargetType, CardContainerType, Hero, Card
+    from goa2.engine.stats import CardStats
 
 
 @register_effect("venom_strike")
@@ -35,15 +35,12 @@ class VenomStrikeEffect(CardEffect):
     The marker applies stat debuffs via get_computed_stat() reading markers.
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        from goa2.engine.stats import get_computed_stat
-
-        base_dmg = 2
-        damage = get_computed_stat(state, hero.id, StatType.ATTACK, base_dmg)
-
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             # 1. Resolve Attack Sequence
-            AttackSequenceStep(damage=damage, range_val=1),
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # 2. Place Venom marker on victim (-1 to all stats)
             PlaceMarkerStep(
                 marker_type=MarkerType.VENOM,
@@ -59,7 +56,9 @@ class SlipperyGroundEffect(CardEffect):
     Card Text: "This Turn: Adjacent enemies can only move up to 1 space."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -80,7 +79,9 @@ class RogueSkillGoldEffect(CardEffect):
     Card Text: "Swap target enemy's current turn card with a card from their Resolved pile."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
         from goa2.engine.filters import TeamFilter
 
         return [

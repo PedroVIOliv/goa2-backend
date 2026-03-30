@@ -17,6 +17,11 @@ from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.effects import CardEffect, CardEffectRegistry
+
+import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue effects
+import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
+from goa2.scripts.rogue_effects import VenomStrikeEffect
 
 
 @pytest.fixture
@@ -339,3 +344,9 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     # 9. Verify Swap on Victim
     assert victim.current_turn_card.id == "v_resolved"
     assert card_v_current in victim.played_cards
+
+
+def test_venom_strike_uses_base_get_steps_pipeline():
+    effect = CardEffectRegistry.get("venom_strike")
+    assert isinstance(effect, VenomStrikeEffect)
+    assert effect.get_steps.__func__ is CardEffect.get_steps
