@@ -12,6 +12,7 @@ from goa2.engine.steps import (
 from goa2.domain.models import (
     TargetType,
     CardContainerType,
+    StatType,
     DurationType,
     EffectType,
     EffectScope,
@@ -19,6 +20,7 @@ from goa2.domain.models import (
     AffectsFilter,
     MarkerType,
 )
+from goa2.domain.types import UnitID
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -38,9 +40,12 @@ class VenomStrikeEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
+        from goa2.engine.stats import get_computed_stat
+
+        damage = get_computed_stat(state, UnitID(hero.id), StatType.ATTACK, 2)
         return [
             # 1. Resolve Attack Sequence
-            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            AttackSequenceStep(damage=damage, range_val=1),
             # 2. Place Venom marker on victim (-1 to all stats)
             PlaceMarkerStep(
                 marker_type=MarkerType.VENOM,
