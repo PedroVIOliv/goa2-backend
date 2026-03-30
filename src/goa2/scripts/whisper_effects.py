@@ -22,8 +22,8 @@ from goa2.engine.steps import (
     ForceDefenseCardMovementStep,
 )
 from goa2.engine.filters import (
+    ObstacleFilter,
     RangeFilter,
-    OccupiedFilter,
     SpawnPointFilter,
     BattleZoneFilter,
     AdjacentSpawnPointFilter,
@@ -549,7 +549,7 @@ class _ShadowTeleportEffect(CardEffect):
                 output_key="shadow_dest",
                 filters=[
                     RangeFilter(max_range=stats.range),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                     SpawnPointFilter(has_spawn_point=True),
                     BattleZoneFilter(),
                 ],
@@ -583,7 +583,7 @@ class CreepingShadowEffect(CardEffect):
                 output_key="shadow_dest",
                 filters=[
                     RangeFilter(max_range=stats.range),
-                    OccupiedFilter(is_occupied=False),
+                    ObstacleFilter(is_obstacle=False),
                     OrFilter(
                         filters=[
                             AndFilter(

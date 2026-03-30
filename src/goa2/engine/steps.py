@@ -1682,6 +1682,7 @@ class DefeatUnitStep(GameStep):
     victim_id: Optional[str] = None  # Direct ID
     victim_key: Optional[str] = None  # Context key for victim ID
     killer_id: Optional[str] = None
+    assist_multiplier: int = 1  # Multiplier for assist coins (e.g. 3 for Glorious Triumph)
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1794,16 +1795,17 @@ class DefeatUnitStep(GameStep):
                     if killer_team:
                         for ally in killer_team.heroes:
                             if ally.id != killer.id:
-                                ally.gold += assist_gold
+                                actual_assist = assist_gold * self.assist_multiplier
+                                ally.gold += actual_assist
                                 print(
-                                    f"   [ECONOMY] Assist: {ally.id} gains {assist_gold} Gold."
+                                    f"   [ECONOMY] Assist: {ally.id} gains {actual_assist} Gold."
                                 )
                                 events.append(
                                     GameEvent(
                                         event_type=GameEventType.GOLD_GAINED,
                                         actor_id=ally.id,
                                         metadata={
-                                            "amount": assist_gold,
+                                            "amount": actual_assist,
                                             "reason": "assist",
                                         },
                                     )
