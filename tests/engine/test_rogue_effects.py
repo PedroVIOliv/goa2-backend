@@ -11,12 +11,17 @@ from goa2.domain.models import (
     ActionType,
     StatType,
     EffectType,
+    MarkerType,
 )
 from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.engine.steps import ResolveCardStep, AttackSequenceStep
 from goa2.engine.handler import process_resolution_stack, push_steps
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.effects import CardEffectRegistry
+
+import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue effects
+import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
 
 
 @pytest.fixture
@@ -339,3 +344,21 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     # 9. Verify Swap on Victim
     assert victim.current_turn_card.id == "v_resolved"
     assert card_v_current in victim.played_cards
+
+
+def test_venom_strike_get_steps_uses_computed_stats(rogue_state):
+    effect = CardEffectRegistry.get("venom_strike")
+    hero = rogue_state.get_hero("rogue")
+    card = hero.current_turn_card
+
+    # Debuff rogue attack so computed damage should be 2 -> 1
+    rogue_state.place_marker(
+        marker_type=MarkerType.VENOM,
+        target_id=hero.id,
+        value=-1,
+        source_id="test_debuff_source",
+    )
+
+    steps = effect.get_steps(rogue_state, hero, card)
+    assert isinstance(steps[0], AttackSequenceStep)
+    assert steps[0].damage == 1
