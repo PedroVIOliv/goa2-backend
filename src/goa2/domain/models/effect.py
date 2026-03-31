@@ -53,6 +53,9 @@ class EffectType(str, Enum):
     # Full immunity to enemy actions (Death Seeker) - like heavy minion immunity but for heroes
     IMMUNITY_ENEMY_ACTIONS = "immunity_enemy_actions"
 
+    # Enraged status (Ursafar) - marks card as active, checked by is_enraged()
+    ENRAGED = "enraged"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""

@@ -45,10 +45,23 @@ class Card(GameEntity):
     passive_uses_this_turn: int = 0
 
     # Active effect tracking (tapped/sideways in physical game)
-    is_active: bool = Field(
+    # Access via the `is_active` property — do NOT read/write this field directly.
+    is_active_base: bool = Field(
         default=False,
-        description="True when this card has an active effect in play (tapped/sideways).",
+        description="Raw active-effect flag. Use the is_active property instead.",
     )
+    enraged_active_override: bool = Field(
+        default=False,
+        description="Ursafar ultimate (Unbound Fury): when True, is_active always returns True.",
+    )
+
+    @property
+    def is_active(self) -> bool:
+        return self.is_active_base or self.enraged_active_override
+
+    @is_active.setter
+    def is_active(self, value: bool) -> None:
+        self.is_active_base = value
 
     metadata: Optional[Dict[str, Any]] = None
 
