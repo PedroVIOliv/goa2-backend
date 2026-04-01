@@ -658,6 +658,12 @@ class SelectStep(GameStep):
     card_is_basic: Optional[bool] = (
         None  # Only include basic (True) or non-basic (False)
     )
+    card_is_active: Optional[bool] = (
+        None  # Only include active (True) or inactive (False) cards
+    )
+    allowed_card_ids: Optional[List[str]] = (
+        None  # Whitelist: only include cards with these IDs
+    )
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """
@@ -752,6 +758,14 @@ class SelectStep(GameStep):
                 if self.card_is_basic is not None:
                     source_list = [
                         c for c in source_list if c.is_basic == self.card_is_basic
+                    ]
+                if self.card_is_active is not None:
+                    source_list = [
+                        c for c in source_list if c.is_active == self.card_is_active
+                    ]
+                if self.allowed_card_ids is not None:
+                    source_list = [
+                        c for c in source_list if c.id in self.allowed_card_ids
                     ]
 
                 candidates = [c.id for c in source_list]
@@ -3950,6 +3964,12 @@ class EndPhaseCleanupStep(GameStep):
                                     f"   [ULTIMATE UNLOCKED] {hero.id} reached Level 8! "
                                     f"'{hero.ultimate_card.name}' is now active!"
                                 )
+                                # Call on_ultimate_unlocked if the effect supports it
+                                if hero.ultimate_card.effect_id:
+                                    from goa2.engine.effects import CardEffectRegistry
+                                    ult_effect = CardEffectRegistry.get(hero.ultimate_card.effect_id)
+                                    if ult_effect and hasattr(ult_effect, "on_ultimate_unlocked"):
+                                        ult_effect.on_ultimate_unlocked(state, hero)
                             else:
                                 print(f"   [LEVEL] {hero.id} reached Level 8!")
                         else:
@@ -5746,6 +5766,143 @@ class ForceDefenseCardMovementStep(GameStep):
                 step.force_full_distance = True
 
         return steps
+
+
+# =============================================================================
+# Ursafar-specific Steps
+# =============================================================================
+
+
+class SpendAdditionalLifeCounterStep(GameStep):
+    """
+    Decrements the victim's team life counters by 1 (additional penalty).
+    Used by Ursafar's Tear: "if you defeated a hero, that hero spends 1
+    additional Life counter."
+    """
+
+    type: StepType = StepType.SPEND_ADDITIONAL_LIFE_COUNTER
+    victim_key: str = "victim_id"
+    amount: int = 1
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        victim_id = context.get(self.victim_key)
+        if not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        victim_team_color = getattr(victim, "team", None)
+        if not victim_team_color or victim_team_color not in state.teams:
+            return StepResult(is_finished=True)
+
+        victim_team = state.teams[victim_team_color]
+        victim_team.life_counters = max(0, victim_team.life_counters - self.amount)
+        print(
+            f"   [SCORE] Team {victim_team_color.name} loses {self.amount} additional Life Counter(s). "
+            f"Remaining: {victim_team.life_counters}"
+        )
+
+        events = [
+            GameEvent(
+                event_type=GameEventType.LIFE_COUNTER_CHANGED,
+                target_id=str(victim_id),
+                metadata={
+                    "team": victim_team_color.name,
+                    "change": -self.amount,
+                    "remaining": victim_team.life_counters,
+                    "reason": "additional_life_counter",
+                },
+            )
+        ]
+
+        if victim_team.life_counters == 0:
+            from goa2.domain.models import TeamColor
+
+            winning_team = (
+                TeamColor.BLUE
+                if victim_team_color == TeamColor.RED
+                else TeamColor.RED
+            )
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.GAME_OVER,
+                    metadata={
+                        "reason": "annihilation",
+                        "winning_team": winning_team.name,
+                    },
+                )
+            )
+            return StepResult(
+                is_finished=True,
+                new_steps=[TriggerGameOverStep(winning_team=winning_team)],
+                events=events,
+            )
+
+        return StepResult(is_finished=True, events=events)
+
+
+class PerformPrimaryActionStep(GameStep):
+    """
+    Looks up a card from context, computes its stats, calls its effect's
+    build_steps(), and pushes the resulting steps onto the stack.
+
+    Used by Ursafar's Angry Roar, Instinctive Reaction, Evolutionary Response.
+    """
+
+    type: StepType = StepType.PERFORM_PRIMARY_ACTION
+    card_key: str = "selected_card"
+    hero_id: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        card_id = context.get(self.card_key)
+        if not card_id:
+            return StepResult(is_finished=True)
+
+        actor_id = self.hero_id or (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Find the card anywhere on the hero (played, discard, hand, deck)
+        card = None
+        for c in hero.played_cards + hero.discard_pile + hero.hand + hero.deck:
+            if c is not None and c.id == card_id:
+                card = c
+                break
+
+        if not card or not card.current_effect_id:
+            print(f"   [PERFORM] Card {card_id} not found or has no effect.")
+            return StepResult(is_finished=True)
+
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.engine.stats import compute_card_stats
+
+        effect = CardEffectRegistry.get(card.current_effect_id)
+        if not effect:
+            print(f"   [PERFORM] No effect registered for {card.current_effect_id}.")
+            return StepResult(is_finished=True)
+
+        stats = compute_card_stats(state, UnitID(str(actor_id)), card)
+        steps = effect.build_steps(state, hero, card, stats)
+
+        print(
+            f"   [PERFORM] Performing primary action of {card.name} "
+            f"({len(steps)} steps)"
+        )
+        return StepResult(is_finished=True, new_steps=steps)
 
 
 # Rebuild recursive models

@@ -57,7 +57,9 @@ class Card(GameEntity):
 
     @property
     def is_active(self) -> bool:
-        return self.is_active_base or self.enraged_active_override
+        if self.enraged_active_override and self.state == CardState.RESOLVED:
+            return True
+        return self.is_active_base
 
     @is_active.setter
     def is_active(self, value: bool) -> None:

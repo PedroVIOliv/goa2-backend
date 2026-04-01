@@ -86,6 +86,8 @@ from goa2.engine.steps import (
     TriggerGameOverStep,
     ValidateRepeatStep,
     FinishedExpiringEffectStep,
+    SpendAdditionalLifeCounterStep,
+    PerformPrimaryActionStep,
 )
 from goa2.domain.models.enums import StepType
 
@@ -204,6 +206,13 @@ AnyStep = Annotated[
         Annotated[ValidateRepeatStep, Tag(StepType.VALIDATE_REPEAT.value)],
         Annotated[
             FinishedExpiringEffectStep, Tag(StepType.FINISHED_EXPIRING_EFFECT.value)
+        ],
+        Annotated[
+            SpendAdditionalLifeCounterStep,
+            Tag(StepType.SPEND_ADDITIONAL_LIFE_COUNTER.value),
+        ],
+        Annotated[
+            PerformPrimaryActionStep, Tag(StepType.PERFORM_PRIMARY_ACTION.value)
         ],
     ],
     Discriminator(_step_discriminator),

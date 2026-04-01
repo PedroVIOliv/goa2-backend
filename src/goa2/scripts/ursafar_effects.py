@@ -3,22 +3,36 @@ from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
+    CheckContextConditionStep,
+    CheckUnitTypeStep,
+    CombineBooleanContextStep,
     CreateEffectStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
+    ForEachStep,
     GainCoinsStep,
     GameStep,
     MoveSequenceStep,
+    MoveUnitStep,
+    MultiSelectStep,
+    PerformPrimaryActionStep,
+    RemoveUnitStep,
+    RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
+    SpendAdditionalLifeCounterStep,
+    SwapUnitsStep,
 )
 from goa2.engine.filters import (
+    AdjacencyFilter,
     ImmunityFilter,
+    ObstacleFilter,
     RangeFilter,
     TeamFilter,
     UnitTypeFilter,
 )
 from goa2.domain.models import (
+    CardContainerType,
     CardState,
     TargetType,
 )
@@ -42,7 +56,7 @@ if TYPE_CHECKING:
 
 def _has_ultimate(hero: Hero) -> bool:
     """Check if the ultimate card is in passive play."""
-    return hero.ultimate_card is not None and hero.ultimate_card.state == CardState.PASSIVE
+    return hero.ultimate_card is not None and hero.level >= 8
 
 
 def is_enraged(hero: Hero, current_card: Card) -> bool:
@@ -57,8 +71,6 @@ def is_enraged(hero: Hero, current_card: Card) -> bool:
         return True
     for card in hero.played_cards:
         if card is None:
-            continue
-        if card.id == current_card.id:
             continue
         if card.is_active:
             return True
@@ -201,6 +213,532 @@ class ApexPredatorEffect(CardEffect):
             ),
             ForceDiscardOrDefeatStep(victim_key="victim_id"),
         ]
+
+
+# =============================================================================
+# GROUP B — Attack + conditional minion removal
+# =============================================================================
+
+
+# TIER I — RED: Prey Drive (ATTACK)
+# "Target a unit adjacent to you. After the attack: If enraged, and the
+#  target was not removed, remove up to 1 enemy minion in radius.
+#  This round: You are enraged."
+@register_effect("prey_drive")
+class PreyDriveEffect(CardEffect):
+    """Attack adjacent. If enraged + target not removed, remove up to 1 enemy minion in radius."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Select an enemy minion in radius to remove (optional).",
+                    output_key="remove_target",
+                    is_mandatory=False,
+                    active_if_key="block_succeeded",
+                    filters=[
+                        UnitTypeFilter(unit_type="MINION"),
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=stats.radius),
+                    ],
+                ),
+                RemoveUnitStep(
+                    unit_key="remove_target",
+                    active_if_key="remove_target",
+                ),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# TIER II — RED: Prey Abundance (ATTACK)
+# "Target a unit adjacent to you. After the attack: If enraged, and the
+#  target was not removed, remove up to 1 enemy minion in radius.
+#  This round: You are enraged."
+@register_effect("prey_abundance")
+class PreyAbundanceEffect(PreyDriveEffect):
+    """Same pattern as Prey Drive with different stats."""
+    pass
+
+
+# TIER III — RED: Feeding Frenzy (ATTACK)
+# "Target a unit adjacent to you. After the attack: If enraged, and the
+#  target was not removed, remove up to 2 enemy minions in radius.
+#  This round: You are enraged."
+@register_effect("feeding_frenzy")
+class FeedingFrenzyEffect(CardEffect):
+    """Attack adjacent. If enraged + target not removed, remove up to 2 enemy minions in radius."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                MultiSelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Select enemy minions in radius to remove.",
+                    output_key="remove_targets",
+                    max_selections=2,
+                    min_selections=0,
+                    is_mandatory=False,
+                    active_if_key="block_succeeded",
+                    filters=[
+                        UnitTypeFilter(unit_type="MINION"),
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=stats.radius),
+                    ],
+                ),
+                ForEachStep(
+                    list_key="remove_targets",
+                    item_key="current_remove_target",
+                    steps_template=[
+                        RemoveUnitStep(unit_key="current_remove_target"),
+                    ],
+                ),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# =============================================================================
+# GROUP C — Movement + swap + additional movement
+# =============================================================================
+
+
+# TIER I — BLUE: Prowling Brute (MOVEMENT)
+# "If enraged, after movement, you may swap with a unit or a token
+#  adjacent to you. This round: You are enraged."
+@register_effect("prowling_brute")
+class ProwlingBruteEffect(CardEffect):
+    """Move. If enraged, may swap with adjacent unit or token."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                SelectStep(
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt="Select a unit or token adjacent to you to swap with (optional).",
+                    output_key="swap_target",
+                    is_mandatory=False,
+                    skip_immunity_filter=True,
+                    filters=[
+                        RangeFilter(max_range=1),
+                    ],
+                ),
+                SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# TIER II — BLUE: Rampaging Beast (MOVEMENT)
+# "If enraged, after movement, you may swap with a unit or a token
+#  adjacent to you; if you do, move up to 1 additional space.
+#  This round: You are enraged."
+@register_effect("rampaging_beast")
+class RampagingBeastEffect(CardEffect):
+    """Move. If enraged, may swap with adjacent unit/token; if you do, move 1 more."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                SelectStep(
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt="Select a unit or token adjacent to you to swap with (optional).",
+                    output_key="swap_target",
+                    is_mandatory=False,
+                    skip_immunity_filter=True,
+                    filters=[
+                        RangeFilter(max_range=1),
+                    ],
+                ),
+                SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
+                MoveSequenceStep(
+                    unit_id=hero.id,
+                    range_val=1,
+                    is_mandatory=False,
+                    active_if_key="swap_target",
+                ),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# TIER III — BLUE: Unstoppable Force (MOVEMENT)
+# "If enraged, after movement, you may swap with a unit or a token
+#  adjacent to you; if you do, move up to 2 additional spaces.
+#  This round: You are enraged."
+@register_effect("unstoppable_force")
+class UnstoppableForceEffect(CardEffect):
+    """Move. If enraged, may swap with adjacent unit/token; if you do, move 2 more."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                SelectStep(
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt="Select a unit or token adjacent to you to swap with (optional).",
+                    output_key="swap_target",
+                    is_mandatory=False,
+                    skip_immunity_filter=True,
+                    filters=[
+                        RangeFilter(max_range=1),
+                    ],
+                ),
+                SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
+                MoveSequenceStep(
+                    unit_id=hero.id,
+                    range_val=2,
+                    is_mandatory=False,
+                    active_if_key="swap_target",
+                ),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# =============================================================================
+# GROUP D — Pre-attack movement
+# =============================================================================
+
+
+# UNTIERED — GOLD: Claws That Catch (ATTACK)
+# "Before the attack: If enraged, you may move 1 space to a space adjacent
+#  to an enemy hero. Target a unit adjacent to you.
+#  This round: You are enraged."
+@register_effect("claws_that_catch")
+class ClawsThatCatchEffect(CardEffect):
+    """If enraged, may move 1 to hex adjacent to enemy hero. Attack adjacent. Set enraged."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = []
+        if is_enraged(hero, card):
+            steps.extend([
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt="Move 1 space to a space adjacent to an enemy hero (optional).",
+                    output_key="dash_hex",
+                    is_mandatory=False,
+                    filters=[
+                        RangeFilter(max_range=1),
+                        ObstacleFilter(),
+                        AdjacencyFilter(target_tags=["ENEMY", "HERO"]),
+                    ],
+                ),
+                MoveUnitStep(
+                    unit_id=hero.id,
+                    destination_key="dash_hex",
+                    is_mandatory=False,
+                ),
+            ])
+        steps.extend([
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            _enraged_effect_step(),
+        ])
+        return steps
+
+
+# =============================================================================
+# GROUP E — Complex effects / new steps
+# =============================================================================
+
+
+# TIER III — RED: Tear (ATTACK)
+# "Target a unit adjacent to you.
+#  After the attack: If enraged, gain 2 coins;
+#  if you defeated a hero, that hero spends 1 additional Life counter.
+#  This round: You are enraged."
+@register_effect("tear")
+class TearEffect(CardEffect):
+    """Attack adjacent. If enraged: gain 2 coins; if defeated hero, spend 1 extra life counter."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+        ]
+        if is_enraged(hero, card):
+            steps.extend([
+                SetContextFlagStep(key="self_hero", value=hero.id),
+                GainCoinsStep(hero_key="self_hero", amount=2),
+                # Check if target was defeated (block_succeeded=False → 0)
+                CheckContextConditionStep(
+                    input_key="block_succeeded",
+                    operator="==",
+                    threshold=0,
+                    output_key="target_defeated",
+                ),
+                # Check if target was a hero
+                CheckUnitTypeStep(
+                    unit_key="victim_id",
+                    expected_type="HERO",
+                    output_key="target_is_hero",
+                ),
+                # Combine: defeated AND hero
+                CombineBooleanContextStep(
+                    key_a="target_defeated",
+                    key_b="target_is_hero",
+                    output_key="hero_defeated",
+                    operation="AND",
+                ),
+                SpendAdditionalLifeCounterStep(
+                    victim_key="victim_id",
+                    active_if_key="hero_defeated",
+                ),
+            ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# UNTIERED — SILVER: Angry Roar (SKILL)
+# "If enraged, perform the primary action on one of your active cards
+#  with an active effect.
+#  This round: You are enraged."
+@register_effect("angry_roar")
+class AngryRoarEffect(CardEffect):
+    """If enraged, perform primary action of an active card with active effect."""
+
+    def _get_active_effect_card_ids(
+        self, state: GameState, hero: Hero, card: Card
+    ) -> List[str]:
+        """Get IDs of played cards that are active AND whose effect produces CreateEffectStep."""
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.engine.stats import compute_card_stats
+
+        valid_ids = []
+        for c in hero.played_cards:
+            if c is None or c.id == card.id:
+                continue
+            if not c.is_active:
+                continue
+            if not c.current_effect_id:
+                continue
+            effect = CardEffectRegistry.get(c.current_effect_id)
+            if not effect:
+                continue
+            stats = compute_card_stats(state, hero.id, c)
+            steps = effect.build_steps(state, hero, c, stats)
+            if any(isinstance(s, CreateEffectStep) for s in steps):
+                valid_ids.append(c.id)
+        return valid_ids
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = []
+        if is_enraged(hero, card):
+            valid_card_ids = self._get_active_effect_card_ids(state, hero, card)
+            if valid_card_ids:
+                steps.extend([
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        card_container=CardContainerType.PLAYED,
+                        card_is_active=True,
+                        prompt="Select an active card with an active effect to perform its primary action.",
+                        output_key="roar_card",
+                        is_mandatory=True,
+                        allowed_card_ids=valid_card_ids,
+                    ),
+                    PerformPrimaryActionStep(
+                        card_key="roar_card",
+                        hero_id=hero.id,
+                    ),
+                ])
+        steps.append(_enraged_effect_step())
+        return steps
+
+
+# TIER II — GREEN: Instinctive Reaction (SKILL)
+# "If enraged, choose one —
+#  • Perform the primary action on one of your discarded cards.
+#  • You may retrieve a discarded card."
+@register_effect("instinctive_reaction")
+class InstinctiveReactionEffect(CardEffect):
+    """If enraged, choose one: perform primary action of discarded card OR retrieve discarded card."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        if not is_enraged(hero, card):
+            return []
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key="ir_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Perform the primary action of a discarded card",
+                    2: "Retrieve a discarded card",
+                },
+                is_mandatory=True,
+            ),
+            # Branch 1: Perform primary action of a discarded card
+            CheckContextConditionStep(
+                input_key="ir_choice",
+                operator="==",
+                threshold=1,
+                output_key="chose_perform",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to perform its primary action.",
+                output_key="perform_card",
+                is_mandatory=True,
+                active_if_key="chose_perform",
+            ),
+            PerformPrimaryActionStep(
+                card_key="perform_card",
+                hero_id=hero.id,
+                active_if_key="chose_perform",
+            ),
+            # Branch 2: Retrieve a discarded card
+            CheckContextConditionStep(
+                input_key="ir_choice",
+                operator="==",
+                threshold=2,
+                output_key="chose_retrieve",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to retrieve.",
+                output_key="retrieve_card",
+                is_mandatory=False,
+                active_if_key="chose_retrieve",
+            ),
+            RetrieveCardStep(
+                card_key="retrieve_card",
+                active_if_key="retrieve_card",
+            ),
+        ]
+
+
+# TIER III — GREEN: Evolutionary Response (SKILL)
+# "If enraged, choose one, or both —
+#  • Perform the primary action on one of your discarded cards.
+#  • You may retrieve a discarded card."
+@register_effect("evolutionary_response")
+class EvolutionaryResponseEffect(CardEffect):
+    """If enraged, choose one or both: perform primary action of discarded card / retrieve discarded card."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        if not is_enraged(hero, card):
+            return []
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one, or both",
+                output_key="er_choice",
+                number_options=[1, 2, 3],
+                number_labels={
+                    1: "Perform the primary action of a discarded card",
+                    2: "Retrieve a discarded card",
+                    3: "Both",
+                },
+                is_mandatory=True,
+            ),
+            # Branch 1 / Branch 3 part A: Perform primary action
+            CheckContextConditionStep(
+                input_key="er_choice",
+                operator="!=",
+                threshold=2,
+                output_key="do_perform",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to perform its primary action.",
+                output_key="perform_card",
+                is_mandatory=True,
+                active_if_key="do_perform",
+            ),
+            PerformPrimaryActionStep(
+                card_key="perform_card",
+                hero_id=hero.id,
+                active_if_key="do_perform",
+            ),
+            # Branch 2 / Branch 3 part B: Retrieve
+            CheckContextConditionStep(
+                input_key="er_choice",
+                operator="!=",
+                threshold=1,
+                output_key="do_retrieve",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a discarded card to retrieve.",
+                output_key="retrieve_card",
+                is_mandatory=False,
+                active_if_key="do_retrieve",
+            ),
+            RetrieveCardStep(
+                card_key="retrieve_card",
+                active_if_key="retrieve_card",
+            ),
+        ]
+
+
+# =============================================================================
+# GROUP F — Ultimate
+# =============================================================================
+
+
+# UNTIERED — PURPLE: Unbound Fury (PASSIVE)
+# "You are always enraged, and all your resolved cards count as active."
+@register_effect("unbound_fury")
+class UnboundFuryEffect(CardEffect):
+    """Passive: always enraged, all resolved cards count as active."""
+
+    def on_ultimate_unlocked(self, state: GameState, hero: Hero) -> None:
+        """Called when hero reaches level 8. Sets enraged_active_override on all cards."""
+        all_cards = hero.deck + hero.hand + hero.played_cards + hero.discard_pile
+        if hero.ultimate_card:
+            all_cards.append(hero.ultimate_card)
+        for card in all_cards:
+            if card is not None:
+                card.enraged_active_override = True
+        print(
+            f"   [UNBOUND FURY] All {len([c for c in all_cards if c is not None])} cards "
+            f"for {hero.id} now have enraged_active_override=True"
+        )
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        # Passive — no active steps
+        return []
 
 
 # =============================================================================

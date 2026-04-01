@@ -583,21 +583,36 @@ class TestApexPredator:
 
 class TestEnragedActiveOverride:
     def test_override_keeps_is_active_true(self):
-        """enraged_active_override prevents is_active from being set to False."""
+        """enraged_active_override prevents is_active from being set to False for resolved cards."""
         card = _make_filler_card()
+        card.state = CardState.RESOLVED
         card.enraged_active_override = True
 
         card.is_active = False  # EffectManager would do this
         assert card.is_active is True
 
     def test_override_on_card_with_no_effect(self):
-        """Cards that never created an effect still show is_active=True."""
+        """Resolved cards with override still show is_active=True."""
         card = _make_filler_card()
         assert card.is_active is False
 
+        card.state = CardState.RESOLVED
         card.enraged_active_override = True
         assert card.is_active is True
         assert card.is_active_base is False  # raw value unchanged
+
+    def test_override_requires_resolved_state(self):
+        """enraged_active_override only works on RESOLVED cards."""
+        card = _make_filler_card()
+        card.enraged_active_override = True
+
+        # DECK state — override doesn't apply
+        assert card.state == CardState.DECK
+        assert card.is_active is False
+
+        # RESOLVED state — override applies
+        card.state = CardState.RESOLVED
+        assert card.is_active is True
 
 
 # =============================================================================
@@ -632,12 +647,13 @@ class TestIsEnraged:
         )
         ultimate.state = CardState.PASSIVE
         hero.ultimate_card = ultimate
+        hero.level = 8
 
         card = _make_cold_ire()
         assert is_enraged(hero, card) is True
 
-    def test_current_card_excluded(self, base_state):
-        """A card's own is_active doesn't count for is_enraged check."""
+    def test_current_card_active_counts(self, base_state):
+        """A card's own is_active counts for is_enraged check."""
         from goa2.scripts.ursafar_effects import is_enraged
 
         hero = base_state.get_hero(HeroID("hero_ursafar"))
@@ -646,5 +662,5 @@ class TestIsEnraged:
         card.state = CardState.RESOLVED
         hero.played_cards = [card]
 
-        # The card itself is active, but it's the current card — doesn't count
-        assert is_enraged(hero, card) is False
+        # The current card being active counts as enraged
+        assert is_enraged(hero, card) is True
