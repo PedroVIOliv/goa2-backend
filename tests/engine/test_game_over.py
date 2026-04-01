@@ -2,7 +2,12 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, GamePhase, Hero
-from goa2.engine.steps import DefeatUnitStep, TriggerGameOverStep, LanePushStep
+from goa2.engine.steps import (
+    DefeatUnitStep,
+    TriggerGameOverStep,
+    LanePushStep,
+    SpendAdditionalLifeCounterStep,
+)
 from goa2.engine.handler import process_resolution_stack
 from goa2.domain.types import HeroID
 
@@ -108,4 +113,16 @@ def test_lane_push_throne_victory(game_state):
     assert len(result.new_steps) == 1
     assert isinstance(result.new_steps[0], TriggerGameOverStep)
     assert result.new_steps[0].condition == "LANE_PUSH"
+    assert result.new_steps[0].winner == TeamColor.BLUE
+
+
+def test_spend_additional_life_counter_triggers_annihilation(game_state):
+    step = SpendAdditionalLifeCounterStep(victim_key="victim_id", amount=1)
+
+    result = step.resolve(game_state, {"victim_id": "hero_victim"})
+
+    assert game_state.teams[TeamColor.RED].life_counters == 0
+    assert len(result.new_steps) == 1
+    assert isinstance(result.new_steps[0], TriggerGameOverStep)
+    assert result.new_steps[0].condition == "ANNIHILATION"
     assert result.new_steps[0].winner == TeamColor.BLUE

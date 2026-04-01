@@ -106,6 +106,41 @@ class GameStep(BaseModel):
         raise NotImplementedError
 
 
+def _get_winning_team(losing_team: TeamColor) -> TeamColor:
+    return TeamColor.BLUE if losing_team == TeamColor.RED else TeamColor.RED
+
+
+def _apply_life_counter_penalty(
+    state: GameState,
+    team_color: TeamColor,
+    amount: int,
+    *,
+    target_id: Optional[str] = None,
+    extra_metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[int, List[GameEvent], Optional[TeamColor]]:
+    team = state.teams[team_color]
+    team.life_counters = max(0, team.life_counters - amount)
+
+    metadata = {
+        "team": team_color.name,
+        "change": -amount,
+        "remaining": team.life_counters,
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+
+    events = [
+        GameEvent(
+            event_type=GameEventType.LIFE_COUNTER_CHANGED,
+            target_id=target_id,
+            metadata=metadata,
+        )
+    ]
+
+    winning_team = _get_winning_team(team_color) if team.life_counters == 0 else None
+    return team.life_counters, events, winning_team
+
+
 # -----------------------------------------------------------------------------
 # Common Steps
 # -----------------------------------------------------------------------------
@@ -1828,44 +1863,32 @@ class DefeatUnitStep(GameStep):
             if hasattr(victim, "team"):
                 victim_team_color = getattr(victim, "team", None)
                 if victim_team_color and victim_team_color in state.teams:
-                    victim_team = state.teams[victim_team_color]
-                    if victim_team:
-                        victim_team.life_counters = max(
-                            0, victim_team.life_counters - penalty_counters
+                    remaining_life, life_events, winning_team = (
+                        _apply_life_counter_penalty(
+                            state=state,
+                            team_color=victim_team_color,
+                            amount=penalty_counters,
                         )
-                        print(
-                            f"   [SCORE] Team {victim_team_color.name} loses {penalty_counters} Life Counter(s). Remaining: {victim_team.life_counters}"
-                        )
-                        events.append(
-                            GameEvent(
-                                event_type=GameEventType.LIFE_COUNTER_CHANGED,
-                                metadata={
-                                    "team": victim_team_color.name,
-                                    "change": -penalty_counters,
-                                    "remaining": victim_team.life_counters,
-                                },
-                            )
-                        )
+                    )
+                    print(
+                        f"   [SCORE] Team {victim_team_color.name} loses {penalty_counters} Life Counter(s). Remaining: {remaining_life}"
+                    )
+                    events.extend(life_events)
 
-                        if victim_team.life_counters == 0:
-                            print(
-                                f"   [GAME OVER] Team {victim_team_color.name} has 0 Life Counters! ANNIHILATION."
-                            )
-                            winning_team = (
-                                TeamColor.BLUE
-                                if victim_team_color == TeamColor.RED
-                                else TeamColor.RED
-                            )
-                            return StepResult(
-                                is_finished=True,
-                                new_steps=[
-                                    RemoveUnitStep(unit_id=actual_victim_id),
-                                    TriggerGameOverStep(
-                                        winner=winning_team, condition="ANNIHILATION"
-                                    ),
-                                ],
-                                events=events,
-                            )
+                    if winning_team is not None:
+                        print(
+                            f"   [GAME OVER] Team {victim_team_color.name} has 0 Life Counters! ANNIHILATION."
+                        )
+                        return StepResult(
+                            is_finished=True,
+                            new_steps=[
+                                RemoveUnitStep(unit_id=actual_victim_id),
+                                TriggerGameOverStep(
+                                    winner=winning_team, condition="ANNIHILATION"
+                                ),
+                            ],
+                            events=events,
+                        )
 
         elif hasattr(victim, "value"):  # Is Minion
             reward = victim.value
@@ -3454,9 +3477,7 @@ class LanePushStep(GameStep):
 
         if state.wave_counter <= 0:
             print("   [GAME OVER] Last Push Victory!")
-            winning_team = (
-                TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            )
+            winning_team = _get_winning_team(self.losing_team)
             return StepResult(
                 is_finished=True,
                 new_steps=[
@@ -3470,9 +3491,7 @@ class LanePushStep(GameStep):
             print(
                 f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached."
             )
-            winning_team = (
-                TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            )
+            winning_team = _get_winning_team(self.losing_team)
             return StepResult(
                 is_finished=True,
                 new_steps=[
@@ -5800,34 +5819,19 @@ class SpendAdditionalLifeCounterStep(GameStep):
         if not victim_team_color or victim_team_color not in state.teams:
             return StepResult(is_finished=True)
 
-        victim_team = state.teams[victim_team_color]
-        victim_team.life_counters = max(0, victim_team.life_counters - self.amount)
+        remaining_life, events, winning_team = _apply_life_counter_penalty(
+            state=state,
+            team_color=victim_team_color,
+            amount=self.amount,
+            target_id=str(victim_id),
+            extra_metadata={"reason": "additional_life_counter"},
+        )
         print(
             f"   [SCORE] Team {victim_team_color.name} loses {self.amount} additional Life Counter(s). "
-            f"Remaining: {victim_team.life_counters}"
+            f"Remaining: {remaining_life}"
         )
 
-        events = [
-            GameEvent(
-                event_type=GameEventType.LIFE_COUNTER_CHANGED,
-                target_id=str(victim_id),
-                metadata={
-                    "team": victim_team_color.name,
-                    "change": -self.amount,
-                    "remaining": victim_team.life_counters,
-                    "reason": "additional_life_counter",
-                },
-            )
-        ]
-
-        if victim_team.life_counters == 0:
-            from goa2.domain.models import TeamColor
-
-            winning_team = (
-                TeamColor.BLUE
-                if victim_team_color == TeamColor.RED
-                else TeamColor.RED
-            )
+        if winning_team is not None:
             events.append(
                 GameEvent(
                     event_type=GameEventType.GAME_OVER,
@@ -5839,7 +5843,9 @@ class SpendAdditionalLifeCounterStep(GameStep):
             )
             return StepResult(
                 is_finished=True,
-                new_steps=[TriggerGameOverStep(winning_team=winning_team)],
+                new_steps=[
+                    TriggerGameOverStep(winner=winning_team, condition="ANNIHILATION")
+                ],
                 events=events,
             )
 
