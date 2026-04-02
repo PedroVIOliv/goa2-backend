@@ -10,6 +10,8 @@ from goa2.domain.models import (
     Card,
     Hero,
     Unit,
+    Token,
+    TokenType,
     GamePhase,
     ResolutionStep,
 )
@@ -83,6 +85,7 @@ class GameState(BaseModel):
     # Registry for active non-Unit entities (Tokens, Traps, etc.)
     # Units are stored in self.teams, everything else goes here.
     misc_entities: Dict[BoardEntityID, Any] = Field(default_factory=dict)
+    token_pool: Dict[TokenType, List[Token]] = Field(default_factory=dict)
 
     # Master Record of positions for ALL entities (Units + Tokens)
     entity_locations: Dict[BoardEntityID, Hex] = Field(default_factory=dict)

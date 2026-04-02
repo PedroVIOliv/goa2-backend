@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
-from goa2.domain.models import Minion, MinionType, TeamColor, Token
+from goa2.domain.models import Minion, MinionType, TeamColor, Token, TokenType
 from goa2.domain.types import BoardEntityID
 
 if TYPE_CHECKING:
@@ -28,12 +28,20 @@ class EntityFactory:
 
     @staticmethod
     def create_token(
-        state: GameState, name: str, owner_id: Optional[str] = None
+        state: GameState,
+        token_type: TokenType,
+        name: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> Token:
         """
         Creates a new Token/Obstacle with a unique ID.
         Format: token_{seq}
         """
-        uid = state.create_entity_id("token")
+        uid = state.create_entity_id(token_type.value)
         owner = BoardEntityID(owner_id) if owner_id else None
-        return Token(id=BoardEntityID(uid), name=name, owner_id=owner)
+        return Token(
+            id=BoardEntityID(uid),
+            name=name or token_type.value.replace("_", " ").title(),
+            token_type=token_type,
+            owner_id=owner,
+        )

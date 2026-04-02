@@ -12,6 +12,13 @@ class MinionType(str, Enum):
     HEAVY = "HEAVY"
 
 
+class TokenType(str, Enum):
+    SMOKE_BOMB = "smoke_bomb"
+    GRENADE = "grenade"
+    MINE_BLAST = "mine_blast"
+    MINE_DUD = "mine_dud"
+
+
 class CardTier(str, Enum):
     I = "I"  # noqa: E741
     II = "II"  # noqa: E741
@@ -95,16 +102,19 @@ class StepType(str, Enum):
     SELECT = "select_step"
     DRAW_CARD = "draw_card"
     MOVE_UNIT = "move_unit"
+    MOVE_TOKEN = "move_token"
     MOVE_SEQUENCE = "move_sequence"
     FAST_TRAVEL = "fast_travel"
     FAST_TRAVEL_SEQUENCE = "fast_travel_sequence"
     REACTION_WINDOW = "reaction_window"
     REMOVE_UNIT = "remove_unit"
+    REMOVE_TOKEN = "remove_token"
     DEFEAT_UNIT = "defeat_unit"
     FIND_NEXT_ACTOR = "find_next_actor"
     RESOLVE_COMBAT = "resolve_combat"
     FINALIZE_HERO_TURN = "finalize_hero_turn"
     PLACE_UNIT = "place_unit"
+    PLACE_TOKEN = "place_token"
     SWAP_UNITS = "swap_units"
     SWAP_CARD = "swap_card"
     PUSH_UNIT = "push_unit"

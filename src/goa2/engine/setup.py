@@ -2,7 +2,17 @@ from typing import List
 import random
 
 from goa2.domain.state import GameState
-from goa2.domain.models import Team, TeamColor, GamePhase, CardTier, CardState
+from goa2.domain.models import (
+    Team,
+    TeamColor,
+    GamePhase,
+    CardTier,
+    CardState,
+    Token,
+    TokenType,
+    TOKEN_SUPPLY,
+)
+from goa2.domain.types import BoardEntityID
 from goa2.engine.map_loader import load_map
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.factory import EntityFactory
@@ -68,10 +78,13 @@ class GameSetup:
         GameSetup._setup_team(state, TeamColor.RED, red_heroes)
         GameSetup._setup_team(state, TeamColor.BLUE, blue_heroes)
 
-        # 6. Spawn Initial Minions (In Active Zone)
+        # 6. Build token pool
+        GameSetup._initialize_token_pool(state)
+
+        # 7. Spawn Initial Minions (In Active Zone)
         GameSetup._spawn_initial_minions(state, active_zone_id)
 
-        # 7. Finalize Setup
+        # 8. Finalize Setup
         # Flip Coin
         state.tie_breaker_team = random.choice([TeamColor.RED, TeamColor.BLUE])
 
@@ -86,6 +99,22 @@ class GameSetup:
         )
 
         return state
+
+    @staticmethod
+    def _initialize_token_pool(state: GameState):
+        for token_type in TokenType:
+            supply = TOKEN_SUPPLY.get(token_type, 0)
+            state.token_pool[token_type] = []
+
+            for _ in range(supply):
+                token_id = state.create_entity_id(token_type.value)
+                token = Token(
+                    id=BoardEntityID(token_id),
+                    name=token_type.value.replace("_", " ").title(),
+                    token_type=token_type,
+                )
+                state.register_entity(token, "token")
+                state.token_pool[token_type].append(token)
 
     @staticmethod
     def _setup_team(state: GameState, team_color: TeamColor, hero_names: List[str]):
