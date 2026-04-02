@@ -15,6 +15,7 @@ from goa2.domain.models import (
     MinionType,
     Token,
     TokenType,
+    TOKEN_SUPPLY,
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.models.effect import (
@@ -67,10 +68,8 @@ def test_game_setup_initializes_token_pool():
         "src/goa2/data/maps/forgotten_island.json", ["Arien"], ["Wasp"]
     )
     assert set(state.token_pool.keys()) == set(TokenType)
-    assert len(state.token_pool[TokenType.SMOKE_BOMB]) == 1
-    assert len(state.token_pool[TokenType.GRENADE]) == 1
-    assert len(state.token_pool[TokenType.MINE_BLAST]) == 2
-    assert len(state.token_pool[TokenType.MINE_DUD]) == 2
+    for token_type, expected_count in TOKEN_SUPPLY.items():
+        assert len(state.token_pool[token_type]) == expected_count
 
 
 def test_place_move_remove_token_lifecycle():

@@ -113,9 +113,7 @@ class GameStep(BaseModel):
 # -----------------------------------------------------------------------------
 
 
-def _remove_token_from_board(
-    state: GameState, token_id: str, actor_id: Optional[str] = None
-) -> tuple[Optional[Hex], int]:
+def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Optional[Hex], int]:
     from_hex = state.entity_locations.get(BoardEntityID(token_id))
     if not from_hex:
         return None, 0
@@ -131,9 +129,7 @@ def _remove_token_from_board(
     removed_effects = initial_count - len(state.active_effects)
 
     if removed_effects > 0:
-        print(
-            f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}"
-        )
+        print(f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}")
 
     return from_hex, removed_effects
 
@@ -154,9 +150,7 @@ class RemoveTokenStep(GameStep):
         if not isinstance(token, Token):
             return StepResult(is_finished=True)
 
-        from_hex, removed_effects = _remove_token_from_board(
-            state, target_id, str(state.current_actor_id) if state.current_actor_id else None
-        )
+        from_hex, removed_effects = _remove_token_from_board(state, target_id)
         if not from_hex:
             return StepResult(is_finished=True)
 
@@ -3762,7 +3756,9 @@ class LanePushStep(GameStep):
                                     f"   [PUSH] Spawning {candidate.id} at {sp.location}"
                                 )
                             else:
-                                occupant_id = str(tile.occupant_id) if tile and tile.occupant_id else None
+                                occupant_id = None
+                                if tile and tile.occupant_id:
+                                    occupant_id = str(tile.occupant_id)
                                 occupant = (
                                     state.misc_entities.get(BoardEntityID(occupant_id))
                                     if occupant_id
