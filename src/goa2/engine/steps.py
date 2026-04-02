@@ -120,7 +120,7 @@ def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Optional[
     if not from_hex:
         return None, 0
 
-    state.remove_unit(UnitID(token_id))
+    state.remove_entity(BoardEntityID(token_id))
 
     initial_count = len(state.active_effects)
     state.active_effects = [

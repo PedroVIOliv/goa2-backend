@@ -1,6 +1,7 @@
 import pytest
 
 from goa2.domain.board import Board, Zone
+from goa2.domain.tile import Tile
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
@@ -48,7 +49,7 @@ def _make_state() -> GameState:
         Hex(q=0, r=1, s=-1),
     ]
     for h in hexes:
-        board.tiles[h] = board.get_tile(h)
+        board.tiles[h] = Tile(hex=h)
 
     actor = Hero(id="hero_a", name="Hero A", team=TeamColor.RED, deck=[])
     state = GameState(
@@ -182,11 +183,15 @@ def test_lane_push_removes_token_blocking_spawn():
     board = Board()
     spawn_hex = Hex(q=1, r=-1, s=0)
     lane_hex = Hex(q=0, r=0, s=0)
-    board.tiles[spawn_hex] = board.get_tile(spawn_hex)
-    board.tiles[lane_hex] = board.get_tile(lane_hex)
+    far_hex = Hex(q=2, r=-2, s=0)
+    board.tiles[spawn_hex] = Tile(hex=spawn_hex)
+    board.tiles[lane_hex] = Tile(hex=lane_hex)
+    board.tiles[far_hex] = Tile(hex=far_hex)
+    board.zones["z_red_base"] = Zone(id="z_red_base", hexes=set(), neighbors=[])
     board.zones["z_mid"] = Zone(id="z_mid", hexes={lane_hex}, neighbors=[])
     board.zones["z_next"] = Zone(id="z_next", hexes={spawn_hex}, neighbors=[])
-    board.lane = ["z_mid", "z_next"]
+    board.zones["z_blue_base"] = Zone(id="z_blue_base", hexes={far_hex}, neighbors=[])
+    board.lane = ["z_red_base", "z_mid", "z_next", "z_blue_base"]
 
     spawn = SpawnPoint(
         location=spawn_hex,
