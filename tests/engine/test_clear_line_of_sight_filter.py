@@ -6,7 +6,7 @@ import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.models import Team, TeamColor, Hero, Minion
-from goa2.domain.models.enums import MinionType
+from goa2.domain.models.enums import MinionType, TokenType
 from goa2.domain.models.token import Token
 from goa2.domain.hex import Hex
 from goa2.engine.filters import ClearLineOfSightFilter
@@ -222,7 +222,7 @@ def test_multiple_intermediates_second_blocks(los_state):
 
 def test_token_on_intermediate_does_not_block(los_state):
     """Tokens are not units — they don't block line of sight for blocked_by_units."""
-    token = Token(id="token_1", name="Obstacle Token")
+    token = Token(id="token_1", name="Obstacle Token", token_type=TokenType.SMOKE_BOMB)
     los_state.register_entity(token)
     los_state.place_entity("token_1", Hex(q=1, r=0, s=-1))
     los_state.place_entity("enemy_b", Hex(q=2, r=0, s=-2))
@@ -232,7 +232,7 @@ def test_token_on_intermediate_does_not_block(los_state):
 
 def test_unit_still_blocks_with_token_present(los_state):
     """Unit on intermediate still blocks even when token is elsewhere."""
-    token = Token(id="token_1", name="Obstacle Token")
+    token = Token(id="token_1", name="Obstacle Token", token_type=TokenType.SMOKE_BOMB)
     los_state.register_entity(token)
     los_state.place_entity("token_1", Hex(q=1, r=0, s=-1))
     los_state.place_entity("minion_1", Hex(q=2, r=0, s=-2))

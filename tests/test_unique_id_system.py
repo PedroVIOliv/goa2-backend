@@ -1,7 +1,7 @@
 import pytest
 from goa2.domain.state import GameState
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, MinionType
+from goa2.domain.models import Team, TeamColor, MinionType, TokenType
 from goa2.domain.factory import EntityFactory
 
 def test_unique_id_generation():
@@ -37,8 +37,8 @@ def test_unique_id_generation():
     assert m1.name == "RED MELEE Minion"
     
     # 4. Use Factory to create Token
-    t1 = EntityFactory.create_token(state, "Trap")
-    assert t1.id == "token_5"
+    t1 = EntityFactory.create_token(state, TokenType.SMOKE_BOMB, "Trap")
+    assert t1.id == "smoke_bomb_5"
     assert t1.name == "Trap"
 
 def test_id_collision_prevention():
@@ -51,7 +51,7 @@ def test_id_collision_prevention():
     )
     
     # Manually insert an entity
-    existing_token = EntityFactory.create_token(state, "Existing")
+    existing_token = EntityFactory.create_token(state, TokenType.SMOKE_BOMB, "Existing")
     state.register_entity(existing_token, "token")
     
     # Attempt to register same entity again
@@ -59,7 +59,7 @@ def test_id_collision_prevention():
         state.register_entity(existing_token, "token")
         
     # Attempt to register a new entity with the same ID (simulated collision)
-    collision_token = EntityFactory.create_token(state, "Imposter")
+    collision_token = EntityFactory.create_token(state, TokenType.SMOKE_BOMB, "Imposter")
     collision_token.id = existing_token.id # Force ID match
     
     with pytest.raises(ValueError, match="ID Collision"):

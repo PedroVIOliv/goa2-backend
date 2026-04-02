@@ -29,9 +29,9 @@ class EntityFactory:
     @staticmethod
     def create_token(
         state: GameState,
+        token_type: TokenType,
         name: str,
         owner_id: Optional[str] = None,
-        token_type: TokenType = TokenType.SMOKE_BOMB,
     ) -> Token:
         """
         Creates a new Token/Obstacle with a unique ID.

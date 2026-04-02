@@ -16,6 +16,7 @@ from goa2.domain.models import (
     Hero,
     Token,
 )
+from goa2.domain.models.enums import TokenType
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
 from goa2.engine.steps import SelectStep, TargetType
@@ -64,7 +65,7 @@ def state_with_units_and_tokens():
     state.place_entity("enemy", Hex(q=1, r=0, s=-1))
 
     # Create and place a token
-    token = Token(id=BoardEntityID("trap_1"), name="Trap")
+    token = Token(id=BoardEntityID("trap_1"), name="Trap", token_type=TokenType.SMOKE_BOMB)
     state.misc_entities[BoardEntityID("trap_1")] = token
     state.place_entity(BoardEntityID("trap_1"), Hex(q=1, r=1, s=-2))
 
@@ -93,7 +94,11 @@ class TestGetUnitsAndTokens:
     def test_excludes_non_placed_entities(self, state_with_units_and_tokens):
         """Test that only placed entities are returned."""
         # Create a token but don't place it
-        unplaced_token = Token(id=BoardEntityID("unplaced"), name="Unplaced")
+        unplaced_token = Token(
+            id=BoardEntityID("unplaced"),
+            name="Unplaced",
+            token_type=TokenType.SMOKE_BOMB,
+        )
         state_with_units_and_tokens.misc_entities[BoardEntityID("unplaced")] = (
             unplaced_token
         )

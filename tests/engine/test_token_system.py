@@ -95,6 +95,7 @@ def test_place_move_remove_token_lifecycle():
 
     remove_res = RemoveTokenStep(token_id="smoke_bomb_1").resolve(state, context)
     assert "smoke_bomb_1" not in state.entity_locations
+    assert "smoke_bomb_1" in state.misc_entities
     assert any(e.event_type == GameEventType.TOKEN_REMOVED for e in remove_res.events)
 
 
@@ -211,4 +212,26 @@ def test_lane_push_removes_token_blocking_spawn():
 
     LanePushStep(losing_team=TeamColor.BLUE).resolve(state, {})
     assert "smoke_bomb_1" not in state.entity_locations
+    assert "smoke_bomb_1" in state.misc_entities
     assert state.entity_locations.get("m1") == spawn_hex
+
+
+def test_place_token_overflow_requires_selection():
+    state = _make_state()
+    t1 = Token(id="smoke_bomb_1", name="Smoke Bomb 1", token_type=TokenType.SMOKE_BOMB)
+    t2 = Token(id="smoke_bomb_2", name="Smoke Bomb 2", token_type=TokenType.SMOKE_BOMB)
+    state.register_entity(t1)
+    state.register_entity(t2)
+    state.token_pool[TokenType.SMOKE_BOMB] = [t1, t2]
+    state.place_entity("smoke_bomb_1", Hex(q=1, r=-1, s=0))
+    state.place_entity("smoke_bomb_2", Hex(q=2, r=-2, s=0))
+
+    res = PlaceTokenStep(
+        token_type=TokenType.SMOKE_BOMB,
+        hex_key="target_hex",
+    ).resolve(state, {"target_hex": Hex(q=0, r=1, s=-1)})
+
+    assert res.is_finished is True
+    assert res.requires_input is False
+    assert len(res.new_steps) == 3
+    assert res.new_steps[0].type.value == "select_step"

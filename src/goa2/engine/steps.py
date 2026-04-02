@@ -16,6 +16,7 @@ from goa2.domain.models import (
     StepType,
     TargetType,
     CardContainerType,
+    FilterType,
     Hero,
     Token,
     TokenType,
@@ -34,6 +35,7 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
+from goa2.engine.filters import UnitTypeFilter, FilterCondition, TokenTypeFilter
 from goa2.domain.input import (
     InputRequest,
     InputRequestType,
@@ -118,7 +120,7 @@ def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Optional[
     if not from_hex:
         return None, 0
 
-    state.remove_entity(BoardEntityID(token_id))
+    state.remove_unit(UnitID(token_id))
 
     initial_count = len(state.active_effects)
     state.active_effects = [
@@ -174,6 +176,7 @@ class PlaceTokenStep(GameStep):
     hex_key: str = "target_hex"
     owner_id_key: Optional[str] = None
     output_key: Optional[str] = None
+    overflow_selection_key: str = "overflow_token_to_remove"
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         dest_val = context.get(self.hex_key)
@@ -204,21 +207,32 @@ class PlaceTokenStep(GameStep):
             ]
             if not placed:
                 return StepResult(is_finished=True)
-            oldest = sorted(placed, key=lambda t: str(t.id))[0]
-            old_from, removed_effects = _remove_token_from_board(state, str(oldest.id))
-            if old_from:
-                events.append(
-                    GameEvent(
-                        event_type=GameEventType.TOKEN_REMOVED,
-                        actor_id=str(state.current_actor_id)
-                        if state.current_actor_id
-                        else None,
-                        target_id=str(oldest.id),
-                        from_hex=_hex_dict(old_from),
-                        metadata={"effects_removed": removed_effects},
-                    )
-                )
-            available = oldest
+            return StepResult(
+                is_finished=True,
+                new_steps=[
+                    SelectStep(
+                        target_type=TargetType.UNIT_OR_TOKEN,
+                        prompt=f"Select a {self.token_type.value} token to remove from the board.",
+                        output_key=self.overflow_selection_key,
+                        skip_immunity_filter=True,
+                        skip_self_filter=True,
+                        is_mandatory=True,
+                        filters=[
+                            UnitTypeFilter(unit_type="TOKEN"),
+                            TokenTypeFilter(token_type=self.token_type),
+                        ],
+                        override_player_id_key=self.owner_id_key,
+                    ),
+                    RemoveTokenStep(token_key=self.overflow_selection_key),
+                    PlaceTokenStep(
+                        token_type=self.token_type,
+                        hex_key=self.hex_key,
+                        owner_id_key=self.owner_id_key,
+                        output_key=self.output_key,
+                        overflow_selection_key=self.overflow_selection_key,
+                    ),
+                ],
+            )
 
         if owner_id is not None:
             available.owner_id = HeroID(str(owner_id))
@@ -794,11 +808,6 @@ class MarkPassiveUsedStep(GameStep):
             )
 
         return StepResult(is_finished=True)
-
-
-# Import is intentionally here (not at top) to avoid circular deps
-# ruff: noqa: E402
-from goa2.engine.filters import FilterCondition
 
 
 class SelectStep(GameStep):

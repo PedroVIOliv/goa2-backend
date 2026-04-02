@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Optional, List, Any, Literal
 from pydantic import BaseModel
 
-from goa2.domain.models.enums import ActionType, CardColor, CardContainerType, MinionType
+from goa2.domain.models.enums import (
+    ActionType,
+    CardColor,
+    CardContainerType,
+    MinionType,
+    TokenType,
+)
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.models import Minion, Hero, Unit, FilterType
@@ -198,6 +204,19 @@ class UnitTypeFilter(FilterCondition):
         elif self.unit_type == "TOKEN":
             return isinstance(entity, Token)
         return False
+
+
+class TokenTypeFilter(FilterCondition):
+    type: FilterType = FilterType.TOKEN_TYPE
+    token_type: TokenType
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        entity = (
+            state.get_entity(BoardEntityID(candidate))
+            if isinstance(candidate, str)
+            else None
+        )
+        return isinstance(entity, Token) and entity.token_type == self.token_type
 
 
 class MinionTypesFilter(FilterCondition):

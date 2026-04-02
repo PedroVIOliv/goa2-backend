@@ -214,6 +214,7 @@ class FilterType(str, Enum):
     CLEAR_LINE_OF_SIGHT = "clear_line_of_sight_filter"
     HAS_MARKER = "has_marker_filter"
     UNIT_ON_SPAWN_POINT = "unit_on_spawn_point_filter"
+    TOKEN_TYPE = "token_type_filter"
 
 
 class TargetType(str, Enum):

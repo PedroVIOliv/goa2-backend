@@ -7,6 +7,7 @@ from goa2.domain.board import Board
 from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.models.token import Token
+from goa2.domain.models.enums import TokenType
 from goa2.domain.hex import Hex
 from goa2.engine.filters import (
     OrFilter,
@@ -32,7 +33,7 @@ def composite_state():
     h1 = Hero(id="h1", name="H1", team=TeamColor.RED, deck=[])
     h2 = Hero(id="h2", name="H2", team=TeamColor.BLUE, deck=[])
     m1 = Minion(id="m1", name="M1", type=MinionType.MELEE, team=TeamColor.RED)
-    token = Token(id="token_1", name="Obstacle Token")
+    token = Token(id="token_1", name="Obstacle Token", token_type=TokenType.SMOKE_BOMB)
 
     state = GameState(
         board=board,
