@@ -798,12 +798,16 @@ Events describe what happened during a game action. They are meant for animation
 | Event Type | Description | Key fields |
 |------------|-------------|------------|
 | `UNIT_MOVED` | A unit walked to a new hex | `actor_id`, `from_hex`, `to_hex` |
+| `TOKEN_MOVED` | A token moved to a new hex | `target_id`, `from_hex`, `to_hex` |
 | `UNIT_PLACED` | A unit was placed on the board (spawn, summon) | `actor_id`, `to_hex` |
+| `TOKEN_PLACED` | A token was placed on the board | `actor_id`, `target_id`, `to_hex` |
 | `UNIT_PUSHED` | A unit was forcibly moved | `actor_id`, `from_hex`, `to_hex` |
+| `TOKEN_PUSHED` | A token was forcibly moved | `actor_id`, `target_id`, `from_hex`, `to_hex` |
 | `UNITS_SWAPPED` | Two units exchanged positions | `actor_id`, `target_id`, `from_hex`, `to_hex` |
 | `COMBAT_RESOLVED` | An attack was resolved | `actor_id`, `target_id`, `metadata` (combat details) |
 | `UNIT_DEFEATED` | A unit was defeated | `actor_id` (defeated unit) |
 | `UNIT_REMOVED` | A unit was removed from the board | `actor_id` |
+| `TOKEN_REMOVED` | A token was removed from the board | `target_id`, `from_hex` |
 | `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details) |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |

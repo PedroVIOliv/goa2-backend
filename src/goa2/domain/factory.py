@@ -29,9 +29,9 @@ class EntityFactory:
     @staticmethod
     def create_token(
         state: GameState,
-        token_type: TokenType,
-        name: Optional[str] = None,
+        name: str,
         owner_id: Optional[str] = None,
+        token_type: TokenType = TokenType.SMOKE_BOMB,
     ) -> Token:
         """
         Creates a new Token/Obstacle with a unique ID.
@@ -41,7 +41,7 @@ class EntityFactory:
         owner = BoardEntityID(owner_id) if owner_id else None
         return Token(
             id=BoardEntityID(uid),
-            name=name or token_type.value.replace("_", " ").title(),
+            name=name,
             token_type=token_type,
             owner_id=owner,
         )

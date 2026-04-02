@@ -17,6 +17,8 @@ from goa2.domain.models import (
     TargetType,
     CardContainerType,
     Hero,
+    Token,
+    TokenType,
 )
 from goa2.domain.models.effect import (
     DurationType,
@@ -109,6 +111,195 @@ class GameStep(BaseModel):
 # -----------------------------------------------------------------------------
 # Common Steps
 # -----------------------------------------------------------------------------
+
+
+def _remove_token_from_board(
+    state: GameState, token_id: str, actor_id: Optional[str] = None
+) -> tuple[Optional[Hex], int]:
+    from_hex = state.entity_locations.get(BoardEntityID(token_id))
+    if not from_hex:
+        return None, 0
+
+    state.remove_entity(BoardEntityID(token_id))
+
+    initial_count = len(state.active_effects)
+    state.active_effects = [
+        e
+        for e in state.active_effects
+        if e.source_id != token_id and e.scope.origin_id != token_id
+    ]
+    removed_effects = initial_count - len(state.active_effects)
+
+    if removed_effects > 0:
+        print(
+            f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}"
+        )
+
+    return from_hex, removed_effects
+
+
+class RemoveTokenStep(GameStep):
+    type: StepType = StepType.REMOVE_TOKEN
+    token_id: Optional[str] = None
+    token_key: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        target_id = self.token_id
+        if self.token_key:
+            target_id = context.get(self.token_key)
+        if not target_id:
+            return StepResult(is_finished=True)
+
+        token = state.misc_entities.get(BoardEntityID(target_id))
+        if not isinstance(token, Token):
+            return StepResult(is_finished=True)
+
+        from_hex, removed_effects = _remove_token_from_board(
+            state, target_id, str(state.current_actor_id) if state.current_actor_id else None
+        )
+        if not from_hex:
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.TOKEN_REMOVED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=target_id,
+                    from_hex=_hex_dict(from_hex),
+                    metadata={"effects_removed": removed_effects},
+                )
+            ],
+        )
+
+
+class PlaceTokenStep(GameStep):
+    type: StepType = StepType.PLACE_TOKEN
+    token_type: TokenType
+    hex_key: str = "target_hex"
+    owner_id_key: Optional[str] = None
+    output_key: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        dest_val = context.get(self.hex_key)
+        if not dest_val:
+            return StepResult(is_finished=True)
+
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
+        tile = state.board.get_tile(dest_hex)
+        if tile and tile.is_occupied:
+            print(f"   [TOKEN] Cannot place {self.token_type.value} at {dest_hex}: occupied.")
+            return StepResult(is_finished=True)
+
+        owner_id = context.get(self.owner_id_key) if self.owner_id_key else None
+        if owner_id is None:
+            owner_id = state.current_actor_id
+
+        pool = state.token_pool.get(self.token_type, [])
+        available = next(
+            (t for t in pool if BoardEntityID(str(t.id)) not in state.entity_locations),
+            None,
+        )
+
+        events: List[GameEvent] = []
+
+        if available is None:
+            placed = [
+                t for t in pool if BoardEntityID(str(t.id)) in state.entity_locations
+            ]
+            if not placed:
+                return StepResult(is_finished=True)
+            oldest = sorted(placed, key=lambda t: str(t.id))[0]
+            old_from, removed_effects = _remove_token_from_board(state, str(oldest.id))
+            if old_from:
+                events.append(
+                    GameEvent(
+                        event_type=GameEventType.TOKEN_REMOVED,
+                        actor_id=str(state.current_actor_id)
+                        if state.current_actor_id
+                        else None,
+                        target_id=str(oldest.id),
+                        from_hex=_hex_dict(old_from),
+                        metadata={"effects_removed": removed_effects},
+                    )
+                )
+            available = oldest
+
+        if owner_id is not None:
+            available.owner_id = HeroID(str(owner_id))
+
+        state.place_entity(BoardEntityID(str(available.id)), dest_hex)
+        if self.output_key:
+            context[self.output_key] = str(available.id)
+
+        events.append(
+            GameEvent(
+                event_type=GameEventType.TOKEN_PLACED,
+                actor_id=str(owner_id) if owner_id else None,
+                target_id=str(available.id),
+                to_hex=_hex_dict(dest_hex),
+                metadata={"token_type": self.token_type.value},
+            )
+        )
+        return StepResult(is_finished=True, events=events)
+
+
+class MoveTokenStep(GameStep):
+    type: StepType = StepType.MOVE_TOKEN
+    token_key: str
+    destination_key: str = "target_hex"
+    range_val: int = 1
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        token_id = context.get(self.token_key)
+        dest_val = context.get(self.destination_key)
+        if not token_id or not dest_val:
+            return StepResult(is_finished=True)
+
+        token = state.misc_entities.get(BoardEntityID(str(token_id)))
+        if not isinstance(token, Token):
+            return StepResult(is_finished=True)
+
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
+        from_hex = state.entity_locations.get(BoardEntityID(str(token_id)))
+        if not from_hex:
+            return StepResult(is_finished=True)
+
+        tile = state.board.get_tile(dest_hex)
+        if tile and tile.is_occupied and str(tile.occupant_id) != str(token_id):
+            print(f"   [TOKEN] Cannot move {token_id} to {dest_hex}: occupied.")
+            return StepResult(is_finished=True)
+
+        if from_hex != dest_hex:
+            is_valid = rules.validate_movement_path(
+                board=state.board,
+                start=from_hex,
+                end=dest_hex,
+                max_steps=self.range_val,
+                state=state,
+                actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+            )
+            if not is_valid:
+                print(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")
+                return StepResult(is_finished=True)
+        else:
+            return StepResult(is_finished=True)
+
+        state.place_entity(BoardEntityID(str(token_id)), dest_hex)
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.TOKEN_MOVED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(token_id),
+                    from_hex=_hex_dict(from_hex),
+                    to_hex=_hex_dict(dest_hex),
+                    metadata={"range": self.range_val},
+                )
+            ],
+        )
 
 
 class CreateEffectStep(GameStep):
@@ -2537,7 +2728,7 @@ class PushUnitStep(GameStep):
             if ctx_dist is not None:
                 actual_distance = int(ctx_dist)
 
-        target_loc = state.unit_locations.get(UnitID(actual_target_id))
+        target_loc = state.entity_locations.get(BoardEntityID(actual_target_id))
         if not target_loc:
             return StepResult(is_finished=True)
 
@@ -2616,7 +2807,7 @@ class PushUnitStep(GameStep):
             print(
                 f"   [LOGIC] Pushing {actual_target_id} from {target_loc} to {current_loc} ({pushed_dist} spaces)"
             )
-            state.move_unit(UnitID(actual_target_id), current_loc)
+            state.place_entity(BoardEntityID(actual_target_id), current_loc)
         else:
             print(f"   [LOGIC] Push had no effect for {actual_target_id}")
 
@@ -2632,18 +2823,24 @@ class PushUnitStep(GameStep):
         from goa2.domain.models.enums import PassiveTrigger
 
         context["push_victim_id"] = actual_target_id
-        post_push_steps: List[GameStep] = [
-            CheckPassiveAbilitiesStep(
-                trigger=PassiveTrigger.AFTER_PUSH.value
+        post_push_steps: List[GameStep] = []
+        target_misc = state.misc_entities.get(BoardEntityID(actual_target_id))
+        is_token_target = isinstance(target_misc, Token)
+        if not is_token_target:
+            post_push_steps.append(
+                CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PUSH.value)
             )
-        ]
 
         return StepResult(
             is_finished=True,
             new_steps=post_push_steps,
             events=[
                 GameEvent(
-                    event_type=GameEventType.UNIT_PUSHED,
+                    event_type=(
+                        GameEventType.TOKEN_PUSHED
+                        if is_token_target
+                        else GameEventType.UNIT_PUSHED
+                    ),
                     actor_id=str(actor_id) if actor_id else None,
                     target_id=actual_target_id,
                     from_hex=_hex_dict(target_loc),
@@ -3198,9 +3395,34 @@ class ResolveCardStep(GameStep):
                         )
 
                     elif act_type == ActionType.CLEAR:
-                        steps_list.append(
-                            LogMessageStep(message=f"{self.hero_id} clears tokens.")
-                        )
+                        hero_loc = state.entity_locations.get(BoardEntityID(self.hero_id))
+                        if not hero_loc:
+                            steps_list.append(
+                                LogMessageStep(
+                                    message=f"{self.hero_id} attempted clear but is not on board."
+                                )
+                            )
+                        else:
+                            adjacent_tokens: List[str] = []
+                            for adj in hero_loc.neighbors():
+                                tile = state.board.get_tile(adj)
+                                if not tile or not tile.occupant_id:
+                                    continue
+                                occupant = state.misc_entities.get(
+                                    BoardEntityID(str(tile.occupant_id))
+                                )
+                                if isinstance(occupant, Token):
+                                    adjacent_tokens.append(str(tile.occupant_id))
+                            if adjacent_tokens:
+                                steps_list.extend(
+                                    [RemoveTokenStep(token_id=tid) for tid in adjacent_tokens]
+                                )
+                            else:
+                                steps_list.append(
+                                    LogMessageStep(
+                                        message=f"{self.hero_id} clears no adjacent tokens."
+                                    )
+                                )
 
                     elif act_type == ActionType.HOLD:
                         steps_list.append(
@@ -3540,12 +3762,25 @@ class LanePushStep(GameStep):
                                     f"   [PUSH] Spawning {candidate.id} at {sp.location}"
                                 )
                             else:
-                                print(
-                                    f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)"
+                                occupant_id = str(tile.occupant_id) if tile and tile.occupant_id else None
+                                occupant = (
+                                    state.misc_entities.get(BoardEntityID(occupant_id))
+                                    if occupant_id
+                                    else None
                                 )
-                                pending_displacements.append(
-                                    (candidate.id, sp.location)
-                                )
+                                if isinstance(occupant, Token) and occupant_id:
+                                    _remove_token_from_board(state, occupant_id)
+                                    state.move_unit(candidate.id, sp.location)
+                                    print(
+                                        f"   [PUSH] Removed token {occupant_id} and spawned {candidate.id} at {sp.location}"
+                                    )
+                                else:
+                                    print(
+                                        f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)"
+                                    )
+                                    pending_displacements.append(
+                                        (candidate.id, sp.location)
+                                    )
 
         if pending_displacements:
             # Explicitly type cast the list to match ResolveDisplacementStep's expectation
@@ -3903,19 +4138,21 @@ class EndPhaseCleanupStep(GameStep):
         EffectManager.cleanup_stale_effects(state)
 
         self._retrieve_cards(state)
-        self._clear_tokens(state)
+        token_events = self._clear_tokens(state)
         self._level_up(state)
 
         if state.pending_upgrades:
             print("   [PHASE] Level Up Phase started.")
-            return StepResult(is_finished=True, new_steps=[ResolveUpgradesStep()])
+            return StepResult(
+                is_finished=True, new_steps=[ResolveUpgradesStep()], events=token_events
+            )
 
         state.round += 1
         state.turn = 1
         state.phase = GamePhase.PLANNING
         print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
 
-        return StepResult(is_finished=True)
+        return StepResult(is_finished=True, events=token_events)
 
     def _retrieve_cards(self, state: GameState):
         for team in state.teams.values():
@@ -3930,8 +4167,22 @@ class EndPhaseCleanupStep(GameStep):
                     )
                 hero.retrieve_cards()
 
-    def _clear_tokens(self, state: GameState):
-        pass
+    def _clear_tokens(self, state: GameState) -> List[GameEvent]:
+        events: List[GameEvent] = []
+        for token_list in state.token_pool.values():
+            for token in token_list:
+                from_hex, removed_effects = _remove_token_from_board(state, str(token.id))
+                if from_hex:
+                    events.append(
+                        GameEvent(
+                            event_type=GameEventType.TOKEN_REMOVED,
+                            actor_id=None,
+                            target_id=str(token.id),
+                            from_hex=_hex_dict(from_hex),
+                            metadata={"effects_removed": removed_effects},
+                        )
+                    )
+        return events
 
     def _level_up(self, state: GameState):
         """

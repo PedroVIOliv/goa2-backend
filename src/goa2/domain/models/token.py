@@ -19,7 +19,7 @@ class Token(BoardEntity):
     Inherits `id` and `name` from GameEntity/BoardEntity.
     """
 
-    token_type: TokenType
+    token_type: TokenType = TokenType.SMOKE_BOMB
     owner_id: Optional[HeroID] = None
     # Tokens are obstacles by default (as per rules: "Tokens are Obstacles")
     # This logic is handled by the fact that if a Tile has an occupant_id, it is occupied.
