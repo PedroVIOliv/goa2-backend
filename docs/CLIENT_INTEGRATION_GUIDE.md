@@ -499,7 +499,8 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
     "entity_locations": { ... }
   },
   "effects": [ ... ],
-  "markers": { ... }
+  "markers": { ... },
+  "tokens": [ ... ]
 }
 ```
 
@@ -516,6 +517,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `active_zone_id` | string/null | Currently active zone (if applicable) |
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |
+| `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 
 ### Team data
 
@@ -639,6 +641,7 @@ Active area effects on the board:
   "scope": {
     "shape": "SINGLE",
     "range": 0,
+    "origin_id": null,
     "origin": {"q": 0, "r": 0, "s": 0},
     "affects": "ALLIES"
   },
@@ -646,6 +649,47 @@ Active area effects on the board:
   "stat_value": 1
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique effect ID |
+| `type` | string | Effect type (e.g. `"los_blocker"`, `"placement_prevention"`, `"area_stat_modifier"`) |
+| `source_card_id` | string/null | Card that created this effect. `null` for token-bound effects |
+| `duration` | string | `"THIS_TURN"`, `"THIS_ROUND"`, `"PASSIVE"`, or `"NEXT_TURN"` |
+| `is_active` | boolean | Whether the effect is currently active |
+| `scope.shape` | string | `"point"`, `"radius"`, `"adjacent"`, `"line"`, `"zone"`, `"global"` |
+| `scope.range` | int | Range for radius/line shapes |
+| `scope.origin_id` | string/null | Entity ID the effect is anchored to (e.g. a token ID). Look up in `entity_locations` for position |
+| `scope.origin` | hex/null | Fixed hex origin (overrides `origin_id` when present) |
+| `scope.affects` | string | Who is affected (e.g. `"all_units"`, `"enemy_heroes"`) |
+| `stat_type` | string/null | For stat modifier effects |
+| `stat_value` | int | Modifier amount |
+
+**Token-bound effects:** When `source_card_id` is `null` and `scope.origin_id` points to a token, the effect's lifecycle is tied to the token — it persists as long as the token is on the board and is automatically removed when the token is removed.
+
+### Tokens
+
+Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from units. They appear in the `tokens` array and in `entity_locations`.
+
+```json
+{
+  "id": "smoke_bomb_1",
+  "name": "Smoke Bomb",
+  "token_type": "smoke_bomb",
+  "owner_id": "hero_min",
+  "hex": {"q": 1, "r": -1, "s": 0}
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
+| `name` | string | Display name |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"` |
+| `owner_id` | string/null | Hero ID that owns/placed this token |
+| `hex` | hex/null | Current position on the board. `null` if the token exists but is not placed |
+
+Tokens are obstacles — any tile with a token as `occupant_id` is impassable. When a token is removed from the board, any effects anchored to it (via `scope.origin_id`) are automatically removed.
 
 ### Markers
 

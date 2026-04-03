@@ -343,6 +343,12 @@ class CreateEffectStep(GameStep):
     # Origin action type - tracks whether effect came from skill or attack
     origin_action_type: Optional[ActionType] = None
 
+    # Dynamic origin: read scope.origin_id from context at resolve time
+    origin_id_key: Optional[str] = None
+
+    # Token-bound effect: skip card binding so lifecycle is tied to token, not card
+    is_token_effect: bool = False
+
     # Static Barrier parameters (Wasp)
     barrier_radius: int = 0  # The radius boundary for the barrier
     barrier_origin_id: Optional[str] = None  # Entity ID for radius calculation
@@ -358,10 +364,12 @@ class CreateEffectStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        # Resolve source card ID
-        card_id = self.source_card_id
-        if card_id is None and self.use_context_card:
-            card_id = context.get("current_card_id")
+        # Resolve source card ID (skip for token-bound effects)
+        card_id = None
+        if not self.is_token_effect:
+            card_id = self.source_card_id
+            if card_id is None and self.use_context_card:
+                card_id = context.get("current_card_id")
 
         # Resolve origin action type: use explicit value or fall back to context
         action_type = self.origin_action_type
@@ -380,6 +388,15 @@ class CreateEffectStep(GameStep):
 
         from goa2.engine.effect_manager import EffectManager
 
+        # Resolve dynamic origin_id from context if specified
+        resolved_scope = self.scope
+        if self.origin_id_key:
+            origin_id_from_ctx = context.get(self.origin_id_key)
+            if origin_id_from_ctx:
+                resolved_scope = self.scope.model_copy(
+                    update={"origin_id": str(origin_id_from_ctx)}
+                )
+
         EffectManager.create_effect(
             state=state,
             source_id=(
@@ -387,7 +404,7 @@ class CreateEffectStep(GameStep):
             ),
             source_card_id=card_id,
             effect_type=self.effect_type,
-            scope=self.scope,
+            scope=resolved_scope,
             duration=self.duration,
             restrictions=self.restrictions,
             displacement_blocks=self.displacement_blocks,

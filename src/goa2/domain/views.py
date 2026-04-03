@@ -15,6 +15,7 @@ from goa2.domain.types import HeroID
 from goa2.domain.models.card import Card
 from goa2.domain.models.unit import Hero, Minion
 from goa2.domain.models.enums import GamePhase, StatType
+from goa2.domain.types import BoardEntityID
 
 
 def build_view(
@@ -51,6 +52,9 @@ def build_view(
     # Build markers view (public info)
     markers_view = _build_markers_view(state)
 
+    # Build tokens view (public info)
+    tokens_view = _build_tokens_view(state)
+
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id)
 
@@ -68,6 +72,7 @@ def build_view(
         "board": board_view,
         "effects": effects_view,
         "markers": markers_view,
+        "tokens": tokens_view,
     }
 
 
@@ -343,6 +348,7 @@ def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
             "scope": {
                 "shape": effect.scope.shape.value,
                 "range": effect.scope.range,
+                "origin_id": effect.scope.origin_id,
                 "origin": (
                     {"q": origin_hex.q, "r": origin_hex.r, "s": origin_hex.s}
                     if origin_hex
@@ -356,6 +362,26 @@ def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
         effects_view.append(effect_view)
 
     return effects_view
+
+
+def _build_tokens_view(state: GameState) -> List[Dict[str, Any]]:
+    """Build a view of tokens on the board (public info)."""
+    tokens_view = []
+    for tokens in state.token_pool.values():
+        for token in tokens:
+            loc = state.entity_locations.get(BoardEntityID(str(token.id)))
+            tokens_view.append({
+                "id": str(token.id),
+                "name": token.name,
+                "token_type": token.token_type.value,
+                "owner_id": str(token.owner_id) if token.owner_id else None,
+                "hex": (
+                    {"q": loc.q, "r": loc.r, "s": loc.s}
+                    if loc
+                    else None
+                ),
+            })
+    return tokens_view
 
 
 def _build_markers_view(state: GameState) -> Dict[str, Any]:
