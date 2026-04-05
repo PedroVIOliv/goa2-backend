@@ -46,6 +46,8 @@ class GameEventType(str, Enum):
     # Turn flow
     TURN_ENDED = "TURN_ENDED"
     GAME_OVER = "GAME_OVER"
+    # Mines
+    MINE_TRIGGERED = "MINE_TRIGGERED"
 
 
 def _hex_dict(h: Optional[Hex]) -> Optional[Dict[str, int]]:

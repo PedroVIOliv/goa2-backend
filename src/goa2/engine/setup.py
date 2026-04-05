@@ -106,12 +106,15 @@ class GameSetup:
             supply = TOKEN_SUPPLY.get(token_type, 0)
             state.token_pool[token_type] = []
 
+            is_mine = token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
             for _ in range(supply):
-                token_id = state.create_entity_id(token_type.value)
+                token_id = state.create_entity_id("mine" if is_mine else token_type.value)
                 token = Token(
                     id=BoardEntityID(token_id),
                     name=token_type.value.replace("_", " ").title(),
                     token_type=token_type,
+                    is_passable=is_mine,
+                    is_facedown=is_mine,
                 )
                 state.register_entity(token, "token")
                 state.token_pool[token_type].append(token)

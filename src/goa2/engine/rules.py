@@ -1,10 +1,11 @@
-from typing import Set, Optional, List, Deque
+from typing import Set, Optional, List, Dict, Deque
 from collections import deque
 from goa2.domain.hex import Hex
 from goa2.domain.board import Board
 from goa2.domain.state import GameState
 from goa2.domain.models import ActionType, Minion, TeamColor
 from goa2.domain.models.unit import Unit
+from goa2.domain.types import BoardEntityID
 from goa2.engine.topology import get_topology_service
 
 
@@ -62,8 +63,17 @@ def find_reachable_hexes(
                     is_obs = board.get_tile(neighbor).is_obstacle
 
             if is_obs:
-                # Obstacles block movement — can't move to or through them
-                visited.add(neighbor)
+                passable_tok = (
+                    state.validator.is_passable_token(state, neighbor)
+                    if state and state.validator
+                    else False
+                )
+                if passable_tok:
+                    visited.add(neighbor)
+                    queue.append((neighbor, dist + 1))
+                else:
+                    visited.add(neighbor)
+                    continue
                 continue
 
             reachable.add(neighbor)
@@ -147,7 +157,13 @@ def validate_movement_path(
                         is_obs = board.get_tile(neighbor).is_obstacle
 
                     if is_obs and neighbor != end:
-                        continue
+                        passable_tok = (
+                            state.validator.is_passable_token(state, neighbor)
+                            if state and state.validator
+                            else False
+                        )
+                        if not passable_tok:
+                            continue
 
                 visited.add(neighbor)
                 queue.append((neighbor, dist + 1))
@@ -198,7 +214,11 @@ def is_immune(target: Unit, state: GameState) -> bool:
         actor = state.get_entity(actor_id)
         target_team = getattr(target, "team", None)
         actor_team = getattr(actor, "team", None) if actor else None
-        if target_team is not None and actor_team is not None and target_team != actor_team:
+        if (
+            target_team is not None
+            and actor_team is not None
+            and target_team != actor_team
+        ):
             for effect in state.active_effects:
                 if effect.effect_type != EffectType.IMMUNITY_ENEMY_ACTIONS:
                     continue
@@ -347,3 +367,96 @@ def get_safe_zones_for_fast_travel(
             safe_zones.append(z_id)
 
     return safe_zones
+
+
+class MinePathOption:
+    """A possible path to a hex, with the set of mines triggered along the way."""
+
+    __slots__ = ("mine_ids", "path")
+
+    def __init__(self, mine_ids: Set[str], path: List[Hex]):
+        self.mine_ids = mine_ids
+        self.path = path
+
+
+def find_reachable_with_mines(
+    board: Board,
+    start: Hex,
+    max_steps: int,
+    state: GameState,
+    actor_id: Optional[str] = None,
+    moving_team: Optional["TeamColor"] = None,
+) -> Dict[Hex, List[MinePathOption]]:
+    if max_steps <= 0:
+        return {}
+
+    topology = get_topology_service()
+
+    all_options: Dict[Hex, List[MinePathOption]] = {}
+
+    visited: set = set()
+    # Each entry: (current_hex, distance, mines_passed_frozenset, path_tuple)
+    queue: Deque[tuple[Hex, int, frozenset, tuple]] = deque(
+        [(start, 0, frozenset(), (start,))]
+    )
+    visited.add((start, frozenset()))
+
+    while queue:
+        current, dist, mines_passed, path = queue.popleft()
+
+        if current != start:
+            is_passable = state.validator.is_passable_token(state, current)
+            if not is_passable:
+                mine_set = set(mines_passed)
+
+                if current not in all_options:
+                    all_options[current] = [
+                        MinePathOption(mine_set, list(path))
+                    ]
+                else:
+                    existing_sets = [o.mine_ids for o in all_options[current]]
+                    if mine_set not in existing_sets:
+                        all_options[current].append(
+                            MinePathOption(mine_set, list(path))
+                        )
+
+        if dist >= max_steps:
+            continue
+
+        for neighbor in current.neighbors():
+            if not topology.are_connected(current, neighbor, state):
+                continue
+            if not state.board.is_on_map(neighbor):
+                continue
+
+            is_obs = state.validator.is_obstacle_for_actor(state, neighbor, actor_id)
+            is_passable_tok = state.validator.is_passable_token(state, neighbor)
+
+            if is_obs and not is_passable_tok:
+                continue
+
+            new_mines = mines_passed
+            if is_passable_tok:
+                tile = state.board.get_tile(neighbor)
+                if tile and tile.occupant_id:
+                    token_id = str(tile.occupant_id)
+                    # Only count as mine if owned by opposing team
+                    is_enemy_mine = True
+                    if moving_team:
+                        token_entity = state.get_entity(
+                            BoardEntityID(token_id)
+                        )
+                        if hasattr(token_entity, "owner_id") and token_entity.owner_id:
+                            owner = state.get_hero(token_entity.owner_id)
+                            if owner and owner.team == moving_team:
+                                is_enemy_mine = False
+                    if is_enemy_mine:
+                        new_mines = mines_passed | {token_id}
+
+            state_key = (neighbor, new_mines)
+            if state_key in visited:
+                continue
+            visited.add(state_key)
+            queue.append((neighbor, dist + 1, new_mines, path + (neighbor,)))
+
+    return all_options

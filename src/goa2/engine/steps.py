@@ -115,7 +115,9 @@ class GameStep(BaseModel):
 # -----------------------------------------------------------------------------
 
 
-def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Optional[Hex], int]:
+def _remove_token_from_board(
+    state: GameState, token_id: str
+) -> tuple[Optional[Hex], int]:
     from_hex = state.entity_locations.get(BoardEntityID(token_id))
     if not from_hex:
         return None, 0
@@ -131,7 +133,9 @@ def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Optional[
     removed_effects = initial_count - len(state.active_effects)
 
     if removed_effects > 0:
-        print(f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}")
+        print(
+            f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}"
+        )
 
     return from_hex, removed_effects
 
@@ -161,7 +165,9 @@ class RemoveTokenStep(GameStep):
             events=[
                 GameEvent(
                     event_type=GameEventType.TOKEN_REMOVED,
-                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    actor_id=str(state.current_actor_id)
+                    if state.current_actor_id
+                    else None,
                     target_id=target_id,
                     from_hex=_hex_dict(from_hex),
                     metadata={"effects_removed": removed_effects},
@@ -186,7 +192,9 @@ class PlaceTokenStep(GameStep):
         dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied:
-            print(f"   [TOKEN] Cannot place {self.token_type.value} at {dest_hex}: occupied.")
+            print(
+                f"   [TOKEN] Cannot place {self.token_type.value} at {dest_hex}: occupied."
+            )
             return StepResult(is_finished=True)
 
         owner_id = context.get(self.owner_id_key) if self.owner_id_key else None
@@ -286,10 +294,14 @@ class MoveTokenStep(GameStep):
                 end=dest_hex,
                 max_steps=self.range_val,
                 state=state,
-                actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                actor_id=str(state.current_actor_id)
+                if state.current_actor_id
+                else None,
             )
             if not is_valid:
-                print(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")
+                print(
+                    f"   [TOKEN] Invalid token move {token_id}: blocked or out of range."
+                )
                 return StepResult(is_finished=True)
         else:
             return StepResult(is_finished=True)
@@ -300,7 +312,9 @@ class MoveTokenStep(GameStep):
             events=[
                 GameEvent(
                     event_type=GameEventType.TOKEN_MOVED,
-                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    actor_id=str(state.current_actor_id)
+                    if state.current_actor_id
+                    else None,
                     target_id=str(token_id),
                     from_hex=_hex_dict(from_hex),
                     to_hex=_hex_dict(dest_hex),
@@ -499,9 +513,7 @@ class PlaceMarkerStep(GameStep):
 
         context["marker_target_id"] = target
         post_steps: List[GameStep] = [
-            CheckPassiveAbilitiesStep(
-                trigger=PassiveTrigger.AFTER_PLACE_MARKER.value
-            )
+            CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PLACE_MARKER.value)
         ]
 
         return StepResult(
@@ -856,7 +868,9 @@ class SelectStep(GameStep):
         None  # When set, merges candidates from multiple containers
     )
     number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
-    number_labels: Dict[int, str] = Field(default_factory=dict)  # Display text per number option
+    number_labels: Dict[int, str] = Field(
+        default_factory=dict
+    )  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
     skip_self_filter: bool = False  # Set True to allow selecting self (e.g. "yourself")
     override_player_id_key: Optional[str] = (
@@ -898,9 +912,7 @@ class SelectStep(GameStep):
 
             # Auto-add ImmunityFilter
             if not self.skip_immunity_filter:
-                has_immunity = any(
-                    isinstance(f, ImmunityFilter) for f in effective
-                )
+                has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
                 if not has_immunity:
                     effective.append(ImmunityFilter())
 
@@ -1064,7 +1076,11 @@ class SelectStep(GameStep):
         options_for_request = valid_candidates
         if self.target_type == TargetType.NUMBER and self.number_labels:
             options_for_request = [
-                InputOption(id=str(n), text=self.number_labels.get(n, str(n)), metadata={"raw": n})
+                InputOption(
+                    id=str(n),
+                    text=self.number_labels.get(n, str(n)),
+                    metadata={"raw": n},
+                )
                 for n in valid_candidates
             ]
 
@@ -1323,12 +1339,71 @@ class MoveUnitStep(GameStep):
             )
             return StepResult(is_finished=True)
 
+        # Mine detection: only enemy heroes trigger mines
+        moving_entity = state.get_entity(BoardEntityID(target_unit_id))
+        moving_team = (
+            moving_entity.team
+            if isinstance(moving_entity, Hero)
+            else None
+        )
+        if moving_team and "triggered_mine_ids" not in context and start_hex != dest_hex:
+            has_enemy_mines = any(
+                token.is_passable
+                and token.owner_id
+                and getattr(state.get_hero(token.owner_id), "team", None) != moving_team
+                for tokens in state.token_pool.values()
+                for token in tokens
+                if BoardEntityID(str(token.id)) in state.entity_locations
+            )
+            if has_enemy_mines:
+                from goa2.engine.rules import find_reachable_with_mines
+
+                current_actor = (
+                    str(state.current_actor_id)
+                    if state.current_actor_id
+                    else None
+                )
+                reachable = find_reachable_with_mines(
+                    board=state.board,
+                    start=start_hex,
+                    max_steps=self.range_val,
+                    state=state,
+                    actor_id=current_actor,
+                    moving_team=moving_team,
+                )
+                from goa2.engine.rules import MinePathOption
+
+                mine_options = reachable.get(dest_hex, [])
+                if len(mine_options) > 1:
+                    # Multiple paths — need player choice, re-queue
+                    return StepResult(
+                        is_finished=True,
+                        new_steps=[
+                            MinePathChoiceStep(
+                                destination_key=self.destination_key,
+                                range_val=self.range_val,
+                                unit_id=target_unit_id,
+                            ),
+                            self.model_copy(),
+                        ],
+                    )
+                context["triggered_mine_ids"] = (
+                    list(mine_options[0].mine_ids) if mine_options else []
+                )
+
         print(
             f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
         )
         from_hex_dict = _hex_dict(start_hex)
         to_hex_dict = _hex_dict(dest_hex)
         state.move_unit(UnitID(target_unit_id), dest_hex)
+
+        new_steps: List[GameStep] = []
+        triggered_mines = context.get("triggered_mine_ids", [])
+        if triggered_mines:
+            context["mine_victim_id"] = target_unit_id
+            new_steps.append(TriggerMineStep())
+
         return StepResult(
             is_finished=True,
             events=[
@@ -1340,7 +1415,188 @@ class MoveUnitStep(GameStep):
                     metadata={"range": self.range_val},
                 )
             ],
+            new_steps=new_steps,
         )
+
+
+class MinePathChoiceStep(GameStep):
+    """
+    Prompts the current actor to choose which mine-path to take when
+    multiple routes with different mine combinations exist.
+
+    ``unit_id`` / ``unit_key`` identify the unit being moved (used for
+    start-hex lookup).  The input prompt targets ``current_actor_id``
+    (the player controlling the movement).
+    """
+
+    type: StepType = StepType.MINE_PATH_CHOICE
+    destination_key: str = "target_hex"
+    range_val: int = 1
+    output_key: str = "triggered_mine_ids"
+    unit_id: Optional[str] = None
+    unit_key: Optional[str] = None
+
+    def _get_moving_unit_id(
+        self, state: GameState, context: Dict[str, Any]
+    ) -> Optional[str]:
+        if self.unit_id:
+            return self.unit_id
+        if self.unit_key:
+            val = context.get(self.unit_key)
+            if val:
+                return str(val)
+        return str(state.current_actor_id) if state.current_actor_id else None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        dest_val = context.get(self.destination_key)
+        if not dest_val:
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
+        moving_id = self._get_moving_unit_id(state, context)
+
+        if not moving_id:
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        # Only enemy heroes trigger mines
+        moving_entity = state.get_entity(BoardEntityID(moving_id))
+        moving_team = (
+            moving_entity.team
+            if isinstance(moving_entity, Hero)
+            else None
+        )
+        if not moving_team:
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        start_hex = state.entity_locations.get(BoardEntityID(moving_id))
+        if not start_hex:
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        from goa2.engine.rules import find_reachable_with_mines
+
+        current_actor = (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
+        reachable = find_reachable_with_mines(
+            board=state.board,
+            start=start_hex,
+            max_steps=self.range_val,
+            state=state,
+            actor_id=current_actor,
+            moving_team=moving_team,
+        )
+
+        mine_options = reachable.get(dest_hex, [])
+        if len(mine_options) <= 1:
+            context[self.output_key] = (
+                list(mine_options[0].mine_ids) if mine_options else []
+            )
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            for idx, opt in enumerate(mine_options):
+                if selection == str(idx):
+                    context[self.output_key] = list(opt.mine_ids)
+                    return StepResult(is_finished=True)
+            self.pending_input = None
+
+        options = []
+        for idx, opt in enumerate(mine_options):
+            mine_hexes = []
+            for mid in opt.mine_ids:
+                loc = state.entity_locations.get(BoardEntityID(mid))
+                if loc:
+                    mine_hexes.append({"q": loc.q, "r": loc.r, "s": loc.s})
+            path_hexes = [
+                {"q": h.q, "r": h.r, "s": h.s} for h in opt.path
+            ]
+            options.append(
+                {
+                    "id": str(idx),
+                    "text": f"Path through {len(opt.mine_ids)} mine(s)",
+                    "metadata": {
+                        "mine_count": len(opt.mine_ids),
+                        "mine_hexes": mine_hexes,
+                        "path": path_hexes,
+                    },
+                }
+            )
+
+        return StepResult(
+            is_finished=False,
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=str(state.current_actor_id) if state.current_actor_id else "",
+                prompt="Choose which mines to move through",
+                options=options,
+            ),
+        )
+
+
+class TriggerMineStep(GameStep):
+    """Triggers mines after movement - removes tokens and emits events.
+
+    For each blast mine, pushes a ForceDiscardStep targeting the moved hero
+    (identified by ``victim_key`` in context).
+    """
+
+    type: StepType = StepType.TRIGGER_MINE
+    mine_ids_key: str = "triggered_mine_ids"
+    victim_key: str = "mine_victim_id"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        mine_ids = context.get(self.mine_ids_key, [])
+        if not mine_ids:
+            return StepResult(is_finished=True)
+
+        events: List[GameEvent] = []
+        blast_count = 0
+        for mine_id in mine_ids:
+            token = state.get_entity(BoardEntityID(mine_id))
+            from_hex, _ = _remove_token_from_board(state, mine_id)
+            is_blast = (
+                hasattr(token, "token_type")
+                and token.token_type == TokenType.MINE_BLAST
+            )
+            if is_blast:
+                blast_count += 1
+            if from_hex and token:
+                events.append(
+                    GameEvent(
+                        event_type=GameEventType.MINE_TRIGGERED,
+                        actor_id=(
+                            str(state.current_actor_id)
+                            if state.current_actor_id
+                            else None
+                        ),
+                        target_id=mine_id,
+                        from_hex=_hex_dict(from_hex),
+                        metadata={
+                            "token_type": (
+                                token.token_type.value
+                                if hasattr(token, "token_type")
+                                else None
+                            ),
+                            "is_blast": is_blast,
+                        },
+                    )
+                )
+
+        context[self.mine_ids_key] = []
+        context["rollback_disabled"] = True
+
+        # Each blast mine forces the moved hero to discard a card (if able)
+        new_steps: List[GameStep] = []
+        for _ in range(blast_count):
+            new_steps.append(ForceDiscardStep(victim_key=self.victim_key))
+
+        return StepResult(is_finished=True, events=events, new_steps=new_steps)
 
 
 class MoveSequenceStep(GameStep):
@@ -1418,7 +1674,7 @@ class MoveSequenceStep(GameStep):
                         is_mandatory=self.is_mandatory,
                         is_movement_action=True,
                         pass_through_obstacles=pass_through,
-                    )
+                    ),
                 ],
             )
 
@@ -1907,7 +2163,9 @@ class DefeatUnitStep(GameStep):
     victim_id: Optional[str] = None  # Direct ID
     victim_key: Optional[str] = None  # Context key for victim ID
     killer_id: Optional[str] = None
-    assist_multiplier: int = 1  # Multiplier for assist coins (e.g. 3 for Glorious Triumph)
+    assist_multiplier: int = (
+        1  # Multiplier for assist coins (e.g. 3 for Glorious Triumph)
+    )
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -3415,7 +3673,9 @@ class ResolveCardStep(GameStep):
                         )
 
                     elif act_type == ActionType.CLEAR:
-                        hero_loc = state.entity_locations.get(BoardEntityID(self.hero_id))
+                        hero_loc = state.entity_locations.get(
+                            BoardEntityID(self.hero_id)
+                        )
                         if not hero_loc:
                             steps_list.append(
                                 LogMessageStep(
@@ -3435,7 +3695,10 @@ class ResolveCardStep(GameStep):
                                     adjacent_tokens.append(str(tile.occupant_id))
                             if adjacent_tokens:
                                 steps_list.extend(
-                                    [RemoveTokenStep(token_id=tid) for tid in adjacent_tokens]
+                                    [
+                                        RemoveTokenStep(token_id=tid)
+                                        for tid in adjacent_tokens
+                                    ]
                                 )
                             else:
                                 steps_list.append(
@@ -4193,7 +4456,9 @@ class EndPhaseCleanupStep(GameStep):
         events: List[GameEvent] = []
         for token_list in state.token_pool.values():
             for token in token_list:
-                from_hex, removed_effects = _remove_token_from_board(state, str(token.id))
+                from_hex, removed_effects = _remove_token_from_board(
+                    state, str(token.id)
+                )
                 if from_hex:
                     events.append(
                         GameEvent(
@@ -4240,8 +4505,13 @@ class EndPhaseCleanupStep(GameStep):
                                 # Call on_ultimate_unlocked if the effect supports it
                                 if hero.ultimate_card.effect_id:
                                     from goa2.engine.effects import CardEffectRegistry
-                                    ult_effect = CardEffectRegistry.get(hero.ultimate_card.effect_id)
-                                    if ult_effect and hasattr(ult_effect, "on_ultimate_unlocked"):
+
+                                    ult_effect = CardEffectRegistry.get(
+                                        hero.ultimate_card.effect_id
+                                    )
+                                    if ult_effect and hasattr(
+                                        ult_effect, "on_ultimate_unlocked"
+                                    ):
                                         ult_effect.on_ultimate_unlocked(state, hero)
                             else:
                                 print(f"   [LEVEL] {hero.id} reached Level 8!")
@@ -5165,9 +5435,7 @@ class MultiSelectStep(GameStep):
                     effective.append(ExcludeIdentityFilter(exclude_self=True))
 
             if not self.skip_immunity_filter:
-                has_immunity = any(
-                    isinstance(f, ImmunityFilter) for f in effective
-                )
+                has_immunity = any(isinstance(f, ImmunityFilter) for f in effective)
                 if not has_immunity:
                     effective.append(ImmunityFilter())
         return effective
@@ -5849,9 +6117,7 @@ class GuessCardColorStep(GameStep):
             context[self.output_key] = selection
             return StepResult(is_finished=True)
 
-        options = [
-            InputOption(id=color, text=color) for color in self.VALID_COLORS
-        ]
+        options = [InputOption(id=color, text=color) for color in self.VALID_COLORS]
 
         return StepResult(
             is_finished=False,
@@ -5906,7 +6172,9 @@ class RevealAndResolveGuessStep(GameStep):
         if is_correct:
             context[self.correct_output_key] = True
             context[self.wrong_output_key] = None
-            print(f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}")
+            print(
+                f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}"
+            )
         else:
             context[self.correct_output_key] = None
             context[self.wrong_output_key] = True
@@ -5979,9 +6247,7 @@ class ForceDefenseCardMovementStep(GameStep):
 
         if has_primary_movement:
             # Case 3: Primary movement — call card effect's build_steps
-            movement_steps = self._build_primary_movement_steps(
-                state, hero, card
-            )
+            movement_steps = self._build_primary_movement_steps(state, hero, card)
         elif has_secondary_movement:
             # Case 2: Secondary movement — MoveSequenceStep
             move_val = card.secondary_actions[ActionType.MOVEMENT]
@@ -6097,9 +6363,7 @@ class SpendAdditionalLifeCounterStep(GameStep):
             from goa2.domain.models import TeamColor
 
             winning_team = (
-                TeamColor.BLUE
-                if victim_team_color == TeamColor.RED
-                else TeamColor.RED
+                TeamColor.BLUE if victim_team_color == TeamColor.RED else TeamColor.RED
             )
             events.append(
                 GameEvent(

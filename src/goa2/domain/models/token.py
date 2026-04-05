@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 from goa2.domain.models.base import BoardEntity
 from goa2.domain.models.enums import TokenType
 from goa2.domain.types import HeroID
@@ -19,8 +19,8 @@ class Token(BoardEntity):
     Inherits `id` and `name` from GameEntity/BoardEntity.
     """
 
+    entity_kind: Literal["token"] = "token"
     token_type: TokenType
     owner_id: Optional[HeroID] = None
-    # Tokens are obstacles by default (as per rules: "Tokens are Obstacles")
-    # This logic is handled by the fact that if a Tile has an occupant_id, it is occupied.
-    pass
+    is_passable: bool = False
+    is_facedown: bool = False

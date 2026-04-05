@@ -5,7 +5,7 @@ Imported by handler.py to ensure patching happens before engine use.
 Must be imported AFTER all step/filter subclasses are defined.
 """
 
-from typing import Annotated, Any, List, Union
+from typing import Annotated, Any, Dict, List, Union
 
 from pydantic import Discriminator, Tag
 
@@ -49,6 +49,7 @@ from goa2.engine.steps import (
     MarkPassiveUsedStep,
     MayRepeatNTimesStep,
     MinionBattleStep,
+    MinePathChoiceStep,
     MoveSequenceStep,
     MoveTokenStep,
     MoveUnitStep,
@@ -87,6 +88,7 @@ from goa2.engine.steps import (
     SwapCardStep,
     SwapUnitsStep,
     TriggerGameOverStep,
+    TriggerMineStep,
     ValidateRepeatStep,
     FinishedExpiringEffectStep,
     SpendAdditionalLifeCounterStep,
@@ -167,6 +169,7 @@ AnyStep = Annotated[
         Annotated[MarkPassiveUsedStep, Tag(StepType.MARK_PASSIVE_USED.value)],
         Annotated[MayRepeatNTimesStep, Tag(StepType.MAY_REPEAT_ONCE.value)],
         Annotated[MinionBattleStep, Tag(StepType.MINION_BATTLE.value)],
+        Annotated[MinePathChoiceStep, Tag(StepType.MINE_PATH_CHOICE.value)],
         Annotated[MoveSequenceStep, Tag(StepType.MOVE_SEQUENCE.value)],
         Annotated[MoveTokenStep, Tag(StepType.MOVE_TOKEN.value)],
         Annotated[MoveUnitStep, Tag(StepType.MOVE_UNIT.value)],
@@ -193,12 +196,12 @@ AnyStep = Annotated[
         Annotated[ResolveTieBreakerStep, Tag(StepType.RESOLVE_TIE_BREAKER.value)],
         Annotated[ResolveUpgradesStep, Tag(StepType.RESOLVE_UPGRADES.value)],
         Annotated[RespawnHeroStep, Tag(StepType.RESPAWN_HERO.value)],
-        Annotated[
-            RespawnMinionAtHexStep, Tag(StepType.RESPAWN_MINION_AT_HEX.value)
-        ],
+        Annotated[RespawnMinionAtHexStep, Tag(StepType.RESPAWN_MINION_AT_HEX.value)],
         Annotated[RespawnMinionStep, Tag(StepType.RESPAWN_MINION.value)],
         Annotated[RestoreActionTypeStep, Tag(StepType.RESTORE_ACTION_TYPE.value)],
-        Annotated[RevealAndResolveGuessStep, Tag(StepType.REVEAL_AND_RESOLVE_GUESS.value)],
+        Annotated[
+            RevealAndResolveGuessStep, Tag(StepType.REVEAL_AND_RESOLVE_GUESS.value)
+        ],
         Annotated[RetrieveCardStep, Tag(StepType.RETRIEVE_CARD.value)],
         Annotated[ReturnMinionToZoneStep, Tag(StepType.RETURN_MINION_TO_ZONE.value)],
         Annotated[RoundResetStep, Tag(StepType.ROUND_RESET.value)],
@@ -209,6 +212,7 @@ AnyStep = Annotated[
         Annotated[SwapCardStep, Tag(StepType.SWAP_CARD.value)],
         Annotated[SwapUnitsStep, Tag(StepType.SWAP_UNITS.value)],
         Annotated[TriggerGameOverStep, Tag(StepType.TRIGGER_GAME_OVER.value)],
+        Annotated[TriggerMineStep, Tag(StepType.TRIGGER_MINE.value)],
         Annotated[ValidateRepeatStep, Tag(StepType.VALIDATE_REPEAT.value)],
         Annotated[
             FinishedExpiringEffectStep, Tag(StepType.FINISHED_EXPIRING_EFFECT.value)
@@ -217,9 +221,7 @@ AnyStep = Annotated[
             SpendAdditionalLifeCounterStep,
             Tag(StepType.SPEND_ADDITIONAL_LIFE_COUNTER.value),
         ],
-        Annotated[
-            PerformPrimaryActionStep, Tag(StepType.PERFORM_PRIMARY_ACTION.value)
-        ],
+        Annotated[PerformPrimaryActionStep, Tag(StepType.PERFORM_PRIMARY_ACTION.value)],
     ],
     Discriminator(_step_discriminator),
 ]
@@ -320,6 +322,30 @@ AnyFilter = Annotated[
 
 
 # ---------------------------------------------------------------------------
+# AnyMiscEntity — discriminated union for misc_entities (non-Unit BoardEntities).
+# When adding a new BoardEntity type (e.g. Turret, Dragon), add it here with
+# its own entity_kind Literal tag. Without this, persistence/rollback will break.
+# ---------------------------------------------------------------------------
+from goa2.domain.models.token import Token  # noqa: E402
+from goa2.domain.models.base import Placeholder  # noqa: E402
+
+
+def _misc_entity_discriminator(v: Any) -> str:
+    if isinstance(v, dict):
+        return v.get("entity_kind", "")
+    return getattr(v, "entity_kind", "")
+
+
+AnyMiscEntity = Annotated[
+    Union[
+        Annotated[Token, Tag("token")],
+        Annotated[Placeholder, Tag("placeholder")],
+    ],
+    Discriminator(_misc_entity_discriminator),
+]
+
+
+# ---------------------------------------------------------------------------
 # Patch model_fields so Pydantic uses concrete union types for (de)serialization.
 # We must patch model_fields (not just __annotations__) because Pydantic V2
 # reads field info from model_fields, not __annotations__, during model_rebuild.
@@ -328,8 +354,9 @@ AnyFilter = Annotated[
 from goa2.domain.state import GameState
 from goa2.domain.models.effect import ActiveEffect
 
-# Patch GameState.execution_stack
+# Patch GameState.execution_stack and misc_entities
 GameState.model_fields["execution_stack"].annotation = List[AnyStep]
+GameState.model_fields["misc_entities"].annotation = Dict[str, AnyMiscEntity]
 
 # Patch step fields that contain List[GameStep] or List[FilterCondition]
 SelectStep.model_fields["filters"].annotation = List[AnyFilter]

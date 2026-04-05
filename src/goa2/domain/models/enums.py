@@ -179,6 +179,8 @@ class StepType(str, Enum):
     FORCE_DEFENSE_CARD_MOVEMENT = "force_defense_card_movement"
     SPEND_ADDITIONAL_LIFE_COUNTER = "spend_additional_life_counter"
     PERFORM_PRIMARY_ACTION = "perform_primary_action"
+    MINE_PATH_CHOICE = "mine_path_choice"
+    TRIGGER_MINE = "trigger_mine"
 
 
 class FilterType(str, Enum):

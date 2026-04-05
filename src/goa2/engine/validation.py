@@ -515,6 +515,23 @@ class ValidationService:
 
         return False
 
+    def is_passable_token(self, state: "GameState", hex_pos: "Hex") -> bool:
+        """Check if a hex contains a passable token (traversable but not landable)."""
+        tile = state.board.get_tile(hex_pos)
+        if not tile or not tile.occupant_id:
+            return False
+        occupant_id = BoardEntityID(str(tile.occupant_id))
+        entity = state.get_entity(occupant_id)
+        if entity:
+            from goa2.domain.models.token import Token
+
+            return isinstance(entity, Token) and entity.is_passable
+        for tokens in state.token_pool.values():
+            for token in tokens:
+                if BoardEntityID(str(token.id)) == occupant_id:
+                    return token.is_passable
+        return False
+
     def is_terrain_hex(
         self,
         state: "GameState",

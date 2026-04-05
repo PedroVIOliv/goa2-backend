@@ -194,9 +194,10 @@ class TopologyService:
                     is_obs = tile.is_obstacle if tile else True
 
                 if is_obs:
-                    # Allow if this is the destination (for attacks, etc.)
                     if end_hex is not None and n == end_hex:
                         pass  # Allow
+                    elif state.validator.is_passable_token(state, n):
+                        pass  # Allow traversal through passable tokens
                     else:
                         continue
 

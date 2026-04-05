@@ -10,6 +10,8 @@ from goa2.domain.models import (
     CardColor,
     ActionType,
     CardState,
+    Token,
+    TokenType,
 )
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
@@ -138,9 +140,11 @@ def test_validator_rebuilds_cache():
 def test_misc_entities_storage(empty_state):
     state = empty_state
 
-    # Register a Token (simulated as dict for now since we didn't import Token class)
     token_id = BoardEntityID("trap_1")
-    state.misc_entities[token_id] = {"type": "TRAP", "id": token_id}
+    token = Token(
+        id=token_id, name="Trap", token_type=TokenType.SMOKE_BOMB,
+    )
+    state.misc_entities[token_id] = token
 
     loc = Hex(q=0, r=0, s=0)
     state.place_entity(token_id, loc)
@@ -148,7 +152,8 @@ def test_misc_entities_storage(empty_state):
     # Lookup via unified method
     retrieved = state.get_entity(token_id)
     assert retrieved is not None
-    assert retrieved["type"] == "TRAP"
+    assert isinstance(retrieved, Token)
+    assert retrieved.token_type == TokenType.SMOKE_BOMB
 
     assert state.board.get_tile(loc).occupant_id == token_id
 

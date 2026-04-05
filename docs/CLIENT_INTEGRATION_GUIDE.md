@@ -677,6 +677,8 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
   "name": "Smoke Bomb",
   "token_type": "smoke_bomb",
   "owner_id": "hero_min",
+  "is_passable": false,
+  "is_facedown": false,
   "hex": {"q": 1, "r": -1, "s": 0}
 }
 ```
@@ -685,11 +687,42 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 |-------|------|-------------|
 | `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
 | `name` | string | Display name |
-| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"` |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
+| `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
+| `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |
 | `hex` | hex/null | Current position on the board. `null` if the token exists but is not placed |
 
-Tokens are obstacles — any tile with a token as `occupant_id` is impassable. When a token is removed from the board, any effects anchored to it (via `scope.origin_id`) are automatically removed.
+Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect.
+
+When a token is removed from the board, any effects anchored to it (via `scope.origin_id`) are automatically removed.
+
+#### Mine path choice
+
+When an enemy hero's movement path passes through mines and multiple routes with different mine combinations exist, the player controlling the movement receives a `SELECT_OPTION` input request to choose which path to take. Each option includes:
+
+```json
+{
+  "id": "0",
+  "text": "Path through 1 mine(s)",
+  "metadata": {
+    "mine_count": 1,
+    "mine_hexes": [{"q": 1, "r": -1, "s": 0}],
+    "path": [
+      {"q": 0, "r": 0, "s": 0},
+      {"q": 1, "r": -1, "s": 0},
+      {"q": 2, "r": -1, "s": -1}
+    ]
+  }
+}
+```
+
+- `id`: numeric index of the path option (opaque — do not parse)
+- `mine_count`: number of mines on this path
+- `mine_hexes`: hex positions of the mines
+- `path`: full sequence of hexes from start to destination
+
+The path choice is made by the **current actor** (the player controlling the movement), not necessarily the hero being moved (relevant for forced movement effects).
 
 ### Markers
 
@@ -852,6 +885,7 @@ Events describe what happened during a game action. They are meant for animation
 | `UNIT_DEFEATED` | A unit was defeated | `actor_id` (defeated unit) |
 | `UNIT_REMOVED` | A unit was removed from the board | `actor_id` |
 | `TOKEN_REMOVED` | A token was removed from the board | `target_id`, `from_hex` |
+| `MINE_TRIGGERED` | A mine token was triggered by hero movement | `actor_id` (current actor), `target_id` (mine ID), `from_hex`, `metadata.token_type`, `metadata.is_blast` |
 | `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details) |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |

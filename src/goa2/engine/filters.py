@@ -576,8 +576,9 @@ class AdjacencyToContextFilter(FilterCondition):
 
 class ExcludeIdentityFilter(FilterCondition):
     """
-    Excludes specific unit IDs from selection.
-    Can exclude self and/or IDs found in context keys.
+    Excludes specific unit IDs or hexes from selection.
+    Can exclude self and/or values found in context keys.
+    Works for both unit ID (str) and Hex candidates.
     """
 
     type: FilterType = FilterType.EXCLUDE_IDENTITY
@@ -585,9 +586,7 @@ class ExcludeIdentityFilter(FilterCondition):
     exclude_keys: List[str] = []
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if not isinstance(candidate, str):
-            return True  # Only applies to Units (IDs)
-        if self.exclude_self:
+        if self.exclude_self and isinstance(candidate, str):
             if candidate == state.current_actor_id:
                 return False
         for key in self.exclude_keys:

@@ -52,8 +52,8 @@ def build_view(
     # Build markers view (public info)
     markers_view = _build_markers_view(state)
 
-    # Build tokens view (public info)
-    tokens_view = _build_tokens_view(state)
+    # Build tokens view (public info, with facedown hiding)
+    tokens_view = _build_tokens_view(state, for_hero_id)
 
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id)
@@ -107,12 +107,14 @@ def _build_unresolved_cards_view(
         base_init = card.get_base_stat_value(StatType.INITIATIVE)
         computed_init = get_computed_stat(state, h_id, StatType.INITIATIVE, base_init)
 
-        entries.append({
-            "hero_id": h_id,
-            "initiative": computed_init,
-            "team": hero.team,
-            "card": _build_card_view(card, is_own_hero=(h_id == for_hero_id)),
-        })
+        entries.append(
+            {
+                "hero_id": h_id,
+                "initiative": computed_init,
+                "team": hero.team,
+                "card": _build_card_view(card, is_own_hero=(h_id == for_hero_id)),
+            }
+        )
 
     # Sort: highest initiative first, tie-breaker team favored among same initiative
     tie_breaker = state.tie_breaker_team
@@ -364,23 +366,43 @@ def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
     return effects_view
 
 
-def _build_tokens_view(state: GameState) -> List[Dict[str, Any]]:
-    """Build a view of tokens on the board (public info)."""
+def _build_tokens_view(
+    state: GameState, for_hero_id: Optional[HeroID] = None
+) -> List[Dict[str, Any]]:
+    """Build a view of tokens on the board with facedown hiding."""
+    viewer_team = None
+    if for_hero_id:
+        hero = state.get_hero(for_hero_id)
+        if hero:
+            viewer_team = hero.team
+
     tokens_view = []
     for tokens in state.token_pool.values():
         for token in tokens:
             loc = state.entity_locations.get(BoardEntityID(str(token.id)))
-            tokens_view.append({
-                "id": str(token.id),
-                "name": token.name,
-                "token_type": token.token_type.value,
-                "owner_id": str(token.owner_id) if token.owner_id else None,
-                "hex": (
-                    {"q": loc.q, "r": loc.r, "s": loc.s}
-                    if loc
-                    else None
-                ),
-            })
+
+            visible_type = token.token_type.value
+            if token.is_facedown:
+                owner_team = None
+                if token.owner_id:
+                    owner = state.get_hero(token.owner_id)
+                    if owner:
+                        owner_team = owner.team
+                if viewer_team is None or viewer_team != owner_team:
+                    visible_type = "mine"
+
+            is_hidden = token.is_facedown and visible_type == "mine"
+            tokens_view.append(
+                {
+                    "id": str(token.id),
+                    "name": "Mine" if is_hidden else token.name,
+                    "token_type": visible_type,
+                    "owner_id": str(token.owner_id) if token.owner_id else None,
+                    "is_facedown": token.is_facedown,
+                    "is_passable": token.is_passable,
+                    "hex": ({"q": loc.q, "r": loc.r, "s": loc.s} if loc else None),
+                }
+            )
     return tokens_view
 
 
