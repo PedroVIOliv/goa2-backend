@@ -270,11 +270,13 @@ class ValidationService:
             if not blocker_hex:
                 continue
 
-            # Is the blocker on the segment between actor and target?
-            # exclusive=True means the blocker cannot be ON the actor or ON the target
-            # (though normally tokens share space, Smoke Bomb on self doesn't block self-targeting usually,
-            # but standard rule: "between that enemy hero and their target")
             if blocker_hex.is_on_segment(actor_loc, target_loc, exclusive=True):
+                actor_entity = state.get_entity(BoardEntityID(actor_id))
+                target_entity = state.get_entity(BoardEntityID(target_id))
+                if not self._actor_blocked_by_effect(
+                    effect, actor_entity, target_entity, state
+                ):
+                    continue
                 return ValidationResult.deny(
                     reason="Line of sight blocked",
                     effect_ids=[effect.id],

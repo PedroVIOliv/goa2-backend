@@ -41,9 +41,11 @@ def test_arien_rogue_wave_blocked_by_smoke(empty_state: GameState):
     # Setup Entities
     arien = Hero(id=HeroID(arien_id), name="Arien", deck=[], team=TeamColor.RED)
     enemy = Hero(id=HeroID(enemy_id), name="Enemy", deck=[], team=TeamColor.BLUE)
+    min_hero = Hero(id=HeroID("hero_min"), name="Min", deck=[], team=TeamColor.BLUE)
 
     state.teams[TeamColor.RED].heroes.append(arien)
     state.teams[TeamColor.BLUE].heroes.append(enemy)
+    state.teams[TeamColor.BLUE].heroes.append(min_hero)
 
     # Positions: Distance 2, Straight Line
     # Arien (0,0,0) -> Enemy (2,-2,0)
@@ -70,7 +72,7 @@ def test_arien_rogue_wave_blocked_by_smoke(empty_state: GameState):
     # 1. Place Smoke Bomb BETWEEN them at (1,-1,0)
     EffectManager.create_effect(
         state,
-        source_id="dummy",
+        source_id="hero_min",
         effect_type=EffectType.LOS_BLOCKER,
         scope=EffectScope(shape=Shape.POINT, origin_hex=Hex(q=1, r=-1, s=0)),
         duration=DurationType.THIS_TURN,
@@ -115,7 +117,7 @@ def test_arien_rogue_wave_blocked_by_smoke(empty_state: GameState):
     state.active_effects.clear()
     EffectManager.create_effect(
         state,
-        source_id="dummy",
+        source_id="hero_min",
         effect_type=EffectType.LOS_BLOCKER,
         scope=EffectScope(shape=Shape.POINT, origin_hex=Hex(q=1, r=-2, s=1)),
         duration=DurationType.THIS_TURN,
