@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from goa2.domain.models.effect import (
     DurationType,
     EffectScope,
@@ -11,12 +11,16 @@ from goa2.engine.effects import CardEffect, CardEffectRegistry, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CreateEffectStep,
+    ForceDiscardOrDefeatStep,
+    ForEachStep,
     GameStep,
+    MultiSelectStep,
     MoveUnitStep,
     PlaceTokenStep,
-    PlaceUnitStep,
     PushUnitStep,
+    RemoveTokenStep,
     SelectStep,
+    SetContextFlagStep,
     SwapUnitsStep,
     TargetType,
 )
@@ -28,6 +32,7 @@ from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
     TokenTypeFilter,
+    UnitTypeFilter,
 )
 
 if TYPE_CHECKING:
@@ -475,3 +480,201 @@ class FastAsLightningEffect(CardEffect):
 
         steps.extend(after_attack_steps)
         return steps
+
+
+# =============================================================================
+# GREEN CARDS — Defense: Smoke Bomb Swap
+# =============================================================================
+
+
+def _smoke_bomb_swap_defense_steps(
+    defender: Hero, stats: "CardStats", allow_replacement: bool = False
+) -> List[GameStep]:
+    steps: List[GameStep] = [
+        SelectStep(
+            target_type=TargetType.UNIT_OR_TOKEN,
+            prompt="Select a Smoke Bomb token to swap with",
+            output_key="swap_token_id",
+            is_mandatory=False,
+            skip_immunity_filter=True,
+            filters=[
+                RangeFilter(max_range=stats.range),
+                TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
+            ],
+        ),
+        SwapUnitsStep(
+            unit_a_id=str(defender.id),
+            unit_b_key="swap_token_id",
+            active_if_key="swap_token_id",
+            is_mandatory=False,
+        ),
+        SetContextFlagStep(key="auto_block", value=True, active_if_key="swap_token_id"),
+    ]
+    if allow_replacement:
+        steps.append(
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Place the Smoke Bomb into a space in range (optional)",
+                output_key="smoke_place_hex",
+                is_mandatory=False,
+                active_if_key="swap_token_id",
+                filters=[
+                    RangeFilter(max_range=stats.range),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            )
+        )
+        steps.append(
+            PlaceTokenStep(
+                token_type=TokenType.SMOKE_BOMB,
+                hex_key="smoke_place_hex",
+                active_if_key="smoke_place_hex",
+                is_mandatory=False,
+            )
+        )
+    return steps
+
+
+@register_effect("poof")
+class PoofEffect(CardEffect):
+    """
+    Swap with a Smoke bomb token in range; if you do, block the attack.
+    """
+
+    def build_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: "CardStats",
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return _smoke_bomb_swap_defense_steps(defender, stats)
+
+
+@register_effect("vanish")
+class VanishEffect(CardEffect):
+    """
+    Swap with a Smoke bomb token in range; if you do, block the attack.
+    """
+
+    def build_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: "CardStats",
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return _smoke_bomb_swap_defense_steps(defender, stats)
+
+
+@register_effect("ruse")
+class RuseEffect(CardEffect):
+    """
+    Swap with a Smoke bomb in range; if you do, block the attack.
+    You may place the Smoke bomb into a space in range.
+    """
+
+    def build_defense_steps(
+        self,
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: "CardStats",
+        context: Dict[str, Any],
+    ) -> Optional[List[GameStep]]:
+        return _smoke_bomb_swap_defense_steps(defender, stats, allow_replacement=True)
+
+
+# =============================================================================
+# BLUE CARDS — Grenades
+# =============================================================================
+
+
+def _grenade_steps(hero: Hero, stats: "CardStats", max_targets: int) -> List[GameStep]:
+    return [
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="Place Grenade token",
+            output_key="grenade_hex",
+            is_mandatory=True,
+            filters=[
+                RangeFilter(max_range=stats.radius),
+                ObstacleFilter(is_obstacle=False),
+            ],
+        ),
+        PlaceTokenStep(
+            token_type=TokenType.GRENADE,
+            hex_key="grenade_hex",
+        ),
+        CreateEffectStep(
+            effect_type=EffectType.DELAYED_TRIGGER,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            finishing_steps=[
+                SelectStep(
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt="Select the Grenade token",
+                    output_key="grenade_resolve_id",
+                    auto_select_if_one=True,
+                    skip_immunity_filter=True,
+                    skip_self_filter=True,
+                    is_mandatory=False,
+                    filters=[TokenTypeFilter(token_type=TokenType.GRENADE)],
+                ),
+                MultiSelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt=f"Select up to {max_targets} enemy hero(es) adjacent to grenade",
+                    output_key="grenade_victims",
+                    max_selections=max_targets,
+                    min_selections=0,
+                    is_mandatory=False,
+                    active_if_key="grenade_resolve_id",
+                    skip_immunity_filter=True,
+                    filters=[
+                        AdjacencyToContextFilter(target_key="grenade_resolve_id"),
+                        TeamFilter(relation="ENEMY"),
+                        UnitTypeFilter(unit_type="HERO"),
+                    ],
+                ),
+                ForEachStep(
+                    list_key="grenade_victims",
+                    item_key="current_victim",
+                    steps_template=[
+                        ForceDiscardOrDefeatStep(victim_key="current_victim"),
+                    ],
+                ),
+                RemoveTokenStep(token_key="grenade_resolve_id"),
+            ],
+        ),
+    ]
+
+
+@register_effect("death_grenade")
+class DeathGrenadeEffect(CardEffect):
+    """
+    Place a Grenade token into a space in radius.
+    End of turn: Up to 1 enemy hero adjacent to that token discards
+    a card, or is defeated. Remove the Grenade token.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
+    ) -> List[GameStep]:
+        return _grenade_steps(hero, stats, max_targets=1)
+
+
+@register_effect("holy_death_grenade")
+class HolyDeathGrenadeEffect(CardEffect):
+    """
+    Place a Grenade token into a space in radius.
+    End of turn: Up to 2 enemy heroes adjacent to that token discard
+    a card, or are defeated. Remove the Grenade token.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
+    ) -> List[GameStep]:
+        return _grenade_steps(hero, stats, max_targets=2)
