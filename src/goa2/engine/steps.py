@@ -1341,12 +1341,12 @@ class MoveUnitStep(GameStep):
 
         # Mine detection: only enemy heroes trigger mines
         moving_entity = state.get_entity(BoardEntityID(target_unit_id))
-        moving_team = (
-            moving_entity.team
-            if isinstance(moving_entity, Hero)
-            else None
-        )
-        if moving_team and "triggered_mine_ids" not in context and start_hex != dest_hex:
+        moving_team = moving_entity.team if isinstance(moving_entity, Hero) else None
+        if (
+            moving_team
+            and "triggered_mine_ids" not in context
+            and start_hex != dest_hex
+        ):
             has_enemy_mines = any(
                 token.is_passable
                 and token.owner_id
@@ -1359,9 +1359,7 @@ class MoveUnitStep(GameStep):
                 from goa2.engine.rules import find_reachable_with_mines
 
                 current_actor = (
-                    str(state.current_actor_id)
-                    if state.current_actor_id
-                    else None
+                    str(state.current_actor_id) if state.current_actor_id else None
                 )
                 reachable = find_reachable_with_mines(
                     board=state.board,
@@ -1462,11 +1460,7 @@ class MinePathChoiceStep(GameStep):
 
         # Only enemy heroes trigger mines
         moving_entity = state.get_entity(BoardEntityID(moving_id))
-        moving_team = (
-            moving_entity.team
-            if isinstance(moving_entity, Hero)
-            else None
-        )
+        moving_team = moving_entity.team if isinstance(moving_entity, Hero) else None
         if not moving_team:
             context[self.output_key] = []
             return StepResult(is_finished=True)
@@ -1478,9 +1472,7 @@ class MinePathChoiceStep(GameStep):
 
         from goa2.engine.rules import find_reachable_with_mines
 
-        current_actor = (
-            str(state.current_actor_id) if state.current_actor_id else None
-        )
+        current_actor = str(state.current_actor_id) if state.current_actor_id else None
         reachable = find_reachable_with_mines(
             board=state.board,
             start=start_hex,
@@ -1512,9 +1504,7 @@ class MinePathChoiceStep(GameStep):
                 loc = state.entity_locations.get(BoardEntityID(mid))
                 if loc:
                     mine_hexes.append({"q": loc.q, "r": loc.r, "s": loc.s})
-            path_hexes = [
-                {"q": h.q, "r": h.r, "s": h.s} for h in opt.path
-            ]
+            path_hexes = [{"q": h.q, "r": h.r, "s": h.s} for h in opt.path]
             options.append(
                 {
                     "id": str(idx),
@@ -3043,19 +3033,18 @@ class PushUnitStep(GameStep):
             )
             return StepResult(is_finished=True)
 
-        current_loc = target_loc
-        pushed_dist = 0
+        path: List[Hex] = [target_loc]
         was_stopped_by_obstacle = False
         for _ in range(actual_distance):
-            next_hex = current_loc.neighbor(direction_idx)
+            prev = path[-1]
+            next_hex = prev.neighbor(direction_idx)
 
             if next_hex not in state.board.tiles:
-                print(f"   [PUSH] {actual_target_id} hit board edge at {current_loc}")
+                print(f"   [PUSH] {actual_target_id} hit board edge at {prev}")
                 was_stopped_by_obstacle = True
                 break
 
-            # Check topology (Crack in Reality)
-            if not are_connected(current_loc, next_hex, state):
+            if not are_connected(prev, next_hex, state):
                 print(
                     f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
                 )
@@ -3063,7 +3052,6 @@ class PushUnitStep(GameStep):
                 break
 
             state.board.get_tile(next_hex)
-            # Use context-aware obstacle check for Static Barrier support
             is_obs = state.validator.is_obstacle_for_actor(
                 state,
                 next_hex,
@@ -3074,12 +3062,25 @@ class PushUnitStep(GameStep):
                 ),
             )
             if is_obs:
+                if state.validator.is_passable_token(state, next_hex):
+                    path.append(next_hex)
+                    continue
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
                 was_stopped_by_obstacle = True
                 break
 
-            current_loc = next_hex
-            pushed_dist += 1
+            path.append(next_hex)
+
+        # Trim trailing passable tokens — units can't land on mines
+        trimmed_mines = 0
+        while len(path) > 1 and state.validator.is_passable_token(state, path[-1]):
+            path.pop()
+            trimmed_mines += 1
+        if trimmed_mines > 0:
+            was_stopped_by_obstacle = True
+
+        current_loc = path[-1]
+        pushed_dist = len(path) - 1
 
         if pushed_dist > 0:
             print(
@@ -3089,19 +3090,41 @@ class PushUnitStep(GameStep):
         else:
             print(f"   [LOGIC] Push had no effect for {actual_target_id}")
 
-        # Store collision result if requested
         if self.collision_output_key:
             context[self.collision_output_key] = was_stopped_by_obstacle
             print(
                 f"   [PUSH] Collision detected: {was_stopped_by_obstacle} -> {self.collision_output_key}"
             )
 
-        # Fire AFTER_PUSH passive trigger — push happened even if distance is 0
-        # (target blocked immediately is still a valid push)
         from goa2.domain.models.enums import PassiveTrigger
 
         context["push_victim_id"] = actual_target_id
         post_push_steps: List[GameStep] = []
+
+        # Collect enemy mine IDs from the path (hexes between start and landing, exclusive)
+        if pushed_dist > 0:
+            pushed_entity = state.get_entity(BoardEntityID(actual_target_id))
+            pushed_team = (
+                pushed_entity.team if isinstance(pushed_entity, Hero) else None
+            )
+            if pushed_team:
+                enemy_mine_ids: List[str] = []
+                for hx in path[1:-1]:
+                    if state.validator.is_passable_token(state, hx):
+                        tile = state.board.get_tile(hx)
+                        if tile and tile.occupant_id:
+                            tok_entity = state.get_entity(
+                                BoardEntityID(str(tile.occupant_id))
+                            )
+                            if isinstance(tok_entity, Token) and tok_entity.owner_id:
+                                owner_hero = state.get_hero(tok_entity.owner_id)
+                                if owner_hero and owner_hero.team != pushed_team:
+                                    enemy_mine_ids.append(str(tok_entity.id))
+                if enemy_mine_ids:
+                    context["triggered_mine_ids"] = enemy_mine_ids
+                    context["mine_victim_id"] = actual_target_id
+                    post_push_steps.append(TriggerMineStep())
+
         target_misc = state.misc_entities.get(BoardEntityID(actual_target_id))
         is_token_target = isinstance(target_misc, Token)
         if not is_token_target:
