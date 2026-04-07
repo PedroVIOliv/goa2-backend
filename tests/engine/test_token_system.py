@@ -176,6 +176,8 @@ def test_clear_action_removes_adjacent_tokens():
     process_resolution_stack(state)
     state.execution_stack[-1].pending_input = {"selection": "CLEAR"}
     process_resolution_stack(state)
+    state.execution_stack[-1].pending_input = {"selection": "smoke_bomb_1"}
+    process_resolution_stack(state)
     assert "smoke_bomb_1" not in state.entity_locations
 
 

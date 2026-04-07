@@ -35,7 +35,7 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
-from goa2.engine.filters import UnitTypeFilter, FilterCondition, TokenTypeFilter
+from goa2.engine.filters import RangeFilter, UnitTypeFilter, FilterCondition, TokenTypeFilter
 from goa2.domain.input import (
     InputRequest,
     InputRequestType,
@@ -3706,30 +3706,24 @@ class ResolveCardStep(GameStep):
                                 )
                             )
                         else:
-                            adjacent_tokens: List[str] = []
-                            for adj in hero_loc.neighbors():
-                                tile = state.board.get_tile(adj)
-                                if not tile or not tile.occupant_id:
-                                    continue
-                                occupant = state.misc_entities.get(
-                                    BoardEntityID(str(tile.occupant_id))
-                                )
-                                if isinstance(occupant, Token):
-                                    adjacent_tokens.append(str(tile.occupant_id))
-                            if adjacent_tokens:
-                                steps_list.extend(
-                                    [
-                                        RemoveTokenStep(token_id=tid)
-                                        for tid in adjacent_tokens
+                            steps_list.extend([
+                                MultiSelectStep(min_selections=0, max_selections=6, filters=[
+                                    UnitTypeFilter(unit_type="TOKEN"),
+                                    RangeFilter(max_range=1)
+                                ],
+                                output_key="clear_targets",
+                                target_type=TargetType.UNIT_OR_TOKEN,
+                                prompt="Select tokens to clear.",
+                                ),
+                                ForEachStep(
+                                    list_key="clear_targets",
+                                    item_key="target_id",
+                                    steps_template=[
+                                        RemoveTokenStep(token_key="target_id") 
                                     ]
-                                )
-                            else:
-                                steps_list.append(
-                                    LogMessageStep(
-                                        message=f"{self.hero_id} clears no adjacent tokens."
-                                    )
-                                )
-
+                            ),
+                            ]
+                            )
                     elif act_type == ActionType.HOLD:
                         steps_list.append(
                             LogMessageStep(message=f"{self.hero_id} Holds.")
