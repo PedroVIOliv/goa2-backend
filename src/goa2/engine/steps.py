@@ -35,7 +35,12 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
-from goa2.engine.filters import RangeFilter, UnitTypeFilter, FilterCondition, TokenTypeFilter
+from goa2.engine.filters import (
+    RangeFilter,
+    UnitTypeFilter,
+    FilterCondition,
+    TokenTypeFilter,
+)
 from goa2.domain.input import (
     InputRequest,
     InputRequestType,
@@ -3706,23 +3711,27 @@ class ResolveCardStep(GameStep):
                                 )
                             )
                         else:
-                            steps_list.extend([
-                                MultiSelectStep(min_selections=0, max_selections=6, filters=[
-                                    UnitTypeFilter(unit_type="TOKEN"),
-                                    RangeFilter(max_range=1)
-                                ],
-                                output_key="clear_targets",
-                                target_type=TargetType.UNIT_OR_TOKEN,
-                                prompt="Select tokens to clear.",
-                                ),
-                                ForEachStep(
-                                    list_key="clear_targets",
-                                    item_key="target_id",
-                                    steps_template=[
-                                        RemoveTokenStep(token_key="target_id") 
-                                    ]
-                            ),
-                            ]
+                            steps_list.extend(
+                                [
+                                    MultiSelectStep(
+                                        min_selections=0,
+                                        max_selections=6,
+                                        filters=[
+                                            UnitTypeFilter(unit_type="TOKEN"),
+                                            RangeFilter(max_range=1),
+                                        ],
+                                        output_key="clear_targets",
+                                        target_type=TargetType.UNIT_OR_TOKEN,
+                                        prompt="Select tokens to clear.",
+                                    ),
+                                    ForEachStep(
+                                        list_key="clear_targets",
+                                        item_key="target_id",
+                                        steps_template=[
+                                            RemoveTokenStep(token_key="target_id")
+                                        ],
+                                    ),
+                                ]
                             )
                     elif act_type == ActionType.HOLD:
                         steps_list.append(
@@ -5521,7 +5530,7 @@ class MultiSelectStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
 
-            if selection == "DONE":
+            if selection in ("DONE", "SKIP"):
                 print(
                     f"   [MULTI-SELECT] Player chose DONE with {len(self.selections)} selections."
                 )
