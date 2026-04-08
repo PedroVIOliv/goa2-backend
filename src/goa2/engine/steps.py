@@ -3744,6 +3744,27 @@ class ResolveCardStep(GameStep):
                             LogMessageStep(message=f"{self.hero_id} Defends (Active).")
                         )
 
+                # Add AFTER_ATTACK passive check for ALL attack actions
+                if act_type == ActionType.ATTACK:
+                    # Store attack info so passives can rebuild the effect
+                    if is_primary and card.current_effect_id:
+                        steps_list.append(
+                            SetContextFlagStep(
+                                key="attack_effect_id",
+                                value=card.current_effect_id,
+                            )
+                        )
+                        steps_list.append(
+                            SetContextFlagStep(
+                                key="attack_card_id", value=card.id
+                            )
+                        )
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(
+                            trigger=PassiveTrigger.AFTER_ATTACK.value
+                        )
+                    )
+
                 # Add AFTER_BASIC_SKILL passive check for Gold/Silver SKILL cards
                 if act_type == ActionType.SKILL and card.current_color in (
                     CardColor.GOLD,
@@ -5089,6 +5110,7 @@ class AttackSequenceStep(GameStep):
                     prompt="Select Attack Target",
                     output_key=key,
                     filters=all_filters,
+                    is_mandatory=self.is_mandatory,
                 )
             )
 
@@ -6466,6 +6488,60 @@ class PerformPrimaryActionStep(GameStep):
             f"({len(steps)} steps)"
         )
         return StepResult(is_finished=True, new_steps=steps)
+
+
+class ConvertCardToItemStep(GameStep):
+    """Converts a selected card into a permanent item for its owner hero.
+
+    Reads a card ID from context[card_key], finds it in the hero's deck,
+    increments hero.items[card.item], and sets card.state = CardState.ITEM.
+    """
+
+    type: StepType = StepType.CONVERT_CARD_TO_ITEM
+    card_key: str  # context key → card ID
+    hero_id: str = ""  # explicit hero ID (if empty, uses current actor)
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        card_id = context.get(self.card_key)
+        if not card_id:
+            return StepResult(is_finished=True)
+
+        actor_id = self.hero_id or state.current_actor_id
+        hero = state.get_hero(HeroID(str(actor_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        card = next((c for c in hero.deck if c.id == str(card_id)), None)
+        if not card:
+            print(f"   [CONVERT] Card {card_id} not found in {actor_id} deck")
+            return StepResult(is_finished=True)
+
+        stat = card.item
+        if not stat:
+            print(f"   [CONVERT] Card {card_id} has no item stat")
+            return StepResult(is_finished=True)
+
+        hero.items[stat] = hero.items.get(stat, 0) + 1
+        card.state = CardState.ITEM
+        print(f"   [CONVERT] {card.name} → permanent item (+1 {stat.name})")
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.ITEM_GAINED,
+                    actor_id=str(actor_id),
+                    metadata={
+                        "stat_type": stat.value,
+                        "amount": 1,
+                        "source_card_id": card.id,
+                    },
+                )
+            ],
+        )
 
 
 # Rebuild recursive models

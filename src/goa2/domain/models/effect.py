@@ -56,6 +56,9 @@ class EffectType(str, Enum):
     # Enraged status (Ursafar) - marks card as active, checked by is_enraged()
     ENRAGED = "enraged"
 
+    # Double item bonuses (Min - Inner Strength / Perfect Self)
+    DOUBLE_ITEMS = "double_items"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""

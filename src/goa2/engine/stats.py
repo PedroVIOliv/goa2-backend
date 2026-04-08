@@ -155,7 +155,18 @@ def get_computed_stat(
 
     # 1. Add Item Bonuses (for Heroes)
     if isinstance(unit, Hero):
-        total += unit.items.get(stat_type, 0)
+        item_bonus = unit.items.get(stat_type, 0)
+        # Check for DOUBLE_ITEMS effect (Min: Inner Strength / Perfect Self)
+        if item_bonus > 0:
+            for effect in state.active_effects:
+                if (
+                    effect.effect_type == EffectType.DOUBLE_ITEMS
+                    and effect.source_id == str(unit_id)
+                    and _is_effect_active(effect, state)
+                ):
+                    item_bonus *= 2
+                    break
+        total += item_bonus
 
     # 2. Add AREA_STAT_MODIFIER effects
     for effect in state.active_effects:

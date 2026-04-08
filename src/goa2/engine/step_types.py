@@ -15,6 +15,7 @@ from goa2.engine.steps import (
     AskConfirmationStep,
     CancelEffectsStep,
     ConfirmResolutionStep,
+    ConvertCardToItemStep,
     CheckAdjacencyStep,
     CheckContextConditionStep,
     CheckHeroDefeatedThisRoundStep,
@@ -119,6 +120,7 @@ AnyStep = Annotated[
         Annotated[AskConfirmationStep, Tag(StepType.ASK_CONFIRMATION.value)],
         Annotated[CancelEffectsStep, Tag(StepType.CANCEL_EFFECTS.value)],
         Annotated[ConfirmResolutionStep, Tag(StepType.CONFIRM_RESOLUTION.value)],
+        Annotated[ConvertCardToItemStep, Tag(StepType.CONVERT_CARD_TO_ITEM.value)],
         Annotated[CheckAdjacencyStep, Tag(StepType.CHECK_ADJACENCY.value)],
         Annotated[
             CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)

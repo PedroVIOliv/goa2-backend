@@ -1,15 +1,31 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from goa2.domain.models.effect import (
+    AffectsFilter,
     DurationType,
     EffectScope,
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import CardColor, CardState, TokenType
-from goa2.engine.effects import CardEffect, CardEffectRegistry, register_effect
+from goa2.domain.models.enums import (
+    CardColor,
+    CardContainerType,
+    CardState,
+    CardTier,
+    PassiveTrigger,
+    TokenType,
+)
+from goa2.engine.effects import (
+    CardEffect,
+    CardEffectRegistry,
+    PassiveConfig,
+    register_effect,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
+    CheckContextConditionStep,
+    ConvertCardToItemStep,
+    CountStep,
     CreateEffectStep,
     ForceDiscardOrDefeatStep,
     ForEachStep,
@@ -198,7 +214,7 @@ class CraneStanceEffect(CardEffect):
                 target_type=TargetType.UNIT,
                 prompt="Select an adjacent enemy to push (optional)",
                 output_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
                 filters=[
                     RangeFilter(max_range=1),
                     TeamFilter(relation="ENEMY"),
@@ -216,7 +232,7 @@ class CraneStanceEffect(CardEffect):
                 target_key="push_target_id",
                 distance_key="push_distance",
                 active_if_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
             ),
         ]
 
@@ -254,9 +270,9 @@ class TigerStanceEffect(CardEffect):
             # Push adjacent enemy up to 3
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select an adjacent enemy to push (optional)",
+                prompt="Select an adjacent enemy to push",
                 output_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
                 filters=[
                     RangeFilter(max_range=1),
                     TeamFilter(relation="ENEMY"),
@@ -274,7 +290,7 @@ class TigerStanceEffect(CardEffect):
                 target_key="push_target_id",
                 distance_key="push_distance",
                 active_if_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
             ),
         ]
 
@@ -312,9 +328,9 @@ class DragonStanceEffect(CardEffect):
             # Push adjacent enemy up to 3
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select an adjacent enemy to push (optional)",
+                prompt="Select an adjacent enemy to push",
                 output_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
                 filters=[
                     RangeFilter(max_range=1),
                     TeamFilter(relation="ENEMY"),
@@ -332,7 +348,7 @@ class DragonStanceEffect(CardEffect):
                 target_key="push_target_id",
                 distance_key="push_distance",
                 active_if_key="push_target_id",
-                is_mandatory=False,
+                is_mandatory=True,
             ),
         ]
 
@@ -488,14 +504,47 @@ class FastAsLightningEffect(CardEffect):
 
 
 def _smoke_bomb_swap_defense_steps(
-    defender: Hero, stats: "CardStats", allow_replacement: bool = False
+    state: "GameState",
+    defender: "Hero",
+    stats: "CardStats",
+    allow_replacement: bool = False,
 ) -> List[GameStep]:
+    from goa2.domain.types import BoardEntityID
+
+    defender_hex = state.entity_locations.get(BoardEntityID(str(defender.id)))
+    if not defender_hex:
+        return [SetContextFlagStep(key="defense_invalid", value=True)]
+
     steps: List[GameStep] = [
+        CountStep(
+            target_type=TargetType.UNIT_OR_TOKEN,
+            filters=[
+                TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
+                RangeFilter(max_range=stats.range, origin_hex=defender_hex),
+            ],
+            output_key="smoke_bomb_count",
+            skip_immunity_filter=True,
+        ),
+        CheckContextConditionStep(
+            input_key="smoke_bomb_count",
+            operator=">=",
+            threshold=1,
+            output_key="has_smoke_bomb",
+        ),
+        CheckContextConditionStep(
+            input_key="smoke_bomb_count",
+            operator="<",
+            threshold=1,
+            output_key="defense_invalid",
+        ),
+    ]
+
+    conditional_steps: List[GameStep] = [
         SelectStep(
             target_type=TargetType.UNIT_OR_TOKEN,
             prompt="Select a Smoke Bomb token to swap with",
             output_key="swap_token_id",
-            is_mandatory=False,
+            is_mandatory=True,
             skip_immunity_filter=True,
             filters=[
                 RangeFilter(max_range=stats.range),
@@ -505,33 +554,37 @@ def _smoke_bomb_swap_defense_steps(
         SwapUnitsStep(
             unit_a_id=str(defender.id),
             unit_b_key="swap_token_id",
-            active_if_key="swap_token_id",
-            is_mandatory=False,
+            is_mandatory=True,
         ),
-        SetContextFlagStep(key="auto_block", value=True, active_if_key="swap_token_id"),
+        SetContextFlagStep(key="auto_block", value=True),
     ]
     if allow_replacement:
-        steps.append(
-            SelectStep(
-                target_type=TargetType.HEX,
-                prompt="Place the Smoke Bomb into a space in range (optional)",
-                output_key="smoke_place_hex",
-                is_mandatory=False,
-                active_if_key="swap_token_id",
-                filters=[
-                    RangeFilter(max_range=stats.range),
-                    ObstacleFilter(is_obstacle=False),
-                ],
-            )
+        conditional_steps.extend(
+            [
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt="Place the Smoke Bomb into a space in range (optional)",
+                    output_key="smoke_place_hex",
+                    is_mandatory=False,
+                    active_if_key="swap_token_id",
+                    filters=[
+                        RangeFilter(max_range=stats.range),
+                        ObstacleFilter(is_obstacle=False),
+                    ],
+                ),
+                PlaceTokenStep(
+                    token_type=TokenType.SMOKE_BOMB,
+                    hex_key="smoke_place_hex",
+                    active_if_key="smoke_place_hex",
+                    is_mandatory=False,
+                ),
+            ]
         )
-        steps.append(
-            PlaceTokenStep(
-                token_type=TokenType.SMOKE_BOMB,
-                hex_key="smoke_place_hex",
-                active_if_key="smoke_place_hex",
-                is_mandatory=False,
-            )
-        )
+
+    for step in conditional_steps:
+        step.active_if_key = "has_smoke_bomb"
+        steps.append(step)
+
     return steps
 
 
@@ -549,7 +602,7 @@ class PoofEffect(CardEffect):
         stats: "CardStats",
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        return _smoke_bomb_swap_defense_steps(defender, stats)
+        return _smoke_bomb_swap_defense_steps(state, defender, stats)
 
 
 @register_effect("vanish")
@@ -566,7 +619,7 @@ class VanishEffect(CardEffect):
         stats: "CardStats",
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        return _smoke_bomb_swap_defense_steps(defender, stats)
+        return _smoke_bomb_swap_defense_steps(state, defender, stats)
 
 
 @register_effect("ruse")
@@ -584,7 +637,9 @@ class RuseEffect(CardEffect):
         stats: "CardStats",
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        return _smoke_bomb_swap_defense_steps(defender, stats, allow_replacement=True)
+        return _smoke_bomb_swap_defense_steps(
+            state, defender, stats, allow_replacement=True
+        )
 
 
 # =============================================================================
@@ -621,7 +676,7 @@ def _grenade_steps(hero: Hero, stats: "CardStats", max_targets: int) -> List[Gam
                     auto_select_if_one=True,
                     skip_immunity_filter=True,
                     skip_self_filter=True,
-                    is_mandatory=False,
+                    is_mandatory=True,
                     filters=[TokenTypeFilter(token_type=TokenType.GRENADE)],
                 ),
                 MultiSelectStep(
@@ -678,3 +733,229 @@ class HolyDeathGrenadeEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
     ) -> List[GameStep]:
         return _grenade_steps(hero, stats, max_targets=2)
+
+
+# =============================================================================
+# GREEN CARDS — Inner Strength / Perfect Self
+# =============================================================================
+
+
+def _double_items_steps(hero: "Hero") -> List[GameStep]:
+    """Create a DOUBLE_ITEMS effect for this round."""
+    return [
+        CreateEffectStep(
+            effect_type=EffectType.DOUBLE_ITEMS,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.SELF),
+            duration=DurationType.THIS_ROUND,
+            is_active=True,
+        ),
+    ]
+
+
+@register_effect("inner_strength")
+class InnerStrengthEffect(CardEffect):
+    """
+    Card Text: "This round: Double your item bonuses."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
+    ) -> List[GameStep]:
+        return _double_items_steps(hero)
+
+
+@register_effect("perfect_self")
+class PerfectSelfEffect(CardEffect):
+    """
+    Card Text: "Choose one, or both —
+    • This round: Double your item bonuses.
+    • Take a Tier II card from your deck and add it to your dashboard
+      as a permanent item."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
+    ) -> List[GameStep]:
+        # Pre-filter for retired Tier II cards in deck
+        retired_tier2_ids = [
+            c.id
+            for c in hero.deck
+            if c.tier == CardTier.II and c.state == CardState.RETIRED
+        ]
+        has_retired_tier2 = len(retired_tier2_ids) > 0
+
+        # Build options based on what's available
+        if has_retired_tier2:
+            options = [1, 2, 3]
+            labels = {
+                1: "Double item bonuses this round",
+                2: "Convert a Tier II card to permanent item",
+                3: "Both",
+            }
+        else:
+            # No retired Tier II cards — only option A is available
+            return _double_items_steps(hero)
+
+        steps: List[GameStep] = [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one, or both",
+                output_key="perfect_self_choice",
+                number_options=options,
+                number_labels=labels,
+            ),
+        ]
+
+        # Option 1 or 3: Double items
+        steps.append(
+            CheckContextConditionStep(
+                input_key="perfect_self_choice",
+                operator="!=",
+                threshold=2,
+                output_key="do_double_items",
+            )
+        )
+        steps.append(
+            CreateEffectStep(
+                effect_type=EffectType.DOUBLE_ITEMS,
+                scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.SELF),
+                duration=DurationType.THIS_ROUND,
+                is_active=True,
+                active_if_key="do_double_items",
+            ),
+        )
+
+        # Option 2 or 3: Convert Tier II card to item
+        steps.append(
+            CheckContextConditionStep(
+                input_key="perfect_self_choice",
+                operator=">=",
+                threshold=2,
+                output_key="do_convert_card",
+            )
+        )
+        steps.append(
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DECK,
+                prompt="Select a Tier II card to convert to permanent item",
+                output_key="convert_card_id",
+                is_mandatory=False,
+                active_if_key="do_convert_card",
+                allowed_card_ids=retired_tier2_ids,
+            ),
+        )
+        steps.append(
+            ConvertCardToItemStep(
+                card_key="convert_card_id",
+                hero_id=str(hero.id),
+                active_if_key="convert_card_id",
+            ),
+        )
+
+        return steps
+
+
+# =============================================================================
+# ULTIMATE — Flurry of Blows
+# =============================================================================
+
+
+@register_effect("flurry_of_blows")
+class FlurryOfBlowsEffect(CardEffect):
+    """
+    Card Text: "Each time after you perform an attack action,
+    you may repeat it once on a different target."
+    """
+
+    def get_passive_config(self) -> Optional[PassiveConfig]:
+        return PassiveConfig(
+            trigger=PassiveTrigger.AFTER_ATTACK,
+            uses_per_turn=0,  # unlimited
+            is_optional=True,
+            prompt="Flurry of Blows: Repeat the attack on a different target?",
+        )
+
+    def get_passive_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: Dict[str, Any],
+    ) -> List[GameStep]:
+        
+
+        if trigger != PassiveTrigger.AFTER_ATTACK:
+            
+            return []
+
+        # Prevent recursion — repeated attack should not trigger flurry again
+        if context.get("is_flurry_repeat"):
+            
+            return []
+
+        # Get the card that was just played
+        effect_id = context.get("attack_effect_id")
+        card_id = context.get("attack_card_id")
+        if not effect_id or not card_id:
+            return []
+
+        # Search current_turn_card first (card is still resolving),
+        # then played_cards and discard_pile
+        source_card = None
+        if hero.current_turn_card and hero.current_turn_card.id == card_id:
+            source_card = hero.current_turn_card
+        if not source_card:
+            source_card = next(
+                (c for c in hero.played_cards if c and c.id == card_id), None
+            )
+        if not source_card:
+            source_card = next((c for c in hero.discard_pile if c.id == card_id), None)
+        if not source_card:
+            
+            return []
+
+        effect = CardEffectRegistry.get(effect_id)
+        if not effect:
+            
+            return []
+
+        from goa2.engine.stats import compute_card_stats
+
+        card_stats = compute_card_stats(state, hero.id, source_card)
+        new_steps = effect.build_steps(state, hero, source_card, card_stats)
+        
+        # Find the last attacked target from context
+        last_target = context.get("defender_id") or context.get("victim_id")
+        
+
+        # Walk the steps and modify AttackSequenceSteps:
+        # - Exclude the last target
+        # - Make non-mandatory (no valid target should not abort the turn)
+        if last_target:
+            for step in new_steps:
+                if isinstance(step, AttackSequenceStep):
+                    step.target_filters = list(step.target_filters) + [
+                        ExcludeIdentityFilter(exclude_keys=["last_flurry_target"])
+                    ]
+                    step.is_mandatory = True 
+
+        total_steps = (
+            [
+                SetContextFlagStep(key="last_flurry_target", value=last_target),
+                SetContextFlagStep(key="is_flurry_repeat", value=True),
+                SetContextFlagStep(
+                    key="victim_id", value=None
+                ),  # Clear previous target
+                SetContextFlagStep(
+                    key="defender_id", value=None
+                ),  # Clear previous target
+            ]
+            + new_steps
+            + [
+                SetContextFlagStep(key="is_flurry_repeat", value=None),
+            ]
+        )
+        
+        return total_steps
