@@ -47,6 +47,11 @@ def process_stack(state: GameState) -> StackResult:
             raise RuntimeError("Infinite Loop detected in Engine Resolution Stack")
 
         current_step: GameStep = state.execution_stack.pop()
+
+        # Centralized skip check — steps no longer need to call should_skip() themselves
+        if current_step.should_skip(state.execution_context):
+            continue
+
         result: StepResult = current_step.resolve(state, state.execution_context)
 
         # Collect events even from aborted steps
@@ -114,6 +119,10 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
             raise RuntimeError("Infinite Loop detected in Engine Resolution Stack")
 
         current_step: GameStep = state.execution_stack.pop()
+
+        # Centralized skip check — steps no longer need to call should_skip() themselves
+        if current_step.should_skip(state.execution_context):
+            continue
 
         result: StepResult = current_step.resolve(state, state.execution_context)
 

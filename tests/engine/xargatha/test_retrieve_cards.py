@@ -189,7 +189,7 @@ class TestCountStep:
         assert retrieve_state.execution_context["enemy_count"] == 0
 
     def test_skipped_when_active_if_key_missing(self, retrieve_state):
-        """CountStep stores 0 when skipped via active_if_key."""
+        """CountStep is skipped entirely when active_if_key is missing from context."""
         push_steps(
             retrieve_state,
             [
@@ -202,7 +202,7 @@ class TestCountStep:
             ],
         )
         process_resolution_stack(retrieve_state)
-        assert retrieve_state.execution_context["enemy_count"] == 0
+        assert "enemy_count" not in retrieve_state.execution_context
 
 
 # ---------------------------------------------------------------------------

@@ -5095,8 +5095,8 @@ class AttackSequenceStep(GameStep):
 
         new_steps: List[GameStep] = []
 
-        # Only spawn selection if we don't have a pre-selected key
-        if not self.target_id_key:
+        # Only spawn selection if we don't have a pre-selected key or if the key is not already set in context
+        if not self.target_id_key or key not in context:
             # Base filters + any custom target_filters
             all_filters: List[FilterCondition] = [
                 RangeFilter(max_range=effective_range),

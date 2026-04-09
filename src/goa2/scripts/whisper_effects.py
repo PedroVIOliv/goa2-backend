@@ -1112,6 +1112,7 @@ class GreaterGoodEffect(CardEffect):
             ForEachStep(
                 list_key="gg_minion_targets",
                 item_key="gg_current_minion",
+                active_if_key="gg_chose_defeat",
                 steps_template=[
                     DefeatUnitStep(victim_key="gg_current_minion"),
                 ],
@@ -1138,7 +1139,7 @@ class DeathSeekerEffect(CardEffect):
     def _has_ultimate(self, hero: Hero) -> bool:
         return (
             hero.ultimate_card is not None
-            and hero.ultimate_card.state == CardState.PASSIVE
+            and hero.level >= 8
         )
 
     def build_steps(
@@ -1290,7 +1291,7 @@ class SwiftJusticeEffect(CardEffect):
     def _has_ultimate(self, hero: Hero) -> bool:
         return (
             hero.ultimate_card is not None
-            and hero.ultimate_card.state == CardState.PASSIVE
+            and hero.level >= 8
         )
 
     def build_steps(
@@ -1361,6 +1362,7 @@ class SwiftJusticeEffect(CardEffect):
                     target_id_key="sj_ult_victim_b",
                     active_if_key="sj_chose_ranged",
                     is_ranged=True,
+                    is_mandatory=False
                 ),
             )
             # If chose adjacent (2), also offer ranged attack + forced movement
@@ -1375,11 +1377,12 @@ class SwiftJusticeEffect(CardEffect):
                             container=CardContainerType.DISCARD, max_cards=0
                         ),
                     ],
+                    is_mandatory=False,
                     active_if_key="sj_chose_adjacent",
                 ),
                 ForceDefenseCardMovementStep(
                     defender_key="sj_ult_victim_a",
-                    active_if_key="sj_chose_adjacent",
+                    active_if_key="sj_ult_victim_a",
                 ),
             ])
 
