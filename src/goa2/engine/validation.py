@@ -195,12 +195,13 @@ class ValidationService:
         """
         context = context or {}
 
-        # Check prevention first
-        action_result = self.can_perform_action(
-            state, unit_id, ActionType.MOVEMENT, context
-        )
-        if not action_result.allowed:
-            return action_result
+        # Check action prevention (only applies to movement actions, not granted moves)
+        if is_movement_action:
+            action_result = self.can_perform_action(
+                state, unit_id, ActionType.MOVEMENT, context
+            )
+            if not action_result.allowed:
+                return action_result
 
         # Check movement cap effects
         unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
