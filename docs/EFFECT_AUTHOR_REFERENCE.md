@@ -641,14 +641,16 @@ Falls back to current actor if no origin specified.
 
 ---
 
-#### `PreserveDistanceFilter`
+#### `RelativeDistanceFilter`
 
-**Description:** Ensures candidate hex is at the same distance from origin as a reference unit. Used for "orbit" mechanics.
+**Description:** Compares distance(origin, candidate) against distance(origin, reference unit) using a configurable operator. General-purpose filter for "farther away", "closer", "same distance", etc.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `target_key` | `str` | *required* | Context key for the reference unit |
+| `reference_key` | `str` | *required* | Context key for the reference unit |
 | `origin_id` | `str \| None` | `None` | Override origin (defaults to current actor) |
+| `origin_key` | `str \| None` | `None` | Context key for origin unit ID |
+| `operator` | `str` | `">"` | Comparison: `">"`, `">="`, `"=="`, `"<="`, `"<"` |
 
 ---
 
@@ -1156,7 +1158,7 @@ SelectStep(
     is_mandatory=True,
     filters=[
         AdjacencyToContextFilter(target_key="orbit_target"),
-        PreserveDistanceFilter(target_key="orbit_target"),
+        RelativeDistanceFilter(reference_key="orbit_target", operator="=="),
         ObstacleFilter(is_obstacle=False),
     ],
 ),

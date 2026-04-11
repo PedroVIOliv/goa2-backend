@@ -1594,6 +1594,72 @@ class TriggerMineStep(GameStep):
         return StepResult(is_finished=True, events=events, new_steps=new_steps)
 
 
+# TODO: Refactor into ResolvePrimaryActionStep wrapper that handles
+# pre/post action effects + card text resolution in both offense/defense paths.
+class ResolvePreActionMovementStep(GameStep):
+    """
+    Checks for an active PRE_ACTION_MOVEMENT effect on a hero and, if found,
+    spawns an optional SelectStep + MoveUnitStep before the primary action.
+
+    Used by Misa's Focus/Discipline/Mastery green cards.
+    """
+
+    type: StepType = StepType.RESOLVE_PRE_ACTION_MOVEMENT
+    hero_id: Optional[str] = None
+    hero_key: Optional[str] = None
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        hero_id = self.hero_id
+        if not hero_id and self.hero_key:
+            hero_id = context.get(self.hero_key)
+        if not hero_id:
+            return StepResult(is_finished=True)
+
+        effect = next(
+            (
+                e
+                for e in state.active_effects
+                if e.effect_type == EffectType.PRE_ACTION_MOVEMENT
+                and e.source_id == hero_id
+                and e.is_active
+            ),
+            None,
+        )
+        if not effect:
+            return StepResult(is_finished=True)
+
+        move_range = effect.max_value or 1
+
+        from goa2.engine.filters import ObstacleFilter, MovementPathFilter
+
+        print(
+            f"   [PRE-ACTION MOVE] Granting {hero_id} optional move up to {move_range}"
+        )
+
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt=f"Pre-action movement (up to {move_range} space{'s' if move_range > 1 else ''})",
+                    output_key="pre_action_move_hex",
+                    filters=[
+                        ObstacleFilter(is_obstacle=False, exclude_id=hero_id),
+                        MovementPathFilter(range_val=move_range, unit_id=hero_id),
+                    ],
+                    is_mandatory=False,
+                ),
+                MoveUnitStep(
+                    unit_id=hero_id,
+                    destination_key="pre_action_move_hex",
+                    range_val=move_range,
+                    is_mandatory=False,
+                    is_movement_action=False,
+                ),
+            ],
+        )
+
+
 class MoveSequenceStep(GameStep):
     """
     Composite Step for Movement.
@@ -3672,7 +3738,9 @@ class ResolveCardStep(GameStep):
                     )
 
                 if is_primary:
-                    # User Mandate: Primary actions apply custom script.
+                    steps_list.append(
+                        ResolvePreActionMovementStep(hero_id=self.hero_id)
+                    )
                     steps_list.append(
                         ResolveCardTextStep(card_id=card.id, hero_id=self.hero_id)
                     )
@@ -3755,9 +3823,7 @@ class ResolveCardStep(GameStep):
                             )
                         )
                         steps_list.append(
-                            SetContextFlagStep(
-                                key="attack_card_id", value=card.id
-                            )
+                            SetContextFlagStep(key="attack_card_id", value=card.id)
                         )
                     steps_list.append(
                         CheckPassiveAbilitiesStep(
@@ -4198,13 +4264,16 @@ class RecordHexStep(GameStep):
     """
 
     type: StepType = StepType.RECORD_HEX
-    unit_key: str  # The key holding the unit/entity ID in context
+    unit_id: Optional[str] = None  # Literal unit ID
+    unit_key: Optional[str] = None  # Or read from context
     output_key: str  # The key where hex dict will be stored
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        unit_id = context.get(self.unit_key)
+        unit_id = self.unit_id
+        if not unit_id and self.unit_key:
+            unit_id = context.get(self.unit_key)
         if not unit_id:
-            print(f"   [RECORD_HEX] No unit_id found for {self.unit_key}")
+            print("   [RECORD_HEX] No unit_id provided")
             return StepResult(is_finished=True)
 
         entity_hex = state.entity_locations.get(BoardEntityID(unit_id))
@@ -4214,6 +4283,66 @@ class RecordHexStep(GameStep):
 
         context[self.output_key] = entity_hex.model_dump()
         print(f"   [RECORD_HEX] Recorded hex for {unit_id} at {entity_hex}")
+        return StepResult(is_finished=True)
+
+
+class CheckDistanceStep(GameStep):
+    """
+    Checks topology-aware distance between two units and stores the result
+    (True/None) in context based on operator/threshold.
+
+    Stores True when the distance comparison passes, and None when it fails
+    (matching CheckContextConditionStep semantics for active_if_key).
+
+    Used by Misa's RED ranged cards to gate a conditional push based on
+    whether the target is at max range (==range) or not adjacent (>1).
+    """
+
+    type: StepType = StepType.CHECK_DISTANCE
+    unit_a_id: Optional[str] = None
+    unit_a_key: Optional[str] = None
+    unit_b_id: Optional[str] = None
+    unit_b_key: Optional[str] = None
+    operator: str = "=="  # ">=", ">", "==", "<=", "<", "!="
+    threshold: int = 1
+    output_key: str = "distance_check"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        u_a = self.unit_a_id or (
+            context.get(self.unit_a_key) if self.unit_a_key else None
+        )
+        u_b = self.unit_b_id or (
+            context.get(self.unit_b_key) if self.unit_b_key else None
+        )
+        if not u_a or not u_b:
+            context[self.output_key] = None
+            return StepResult(is_finished=True)
+
+        loc_a = state.entity_locations.get(BoardEntityID(str(u_a)))
+        loc_b = state.entity_locations.get(BoardEntityID(str(u_b)))
+        if not loc_a or not loc_b:
+            context[self.output_key] = None
+            return StepResult(is_finished=True)
+
+        topology = get_topology_service()
+        dist = topology.distance(loc_a, loc_b, state)
+
+        ops = {
+            ">=": dist >= self.threshold,
+            ">": dist > self.threshold,
+            "==": dist == self.threshold,
+            "<=": dist <= self.threshold,
+            "<": dist < self.threshold,
+            "!=": dist != self.threshold,
+        }
+        result = ops.get(self.operator, False)
+        context[self.output_key] = True if result else None
+        print(
+            f"   [CHECK_DISTANCE] {u_a}<->{u_b} dist={dist} {self.operator} {self.threshold} -> {result}"
+        )
         return StepResult(is_finished=True)
 
 
@@ -5117,10 +5246,13 @@ class AttackSequenceStep(GameStep):
         new_steps.extend(
             [
                 ReactionWindowStep(target_player_key=key),
-                ResolveDefenseTextStep(),  # NEW: Process defense card effects
+                SetActorStep(actor_key="defender_id", save_key="_pre_pam_actor"),
+                ResolvePreActionMovementStep(hero_key="defender_id"),
+                SetActorStep(actor_key="_pre_pam_actor", save_key="_discard_pam"),
+                ResolveDefenseTextStep(),
                 ResolveCombatStep(damage=effective_damage, target_key=key),
-                ResolveOnBlockEffectStep(),  # NEW: Process 'if you do' effects
-                RestoreActionTypeStep(),  # Restore action type after defense resolution
+                ResolveOnBlockEffectStep(),
+                RestoreActionTypeStep(),
             ]
         )
 

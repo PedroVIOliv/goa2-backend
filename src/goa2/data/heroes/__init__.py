@@ -14,5 +14,6 @@ import goa2.data.heroes.whisper
 import goa2.data.heroes.rowenna
 import goa2.data.heroes.ursafar
 import goa2.data.heroes.min
+import goa2.data.heroes.misa
 
 __all__ = ["HeroRegistry"]

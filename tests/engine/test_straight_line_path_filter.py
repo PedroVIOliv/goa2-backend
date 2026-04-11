@@ -75,11 +75,11 @@ def test_obstacle_on_intermediate_blocks(straight_line_state):
 
 
 def test_obstacle_on_intermediate_with_pass_through(straight_line_state):
-    """Unit on intermediate hex with pass_through_units=True → allowed."""
+    """Unit on intermediate hex with pass_through_obstacles=True → allowed."""
     state = straight_line_state
     state.place_entity("enemy_b", Hex(q=1, r=0, s=-1))
 
-    f = StraightLinePathFilter(origin_id="hero_a", pass_through_units=True)
+    f = StraightLinePathFilter(origin_id="hero_a", pass_through_obstacles=True)
     assert f.apply(Hex(q=2, r=0, s=-2), state, {}) is True
 
 

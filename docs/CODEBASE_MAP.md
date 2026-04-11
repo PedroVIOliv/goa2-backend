@@ -263,7 +263,7 @@ tests/
 | `ImmunityFilter` | Heavy minion immunity + attack immunity effects |
 | `ObstacleFilter` | Terrain/occupancy checks |
 | `LineBehindTargetFilter` | Backstab targeting |
-| `PreserveDistanceFilter` | Orbit movement (Wasp) |
+| `RelativeDistanceFilter` | Relative distance comparisons (orbit, push-farther) |
 | `NotInStraightLineFilter` | Diagonal-only targeting (Wasp) |
 
 ---

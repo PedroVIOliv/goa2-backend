@@ -656,10 +656,10 @@ class TestLiftUpEffect:
             and f.target_key == "lift_target"
             for f in hex_select.filters
         )
-        # 2. PreserveDistanceFilter (preserve distance to Wasp/origin)
+        # 2. RelativeDistanceFilter (preserve distance to Wasp/origin)
         assert any(
-            f.__class__.__name__ == "PreserveDistanceFilter"
-            and f.target_key == "lift_target"
+            f.__class__.__name__ == "RelativeDistanceFilter"
+            and f.reference_key == "lift_target"
             for f in hex_select.filters
         )
 
@@ -816,10 +816,10 @@ class TestCenterOfMassEffect:
             for f in hex_select.filters
         )
 
-        # Verify PreserveDistanceFilter
+        # Verify RelativeDistanceFilter
         assert any(
-            f.__class__.__name__ == "PreserveDistanceFilter"
-            and f.target_key == "lift_target"
+            f.__class__.__name__ == "RelativeDistanceFilter"
+            and f.reference_key == "lift_target"
             for f in hex_select.filters
         )
 

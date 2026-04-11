@@ -1,338 +1,702 @@
-# =============================================================================
-# MISA EFFECTS — HIGH-LEVEL DESIGN
-# =============================================================================
-#
-# New infrastructure needed (2 steps, 2 filters):
-#
-#   SaveUnitLocationStep(unit_id, output_key)
-#     - Reads state.entity_locations[unit_id], stores Hex in context[output_key]
-#     - ~10 lines. Generic "remember where X was" utility.
-#
-#   BetweenHexesFilter(from_hex_key, to_hex_key)
-#     - Unit filter: passes if unit sits on the straight-line path between
-#       two context hexes (exclusive of both endpoints).
-#     - Uses TopologyService.line_between(origin, target, state) which
-#       returns connected intermediate hexes (new topology method needed).
-#     - ~20 lines of logic, same resolve pattern as LineBehindTargetFilter.
-#
-#   CountMatchFilter(sub_filters, min_count, max_count?)
-#     - HEX filter: counts units on the board that pass all sub_filters
-#       (evaluated from the candidate hex's perspective as origin), then
-#       checks count >= min_count (and <= max_count if set).
-#     - CountStep logic as a filter. Sub_filters like RangeFilter are
-#       evaluated relative to the candidate hex, so RangeFilter(max_range=1)
-#       gives adjacency, RangeFilter(max_range=3) gives radius, etc.
-#     - Fully generic: any filter combo works. Replaces need for one-off
-#       "MinAdjacentEnemiesFilter", "HasNearbyAlliesFilter", etc.
-#
-#   CheckDistanceStep(unit_a_id/key, unit_b_key, operator, threshold, output_key)
-#     - Checks topology distance between two units, stores True/None in context.
-#     - Same pattern as CheckContextConditionStep but reads positions instead
-#       of context values.
-#     - Used by RED ranged cards for "if target is/isn't at range X".
-#
-# Ultimate (Power Overwhelming) is baked into individual card effects at
-# build time, same as Whisper's Grim Reaper pattern:
-#   - "Choose one → choose two": only watch_how_i_soar has a choice,
-#     so it checks _has_ultimate(hero) and extends with the second branch.
-#   - "After you place yourself, adjacent enemy discards": cards that place
-#     the hero (watch_how_i_soar, swoop_in, BLUE cards) append
-#     post-placement discard steps when ultimate is active.
-#
-# GREEN "next turn: move before primary action" needs a new PassiveTrigger
-# (BEFORE_PRIMARY_ACTION) and NEXT_TURN-duration passive granting. Detailed
-# in the green card section below.
-#
-# =============================================================================
+from __future__ import annotations
+from typing import List, TYPE_CHECKING
+from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    CheckDistanceStep,
+    CheckUnitTypeStep,
+    CreateEffectStep,
+    DefeatUnitStep,
+    ForceDiscardStep,
+    GameStep,
+    MoveUnitStep,
+    PlaceUnitStep,
+    PushUnitStep,
+    RecordHexStep,
+    RetrieveCardStep,
+    SelectStep,
+    SwapUnitsStep,
+)
+from goa2.engine.filters import (
+    AdjacencyToContextFilter,
+    BetweenHexesFilter,
+    CountMatchFilter,
+    ExcludeIdentityFilter,
+    InStraightLineFilter,
+    ObstacleFilter,
+    RangeFilter,
+    RelativeDistanceFilter,
+    StraightLinePathFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
+from goa2.domain.models import (
+    EffectType,
+    DurationType,
+    StatType,
+    TargetType,
+)
+from goa2.domain.models.effect import EffectScope, AffectsFilter, Shape
+from goa2.domain.models.enums import CardContainerType
+
+if TYPE_CHECKING:
+    from goa2.domain.state import GameState
+    from goa2.domain.models import Hero, Card
+    from goa2.engine.stats import CardStats
+
+
+def _has_ultimate(hero: Hero) -> bool:
+    return hero.ultimate_card is not None and hero.level >= 8
+
+
+def _ultimate_post_placement_steps(prefix: str = "ult", active_if_key: str = None) -> List[GameStep]:
+    return [
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Power Overwhelming: Choose an adjacent enemy hero to discard a card",
+            filters=[
+                RangeFilter(max_range=1),
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="HERO"),
+            ],
+            is_mandatory=False,
+            active_if_key=active_if_key,
+            output_key=f"{prefix}_adj_victim",
+        ),
+        ForceDiscardStep(victim_key=f"{prefix}_adj_victim", active_if_key=f"{prefix}_adj_victim"),
+    ]
 
 
 # =============================================================================
-# RED MELEE — Attack Adjacent + Defense Buff (3 tiers, shared helper)
+# RED MELEE — Attack Adjacent + Defense Buff (3 tiers)
 # =============================================================================
-#
-# Cards: challenge_accepted (T1, +2), matter_of_honor (T2, +3),
-#         worthy_opponent (T3, +5)
-#
-# Pattern:
-#   AttackSequenceStep(damage=stats.primary_value, range_val=1)
-#   CreateEffectStep(
-#       effect_type=AREA_STAT_MODIFIER,
-#       scope=EffectScope(shape=POINT, origin_id=hero.id, affects=SELF),
-#       stat_type=StatType.DEFENSE,
-#       stat_value=+N,
-#       duration=THIS_TURN,
-#   )
-#
-# Analog: Dodger WeaknessEffect (dodger_effects.py:135) but SELF and positive.
-# All 3 tiers share a helper, differing only in defense value.
-# Defense value is per-card (not from stats), so hardcode per tier or pass as arg.
-#
-# Complexity: LOW — existing steps only.
+
+
+class _RedMeleeEffect(CardEffect):
+    """
+    Base for RED melee cards: attack adjacent + defense buff.
+    Card Text: "Target a unit adjacent to you. After the attack:
+    This turn: Gain +N Defense."
+    """
+
+    defense_value: int = 2
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+            ),
+            CreateEffectStep(
+                effect_type=EffectType.AREA_STAT_MODIFIER,
+                scope=EffectScope(
+                    shape=Shape.POINT,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.SELF,
+                ),
+                stat_type=StatType.DEFENSE,
+                stat_value=self.defense_value,
+                duration=DurationType.THIS_TURN,
+                is_active=True,
+            ),
+        ]
+        return steps
+
+
+@register_effect("challenge_accepted")
+class ChallengeAcceptedEffect(_RedMeleeEffect):
+    """
+    Card Text: "Target a unit adjacent to you. After the attack:
+    This turn: Gain +2 Defense."
+    """
+
+    defense_value = 2
+
+
+@register_effect("matter_of_honor")
+class MatterOfHonorEffect(_RedMeleeEffect):
+    """
+    Card Text: "Target a unit adjacent to you. After the attack:
+    This turn: Gain +3 Defense."
+    """
+
+    defense_value = 3
+
+
+@register_effect("worthy_opponent")
+class WorthyOpponentEffect(_RedMeleeEffect):
+    """
+    Card Text: "Target a unit adjacent to you. After the attack:
+    This turn: Gain +5 Defense."
+    """
+
+    defense_value = 5
 
 
 # =============================================================================
 # RED RANGED — Attack + Conditional Push (2 tiers)
 # =============================================================================
-#
-# Cards: power_shot (T2), thunder_shot (T3)
-#
-# power_shot: "Target a unit in range. After the attack: If the target was
-#   at maximum range, you may move it 1 space farther away from you."
-#
-# thunder_shot: "Target a unit in range. After the attack: If the target is
-#   not adjacent to you, you may move it 1 space farther away from you."
-#
-# Pattern:
-#   AttackSequenceStep(damage=stats.primary_value, range_val=stats.range)
-#   # target stored in context as "defender_id" by AttackSequenceStep
-#   CheckDistanceStep(                              # NEW STEP
-#       unit_a_id=hero.id,
-#       unit_b_key="defender_id",
-#       operator="==" / ">",                        # power_shot: ==max, thunder_shot: >1
-#       threshold=stats.range / 1,
-#       output_key="can_push",
-#   )
-#   PushUnitStep(
-#       target_key="defender_id",
-#       distance=1,
-#       is_mandatory=False,
-#       active_if_key="can_push",
-#   )
-#
-# Complexity: MEDIUM — needs CheckDistanceStep.
+
+
+@register_effect("power_shot")
+class PowerShotEffect(CardEffect):
+    """
+    Card Text: "Target a unit in range. After the attack: If the target was
+    at maximum range, you may move it 1 space, to a space farther away from you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+            ),
+            CheckDistanceStep(
+                unit_a_id=hero.id,
+                unit_b_key="defender_id",
+                operator="==",
+                threshold=stats.range,
+                output_key="ps_can_push",
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space to move the target to (1 space farther away)",
+                output_key="ps_push_dest",
+                filters=[
+                    RelativeDistanceFilter(reference_key="defender_id", operator=">"),
+                    AdjacencyToContextFilter(target_key="defender_id"),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+                active_if_key="ps_can_push",
+                is_mandatory=False,
+            ),
+            MoveUnitStep(
+                unit_key="defender_id",
+                destination_key="ps_push_dest",
+                active_if_key="ps_push_dest",
+            ),
+        ]
+
+
+@register_effect("thunder_shot")
+class ThunderShotEffect(CardEffect):
+    """
+    Card Text: "Target a unit in range. After the attack: If the target is
+    not adjacent to you, you may move it 1 space, to a space farther away from you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+            ),
+            CheckDistanceStep(
+                unit_a_id=hero.id,
+                unit_b_key="defender_id",
+                operator=">",
+                threshold=1,
+                output_key="ts_can_push",
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select a space to move the target to (1 space farther away)",
+                output_key="ts_push_dest",
+                filters=[
+                    RelativeDistanceFilter(reference_key="defender_id", operator=">"),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+                active_if_key="ts_can_push",
+                is_mandatory=False,
+            ),
+            MoveUnitStep(
+                unit_key="defender_id",
+                destination_key="ts_push_dest",
+                active_if_key="ts_push_dest",
+            ),
+        ]
 
 
 # =============================================================================
-# BLUE — Straight-Line Move Through + Effect (6 cards, 2 variants)
+# BLUE — Straight-Line Move Through (6 cards, shared movement helper)
 # =============================================================================
-#
-# Discard variant: sudden_breeze is NOT discard — correction:
-#   - dash_and_slash (T2), death_from_above (T3): enemy hero discards
-#   - sudden_breeze (T1), gust_of_wind (T2), crushing_squall (T3): place enemy
-#
-# All share the same movement pattern, differ in post-move effect.
-#
-# Pattern (shared helper):
-#   SaveUnitLocationStep(unit_id=hero.id, output_key="move_origin")  # NEW STEP
-#   SelectStep(HEX, filters=[
-#       RangeFilter(min_range=1, max_range=N),       # N = 3/4/5 per tier
-#       InStraightLineFilter(origin_id=hero.id),
-#       StraightLinePathFilter(origin_id=hero.id, pass_through_units=True),
-#       OccupiedFilter(is_occupied=False),
-#   ], output_key="move_dest")
-#   MoveUnitStep(unit_id=hero.id, destination_key="move_dest", range_val=99)
-#
-# Then find crossed enemy:
-#   SelectStep(UNIT, filters=[
-#       BetweenHexesFilter(from_hex_key="move_origin", to_hex_key="move_dest"),  # NEW FILTER
-#       TeamFilter(ENEMY),
-#   ], auto_select_if_one=True, is_mandatory=False, output_key="crossed_enemy")
-#
-# Discard variant (dash_and_slash, death_from_above):
-#   CheckUnitTypeStep(unit_key="crossed_enemy", expected_type="HERO",
-#                     output_key="crossed_is_hero")
-#   ForceDiscardStep(victim_key="crossed_enemy", active_if_key="crossed_is_hero")
-#
-# Place variant (sudden_breeze, gust_of_wind, crushing_squall):
-#   SelectStep(HEX, filters=[
-#       RangeFilter(max_range=1),                     # adjacent to self
-#       OccupiedFilter(is_occupied=False),
-#   ], is_mandatory=False, output_key="place_dest", active_if_key="crossed_enemy")
-#   PlaceUnitStep(unit_key="crossed_enemy", destination_key="place_dest",
-#                 active_if_key="place_dest")
-#
-# Ultimate integration: if _has_ultimate(hero), append after PlaceUnitStep/move:
-#   SelectStep(UNIT, filters=[RangeFilter(1), TeamFilter(ENEMY), UnitTypeFilter(HERO)],
-#              is_mandatory=False, auto_select_if_one=True, output_key="ult_discard_victim")
-#   ForceDiscardStep(victim_key="ult_discard_victim")
-#
-# Complexity: HIGH — needs SaveUnitLocationStep + BetweenHexesFilter.
+
+
+def _blue_move_steps(hero: Hero, max_range: int) -> List[GameStep]:
+    return [
+        RecordHexStep(unit_id=hero.id, output_key="move_origin"),
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="Select destination (straight line, pass through units)",
+            output_key="move_dest",
+            filters=[
+                RangeFilter(min_range=1, max_range=max_range),
+                InStraightLineFilter(origin_id=hero.id),
+                StraightLinePathFilter(origin_id=hero.id, pass_through_obstacles=True),
+                ObstacleFilter(is_obstacle=False),
+            ],
+            is_mandatory=True,
+        ),
+        MoveUnitStep(
+            unit_id=hero.id,
+            destination_key="move_dest",
+            range_val=99,
+            pass_through_obstacles=True,
+        ),
+    ]
+
+
+# -- BLUE Discard variant: dash_and_slash, death_from_above --
+
+
+class _BlueDiscardEffect(CardEffect):
+    """
+    Base for BLUE discard cards: straight-line move through, enemy hero discards.
+    Card Text: "Move up to N spaces in a straight line, ignoring obstacles;
+    an enemy hero you moved through discards a card, if able."
+    """
+
+    max_range: int = 3
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps = _blue_move_steps(hero, self.max_range)
+        steps.extend(
+            [
+
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Select an enemy you moved through",
+                    output_key="crossed_enemy",
+                    filters=[
+                        BetweenHexesFilter(from_hex_key="move_origin", to_hex_key="move_dest"),
+                        TeamFilter(relation="ENEMY"),
+                        UnitTypeFilter(unit_type="HERO"),
+                    ],
+                    is_mandatory=True,
+                ),
+                ForceDiscardStep(victim_key="crossed_enemy"),
+            ]
+        )
+        return steps
+
+
+@register_effect("dash_and_slash")
+class DashAndSlashEffect(_BlueDiscardEffect):
+    """
+    Card Text: "Move up to 4 spaces in a straight line, ignoring obstacles;
+    an enemy hero you moved through discards a card, if able."
+    """
+
+    max_range = 4
+
+
+@register_effect("death_from_above")
+class DeathFromAboveEffect(_BlueDiscardEffect):
+    """
+    Card Text: "Move up to 5 spaces in a straight line, ignoring obstacles;
+    an enemy hero you moved through discards a card, if able."
+    """
+
+    max_range = 5
+
+
+# -- BLUE Place variant: sudden_breeze, gust_of_wind, crushing_squall --
+
+
+class _BluePlaceEffect(CardEffect):
+    """
+    Base for BLUE place cards: straight-line move through, place crossed enemy.
+    Card Text: "Move up to N spaces in a straight line, ignoring obstacles;
+    you may place an enemy unit you moved through into a space adjacent to you."
+    """
+
+    max_range: int = 3
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps = _blue_move_steps(hero, self.max_range)
+        steps.extend(
+            [
+                
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Select an enemy you moved through",
+                    output_key="crossed_enemy",
+                    filters=[
+                        BetweenHexesFilter(from_hex_key="move_origin", to_hex_key="move_dest"),
+                        TeamFilter(relation="ENEMY"),
+                    ],
+                    is_mandatory=False,
+                ),
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt="Place the crossed enemy adjacent to you",
+                    output_key="place_dest",
+                    filters=[
+                        RangeFilter(max_range=1),
+                        ObstacleFilter(is_obstacle=False),
+                    ],
+                    is_mandatory=False,
+                    active_if_key="crossed_enemy",
+                ),
+                PlaceUnitStep(
+                    unit_key="crossed_enemy",
+                    destination_key="place_dest",
+                    active_if_key="place_dest",
+                ),
+            ]
+        )
+        return steps
+
+
+@register_effect("sudden_breeze")
+class SuddenBreezeEffect(_BluePlaceEffect):
+    """
+    Card Text: "Move up to 3 spaces in a straight line, ignoring obstacles;
+    you may place an enemy unit you moved through into a space adjacent to you."
+    """
+
+    max_range = 3
+
+
+@register_effect("gust_of_wind")
+class GustOfWindEffect(_BluePlaceEffect):
+    """
+    Card Text: "Move up to 4 spaces in a straight line, ignoring obstacles;
+    you may place an enemy unit you moved through into a space adjacent to you."
+    """
+
+    max_range = 4
+
+
+@register_effect("crushing_squall")
+class CrushingSquallEffect(_BluePlaceEffect):
+    """
+    Card Text: "Move up to 5 spaces in a straight line, ignoring obstacles;
+    you may place an enemy unit you moved through into a space adjacent to you."
+    """
+
+    max_range = 5
 
 
 # =============================================================================
 # GREEN — Swap Two Units (2 tiers)
 # =============================================================================
-#
-# Cards: living_tornado (T2), storm_spirit (T3)
-#
-# living_tornado: "Swap two units at maximum radius."
-#   SelectStep(UNIT, filters=[
-#       RangeFilter(min_range=stats.radius, max_range=stats.radius),
-#   ], output_key="swap_a", skip_immunity_filter=True)
-#   SelectStep(UNIT, filters=[
-#       RangeFilter(min_range=stats.radius, max_range=stats.radius),
-#       ExcludeIdentityFilter(exclude_keys=["swap_a"]),
-#   ], output_key="swap_b", skip_immunity_filter=True)
-#   SwapUnitsStep(unit_a_key="swap_a", unit_b_key="swap_b")
-#
-# storm_spirit: "Swap two units in radius and at equal distance from you."
-#   SelectStep(UNIT, filters=[
-#       RangeFilter(max_range=stats.radius),
-#   ], output_key="swap_a", skip_immunity_filter=True)
-#   SelectStep(UNIT, filters=[
-#       RangeFilter(max_range=stats.radius),
-#       ExcludeIdentityFilter(exclude_keys=["swap_a"]),
-#       PreserveDistanceFilter(target_key="swap_a"),  # same distance as swap_a
-#   ], output_key="swap_b", skip_immunity_filter=True)
-#   SwapUnitsStep(unit_a_key="swap_a", unit_b_key="swap_b")
-#
-# Complexity: LOW — all existing steps/filters.
+
+
+@register_effect("living_tornado")
+class LivingTornadoEffect(CardEffect):
+    """
+    Card Text: "Swap two units at maximum radius."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        r = stats.radius
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select first unit to swap (at max radius)",
+                output_key="swap_a",
+                filters=[RangeFilter(min_range=r, max_range=r)],
+                is_mandatory=True,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select second unit to swap (at max radius)",
+                output_key="swap_b",
+                filters=[
+                    RangeFilter(min_range=r, max_range=r),
+                    ExcludeIdentityFilter(exclude_keys=["swap_a"]),
+                ],
+                is_mandatory=True,
+            ),
+            SwapUnitsStep(unit_a_key="swap_a", unit_b_key="swap_b"),
+        ]
+
+
+@register_effect("storm_spirit")
+class StormSpiritEffect(CardEffect):
+    """
+    Card Text: "Swap two units in radius and at equal distance from you."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        r = stats.radius
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select first unit to swap (in radius)",
+                output_key="swap_a",
+                filters=[RangeFilter(max_range=r)],
+                is_mandatory=True,
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select second unit (in radius, same distance)",
+                output_key="swap_b",
+                filters=[
+                    RangeFilter(max_range=r),
+                    ExcludeIdentityFilter(exclude_keys=["swap_a"]),
+                    RelativeDistanceFilter(reference_key="swap_a", operator="=="),
+                ],
+                is_mandatory=True,
+            ),
+            SwapUnitsStep(unit_a_key="swap_a", unit_b_key="swap_b"),
+        ]
 
 
 # =============================================================================
 # GREEN — Next-Turn Pre-Action Movement (3 tiers)
 # =============================================================================
-#
-# Cards: focus (T1, move 1, "you may"), discipline (T2, move 2),
-#         mastery (T3, move 3)
-#
-# "Next turn: Before you perform a primary action, move up to N spaces."
-#
-# Needs: PassiveTrigger.BEFORE_PRIMARY_ACTION (new enum value) wired into
-# ResolveCardStep to fire before any primary action (attack/skill/movement).
-#
-# The card effect itself creates a next-turn passive grant:
-#   CreateEffectStep(
-#       effect_type=EffectType.PRE_ACTION_MOVEMENT,   # new EffectType
-#       duration=DurationType.NEXT_TURN,
-#       scope=EffectScope(shape=POINT, origin_id=hero.id, affects=SELF),
-#       max_value=N,                                   # movement distance
-#       is_active=True,
-#   )
-#
-# The handler checks for PRE_ACTION_MOVEMENT effects before executing the
-# primary action, inserts MoveSequenceStep(range_val=N, is_mandatory=False),
-# then removes the effect.
-#
-# focus (T1) is "you may move 1 space" (optional).
-# discipline/mastery are "move up to 2/3" (also optional — "up to" implies may).
-#
-# All 3 share a helper differing only in distance.
-#
-# Complexity: MEDIUM — needs new EffectType + handler wiring + new PassiveTrigger.
+
+
+class _GreenPreActionMoveEffect(CardEffect):
+    """
+    Base for GREEN pre-action movement cards.
+    Card Text: "Next turn: Before you perform a primary action, move up to N spaces."
+    """
+
+    move_distance: int = 1
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.PRE_ACTION_MOVEMENT,
+                scope=EffectScope(
+                    shape=Shape.POINT,
+                    origin_id=hero.id,
+                    affects=AffectsFilter.SELF,
+                ),
+                duration=DurationType.NEXT_TURN,
+                max_value=self.move_distance,
+                is_active=True,
+            ),
+        ]
+
+
+@register_effect("focus")
+class FocusEffect(_GreenPreActionMoveEffect):
+    """
+    Card Text: "Next turn: Before you perform a primary action, you may move 1 space."
+    """
+
+    move_distance = 1
+
+
+@register_effect("discipline")
+class DisciplineEffect(_GreenPreActionMoveEffect):
+    """
+    Card Text: "Next turn: Before you perform a primary action, move up to 2 spaces."
+    """
+
+    move_distance = 2
+
+
+@register_effect("mastery")
+class MasteryEffect(_GreenPreActionMoveEffect):
+    """
+    Card Text: "Next turn: Before you perform a primary action, move up to 3 spaces."
+    """
+
+    move_distance = 3
 
 
 # =============================================================================
 # SILVER — Swoop In
 # =============================================================================
-#
-# "Place yourself into a space in radius adjacent to two or more enemy units;
-#  if you do, you may retrieve a discarded card."
-#
-# Pattern:
-#   SelectStep(HEX, filters=[
-#       RangeFilter(max_range=stats.radius),
-#       OccupiedFilter(is_occupied=False),
-#       ObstacleFilter(is_obstacle=False),
-#       CountMatchFilter(                              # NEW FILTER
-#           sub_filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
-#           min_count=2,
-#       ),
-#   ], output_key="swoop_dest")
-#   PlaceUnitStep(unit_id=hero.id, destination_key="swoop_dest")
-#   SelectStep(CARD, card_container=DISCARD, is_mandatory=False,
-#              output_key="retrieved_card")
-#   RetrieveCardStep(card_key="retrieved_card", active_if_key="retrieved_card")
-#
-# Ultimate integration: if _has_ultimate(hero), append post-placement discard:
-#   SelectStep(UNIT, filters=[RangeFilter(1), TeamFilter(ENEMY), UnitTypeFilter(HERO)],
-#              is_mandatory=False, output_key="ult_victim")
-#   ForceDiscardStep(victim_key="ult_victim")
-#
-# CountMatchFilter design:
-#   - HEX filter: for a candidate hex, counts all units on the board that
-#     pass sub_filters evaluated with the candidate hex as origin.
-#   - Parameters: sub_filters (List[FilterCondition]), min_count (int),
-#     max_count (Optional[int]).
-#   - Sub_filters are evaluated from the candidate's perspective, so
-#     RangeFilter(max_range=1) = adjacent, RangeFilter(max_range=3) = radius 3.
-#   - Reusable for any "hex near N things matching X" need.
-#
-# Complexity: MEDIUM — needs AdjacentMatchFilter.
+
+
+@register_effect("swoop_in")
+class SwoopInEffect(CardEffect):
+    """
+    Card Text: "Place yourself into a space in radius adjacent to two or more
+    enemy units; if you do, you may retrieve a discarded card."
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        steps: List[GameStep] = [
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Place yourself adjacent to 2+ enemy units",
+                output_key="swoop_dest",
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    ObstacleFilter(is_obstacle=False),
+                    CountMatchFilter(
+                        sub_filters=[
+                            RangeFilter(
+                                max_range=1,
+                                origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY,
+                            ),
+                            TeamFilter(relation="ENEMY"),
+                        ],
+                        min_count=2,
+                    ),
+                ],
+                is_mandatory=True,
+            ),
+            PlaceUnitStep(unit_id=hero.id, destination_key="swoop_dest"),
+            SelectStep(
+                target_type=TargetType.CARD,
+                prompt="Retrieve a discarded card?",
+                output_key="swoop_retrieved",
+                card_container=CardContainerType.DISCARD,
+                is_mandatory=False,
+            ),
+            RetrieveCardStep(
+                card_key="swoop_retrieved",
+                active_if_key="swoop_retrieved",
+            ),
+        ]
+        if _has_ultimate(hero):
+            steps.extend(_ultimate_post_placement_steps("swoop_ult"))
+        return steps
 
 
 # =============================================================================
-# GOLD — Watch How I Soar (Choose One)
+# GOLD — Watch How I Soar (Choose One / Choose Two with Ultimate)
 # =============================================================================
-#
-# "Choose one —
-#  • Place yourself into a space at maximum range.
-#  • Defeat a minion adjacent to you."
-#
-# Pattern (standard choose-one, see whisper DeathSeekerEffect):
-#   SelectStep(NUMBER, options=[1, 2], labels={
-#       1: "Place yourself at maximum range",
-#       2: "Defeat an adjacent minion",
-#   }, output_key="soar_choice")
-#
-#   # Path A: place at max range
-#   CheckContextConditionStep("soar_choice", "==", 1, "chose_place")
-#   SelectStep(HEX, filters=[
-#       RangeFilter(min_range=stats.range, max_range=stats.range),
-#       OccupiedFilter(is_occupied=False),
-#       ObstacleFilter(is_obstacle=False),
-#   ], active_if_key="chose_place", output_key="soar_dest")
-#   PlaceUnitStep(unit_id=hero.id, destination_key="soar_dest",
-#                 active_if_key="chose_place")
-#
-#   # Path B: defeat adjacent minion
-#   CheckContextConditionStep("soar_choice", "==", 2, "chose_defeat")
-#   SelectStep(UNIT, filters=[
-#       RangeFilter(max_range=1), TeamFilter(ENEMY), UnitTypeFilter(MINION),
-#   ], active_if_key="chose_defeat", output_key="defeat_target")
-#   DefeatUnitStep(victim_key="defeat_target", active_if_key="chose_defeat")
-#
-# Ultimate integration (choose two, Grim Reaper pattern):
-#   if _has_ultimate(hero):
-#     # If chose place (1), also offer defeat
-#     SelectStep(UNIT, ..., is_mandatory=False, active_if_key="chose_place")
-#     DefeatUnitStep(...)
-#     # If chose defeat (2), also offer place
-#     SelectStep(HEX, ..., is_mandatory=False, active_if_key="chose_defeat")
-#     PlaceUnitStep(...)
-#     # Post-placement discard (fires for either path that placed)
-#     SelectStep(UNIT, adjacent enemy hero, is_mandatory=False, ...)
-#     ForceDiscardStep(...)
-#
-# Complexity: LOW — standard pattern + ultimate bake-in.
 
 
-# =============================================================================
-# ULTIMATE — Power Overwhelming (no standalone effect needed)
-# =============================================================================
-#
-# "Whenever you choose one, you may choose two different options instead,
-#  in any order.
-#  Each time after you place yourself, an enemy hero adjacent to you
-#  discards a card, if able."
-#
-# Both aspects are baked into individual card effects at build time:
-#
-# 1. "Choose two" — only watch_how_i_soar has a "choose one", so it checks
-#    _has_ultimate(hero) and appends the unchosen option (see GOLD section).
-#
-# 2. "Post-placement discard" — cards that place the hero check
-#    _has_ultimate(hero) and append:
-#      SelectStep(UNIT, filters=[RangeFilter(1), TeamFilter(ENEMY),
-#                 UnitTypeFilter(HERO)], is_mandatory=False,
-#                 auto_select_if_one=True, output_key="ult_discard_victim")
-#      ForceDiscardStep(victim_key="ult_discard_victim")
-#
-#    Cards with self-placement: watch_how_i_soar (path A), swoop_in,
-#    and all BLUE cards (straight-line move is effectively self-placement).
-#
-# Helper:
-#   def _has_ultimate(hero: Hero) -> bool:
-#       return (hero.ultimate_card is not None
-#               and hero.level >= 8)
-#
-#   def _ultimate_post_placement_steps(hero: Hero) -> List[GameStep]:
-#       """Append after any step that places the hero. Guarded by _has_ultimate."""
-#       return [
-#           SelectStep(UNIT, filters=[RangeFilter(1), TeamFilter(ENEMY),
-#                      UnitTypeFilter(HERO)], is_mandatory=False,
-#                      auto_select_if_one=True, output_key="ult_adj_victim"),
-#           ForceDiscardStep(victim_key="ult_adj_victim"),
-#       ]
-#
-# Complexity: NONE standalone — distributed across card effects.
+@register_effect("watch_how_i_soar")
+class WatchHowISoarEffect(CardEffect):
+    """
+    Card Text: "Choose one —
+    • Place yourself into a space at maximum range.
+    • Defeat a minion adjacent to you."
+
+    With Power Overwhelming ultimate: choose two different options instead.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        has_ult = _has_ultimate(hero)
+
+        steps: List[GameStep] = [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key="soar_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Place yourself at maximum range",
+                    2: "Defeat an adjacent minion",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key="soar_choice",
+                operator="==",
+                threshold=1,
+                output_key="chose_place",
+            ),
+            CheckContextConditionStep(
+                input_key="soar_choice",
+                operator="==",
+                threshold=2,
+                output_key="chose_defeat",
+            ),
+            # Path A: place at max range
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select destination at maximum range",
+                output_key="soar_dest",
+                filters=[
+                    RangeFilter(min_range=stats.range, max_range=stats.range),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+                active_if_key="chose_place",
+                is_mandatory=True,
+            ),
+            PlaceUnitStep(
+                unit_id=hero.id,
+                destination_key="soar_dest",
+                active_if_key="chose_place",
+            ),
+            # Path B: defeat adjacent minion
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an adjacent enemy minion to defeat",
+                output_key="soar_defeat_target",
+                filters=[
+                    RangeFilter(max_range=1),
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="MINION"),
+                ],
+                active_if_key="chose_defeat",
+                is_mandatory=True,
+            ),
+            DefeatUnitStep(
+                victim_key="soar_defeat_target",
+                active_if_key="chose_defeat",
+            ),
+        ]
+
+        if has_ult:
+            # If chose place (1), also offer defeat
+            steps.extend(
+                [
+                    *_ultimate_post_placement_steps(prefix="soar_ult_a", active_if_key="chose_place"),
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Power Overwhelming: Also defeat an adjacent minion?",
+                        output_key="soar_ult_defeat_target",
+                        filters=[
+                            RangeFilter(max_range=1),
+                            TeamFilter(relation="ENEMY"),
+                            UnitTypeFilter(unit_type="MINION"),
+                        ],
+                        is_mandatory=False,
+                        active_if_key="chose_place",
+                    ),
+                    DefeatUnitStep(
+                        victim_key="soar_ult_defeat_target",
+                        active_if_key="soar_ult_defeat_target",
+                    ),
+                ]
+            )
+            # If chose defeat (2), also offer place
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="Power Overwhelming: Also place at max range?",
+                        output_key="soar_ult_dest",
+                        filters=[
+                            RangeFilter(min_range=stats.range, max_range=stats.range),
+                            ObstacleFilter(is_obstacle=False),
+                        ],
+                        is_mandatory=False,
+                        active_if_key="chose_defeat",
+                    ),
+                    PlaceUnitStep(
+                        unit_id=hero.id,
+                        destination_key="soar_ult_dest",
+                        active_if_key="soar_ult_dest",
+                    ),
+                    *_ultimate_post_placement_steps(prefix="soar_ult_b", active_if_key="soar_ult_dest")
+                ]
+            )
+
+        return steps

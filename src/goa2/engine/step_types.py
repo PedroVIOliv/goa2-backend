@@ -18,6 +18,7 @@ from goa2.engine.steps import (
     ConvertCardToItemStep,
     CheckAdjacencyStep,
     CheckContextConditionStep,
+    CheckDistanceStep,
     CheckHeroDefeatedThisRoundStep,
     ComputeHexStep,
     CheckLanePushStep,
@@ -94,6 +95,7 @@ from goa2.engine.steps import (
     FinishedExpiringEffectStep,
     SpendAdditionalLifeCounterStep,
     PerformPrimaryActionStep,
+    ResolvePreActionMovementStep,
 )
 from goa2.domain.models.enums import StepType
 
@@ -125,6 +127,7 @@ AnyStep = Annotated[
         Annotated[
             CheckContextConditionStep, Tag(StepType.CHECK_CONTEXT_CONDITION.value)
         ],
+        Annotated[CheckDistanceStep, Tag(StepType.CHECK_DISTANCE.value)],
         Annotated[
             CheckHeroDefeatedThisRoundStep,
             Tag(StepType.CHECK_HERO_DEFEATED_THIS_ROUND.value),
@@ -224,6 +227,10 @@ AnyStep = Annotated[
             Tag(StepType.SPEND_ADDITIONAL_LIFE_COUNTER.value),
         ],
         Annotated[PerformPrimaryActionStep, Tag(StepType.PERFORM_PRIMARY_ACTION.value)],
+        Annotated[
+            ResolvePreActionMovementStep,
+            Tag(StepType.RESOLVE_PRE_ACTION_MOVEMENT.value),
+        ],
     ],
     Discriminator(_step_discriminator),
 ]
@@ -256,7 +263,7 @@ from goa2.engine.filters import (
     SpaceBehindEmptyFilter,
     StraightLinePathFilter,
     FastTravelDestinationFilter,
-    PreserveDistanceFilter,
+    RelativeDistanceFilter,
     CardsInContainerFilter,
     PlayedCardFilter,
     BattleZoneFilter,
@@ -267,6 +274,8 @@ from goa2.engine.filters import (
     TokenTypeFilter,
     OrFilter,
     AndFilter,
+    BetweenHexesFilter,
+    CountMatchFilter,
 )
 from goa2.domain.models.enums import FilterType  # noqa: E402
 
@@ -306,7 +315,7 @@ AnyFilter = Annotated[
         Annotated[
             FastTravelDestinationFilter, Tag(FilterType.FAST_TRAVEL_DESTINATION.value)
         ],
-        Annotated[PreserveDistanceFilter, Tag(FilterType.PRESERVE_DISTANCE.value)],
+        Annotated[RelativeDistanceFilter, Tag(FilterType.RELATIVE_DISTANCE.value)],
         Annotated[MinionTypesFilter, Tag(FilterType.MINION_TYPES.value)],
         Annotated[CardsInContainerFilter, Tag(FilterType.CARDS_IN_CONTAINER.value)],
         Annotated[PlayedCardFilter, Tag(FilterType.PLAYED_CARD.value)],
@@ -318,6 +327,8 @@ AnyFilter = Annotated[
         Annotated[TokenTypeFilter, Tag(FilterType.TOKEN_TYPE.value)],
         Annotated[OrFilter, Tag(FilterType.OR_FILTER.value)],
         Annotated[AndFilter, Tag(FilterType.AND_FILTER.value)],
+        Annotated[BetweenHexesFilter, Tag(FilterType.BETWEEN_HEXES.value)],
+        Annotated[CountMatchFilter, Tag(FilterType.COUNT_MATCH.value)],
     ],
     Discriminator(_filter_discriminator),
 ]
@@ -377,12 +388,14 @@ StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
 RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = List[AnyFilter]
 OrFilter.model_fields["filters"].annotation = List[AnyFilter]
 AndFilter.model_fields["filters"].annotation = List[AnyFilter]
+CountMatchFilter.model_fields["sub_filters"].annotation = List[AnyFilter]
 
 # Rebuild all patched models (force=True since they were already built).
 # Leaf models first, then models that reference them.
 RespawnMinionAtHexStep.model_rebuild(force=True)
 OrFilter.model_rebuild(force=True)
 AndFilter.model_rebuild(force=True)
+CountMatchFilter.model_rebuild(force=True)
 SelectStep.model_rebuild(force=True)
 MultiSelectStep.model_rebuild(force=True)
 AttackSequenceStep.model_rebuild(force=True)

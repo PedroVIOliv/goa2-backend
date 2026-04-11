@@ -1,6 +1,5 @@
-# Just updated filters.py to add PreserveDistanceFilter
 from __future__ import annotations
-from typing import Optional, List, Any, Literal
+from typing import ClassVar, Optional, List, Any, Literal
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import (
@@ -99,25 +98,35 @@ class RangeFilter(FilterCondition):
     min_range: int = 0
     origin_id: Optional[str] = None  # Literal ID
     origin_key: Optional[str] = None  # Key in context to find ID
+    origin_hex_key: Optional[str] = None  # Key in context holding a Hex (or dict)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        origin_uid = None
+        origin_hex: Optional[Hex] = None
 
-        if self.origin_id:
-            origin_uid = self.origin_id
-        elif self.origin_key:
-            origin_uid = context.get(self.origin_key)
+        # Priority: origin_hex_key (direct hex) > origin_id > origin_key > actor
+        if self.origin_hex_key:
+            raw = context.get(self.origin_hex_key)
+            if isinstance(raw, Hex):
+                origin_hex = raw
+            elif isinstance(raw, dict):
+                origin_hex = Hex(**raw)
 
-        if not origin_uid:
-            origin_uid = state.current_actor_id
+        if origin_hex is None:
+            origin_uid = None
+            if self.origin_id:
+                origin_uid = self.origin_id
+            elif self.origin_key:
+                origin_uid = context.get(self.origin_key)
 
-        if not origin_uid:
-            return False
+            if not origin_uid:
+                origin_uid = state.current_actor_id
 
-        # Use Unified Location
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
-        if not origin_hex:
-            return False
+            if not origin_uid:
+                return False
+
+            origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+            if not origin_hex:
+                return False
 
         target_hex = None
         if isinstance(candidate, Hex):
@@ -245,7 +254,9 @@ class AdjacencyFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.ADJACENCY
-    target_tags: List[Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]] # Tags are checked in AND fashion (must match all)
+    target_tags: List[
+        Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]
+    ]  # Tags are checked in AND fashion (must match all)
     skip_immune: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -901,7 +912,7 @@ class StraightLinePathFilter(FilterCondition):
     type: FilterType = FilterType.STRAIGHT_LINE_PATH
     origin_id: Optional[str] = None
     origin_key: Optional[str] = None
-    pass_through_units: bool = False
+    pass_through_obstacles: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -934,30 +945,17 @@ class StraightLinePathFilter(FilterCondition):
         except ValueError:
             return False
 
+        actor_id = str(origin_uid) if origin_uid else None
+
         # Check all intermediate hexes (everything except the final destination)
         for hex_pos in path[:-1]:
-            # Hex must exist on the board (not a virtual off-map tile)
             if hex_pos not in state.board.tiles:
                 return False
 
-            tile = state.board.tiles[hex_pos]
-            if tile.is_terrain:
-                return False
-
-            if not tile.is_occupied:
+            if self.pass_through_obstacles:
                 continue
 
-            # Occupied — check if we can pass through
-            if self.pass_through_units:
-                # Allow passing through units, but not terrain obstacles
-                occupant_id = tile.occupant_id
-                if occupant_id:
-                    unit = state.get_unit(UnitID(str(occupant_id)))
-                    if unit is not None:
-                        continue
-                # Not a unit (terrain obstacle) → blocked
-                return False
-            else:
+            if state.validator.is_obstacle_for_actor(state, hex_pos, actor_id, context):
                 return False
 
         return True
@@ -1076,36 +1074,40 @@ class FastTravelDestinationFilter(FilterCondition):
         return True
 
 
-class PreserveDistanceFilter(FilterCondition):
+class RelativeDistanceFilter(FilterCondition):
     """
-    Ensures that the candidate hex is at the same distance from the origin
-    as a reference unit (specified by target_key) is from the origin.
+    Compares the distance(origin, candidate) against the distance(origin, reference)
+    using a configurable operator.
 
-    Used for "Orbit" mechanics (move without moving closer or further).
+    General-purpose replacement for PreserveDistanceFilter (operator="==").
+    Also supports "farther away" (operator=">"), "closer" (operator="<"), etc.
     """
 
-    type: FilterType = FilterType.PRESERVE_DISTANCE
-    target_key: str
-    origin_id: Optional[str] = None  # Literal ID
+    type: FilterType = FilterType.RELATIVE_DISTANCE
+    reference_key: str
+    origin_id: Optional[str] = None
+    operator: Literal[">", ">=", "==", "<=", "<"] = ">"
+    origin_key: Optional[str] = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        # 1. Resolve Origin
-        origin_uid = self.origin_id or state.current_actor_id
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
         if not origin_uid:
             return False
         origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
         if not origin_hex:
             return False
 
-        # 2. Resolve Reference Unit
-        ref_uid = context.get(self.target_key)
+        ref_uid = context.get(self.reference_key)
         if not ref_uid:
             return False
         ref_hex = state.entity_locations.get(BoardEntityID(str(ref_uid)))
         if not ref_hex:
             return False
 
-        # 3. Resolve Candidate Hex
         cand_hex = None
         if isinstance(candidate, Hex):
             cand_hex = candidate
@@ -1114,12 +1116,18 @@ class PreserveDistanceFilter(FilterCondition):
         if not cand_hex:
             return False
 
-        # 4. Compare Distances
         topology = get_topology_service()
         current_dist = topology.distance(origin_hex, ref_hex, state)
         new_dist = topology.distance(origin_hex, cand_hex, state)
 
-        return current_dist == new_dist
+        ops = {
+            ">": lambda a, b: a > b,
+            ">=": lambda a, b: a >= b,
+            "==": lambda a, b: a == b,
+            "<=": lambda a, b: a <= b,
+            "<": lambda a, b: a < b,
+        }
+        return ops[self.operator](new_dist, current_dist)
 
 
 class OrFilter(FilterCondition):
@@ -1276,9 +1284,7 @@ class ClearLineOfSightFilter(FilterCondition):
 
             if self.blocked_by_obstacles and state.validator:
                 actor_uid = str(origin_uid) if origin_uid else None
-                if state.validator.is_obstacle_for_actor(
-                    state, hex_pos, actor_uid
-                ):
+                if state.validator.is_obstacle_for_actor(state, hex_pos, actor_uid):
                     return False
 
         return True
@@ -1325,3 +1331,112 @@ class PlayedCardFilter(FilterCondition):
                 continue
             return True
         return False
+
+
+class BetweenHexesFilter(FilterCondition):
+    """
+    Unit filter: passes if the candidate unit sits on the straight-line path
+    between two hexes stored in context (exclusive of both endpoints).
+
+    Used by Misa's BLUE cards to find enemies crossed during a straight-line
+    move through: select the destination, then find any enemy who was between
+    the origin and destination.
+    """
+
+    type: FilterType = FilterType.BETWEEN_HEXES
+    from_hex_key: str
+    to_hex_key: str
+
+    def _resolve_hex(self, context: dict, key: str) -> Optional[Hex]:
+        raw = context.get(key)
+        if isinstance(raw, Hex):
+            return raw
+        if isinstance(raw, dict):
+            try:
+                return Hex(**raw)
+            except Exception:
+                return None
+        return None
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        from_hex = self._resolve_hex(context, self.from_hex_key)
+        to_hex = self._resolve_hex(context, self.to_hex_key)
+        if from_hex is None or to_hex is None:
+            return False
+        if from_hex == to_hex:
+            return False
+        if not from_hex.is_straight_line(to_hex):
+            return False
+
+        # Resolve candidate's current hex
+        cand_hex: Optional[Hex] = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+        if cand_hex is None:
+            return False
+
+        # line_to returns [next, next, ..., to_hex]; strip the endpoint so we
+        # only keep strictly intermediate hexes.
+        try:
+            path = from_hex.line_to(to_hex)
+        except ValueError:
+            return False
+        intermediate = path[:-1]
+        return cand_hex in intermediate
+
+
+class CountMatchFilter(FilterCondition):
+    """
+    Hex filter: for a candidate hex, counts all units on the board that pass
+    the provided sub-filters when those sub-filters are evaluated with the
+    candidate hex as the origin. Passes if count is within [min_count, max_count].
+
+    This is effectively "is this hex near N things matching X?". It works by
+    temporarily publishing the candidate hex to context under a private key
+    ("_cmf_origin_hex"), so sub-filters that accept `origin_hex_key` (e.g.
+    RangeFilter) evaluate distance from the candidate hex.
+
+    Used by Misa's swoop_in: "place yourself adjacent to 2+ enemy units".
+    """
+
+    type: FilterType = FilterType.COUNT_MATCH
+    sub_filters: List[FilterCondition] = []
+    min_count: int = 1
+    max_count: Optional[int] = None
+
+    ORIGIN_HEX_KEY: ClassVar[str] = "_cmf_origin_hex"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        # Temporarily publish candidate hex for sub-filter origin resolution.
+        prev = context.get(self.ORIGIN_HEX_KEY)
+        context[self.ORIGIN_HEX_KEY] = candidate.model_dump()
+        try:
+            # Gather candidate units — mirrors CountStep's UNIT path.
+            count = 0
+            for eid in state.entity_locations.keys():
+                unit = state.get_unit(UnitID(str(eid)))
+                if unit is None:
+                    continue
+                ok = True
+                for f in self.sub_filters:
+                    if not f.apply(str(eid), state, context):
+                        ok = False
+                        break
+                if ok:
+                    count += 1
+        finally:
+            if prev is None:
+                context.pop(self.ORIGIN_HEX_KEY, None)
+            else:
+                context[self.ORIGIN_HEX_KEY] = prev
+
+        if count < self.min_count:
+            return False
+        if self.max_count is not None and count > self.max_count:
+            return False
+        return True

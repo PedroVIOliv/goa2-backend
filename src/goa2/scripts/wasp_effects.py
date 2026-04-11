@@ -36,7 +36,7 @@ from goa2.engine.filters import (
     TeamFilter,
     UnitTypeFilter,
     AdjacencyToContextFilter,
-    PreserveDistanceFilter,
+    RelativeDistanceFilter,
 )
 
 if TYPE_CHECKING:
@@ -524,7 +524,7 @@ class LiftUpEffect(CardEffect):
                 is_mandatory=True,
                 filters=[
                     AdjacencyToContextFilter(target_key="lift_target"),
-                    PreserveDistanceFilter(target_key="lift_target"),
+                    RelativeDistanceFilter(reference_key="lift_target", operator="=="),
                     ObstacleFilter(is_obstacle=False),
                 ],
             ),
@@ -583,7 +583,7 @@ class CenterOfMassEffect(LiftUpEffect):
                 is_mandatory=True,
                 filters=[
                     AdjacencyToContextFilter(target_key="lift_target"),
-                    PreserveDistanceFilter(target_key="lift_target"),
+                    RelativeDistanceFilter(reference_key="lift_target", operator="=="),
                     ObstacleFilter(is_obstacle=False),
                 ],
             ),

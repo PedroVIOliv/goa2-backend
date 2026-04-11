@@ -95,10 +95,9 @@ class EffectManager:
             if e.duration == DurationType.THIS_TURN:
                 return True
             if e.duration == DurationType.NEXT_TURN:
-                return (
-                    state.round == e.created_at_round
-                    and state.turn == e.created_at_turn + 1
-                )
+                if state.round != e.created_at_round:
+                    return True  # Cross-round NEXT_TURN effects always expire
+                return state.turn >= e.created_at_turn + 1
             return False
 
         expiring = [e for e in state.active_effects if is_expiring_this_turn(e)]

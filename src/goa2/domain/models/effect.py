@@ -59,6 +59,12 @@ class EffectType(str, Enum):
     # Double item bonuses (Min - Inner Strength / Perfect Self)
     DOUBLE_ITEMS = "double_items"
 
+    # Pre-primary-action movement grant (Misa - focus/discipline/mastery)
+    # When scheduled with NEXT_TURN duration, grants the source hero an
+    # optional movement of up to max_value spaces before their primary action
+    # next turn. Consumed on use by ResolveCardStep.
+    PRE_ACTION_MOVEMENT = "pre_action_movement"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""

@@ -309,7 +309,7 @@ Cards that move units while maintaining constant distance.
 
 Instead of `ConstantDistanceFilter`, we implemented two more composable filters:
 - `AdjacencyToContextFilter` - Hex must be adjacent to unit stored in context
-- `PreserveDistanceFilter` - Hex must maintain same distance from actor as unit's current position
+- `RelativeDistanceFilter` - Hex must maintain same distance from actor as unit's current position (generalized relative distance filter)
 
 This provides better reusability and clearer semantics.
 
@@ -328,7 +328,7 @@ orbit_steps = [
         target_type=TargetType.HEX,
         filters=[
             AdjacencyToContextFilter(target_key="lift_target"),
-            PreserveDistanceFilter(target_key="lift_target"),
+            RelativeDistanceFilter(reference_key="lift_target", operator="=="),
             OccupiedFilter(is_occupied=False),
         ],
     ),
@@ -777,7 +777,7 @@ class HighVoltageEffect(CardEffect):
 |--------|---------|---------|--------|
 | `NotInStraightLineFilter` | Exclude straight-line targets | Charged Boomerang, Telekinesis, Mass Telekinesis, Thunder Boomerang | ✅ Done |
 | `AdjacencyToContextFilter` | Hex must be adjacent to unit in context | Lift Up, Control Gravity, Center of Mass | ✅ Done |
-| `PreserveDistanceFilter` | Maintain distance from actor | Lift Up, Control Gravity, Center of Mass | ✅ Done |
+| `RelativeDistanceFilter` | Maintain distance from actor | Lift Up, Control Gravity, Center of Mass | ✅ Done |
 | `ExcludeIdentityFilter` | Exclude specific units by context key | Deflect Projectiles, Thunder Boomerang | ✅ Done |
 
 ### Steps (Implemented)
@@ -899,7 +899,7 @@ class TestStaticBarrier:
 
 - [x] **Phase 2: Telekinetic Movement** ✅ COMPLETE
   - [x] Add `AdjacencyToContextFilter` to filters.py (replaced ConstantDistanceFilter)
-  - [x] Add `PreserveDistanceFilter` to filters.py
+  - [x] Add `RelativeDistanceFilter` to filters.py (generalized, replaces PreserveDistanceFilter)
   - [x] Implement `lift_up`
   - [x] Implement `control_gravity`
   - [x] Add `MayRepeatNTimesStep` to steps.py

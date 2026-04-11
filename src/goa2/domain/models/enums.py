@@ -182,6 +182,8 @@ class StepType(str, Enum):
     MINE_PATH_CHOICE = "mine_path_choice"
     TRIGGER_MINE = "trigger_mine"
     CONVERT_CARD_TO_ITEM = "convert_card_to_item"
+    CHECK_DISTANCE = "check_distance"
+    RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
 
 
 class FilterType(str, Enum):
@@ -204,7 +206,7 @@ class FilterType(str, Enum):
     LINE_BEHIND_TARGET = "line_behind_target_filter"
     NOT_IN_STRAIGHT_LINE = "not_in_straight_line_filter"
     IN_STRAIGHT_LINE = "in_straight_line_filter"
-    PRESERVE_DISTANCE = "preserve_distance_filter"
+    RELATIVE_DISTANCE = "relative_distance_filter"
     MINION_TYPES = "minion_type_filter"
     OR_FILTER = "or_filter"
     AND_FILTER = "and_filter"
@@ -218,6 +220,8 @@ class FilterType(str, Enum):
     HAS_MARKER = "has_marker_filter"
     UNIT_ON_SPAWN_POINT = "unit_on_spawn_point_filter"
     TOKEN_TYPE = "token_type_filter"
+    BETWEEN_HEXES = "between_hexes_filter"
+    COUNT_MATCH = "count_match_filter"
 
 
 class TargetType(str, Enum):

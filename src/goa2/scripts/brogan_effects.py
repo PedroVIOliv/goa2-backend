@@ -207,6 +207,7 @@ class SavageKickEffect(CardEffect):
                 is_mandatory=False,
                 unit_id=hero.id,
                 destination_key="selected_hex",
+                range_val=2,
             ),
             SelectStep(
                 target_type=TargetType.UNIT_OR_TOKEN,
