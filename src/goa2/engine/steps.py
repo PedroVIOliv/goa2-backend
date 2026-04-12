@@ -674,12 +674,14 @@ class CheckPassiveAbilitiesStep(GameStep):
 
     type: StepType = StepType.CHECK_PASSIVE_ABILITIES
     trigger: str  # PassiveTrigger value as string for serialization
+    hero_id: Optional[str] = None  # Override which hero is scanned (default: current actor)
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
 
-        hero = state.get_hero(HeroID(str(state.current_actor_id)))
+        scan_id = self.hero_id or state.current_actor_id
+        hero = state.get_hero(HeroID(str(scan_id))) if scan_id else None
         if not hero:
             return StepResult(is_finished=True)
 
@@ -707,6 +709,12 @@ class CheckPassiveAbilitiesStep(GameStep):
                     )
                     return
 
+            # Runtime predicate (e.g. Battle Fury filters on discard_source)
+            if not effect.should_offer_passive(
+                state, hero, card, trigger_enum, context
+            ):
+                return
+
             # Spawn offer step for this passive
             offer_steps.append(
                 OfferPassiveStep(
@@ -714,6 +722,7 @@ class CheckPassiveAbilitiesStep(GameStep):
                     trigger=self.trigger,
                     is_optional=config.is_optional,
                     prompt=config.prompt or f"Use {card.name} passive ability?",
+                    hero_id=str(hero.id) if self.hero_id else None,
                 )
             )
 
@@ -745,12 +754,14 @@ class OfferPassiveStep(GameStep):
     trigger: str  # PassiveTrigger value as string
     is_optional: bool = True
     prompt: str = ""
+    hero_id: Optional[str] = None  # Override: whose passive this is (default: current actor)
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
 
-        hero = state.get_hero(HeroID(str(state.current_actor_id)))
+        owner_id = self.hero_id or state.current_actor_id
+        hero = state.get_hero(HeroID(str(owner_id))) if owner_id else None
         if not hero:
             return StepResult(is_finished=True)
 
@@ -807,7 +818,7 @@ class OfferPassiveStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.CONFIRM_PASSIVE,
-                player_id=str(state.current_actor_id),
+                player_id=str(hero.id),
                 prompt=self.prompt,
                 options=[
                     InputOption(id="YES", text="Yes"),
@@ -1116,6 +1127,7 @@ class DiscardCardStep(GameStep):
     card_key: Optional[str] = None
     hero_id: Optional[str] = None
     hero_key: Optional[str] = None
+    source: CardContainerType = CardContainerType.HAND  # HAND or PLAYED
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1141,15 +1153,43 @@ class DiscardCardStep(GameStep):
         if not c_id:
             return StepResult(is_finished=True)
 
-        # Find card object in hand
-        target_card = next((c for c in hero.hand if c.id == c_id), None)
+        # Find card in the specified source container
+        if self.source == CardContainerType.HAND:
+            target_card = next((c for c in hero.hand if c.id == c_id), None)
+        elif self.source == CardContainerType.PLAYED:
+            target_card = next(
+                (c for c in hero.played_cards if c is not None and c.id == c_id), None
+            )
+        else:
+            print(f"   [DISCARD] Unsupported source container: {self.source}")
+            return StepResult(is_finished=True)
+
         if not target_card:
-            print(f"   [DISCARD] Card {c_id} not found in {h_id}'s hand.")
+            print(f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}.")
             return StepResult(is_finished=True)
 
         print(f"   [DISCARD] {h_id} discards {target_card.name}")
-        hero.discard_card(target_card, from_hand=True)
-        return StepResult(is_finished=True)
+        hero.discard_card(
+            target_card, from_hand=(self.source == CardContainerType.HAND)
+        )
+
+        # Fire AFTER_CARD_DISCARD passive trigger for every discard.
+        # Passives that only care about specific sources (e.g. Battle Fury, which
+        # only triggers on discards of resolved cards) filter via discard_source.
+        from goa2.domain.models.enums import PassiveTrigger
+
+        context["discarded_card_id"] = target_card.id
+        context["discarded_card_owner_id"] = str(h_id)
+        context["discard_source"] = self.source.value
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                CheckPassiveAbilitiesStep(
+                    trigger=PassiveTrigger.AFTER_CARD_DISCARD.value,
+                    hero_id=str(h_id),
+                )
+            ],
+        )
 
 
 class ForceDiscardStep(GameStep):
@@ -3046,6 +3086,7 @@ class PushUnitStep(GameStep):
     distance: int = 1  # Default/fallback distance
     distance_key: Optional[str] = None  # Read distance from context
     collision_output_key: Optional[str] = None  # If set, stores True on collision
+    ignore_obstacles: bool = False  # Path passes through obstacles; land on last legal hex
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -3136,6 +3177,9 @@ class PushUnitStep(GameStep):
                 if state.validator.is_passable_token(state, next_hex):
                     path.append(next_hex)
                     continue
+                if self.ignore_obstacles:
+                    path.append(next_hex)
+                    continue
                 print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
                 was_stopped_by_obstacle = True
                 break
@@ -3149,6 +3193,23 @@ class PushUnitStep(GameStep):
             trimmed_mines += 1
         if trimmed_mines > 0:
             was_stopped_by_obstacle = True
+
+        # Trim trailing obstacles — units can't land on an obstacle hex
+        if self.ignore_obstacles:
+            trimmed_obs = 0
+            while len(path) > 1 and state.validator.is_obstacle_for_actor(
+                state,
+                path[-1],
+                (
+                    str(state.current_actor_id)
+                    if state.current_actor_id
+                    else actual_target_id
+                ),
+            ):
+                path.pop()
+                trimmed_obs += 1
+            if trimmed_obs > 0:
+                was_stopped_by_obstacle = True
 
         current_loc = path[-1]
         pushed_dist = len(path) - 1

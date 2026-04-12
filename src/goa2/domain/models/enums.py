@@ -251,3 +251,4 @@ class PassiveTrigger(str, Enum):
     AFTER_ATTACK = "after_attack"
     AFTER_PUSH = "after_push"
     AFTER_PLACE_MARKER = "after_place_marker"
+    AFTER_CARD_DISCARD = "after_card_discard"

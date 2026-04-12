@@ -243,6 +243,22 @@ class CardEffect(ABC):
         """
         return None
 
+    def should_offer_passive(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: PassiveTrigger,
+        context: Dict[str, Any],
+    ) -> bool:
+        """
+        Runtime predicate checked before offering the passive to the player.
+        Default: always offer. Override when the trigger fires broadly but
+        this passive only cares about a subset (e.g. Battle Fury only cares
+        about AFTER_CARD_DISCARD when the source was PLAYED).
+        """
+        return True
+
     def get_passive_steps(
         self,
         state: "GameState",
