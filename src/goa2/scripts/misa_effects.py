@@ -700,3 +700,11 @@ class WatchHowISoarEffect(CardEffect):
             )
 
         return steps
+
+@register_effect("power_overwhelming")
+class PowerOverwhelmingEffect(CardEffect):
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> List[GameStep]:
+        return []
