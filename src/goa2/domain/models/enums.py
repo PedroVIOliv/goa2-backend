@@ -183,6 +183,7 @@ class StepType(str, Enum):
     TRIGGER_MINE = "trigger_mine"
     CONVERT_CARD_TO_ITEM = "convert_card_to_item"
     CHECK_DISTANCE = "check_distance"
+    COMPUTE_DISTANCE = "compute_distance"
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
 
 
@@ -246,6 +247,7 @@ class PassiveTrigger(str, Enum):
     BEFORE_ATTACK = "before_attack"
     BEFORE_MOVEMENT = "before_movement"
     BEFORE_SKILL = "before_skill"
+    BEFORE_ACTION = "before_action"
     AFTER_BASIC_SKILL = "after_basic_skill"
     AFTER_BASIC_ACTION = "after_basic_action"
     AFTER_ATTACK = "after_attack"

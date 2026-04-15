@@ -1763,6 +1763,29 @@ class MoveSequenceStep(GameStep):
                         pass_through = True
                         break
 
+        # Also consult MOVEMENT_AURA_ZONE effects (Silverarrow's Trailblazer):
+        # a radius zone that grants pass-through-obstacles to anyone in scope
+        # at the start of a MOVEMENT action. Measured at move-start, not
+        # per-pathfinding-step (matches other auras).
+        if not pass_through and actor_id:
+            from goa2.domain.models.effect import EffectType as _EffectType
+
+            actor_loc = state.entity_locations.get(BoardEntityID(str(actor_id)))
+            if actor_loc:
+                for effect in state.active_effects:
+                    if effect.effect_type != _EffectType.MOVEMENT_AURA_ZONE:
+                        continue
+                    if not effect.grants_pass_through_obstacles:
+                        continue
+                    if not state.validator._is_effect_active(effect, state):
+                        continue
+                    if not state.validator._is_in_scope(
+                        effect, str(actor_id), actor_loc, state
+                    ):
+                        continue
+                    pass_through = True
+                    break
+
         # If we already have the destination in context, just move
         if context.get(self.destination_key):
             return StepResult(
@@ -3782,20 +3805,28 @@ class ResolveCardStep(GameStep):
                 # NOTE: Renamed local variable to avoid shadowing re-declaration if any
                 steps_list: List[GameStep] = []
 
-                # Check for BEFORE_* passive abilities based on action type
+                # Check for BEFORE_* passive abilities based on action type.
+                # BEFORE_ACTION always fires — primary, secondary, or HOLD —
+                # in addition to any specific BEFORE_ATTACK/MOVEMENT/SKILL.
                 from goa2.domain.models.enums import PassiveTrigger
 
-                passive_trigger = None
-                if act_type == ActionType.ATTACK:
-                    passive_trigger = PassiveTrigger.BEFORE_ATTACK
-                elif act_type == ActionType.MOVEMENT:
-                    passive_trigger = PassiveTrigger.BEFORE_MOVEMENT
-                elif act_type == ActionType.SKILL:
-                    passive_trigger = PassiveTrigger.BEFORE_SKILL
+                steps_list.append(
+                    CheckPassiveAbilitiesStep(
+                        trigger=PassiveTrigger.BEFORE_ACTION.value
+                    )
+                )
 
-                if passive_trigger:
+                specific_trigger = None
+                if act_type == ActionType.ATTACK:
+                    specific_trigger = PassiveTrigger.BEFORE_ATTACK
+                elif act_type == ActionType.MOVEMENT:
+                    specific_trigger = PassiveTrigger.BEFORE_MOVEMENT
+                elif act_type == ActionType.SKILL:
+                    specific_trigger = PassiveTrigger.BEFORE_SKILL
+
+                if specific_trigger:
                     steps_list.append(
-                        CheckPassiveAbilitiesStep(trigger=passive_trigger.value)
+                        CheckPassiveAbilitiesStep(trigger=specific_trigger.value)
                     )
 
                 if is_primary:
@@ -4404,6 +4435,65 @@ class CheckDistanceStep(GameStep):
         print(
             f"   [CHECK_DISTANCE] {u_a}<->{u_b} dist={dist} {self.operator} {self.threshold} -> {result}"
         )
+        return StepResult(is_finished=True)
+
+
+class ComputeDistanceStep(GameStep):
+    """
+    Computes the topology-aware distance between a unit and either another
+    unit or a previously recorded hex (via RecordHexStep). Stores the integer
+    distance in context[output_key].
+
+    Used by Silverarrow's Lead Astray family: snapshot the dragged unit's
+    starting hex, drag it, then compute how far it actually moved so the
+    follow-up self-move is bounded by that same distance.
+    """
+
+    type: StepType = StepType.COMPUTE_DISTANCE
+    unit_id: Optional[str] = None
+    unit_key: Optional[str] = None
+    other_unit_id: Optional[str] = None
+    other_unit_key: Optional[str] = None
+    hex_key: Optional[str] = None  # Read a recorded hex dict from context
+    output_key: str = "distance"
+
+    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        u_id = self.unit_id or (
+            context.get(self.unit_key) if self.unit_key else None
+        )
+        if not u_id:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+        loc_a = state.entity_locations.get(BoardEntityID(str(u_id)))
+        if not loc_a:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        loc_b: Optional[Hex] = None
+        if self.hex_key:
+            hex_data = context.get(self.hex_key)
+            if isinstance(hex_data, dict):
+                loc_b = Hex(**hex_data)
+            elif isinstance(hex_data, Hex):
+                loc_b = hex_data
+        else:
+            other_id = self.other_unit_id or (
+                context.get(self.other_unit_key) if self.other_unit_key else None
+            )
+            if other_id:
+                loc_b = state.entity_locations.get(BoardEntityID(str(other_id)))
+
+        if not loc_b:
+            context[self.output_key] = 0
+            return StepResult(is_finished=True)
+
+        topology = get_topology_service()
+        dist = topology.distance(loc_a, loc_b, state)
+        context[self.output_key] = dist
+        print(f"   [COMPUTE_DISTANCE] {u_id} -> stored {dist} in {self.output_key}")
         return StepResult(is_finished=True)
 
 

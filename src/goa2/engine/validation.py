@@ -761,6 +761,8 @@ class ValidationService:
             return not is_same_team and is_hero
         if affects == AffectsFilter.FRIENDLY_HEROES:
             return is_same_team and not is_self and is_hero
+        if affects == AffectsFilter.SELF_AND_FRIENDLY_HEROES:
+            return is_same_team and is_hero
         if affects == AffectsFilter.ALL_HEROES:
             return is_hero
         if affects == AffectsFilter.ALL_MINIONS:

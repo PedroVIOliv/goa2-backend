@@ -99,8 +99,23 @@ class RangeFilter(FilterCondition):
     origin_id: Optional[str] = None  # Literal ID
     origin_key: Optional[str] = None  # Key in context to find ID
     origin_hex_key: Optional[str] = None  # Key in context holding a Hex (or dict)
+    max_range_key: Optional[str] = None  # Read upper bound from context[int]
+    min_range_key: Optional[str] = None  # Read lower bound from context[int]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        # Resolve runtime bounds from context if keys are provided, otherwise
+        # fall back to the static min_range/max_range literals.
+        max_r = self.max_range
+        if self.max_range_key:
+            raw_max = context.get(self.max_range_key)
+            if isinstance(raw_max, int):
+                max_r = raw_max
+        min_r = self.min_range
+        if self.min_range_key:
+            raw_min = context.get(self.min_range_key)
+            if isinstance(raw_min, int):
+                min_r = raw_min
+
         origin_hex: Optional[Hex] = None
 
         # Priority: origin_hex_key (direct hex) > origin_id > origin_key > actor
@@ -140,7 +155,7 @@ class RangeFilter(FilterCondition):
         # Use topology-aware distance (respects reality splits)
         topology = get_topology_service()
         dist = topology.distance(origin_hex, target_hex, state)
-        return self.min_range <= dist <= self.max_range
+        return min_r <= dist <= max_r
 
 
 # -----------------------------------------------------------------------------
@@ -1409,12 +1424,22 @@ class CountMatchFilter(FilterCondition):
     ORIGIN_HEX_KEY: ClassVar[str] = "_cmf_origin_hex"
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if not isinstance(candidate, Hex):
+        # Accept either a Hex (e.g. Misa's swoop_in target hex) or a unit-ID
+        # string (e.g. Silverarrow's "is this target isolated?" check). For a
+        # unit-ID candidate, resolve to its current hex and use that as origin.
+        if isinstance(candidate, Hex):
+            origin_hex = candidate
+        elif isinstance(candidate, str):
+            loc = state.entity_locations.get(BoardEntityID(candidate))
+            if loc is None:
+                return False
+            origin_hex = loc
+        else:
             return False
 
         # Temporarily publish candidate hex for sub-filter origin resolution.
         prev = context.get(self.ORIGIN_HEX_KEY)
-        context[self.ORIGIN_HEX_KEY] = candidate.model_dump()
+        context[self.ORIGIN_HEX_KEY] = origin_hex.model_dump()
         try:
             # Gather candidate units — mirrors CountStep's UNIT path.
             count = 0

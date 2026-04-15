@@ -65,6 +65,13 @@ class EffectType(str, Enum):
     # next turn. Consumed on use by ResolveCardStep.
     PRE_ACTION_MOVEMENT = "pre_action_movement"
 
+    # Movement aura (Silverarrow - Trailblazer)
+    # Grants friendly heroes in radius a movement-action-only aura that lets
+    # them ignore obstacles while performing MOVEMENT actions. Checked at the
+    # top of MoveSequenceStep (movement-action entry point) — effect-side
+    # nudges via MoveUnitStep do NOT consult this aura.
+    MOVEMENT_AURA_ZONE = "movement_aura_zone"
+
 
 class AffectsFilter(str, Enum):
     """Who is affected by this effect."""
@@ -72,6 +79,7 @@ class AffectsFilter(str, Enum):
     SELF = "self"
     FRIENDLY_UNITS = "friendly_units"
     FRIENDLY_HEROES = "friendly_heroes"
+    SELF_AND_FRIENDLY_HEROES = "self_and_friendly_heroes"
     ENEMY_UNITS = "enemy_units"
     ENEMY_HEROES = "enemy_heroes"
     ALL_UNITS = "all_units"
@@ -181,3 +189,8 @@ class ActiveEffect(BaseModel):
     # Steps to push onto the execution stack when this effect expires
     # (for DELAYED_TRIGGER effects). Patched to List[AnyStep] in step_types.py.
     finishing_steps: List[Any] = Field(default_factory=list)
+
+    # MOVEMENT_AURA_ZONE payload (Trailblazer): when an affected unit begins
+    # a MOVEMENT action inside scope, their pathfinding call is invoked with
+    # pass_through_obstacles=True.
+    grants_pass_through_obstacles: bool = False

@@ -20,6 +20,7 @@ from goa2.engine.steps import (
     CheckContextConditionStep,
     CheckDistanceStep,
     CheckHeroDefeatedThisRoundStep,
+    ComputeDistanceStep,
     ComputeHexStep,
     CheckLanePushStep,
     CheckMinionProtectionStep,
@@ -133,6 +134,7 @@ AnyStep = Annotated[
             Tag(StepType.CHECK_HERO_DEFEATED_THIS_ROUND.value),
         ],
         Annotated[CheckLanePushStep, Tag(StepType.CHECK_LANE_PUSH.value)],
+        Annotated[ComputeDistanceStep, Tag(StepType.COMPUTE_DISTANCE.value)],
         Annotated[ComputeHexStep, Tag(StepType.COMPUTE_HEX.value)],
         Annotated[
             CheckMinionProtectionStep, Tag(StepType.CHECK_MINION_PROTECTION.value)

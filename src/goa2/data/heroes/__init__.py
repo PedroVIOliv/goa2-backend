@@ -16,5 +16,6 @@ import goa2.data.heroes.ursafar
 import goa2.data.heroes.min
 import goa2.data.heroes.misa
 import goa2.data.heroes.garrus
+import goa2.data.heroes.silverarrow
 
 __all__ = ["HeroRegistry"]
