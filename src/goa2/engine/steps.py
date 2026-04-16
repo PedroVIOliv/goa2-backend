@@ -674,7 +674,9 @@ class CheckPassiveAbilitiesStep(GameStep):
 
     type: StepType = StepType.CHECK_PASSIVE_ABILITIES
     trigger: str  # PassiveTrigger value as string for serialization
-    hero_id: Optional[str] = None  # Override which hero is scanned (default: current actor)
+    hero_id: Optional[str] = (
+        None  # Override which hero is scanned (default: current actor)
+    )
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.effects import CardEffectRegistry
@@ -754,7 +756,9 @@ class OfferPassiveStep(GameStep):
     trigger: str  # PassiveTrigger value as string
     is_optional: bool = True
     prompt: str = ""
-    hero_id: Optional[str] = None  # Override: whose passive this is (default: current actor)
+    hero_id: Optional[str] = (
+        None  # Override: whose passive this is (default: current actor)
+    )
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.effects import CardEffectRegistry
@@ -1165,7 +1169,9 @@ class DiscardCardStep(GameStep):
             return StepResult(is_finished=True)
 
         if not target_card:
-            print(f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}.")
+            print(
+                f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}."
+            )
             return StepResult(is_finished=True)
 
         print(f"   [DISCARD] {h_id} discards {target_card.name}")
@@ -3109,7 +3115,9 @@ class PushUnitStep(GameStep):
     distance: int = 1  # Default/fallback distance
     distance_key: Optional[str] = None  # Read distance from context
     collision_output_key: Optional[str] = None  # If set, stores True on collision
-    ignore_obstacles: bool = False  # Path passes through obstacles; land on last legal hex
+    ignore_obstacles: bool = (
+        False  # Path passes through obstacles; land on last legal hex
+    )
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -4461,9 +4469,7 @@ class ComputeDistanceStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        u_id = self.unit_id or (
-            context.get(self.unit_key) if self.unit_key else None
-        )
+        u_id = self.unit_id or (context.get(self.unit_key) if self.unit_key else None)
         if not u_id:
             context[self.output_key] = 0
             return StepResult(is_finished=True)
@@ -5394,10 +5400,13 @@ class AttackSequenceStep(GameStep):
                 )
             )
 
+        from goa2.domain.models.enums import PassiveTrigger as _PT
+
         new_steps.extend(
             [
                 ReactionWindowStep(target_player_key=key),
                 SetActorStep(actor_key="defender_id", save_key="_pre_pam_actor"),
+                CheckPassiveAbilitiesStep(trigger=_PT.BEFORE_ACTION.value),
                 ResolvePreActionMovementStep(hero_key="defender_id"),
                 SetActorStep(actor_key="_pre_pam_actor", save_key="_discard_pam"),
                 ResolveDefenseTextStep(),

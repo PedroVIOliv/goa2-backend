@@ -137,16 +137,16 @@ class TestComputeDistanceStep:
 
     def test_distance_unit_to_unit(self, basic_state):
         ctx = {}
-        ComputeDistanceStep(
-            unit_id="h1", other_unit_id="h2", output_key="d"
-        ).resolve(basic_state, ctx)
+        ComputeDistanceStep(unit_id="h1", other_unit_id="h2", output_key="d").resolve(
+            basic_state, ctx
+        )
         assert ctx["d"] == 3
 
     def test_missing_unit_stores_zero(self, basic_state):
         ctx = {}
-        ComputeDistanceStep(
-            unit_id="nope", hex_key="missing", output_key="d"
-        ).resolve(basic_state, ctx)
+        ComputeDistanceStep(unit_id="nope", hex_key="missing", output_key="d").resolve(
+            basic_state, ctx
+        )
         assert ctx["d"] == 0
 
 
@@ -188,7 +188,9 @@ class TestMovementAuraZoneDetection:
         # Look for MoveUnitStep in new_steps and verify pass_through is set
         from goa2.engine.steps import MoveUnitStep
 
-        move_steps = [s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)]
+        move_steps = [
+            s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)
+        ]
         assert move_steps, "Expected a MoveUnitStep in expansion"
         assert move_steps[0].pass_through_obstacles is True
 
@@ -197,7 +199,9 @@ class TestMovementAuraZoneDetection:
         result = step.resolve(basic_state, {})
         from goa2.engine.steps import MoveUnitStep
 
-        move_steps = [s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)]
+        move_steps = [
+            s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)
+        ]
         assert move_steps
         assert move_steps[0].pass_through_obstacles is False
 
@@ -210,3 +214,23 @@ class TestBeforeActionTrigger:
         assert PassiveTrigger.BEFORE_ACTION != PassiveTrigger.BEFORE_ATTACK
         assert PassiveTrigger.BEFORE_ACTION != PassiveTrigger.BEFORE_MOVEMENT
         assert PassiveTrigger.BEFORE_ACTION != PassiveTrigger.BEFORE_SKILL
+
+    def test_fires_in_defense_path(self, basic_state):
+        from goa2.engine.steps import (
+            AttackSequenceStep,
+            CheckPassiveAbilitiesStep,
+        )
+
+        atk = AttackSequenceStep(damage=3, range_val=3, is_ranged=True)
+        result = atk.resolve(basic_state, {"attack_is_ranged": True})
+        assert result.new_steps
+        before_action_steps = [
+            s
+            for s in result.new_steps
+            if isinstance(s, CheckPassiveAbilitiesStep)
+            and s.trigger == PassiveTrigger.BEFORE_ACTION.value
+        ]
+        assert len(before_action_steps) == 1, (
+            "Expected exactly one CheckPassiveAbilitiesStep(BEFORE_ACTION) "
+            "in AttackSequenceStep expansion (defense path)"
+        )

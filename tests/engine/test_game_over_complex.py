@@ -82,6 +82,7 @@ def test_game_over_purges_remaining_action_steps(game_state):
     from goa2.engine.steps import (
         SelectStep,
         ReactionWindowStep,
+        CheckPassiveAbilitiesStep,
         ResolveCombatStep,
         ResolveDefenseTextStep,
         ResolveOnBlockEffectStep,
@@ -107,11 +108,14 @@ def test_game_over_purges_remaining_action_steps(game_state):
     result = step.resolve(game_state, game_state.execution_context)
     game_state.execution_stack.extend(reversed(result.new_steps))
 
-    # Stack should now have: [Move, Restore, OnBlock, Combat, DefenseText, SetActor, PreActionMove, SetActor, Reaction, Select]
-    assert len(game_state.execution_stack) == 10
-    assert isinstance(game_state.execution_stack[9], SelectStep)
-    assert isinstance(game_state.execution_stack[8], ReactionWindowStep)
-    assert isinstance(game_state.execution_stack[7], SetActorStep)
+    # Stack should now have:
+    # [Move, Restore, OnBlock, Combat, DefenseText, SetActor, PreActionMove,
+    #  CheckPassiveAbilities(BEFORE_ACTION), SetActor, Reaction, Select]
+    assert len(game_state.execution_stack) == 11
+    assert isinstance(game_state.execution_stack[10], SelectStep)
+    assert isinstance(game_state.execution_stack[9], ReactionWindowStep)
+    assert isinstance(game_state.execution_stack[8], SetActorStep)
+    assert isinstance(game_state.execution_stack[7], CheckPassiveAbilitiesStep)
     assert isinstance(game_state.execution_stack[6], ResolvePreActionMovementStep)
     assert isinstance(game_state.execution_stack[5], SetActorStep)
     assert isinstance(game_state.execution_stack[4], ResolveDefenseTextStep)
@@ -126,8 +130,8 @@ def test_game_over_purges_remaining_action_steps(game_state):
     result = step.resolve(game_state, game_state.execution_context)
     assert result.is_finished is True
 
-    assert len(game_state.execution_stack) == 9
-    assert isinstance(game_state.execution_stack[8], ReactionWindowStep)
+    assert len(game_state.execution_stack) == 10
+    assert isinstance(game_state.execution_stack[9], ReactionWindowStep)
 
     # 4. RESOLVE REACTION
     step = game_state.execution_stack.pop()
@@ -136,27 +140,34 @@ def test_game_over_purges_remaining_action_steps(game_state):
     assert result.is_finished is True
 
     # 5. Process SetActor (switch to defender for pre-action move)
-    assert len(game_state.execution_stack) == 8
+    assert len(game_state.execution_stack) == 9
     step = game_state.execution_stack.pop()
     assert isinstance(step, SetActorStep)
     result = step.resolve(game_state, game_state.execution_context)
     assert result.is_finished is True
 
-    # 6. ResolvePreActionMovementStep (no effect -> noop)
+    # 6. CheckPassiveAbilitiesStep(BEFORE_ACTION) for defender
+    assert len(game_state.execution_stack) == 8
+    step = game_state.execution_stack.pop()
+    assert isinstance(step, CheckPassiveAbilitiesStep)
+    result = step.resolve(game_state, game_state.execution_context)
+    assert result.is_finished is True
+
+    # 7. ResolvePreActionMovementStep (no effect -> noop)
     assert len(game_state.execution_stack) == 7
     step = game_state.execution_stack.pop()
     assert isinstance(step, ResolvePreActionMovementStep)
     result = step.resolve(game_state, game_state.execution_context)
     assert result.is_finished is True
 
-    # 7. SetActor (restore)
+    # 8. SetActor (restore)
     assert len(game_state.execution_stack) == 6
     step = game_state.execution_stack.pop()
     assert isinstance(step, SetActorStep)
     result = step.resolve(game_state, game_state.execution_context)
     assert result.is_finished is True
 
-    # 8. RESOLVE DEFENSE TEXT (no primary defense selected, so just passes through)
+    # 9. RESOLVE DEFENSE TEXT (no primary defense selected, so just passes through)
     assert len(game_state.execution_stack) == 5
     step = game_state.execution_stack.pop()
     assert isinstance(step, ResolveDefenseTextStep)
