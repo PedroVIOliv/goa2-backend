@@ -6,21 +6,33 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CheckUnitTypeStep,
+    ComputeDistanceStep,
     CreateEffectStep,
     FastTravelSequenceStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
+    GainCoinsStep,
     GameStep,
+    MoveUnitStep,
+    RecordHexStep,
+    RetrieveCardStep,
     SelectStep,
 )
 from goa2.engine.filters import (
+    CountMatchFilter,
     ExcludeIdentityFilter,
+    InStraightLineFilter,
+    MovementPathFilter,
+    ObstacleFilter,
+    OrFilter,
     RangeFilter,
+    StraightLinePathFilter,
     TeamFilter,
     UnitTypeFilter,
 )
 from goa2.domain.models import (
     ActionType,
+    CardContainerType,
     DurationType,
     EffectType,
     TargetType,
@@ -31,6 +43,71 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
+
+
+# =============================================================================
+# FAMILY 1 — RED: Isolated-Target Snipe (Clear Shot / Opportunity Shot / Snap Shot)
+# =============================================================================
+
+
+class _IsolatedSnipeEffect(CardEffect):
+    """
+    "Choose one —
+    • Target a unit in range, which is not adjacent to any other unit.
+    • Target a unit adjacent to you."
+
+    Uses OrFilter to offer the disjunction: the long-range branch requires
+    no other unit adjacent to the target (CountMatchFilter with max_count=0),
+    while the melee fallback requires adjacency to the shooter.
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_filters=[
+                    OrFilter(
+                        filters=[
+                            # Long-range branch: target has zero other units
+                            # adjacent to it. min_range=1 excludes the candidate
+                            # from its own count (distance 0 to itself).
+                            CountMatchFilter(
+                                sub_filters=[
+                                    RangeFilter(
+                                        min_range=1,
+                                        max_range=1,
+                                        origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY,
+                                    ),
+                                ],
+                                min_count=0,
+                                max_count=0,
+                            ),
+                            # Melee fallback: target is adjacent to shooter.
+                            RangeFilter(max_range=1),
+                        ]
+                    ),
+                ],
+            ),
+        ]
+
+
+@register_effect("clear_shot")
+class ClearShotEffect(_IsolatedSnipeEffect):
+    pass
+
+
+@register_effect("opportunity_shot")
+class OpportunityShotEffect(_IsolatedSnipeEffect):
+    pass
+
+
+@register_effect("snap_shot")
+class SnapShotEffect(_IsolatedSnipeEffect):
+    pass
 
 
 # =============================================================================
@@ -259,6 +336,265 @@ class WarningShotEffect(CardEffect):
                 ),
             ),
         ]
+
+
+# =============================================================================
+# FAMILY 5 — GREEN: Drag-and-Dance (Lead Astray / Divert Attention / Disorient)
+# =============================================================================
+
+
+def _drag_and_dance_steps(
+    hero_id: str, max_drag_distance: int
+) -> List[GameStep]:
+    """
+    Move an enemy unit adjacent to you up to N spaces; if you do,
+    move up to that number of spaces in a straight line.
+
+    Implementation:
+    1. Select adjacent enemy to drag.
+    2. Record its starting hex.
+    3. Select destination hex for the drag (up to max_drag_distance from target).
+    4. Move the target.
+    5. Compute how far it actually moved.
+    6. Self-move in a straight line up to that distance (effect-side nudge).
+    """
+    return [
+        # 1. Select adjacent enemy
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an adjacent enemy unit to move",
+            output_key="drag_target",
+            is_mandatory=False,
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=1),
+            ],
+        ),
+        # 2. Record starting hex before drag
+        RecordHexStep(
+            unit_key="drag_target",
+            output_key="drag_start_hex",
+            active_if_key="drag_target",
+        ),
+        # 3. Select destination for dragged unit
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="Select destination for the enemy unit",
+            output_key="drag_dest",
+            is_mandatory=False,
+            active_if_key="drag_target",
+            filters=[
+                RangeFilter(
+                    max_range=max_drag_distance,
+                    origin_key="drag_target",
+                ),
+                ObstacleFilter(is_obstacle=False),
+                MovementPathFilter(range_val=max_drag_distance, unit_key="drag_target")
+            ],
+        ),
+        # 4. Move the target (forced movement, not a movement action)
+        MoveUnitStep(
+            unit_key="drag_target",
+            destination_key="drag_dest",
+            range_val=max_drag_distance,
+            is_movement_action=False,
+            active_if_key="drag_dest",
+        ),
+        # 5. Compute distance moved
+        ComputeDistanceStep(
+            unit_key="drag_target",
+            hex_key="drag_start_hex",
+            output_key="drag_distance_moved",
+            active_if_key="drag_dest",
+        ),
+        # 6. Self-move in a straight line, up to drag_distance_moved
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="You may move in a straight line",
+            output_key="dance_dest",
+            is_mandatory=False,
+            active_if_key="drag_distance_moved",
+            filters=[
+                RangeFilter(
+                    max_range=0,
+                    max_range_key="drag_distance_moved",
+                    origin_id=hero_id,
+                ),
+                InStraightLineFilter(origin_id=hero_id),
+                StraightLinePathFilter(origin_id=hero_id),
+                ObstacleFilter(is_obstacle=False),
+            ],
+        ),
+        MoveUnitStep(
+            unit_id=hero_id,
+            destination_key="dance_dest",
+            range_val=max_drag_distance,
+            is_movement_action=False,
+            active_if_key="dance_dest",
+        ),
+    ]
+
+
+@register_effect("lead_astray")
+class LeadAstrayEffect(CardEffect):
+    """
+    "Move an enemy unit adjacent to you up to 3 spaces;
+    if you do, move up to that number of spaces in a straight line."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return _drag_and_dance_steps(str(hero.id), max_drag_distance=3)
+
+
+@register_effect("divert_attention")
+class DivertAttentionEffect(CardEffect):
+    """
+    "Move an enemy unit adjacent to you up to 2 spaces;
+    if you do, move up to that number of spaces in a straight line."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return _drag_and_dance_steps(str(hero.id), max_drag_distance=2)
+
+
+@register_effect("disorient")
+class DisorientEffect(CardEffect):
+    """
+    "Move an enemy unit adjacent to you 1 space;
+    if you do, you may move 1 space."
+
+    Simplified variant — fixed distance 1, no straight-line constraint on self-move.
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            # 1. Select adjacent enemy
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an adjacent enemy unit to move 1 space",
+                output_key="disorient_target",
+                is_mandatory=False,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=1),
+                ],
+            ),
+            # 2. Select destination for target (1 space from target)
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select destination for the enemy unit",
+                output_key="disorient_dest",
+                is_mandatory=False,
+                active_if_key="disorient_target",
+                filters=[
+                    RangeFilter(max_range=1, origin_key="disorient_target"),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            ),
+            # 3. Move the target
+            MoveUnitStep(
+                unit_key="disorient_target",
+                destination_key="disorient_dest",
+                range_val=1,
+                is_movement_action=False,
+                active_if_key="disorient_dest",
+            ),
+            # 4. Self-move 1 space (no straight-line constraint)
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="You may move 1 space",
+                output_key="disorient_self_dest",
+                is_mandatory=False,
+                active_if_key="disorient_dest",
+                filters=[
+                    RangeFilter(max_range=1, origin_id=str(hero.id)),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            ),
+            MoveUnitStep(
+                unit_id=str(hero.id),
+                destination_key="disorient_self_dest",
+                range_val=1,
+                is_movement_action=False,
+                active_if_key="disorient_self_dest",
+            ),
+        ]
+
+
+# =============================================================================
+# FAMILY 6 — GREEN: Gift Retrieve (Nature's Blessing / Fae Healing)
+# =============================================================================
+
+
+class _GiftRetrieveEffect(CardEffect):
+    """
+    "A hero in radius may retrieve a discarded card;
+    if they do, that hero gains N coins."
+    """
+
+    coins: int = 0
+
+    def __init_subclass__(cls, coins: int = 0, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.coins = coins
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            # 1. Select a friendly hero in radius
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select a friendly hero in radius to gift a card retrieval",
+                output_key="gift_hero",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius or 0),
+                ],
+            ),
+            # 2. That hero selects a card from their discard
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                context_hero_id_key="gift_hero",
+                override_player_id_key="gift_hero",
+                prompt="Select a discarded card to retrieve",
+                output_key="gift_card",
+                is_mandatory=False,
+                active_if_key="gift_hero",
+            ),
+            # 3. Retrieve the card
+            RetrieveCardStep(
+                card_key="gift_card",
+                hero_key="gift_hero",
+                active_if_key="gift_card",
+            ),
+            # 4. Gain coins
+            GainCoinsStep(
+                hero_key="gift_hero",
+                amount=self.coins,
+                active_if_key="gift_card",
+            ),
+        ]
+
+
+@register_effect("natures_blessing")
+class NaturesBlessingEffect(_GiftRetrieveEffect, coins=2):
+    """A hero in radius may retrieve a discarded card; if they do, that hero gains 2 coins."""
+    pass
+
+
+@register_effect("fae_healing")
+class FaeHealingEffect(_GiftRetrieveEffect, coins=1):
+    """A hero in radius may retrieve a discarded card; if they do, that hero gains 1 coin."""
+    pass
 
 
 # =============================================================================
