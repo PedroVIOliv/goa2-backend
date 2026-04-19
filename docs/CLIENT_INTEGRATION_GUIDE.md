@@ -127,7 +127,8 @@ Create a new game. No authentication required.
   "map_name": "forgotten_island",
   "red_heroes": ["arien"],
   "blue_heroes": ["knight"],
-  "cheats_enabled": false
+  "cheats_enabled": false,
+  "game_type": "LONG"
 }
 ```
 
@@ -137,6 +138,19 @@ Create a new game. No authentication required.
 | `red_heroes` | string[] | required | Hero IDs for the red team |
 | `blue_heroes` | string[] | required | Hero IDs for the blue team |
 | `cheats_enabled` | boolean | `false` | Enable cheats for this game (unlocks gold cheat API) |
+| `game_type` | string | `"LONG"` | `"QUICK"` or `"LONG"`. Controls wave and life counter setup (see below) |
+
+**Game types:**
+
+| Game Type | Players | Wave Counters | Life Counters |
+|-----------|---------|---------------|---------------|
+| `QUICK` | 4 | 3 | 4 |
+| `QUICK` | 5 | 3 | 4 |
+| `QUICK` | 6 | 3 | 5 |
+| `LONG` | 4–5 | 5 | 6 |
+| `LONG` | 6 | 5 | 8 |
+
+Omitting `game_type` defaults to `"LONG"` (standard game).
 
 **Response:** `201 Created`
 

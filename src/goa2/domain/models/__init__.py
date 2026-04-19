@@ -1,5 +1,6 @@
 from .enums import (
     TeamColor,
+    GameType,
     MinionType,
     TokenType,
     StatType,
@@ -27,6 +28,7 @@ from .effect import ActiveEffect, EffectType, EffectScope, Shape, AffectsFilter
 
 __all__ = [
     "TeamColor",
+    "GameType",
     "MinionType",
     "TokenType",
     "StatType",

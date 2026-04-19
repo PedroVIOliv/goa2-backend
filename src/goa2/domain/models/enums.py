@@ -6,6 +6,11 @@ class TeamColor(str, Enum):
     BLUE = "BLUE"
 
 
+class GameType(str, Enum):
+    QUICK = "QUICK"
+    LONG = "LONG"
+
+
 class MinionType(str, Enum):
     MELEE = "MELEE"
     RANGED = "RANGED"

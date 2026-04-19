@@ -85,8 +85,13 @@ async def create_game(
     body: CreateGameRequest, registry: GameRegistry = Depends(get_registry)
 ) -> CreateGameResponse:
     map_path = _map_path(body.map_name)
+    if body.game_type not in ("QUICK", "LONG"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid game_type '{body.game_type}'. Must be QUICK or LONG.",
+        )
     state = GameSetup.create_game(
-        map_path, body.red_heroes, body.blue_heroes, body.cheats_enabled
+        map_path, body.red_heroes, body.blue_heroes, body.cheats_enabled, body.game_type
     )
     session = GameSession(state)
 
@@ -252,9 +257,13 @@ async def rollback_action(
     async with game.lock:
         session = game.session
         if session.state.current_actor_id is None:
-            raise HTTPException(status_code=400, detail="No active resolution to rollback")
+            raise HTTPException(
+                status_code=400, detail="No active resolution to rollback"
+            )
         if str(session.state.current_actor_id) != player.hero_id:
-            raise HTTPException(status_code=403, detail="Only the current actor can rollback")
+            raise HTTPException(
+                status_code=403, detail="Only the current actor can rollback"
+            )
         try:
             result = session.rollback()
         except ValueError as exc:

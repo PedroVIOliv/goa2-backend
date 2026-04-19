@@ -6,6 +6,7 @@ from goa2.domain.models import (
     Team,
     TeamColor,
     GamePhase,
+    GameType,
     CardTier,
     CardState,
     Token,
@@ -25,11 +26,42 @@ class GameSetup:
     """
 
     @staticmethod
+    def get_game_config(game_type: str, total_players: int) -> tuple[int, int]:
+        """
+        Returns (wave_counters, life_counters) for the given game type and player count.
+
+        Rules:
+          Quick Game: 3 waves, 4 LC (4p) / 4 LC (5p) / 5 LC (6p)
+          Long Game:  5 waves, 6 LC (4-5p) / 8 LC (6p)
+        """
+        try:
+            gt = GameType(game_type)
+        except ValueError:
+            raise ValueError(f"Invalid game_type '{game_type}'. Must be QUICK or LONG.")
+
+        if gt == GameType.QUICK:
+            lc_lookup = {2: 3, 4: 4, 5: 4, 6: 5}
+            waves = 3
+        else:
+            lc_lookup = {2: 6, 4: 6, 5: 6, 6: 8}
+            waves = 5
+
+        life_counters = lc_lookup.get(total_players)
+        if life_counters is None:
+            raise ValueError(
+                f"Unsupported player count {total_players} for {gt.value} game. "
+                f"Supported: {sorted(lc_lookup.keys())}."
+            )
+
+        return waves, life_counters
+
+    @staticmethod
     def create_game(
         map_path: str,
         red_heroes: List[str],
         blue_heroes: List[str],
         cheats_enabled: bool = False,
+        game_type: str = "LONG",
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -37,30 +69,36 @@ class GameSetup:
         :param red_heroes: List of Hero Names for Red Team.
         :param blue_heroes: List of Hero Names for Blue Team.
         :param cheats_enabled: Whether cheats are enabled for this game.
+        :param game_type: "QUICK" or "LONG" (default: "LONG").
         """
 
         # 1. Load Map
         board = load_map(map_path)
 
-        # 2. Calculate Life Counters
+        # 2. Calculate Wave & Life Counters
         total_players = len(red_heroes) + len(blue_heroes)
-        # Rule: 4 players -> 6 counters. 6 players -> 8 counters.
-        # Formula: Player Count + 2? (4+2=6, 6+2=8).
-        # Let's assume even teams.
-        counters = total_players + 2 if total_players >= 4 else 6  # Fallback default
+        wave_counters, life_counters = GameSetup.get_game_config(
+            game_type, total_players
+        )
 
         # 3. Initialize State
         state = GameState(
             board=board,
             teams={
                 TeamColor.RED: Team(
-                    color=TeamColor.RED, heroes=[], minions=[], life_counters=counters
+                    color=TeamColor.RED,
+                    heroes=[],
+                    minions=[],
+                    life_counters=life_counters,
                 ),
                 TeamColor.BLUE: Team(
-                    color=TeamColor.BLUE, heroes=[], minions=[], life_counters=counters
+                    color=TeamColor.BLUE,
+                    heroes=[],
+                    minions=[],
+                    life_counters=life_counters,
                 ),
             },
-            wave_counter=5,
+            wave_counter=wave_counters,
             phase=GamePhase.SETUP,
             cheats_enabled=cheats_enabled,
         )
@@ -92,7 +130,8 @@ class GameSetup:
         state.phase = GamePhase.PLANNING
 
         print(
-            f"[Setup] Game Created. Map: {len(board.tiles)} tiles. Players: {total_players}. Life: {counters}."
+            f"[Setup] Game Created ({game_type}). Map: {len(board.tiles)} tiles. Players: {total_players}. "
+            f"Waves: {wave_counters}. Life: {life_counters}."
         )
         print(
             f"[Setup] Battle Zone: {active_zone_id}. Coin Favors: {state.tie_breaker_team.name}"
@@ -108,7 +147,9 @@ class GameSetup:
 
             is_mine = token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
             for _ in range(supply):
-                token_id = state.create_entity_id("mine" if is_mine else token_type.value)
+                token_id = state.create_entity_id(
+                    "mine" if is_mine else token_type.value
+                )
                 token = Token(
                     id=BoardEntityID(token_id),
                     name=token_type.value.replace("_", " ").title(),

@@ -15,6 +15,7 @@ class CreateGameRequest(BaseModel):
     red_heroes: List[str]
     blue_heroes: List[str]
     cheats_enabled: bool = False
+    game_type: str = "LONG"
 
 
 class CommitCardRequest(BaseModel):
