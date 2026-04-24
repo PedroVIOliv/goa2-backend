@@ -73,6 +73,42 @@ def test_create_game(client):
     assert data["spectator_token"]
 
 
+def test_create_quick_game(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "game_type": "QUICK",
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+
+    token = _token_for(data, "hero_arien")
+    view_resp = client.get(f"/games/{data['game_id']}", headers=_auth(token))
+    assert view_resp.status_code == 200
+    view = view_resp.json()["view"]
+
+    assert view["teams"]["RED"]["life_counters"] == 3
+    assert view["teams"]["BLUE"]["life_counters"] == 3
+
+
+def test_create_game_invalid_game_type(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "game_type": "BLITZ",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid game_type 'BLITZ'. Must be QUICK or LONG."
+
+
 def test_create_game_bad_map(client):
     resp = client.post(
         "/games",
