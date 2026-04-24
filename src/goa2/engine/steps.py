@@ -379,6 +379,9 @@ class CreateEffectStep(GameStep):
     # Patched to List[AnyStep] in step_types.py.
     finishing_steps: List[GameStep] = Field(default_factory=list)
 
+    # MOVEMENT_AURA_ZONE payload (Silverarrow - Trailblazer)
+    grants_pass_through_obstacles: bool = False
+
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -442,6 +445,7 @@ class CreateEffectStep(GameStep):
             barrier_origin_id=self.barrier_origin_id,
             finishing_steps=self.finishing_steps,
             allowed_discard_colors=self.allowed_discard_colors,
+            grants_pass_through_obstacles=self.grants_pass_through_obstacles,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"

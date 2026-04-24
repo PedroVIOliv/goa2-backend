@@ -622,3 +622,35 @@ class ShootAndScootEffect(CardEffect):
             ),
             FastTravelSequenceStep(unit_id=str(hero.id)),
         ]
+
+
+# =============================================================================
+# FAMILY 8 — SILVER: Trailblazer (untiered)
+# =============================================================================
+
+
+@register_effect("trailblazer")
+class TrailblazerEffect(CardEffect):
+    """
+    "You may fast travel, if able.
+    This round: You and friendly heroes in radius may ignore obstacles while
+    performing movement actions."
+    """
+
+    def build_steps(
+        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
+    ) -> List[GameStep]:
+        return [
+            FastTravelSequenceStep(unit_id=str(hero.id)),
+            CreateEffectStep(
+                effect_type=EffectType.MOVEMENT_AURA_ZONE,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=stats.radius or 0,
+                    origin_id=str(hero.id),
+                    affects=AffectsFilter.SELF_AND_FRIENDLY_HEROES,
+                ),
+                duration=DurationType.THIS_ROUND,
+                grants_pass_through_obstacles=True,
+            ),
+        ]
