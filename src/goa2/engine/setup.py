@@ -29,6 +29,7 @@ class GameSetup:
     def get_game_config(game_type: str, total_players: int) -> tuple[int, int]:
         """
         Returns (wave_counters, life_counters) for the given game type and player count.
+        Uneven player counts use the next configured player-count bracket.
 
         Rules:
           Quick Game: 3 waves, 4 LC (4p) / 4 LC (5p) / 5 LC (6p)
@@ -46,12 +47,16 @@ class GameSetup:
             lc_lookup = {2: 6, 4: 6, 5: 6, 6: 8}
             waves = 5
 
-        life_counters = lc_lookup.get(total_players)
-        if life_counters is None:
+        life_bracket = next(
+            (player_count for player_count in sorted(lc_lookup) if player_count >= total_players),
+            None,
+        )
+        if life_bracket is None:
             raise ValueError(
                 f"Unsupported player count {total_players} for {gt.value} game. "
                 f"Supported: {sorted(lc_lookup.keys())}."
             )
+        life_counters = lc_lookup[life_bracket]
 
         return waves, life_counters
 

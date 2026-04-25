@@ -151,9 +151,18 @@ class TestGameTypeConfig:
         with pytest.raises(ValueError, match="Invalid game_type"):
             GameSetup.get_game_config("BLITZ", 4)
 
-    def test_get_game_config_unsupported_players(self):
+    def test_get_game_config_uneven_players_uses_upper_life_count(self):
+        waves, lc = GameSetup.get_game_config("QUICK", 3)
+        assert waves == 3
+        assert lc == 4
+
+        waves, lc = GameSetup.get_game_config("LONG", 3)
+        assert waves == 5
+        assert lc == 6
+
+    def test_get_game_config_unsupported_players_above_max(self):
         with pytest.raises(ValueError, match="Unsupported player count"):
-            GameSetup.get_game_config("LONG", 3)
+            GameSetup.get_game_config("LONG", 7)
 
 
 class TestQuickGameSetup:
