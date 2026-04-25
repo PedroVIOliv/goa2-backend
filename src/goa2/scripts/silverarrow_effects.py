@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, TYPE_CHECKING
 
-from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -35,6 +35,7 @@ from goa2.domain.models import (
     CardContainerType,
     DurationType,
     EffectType,
+    PassiveTrigger,
     TargetType,
 )
 from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
@@ -652,5 +653,63 @@ class TrailblazerEffect(CardEffect):
                 ),
                 duration=DurationType.THIS_ROUND,
                 grants_pass_through_obstacles=True,
+            ),
+        ]
+
+
+# =============================================================================
+# FAMILY 9 — ULTIMATE: Wild Hunt
+# =============================================================================
+
+
+@register_effect("wild_hunt")
+class WildHuntEffect(CardEffect):
+    """
+    "Each time before you perform an action, you may move 2 spaces in a
+    straight line."
+
+    This is an effect-side nudge, not a MOVEMENT action, so it intentionally
+    does not use MoveSequenceStep or inherit Trailblazer's movement-action aura.
+    """
+
+    def get_passive_config(self) -> PassiveConfig:
+        return PassiveConfig(
+            trigger=PassiveTrigger.BEFORE_ACTION,
+            uses_per_turn=0,
+            is_optional=True,
+            prompt="Wild Hunt: Move 2 spaces in a straight line?",
+        )
+
+    def get_passive_steps(
+        self,
+        state: "GameState",
+        hero: "Hero",
+        card: "Card",
+        trigger: PassiveTrigger,
+        context: dict,
+    ) -> List[GameStep]:
+        if trigger != PassiveTrigger.BEFORE_ACTION:
+            return []
+
+        hero_id = str(hero.id)
+        return [
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Wild Hunt: Select a straight-line destination",
+                output_key="wild_hunt_dest",
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(max_range=2, origin_id=hero_id),
+                    InStraightLineFilter(origin_id=hero_id),
+                    StraightLinePathFilter(origin_id=hero_id),
+                    ObstacleFilter(is_obstacle=False, exclude_id=hero_id),
+                ],
+            ),
+            MoveUnitStep(
+                unit_id=hero_id,
+                destination_key="wild_hunt_dest",
+                range_val=2,
+                is_movement_action=False,
+                active_if_key="wild_hunt_dest",
             ),
         ]
