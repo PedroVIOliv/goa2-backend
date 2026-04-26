@@ -54,6 +54,30 @@ def test_list_heroes(client):
     assert "Arien" in heroes
 
 
+def test_list_hero_metadata_includes_difficulty_stars(client):
+    resp = client.get("/heroes/metadata")
+    assert resp.status_code == 200
+    heroes = {hero["id"]: hero["difficulty_stars"] for hero in resp.json()}
+
+    assert heroes == {
+        "Arien": 1,
+        "Xargatha": 1,
+        "Wasp": 1,
+        "Brogan": 1,
+        "Tigerclaw": 1,
+        "Sabina": 1,
+        "Dodger": 1,
+        "Bain": 2,
+        "Whisper": 2,
+        "Rowenna": 2,
+        "Ursafar": 2,
+        "Min": 2,
+        "Misa": 2,
+        "Garrus": 2,
+        "Silverarrow": 2,
+    }
+
+
 # ---- POST /games ----
 
 

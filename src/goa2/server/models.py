@@ -35,6 +35,11 @@ class GiveGoldRequest(BaseModel):
 # -- Responses --
 
 
+class HeroMetadata(BaseModel):
+    id: str
+    difficulty_stars: int
+
+
 class PlayerToken(BaseModel):
     hero_id: str
     token: str

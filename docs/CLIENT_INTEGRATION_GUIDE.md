@@ -116,6 +116,21 @@ List available hero IDs. No authentication required.
 ["arien", "knight", "rogue"]
 ```
 
+### `GET /heroes/metadata`
+
+List available heroes with pre-game selection metadata. No authentication required.
+
+`difficulty_stars` describes how difficult the hero is to play and is only relevant before game creation.
+
+**Response:** `200 OK`
+
+```json
+[
+  { "id": "Arien", "difficulty_stars": 1 },
+  { "id": "Knight", "difficulty_stars": 2 }
+]
+```
+
 ### `POST /games`
 
 Create a new game. No authentication required.
