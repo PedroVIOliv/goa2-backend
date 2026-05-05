@@ -1,4 +1,5 @@
 from typing import List
+import logging
 import random
 
 from goa2.domain.state import GameState
@@ -18,6 +19,9 @@ from goa2.engine.map_loader import load_map
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.factory import EntityFactory
 from goa2.domain.models.spawn import SpawnType
+
+
+logger = logging.getLogger(__name__)
 
 
 class GameSetup:
@@ -134,12 +138,18 @@ class GameSetup:
         # Transition to Planning
         state.phase = GamePhase.PLANNING
 
-        print(
-            f"[Setup] Game Created ({game_type}). Map: {len(board.tiles)} tiles. Players: {total_players}. "
-            f"Waves: {wave_counters}. Life: {life_counters}."
+        logger.info(
+            "Game created (%s). Map: %s tiles. Players: %s. Waves: %s. Life: %s.",
+            game_type,
+            len(board.tiles),
+            total_players,
+            wave_counters,
+            life_counters,
         )
-        print(
-            f"[Setup] Battle Zone: {active_zone_id}. Coin Favors: {state.tie_breaker_team.name}"
+        logger.info(
+            "Battle zone: %s. Coin favors: %s",
+            active_zone_id,
+            state.tie_breaker_team.name,
         )
 
         return state
@@ -211,9 +221,8 @@ class GameSetup:
 
             if spawn_loc:
                 state.place_entity(hero.id, spawn_loc)
-                # print(f"   Placed {hero.name} at {spawn_loc}")
             else:
-                print(f"[WARNING] No spawn point available for {hero.name}!")
+                logger.warning("No spawn point available for %s", hero.name)
 
     @staticmethod
     def _spawn_initial_minions(state: GameState, zone_id: str):
@@ -233,4 +242,3 @@ class GameSetup:
 
                 # Place
                 state.place_entity(minion.id, h)
-                # print(f"   Spawned {minion.name} at {h}")

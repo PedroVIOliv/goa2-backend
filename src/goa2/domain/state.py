@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -19,6 +20,9 @@ from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import Marker, MarkerType
 from goa2.domain.types import HeroID, UnitID, BoardEntityID
 from goa2.domain.input import InputRequest, InputRequestType
+
+
+logger = logging.getLogger(__name__)
 
 
 class GameState(BaseModel):
@@ -207,14 +211,14 @@ class GameState(BaseModel):
                     f"Cannot register minion {entity.id}: Invalid or missing team."
                 )
             self.teams[entity.team].minions.append(entity)
-            print(f"   [State] Registered Minion {entity.id} to Team {entity.team}")
+            logger.debug("Registered minion %s to team %s", entity.id, entity.team)
         elif collection_type == "hero":
             if not hasattr(entity, "team") or entity.team not in self.teams:
                 raise ValueError(
                     f"Cannot register hero {entity.id}: Invalid or missing team."
                 )
             self.teams[entity.team].heroes.append(entity)
-            print(f"   [State] Registered Hero {entity.id} to Team {entity.team}")
+            logger.debug("Registered hero %s to team %s", entity.id, entity.team)
 
     @model_validator(mode="after")
     def rebuild_occupancy_cache(self) -> "GameState":

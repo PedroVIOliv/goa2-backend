@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase, Card
@@ -10,18 +11,21 @@ from goa2.engine.steps import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
     """
     Called when a player selects a card during the Planning Phase.
     Validates that the card is in the player's hand.
     """
     if state.phase != GamePhase.PLANNING:
-        print(f"   [!] Cannot commit card. Game is in {state.phase}")
+        logger.warning("Cannot commit card. Game is in %s", state.phase)
         return
 
     hero = state.get_hero(hero_id)
     if not hero:
-        print(f"   [!] Error: Hero {hero_id} not found.")
+        logger.warning("Hero %s not found.", hero_id)
         return
 
     if hero_id in state.pending_inputs:
@@ -29,7 +33,11 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
 
     # Check if card is in hand
     if card not in hero.hand:
-        print(f"   [!] {hero_id} tried to play card {card.id} which is NOT in hand.")
+        logger.warning(
+            "%s tried to play card %s which is not in hand.",
+            hero_id,
+            card.id,
+        )
         return
 
     # Move card from hand to pending buffer (Facedown on board)
@@ -37,11 +45,11 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
     try:
         hero.play_card(card)
     except ValueError as e:
-        print(f"   [!] Error playing card: {e}")
+        logger.warning("Error playing card: %s", e)
         return
 
     state.pending_inputs[hero_id] = card
-    print(f"   [Planning] {hero_id} committed a card.")
+    logger.info("%s committed a card.", hero_id)
 
     _check_phase_transition(state)
 
@@ -59,11 +67,11 @@ def pass_turn(state: GameState, hero_id: HeroID):
 
     # Rule Check: You must play a card if able.
     if len(hero.hand) > 0:
-        print(f"   [!] {hero_id} cannot Pass (Hand has {len(hero.hand)} cards).")
+        logger.warning("%s cannot pass. Hand has %s cards.", hero_id, len(hero.hand))
         return
 
     state.pending_inputs[hero_id] = None
-    print(f"   [Planning] {hero_id} PASSED.")
+    logger.info("%s passed.", hero_id)
 
     _check_phase_transition(state)
 
@@ -80,7 +88,7 @@ def start_revelation_phase(state: GameState):
     Reveals all cards and sets up the unresolved pool.
     """
     state.phase = GamePhase.REVELATION
-    print("\n=== REVELATION PHASE ===")
+    logger.info("Revelation phase started.")
 
     state.unresolved_hero_ids = []
 
@@ -92,14 +100,19 @@ def start_revelation_phase(state: GameState):
 
         hero = state.get_hero(h_id)
         if hero:
-            print(f"   [Reveal] {h_id} reveals {card.name} (Init: {card.initiative})")
+            logger.info(
+                "%s reveals %s (initiative: %s)",
+                h_id,
+                card.name,
+                card.initiative,
+            )
             card.is_facedown = False
             # card.state is already UNRESOLVED from play_card
 
             hero.current_turn_card = card
             state.unresolved_hero_ids.append(h_id)
         else:
-            print(f"   [!] Error: Hero {h_id} not found during revelation.")
+            logger.warning("Hero %s not found during revelation.", h_id)
 
     state.pending_inputs = {}  # Clear buffer
 
@@ -109,7 +122,7 @@ def start_revelation_phase(state: GameState):
 
 def start_resolution_phase(state: GameState):
     state.phase = GamePhase.RESOLUTION
-    print("=== RESOLUTION PHASE ===")
+    logger.info("Resolution phase started.")
     resolve_next_action(state)
 
 
@@ -119,7 +132,7 @@ def resolve_next_action(state: GameState):
     Follows Rule: "After each action... re-identify the player with Highest Initiative".
     """
     if not state.unresolved_hero_ids:
-        print("   [Queue] All cards resolved. Turn Complete.")
+        logger.info("All cards resolved. Turn complete.")
         end_turn(state)
         return
 
@@ -133,8 +146,9 @@ def resolve_next_action(state: GameState):
         if hero and hero.current_turn_card:
             # Safety Check: Cards must be revealed to have effective initiative > 0
             if hero.current_turn_card.is_facedown:
-                print(
-                    f"   [!] Warning: Initiative calculated for facedown card of {h_id}!"
+                logger.warning(
+                    "Initiative calculated for facedown card of %s.",
+                    h_id,
                 )
 
             # Use Computed Stat (Card Base + Items + Modifiers)
@@ -162,7 +176,7 @@ def resolve_next_action(state: GameState):
         if hero_id in state.unresolved_hero_ids:
             state.unresolved_hero_ids.remove(hero_id)
 
-        print(f"   [Resolution] Next actor: {hero_id} (Init: {highest_init})")
+        logger.info("Next actor: %s (initiative: %s)", hero_id, highest_init)
 
         # Convert Card to Steps
         from goa2.engine.steps import (
@@ -186,8 +200,10 @@ def resolve_next_action(state: GameState):
         return
 
     # 5. If tie -> Push Tie Breaker Step
-    print(
-        f"   [Resolution] Tie detected at Initiative {highest_init} between {tied_hero_ids}"
+    logger.info(
+        "Tie detected at initiative %s between %s",
+        highest_init,
+        tied_hero_ids,
     )
 
     # We DO NOT remove them from unresolved_hero_ids yet.
@@ -201,7 +217,7 @@ def end_turn(state: GameState):
     steps, those are pushed onto the stack followed by AdvanceTurnStep
     (deferred advancement). Otherwise, advances synchronously.
     """
-    print(f"   [Turn] End of Turn {state.turn}.")
+    logger.info("End of turn %s.", state.turn)
 
     from goa2.engine.effect_manager import EffectManager
 
@@ -224,14 +240,14 @@ def end_turn(state: GameState):
     if state.turn < 4:
         state.turn += 1
         state.phase = GamePhase.PLANNING
-        print(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
+        logger.info("Start of turn %s. Phase: planning.", state.turn)
         # Auto-pass heroes with no cards in hand
         auto_passed = False
         for team in state.teams.values():
             for hero in team.heroes:
                 if len(hero.hand) == 0:
                     state.pending_inputs[hero.id] = None
-                    print(f"   [Planning] {hero.id} auto-passed (empty hand).")
+                    logger.info("%s auto-passed (empty hand).", hero.id)
                     auto_passed = True
         if auto_passed:
             _check_phase_transition(state)
@@ -241,7 +257,7 @@ def end_turn(state: GameState):
 
 def start_end_phase(state: GameState):
     state.phase = GamePhase.CLEANUP
-    print("=== END PHASE ===")
+    logger.info("End phase started.")
 
     from goa2.engine.steps import EndPhaseStep
 
