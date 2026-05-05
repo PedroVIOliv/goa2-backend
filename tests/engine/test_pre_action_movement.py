@@ -37,7 +37,7 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     SelectStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 import goa2.scripts.misa_effects  # noqa: F401
 import goa2.scripts.tigerclaw_effects  # noqa: F401
@@ -205,19 +205,19 @@ class TestPreActionMovementViaOffense:
 
         push_steps(basic_state, [ResolveCardStep(hero_id="hero_misa")])
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "CHOOSE_ACTION"
 
         basic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_HEX"
 
         basic_state.execution_stack[-1].pending_input = {
             "selection": {"q": 1, "r": -1, "s": 0}
         }
 
-        process_resolution_stack(basic_state)
+        process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("hero_misa") == Hex(q=1, r=-1, s=0)
         assert any(
@@ -234,12 +234,12 @@ class TestPreActionMovementViaOffense:
 
         push_steps(basic_state, [ResolveCardStep(hero_id="hero_misa")])
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "CHOOSE_ACTION"
 
         basic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_UNIT"
 
     def test_skip_pre_action_move(self, basic_state):
@@ -253,17 +253,17 @@ class TestPreActionMovementViaOffense:
 
         push_steps(basic_state, [ResolveCardStep(hero_id="hero_misa")])
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "CHOOSE_ACTION"
 
         basic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_HEX"
 
         basic_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_UNIT"
 
         assert basic_state.entity_locations.get("hero_misa") == Hex(q=0, r=0, s=0)
@@ -303,17 +303,17 @@ class TestPreActionMovementViaDefense:
             ],
         )
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_UNIT"
 
         basic_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_CARD_OR_PASS"
 
         basic_state.execution_stack[-1].pending_input = {"selection": defender_card.id}
 
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
@@ -321,7 +321,7 @@ class TestPreActionMovementViaDefense:
             "selection": {"q": 2, "r": 0, "s": -2}
         }
 
-        process_resolution_stack(basic_state)
+        process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("enemy") == Hex(q=2, r=0, s=-2)
         assert any(

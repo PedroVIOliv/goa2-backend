@@ -13,7 +13,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveCardStep, ResolveCardTextStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def test_resolve_card_text_fallback_movement(fallback_state):
     push_steps(fallback_state, [step])
 
     # ResolveCardTextStep should find no effect, print warning, and spawn MoveUnitStep
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
 
     # Verify stack now has MoveUnitStep (or it ran and finished with error)
     # MoveUnitStep will finish because target_hex isn't in context.
@@ -74,7 +74,7 @@ def test_resolve_card_text_fallback_skill(fallback_state):
     step = ResolveCardTextStep(card_id="c1", hero_id="A")
     push_steps(fallback_state, [step])
 
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
     # Should spawn LogMessageStep and finish
     assert len(fallback_state.execution_stack) == 0
 
@@ -99,13 +99,13 @@ def test_choose_secondary_hold(fallback_state):
     push_steps(fallback_state, [step])
 
     # 1. To prompt
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
 
     # 2. Input: HOLD
     fallback_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
     # 3. Resolve choice -> Spawns LogMessageStep -> runs LogMessageStep
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
 
     assert len(fallback_state.execution_stack) == 0
 
@@ -129,9 +129,9 @@ def test_choose_secondary_clear(fallback_state):
     step = ResolveCardStep(hero_id="A")
     push_steps(fallback_state, [step])
 
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
     fallback_state.execution_stack[-1].pending_input = {"selection": "CLEAR"}
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
 
     assert len(fallback_state.execution_stack) == 0
 
@@ -140,7 +140,7 @@ def test_resolve_card_text_hero_not_found(fallback_state):
     # Testing Line 794
     step = ResolveCardTextStep(card_id="none", hero_id="wrong_id")
     push_steps(fallback_state, [step])
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
     assert len(fallback_state.execution_stack) == 0
 
 
@@ -161,7 +161,7 @@ def test_resolve_card_text_fallback_defense(fallback_state):
 
     step = ResolveCardTextStep(card_id="c1", hero_id="A")
     push_steps(fallback_state, [step])
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
     assert len(fallback_state.execution_stack) == 0
 
 
@@ -185,7 +185,7 @@ def test_fast_travel_not_available_no_loc(fallback_state):
     fallback_state.remove_unit("A")
     step = ResolveCardStep(hero_id="A")
     push_steps(fallback_state, [step])
-    req = process_resolution_stack(fallback_state)
+    req = process_stack(fallback_state).input_request
 
     # Off-board hero skips action, no input request
     assert req is None
@@ -212,7 +212,7 @@ def test_choose_secondary_defense_active(fallback_state):
 
     step = ResolveCardStep(hero_id="A")
     push_steps(fallback_state, [step])
-    req = process_resolution_stack(fallback_state)
+    req = process_stack(fallback_state).input_request
 
     # DEFENSE should NOT be in the options
     opts = [o["id"] for o in req["options"]]
@@ -225,5 +225,5 @@ def test_resolve_card_hero_not_found(fallback_state):
     # Testing Line 835
     step = ResolveCardStep(hero_id="wrong_id")
     push_steps(fallback_state, [step])
-    process_resolution_stack(fallback_state)
+    process_stack(fallback_state).input_request
     assert len(fallback_state.execution_stack) == 0

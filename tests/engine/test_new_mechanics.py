@@ -16,7 +16,7 @@ from goa2.engine.steps import (
     ForceDiscardStep,
 )
 from goa2.engine.filters import LineBehindTargetFilter
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ def test_force_discard_safe_empty_hand(mechanics_state):
     push_steps(mechanics_state, [step])
 
     # Execute
-    process_resolution_stack(mechanics_state)
+    process_stack(mechanics_state).input_request
 
     # Verify State: Victim still exists, no new steps spawned (like Defeat)
     assert "C" in mechanics_state.entity_locations
@@ -143,14 +143,14 @@ def test_force_discard_safe_with_hand(mechanics_state):
     push_steps(mechanics_state, [step])
 
     # Execute -> Should request input
-    req = process_resolution_stack(mechanics_state)
+    req = process_stack(mechanics_state).input_request
 
     assert req["type"] == "SELECT_CARD"
     assert req["player_id"] == "C"
 
     # Provide input
     mechanics_state.execution_stack[-1].pending_input = {"selection": "c1"}
-    process_resolution_stack(mechanics_state)
+    process_stack(mechanics_state).input_request
 
     # Verify Discard
     assert len(victim.hand) == 0

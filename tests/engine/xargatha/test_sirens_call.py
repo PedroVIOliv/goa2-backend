@@ -21,7 +21,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 
 # Register xargatha effects
@@ -214,25 +214,25 @@ class TestSirensCallEffect:
         push_steps(sirens_call_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(sirens_call_state)
+        process_stack(sirens_call_state).input_request
         sirens_call_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_UNIT"
         sirens_call_state.execution_stack[-1].pending_input = {
             "selection": "distant_enemy"
         }
 
         # 3. SELECT_HEX -> select destination adjacent to Xargatha
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_HEX"
         sirens_call_state.execution_stack[-1].pending_input = {
             "selection": {"q": 1, "r": 0, "s": -1}
         }
 
         # 4. Done (movement completes)
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req is None
 
         # Verify unit moved
@@ -245,23 +245,23 @@ class TestSirensCallEffect:
         push_steps(sirens_call_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(sirens_call_state)
+        process_stack(sirens_call_state).input_request
         sirens_call_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_UNIT"
         sirens_call_state.execution_stack[-1].pending_input = {
             "selection": "distant_enemy"
         }
 
         # 3. SELECT_HEX -> SKIP (if unable)
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_HEX"
         sirens_call_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
         # 4. Done (movement step skipped)
-        req = process_resolution_stack(sirens_call_state)
+        req = process_stack(sirens_call_state).input_request
         assert req is None
 
         # Verify unit did not move
@@ -310,11 +310,11 @@ class TestSirensCallEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Mandatory selection fails (no enemy in range) -> action aborts
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
         # Verify unit did not move
@@ -363,23 +363,23 @@ class TestSirensCallEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "distant_enemy"}
 
         # 3. SELECT_HEX -> select adjacent hex (distance 2 from target, within range 3)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_HEX"
         state.execution_stack[-1].pending_input = {
             "selection": {"q": 0, "r": 1, "s": -1}
         }
 
         # 4. Done
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
         # Verify unit moved

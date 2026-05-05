@@ -22,7 +22,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 
 # Register xargatha effects
@@ -199,10 +199,10 @@ class TestLongThrustEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         assert state.execution_context.get("adj_rng_bonus") == 3
 
@@ -216,10 +216,10 @@ class TestLongThrustEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context.get("adj_rng_bonus") == 0
 
 
@@ -328,34 +328,34 @@ class TestRapidThrustsEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count step runs, then SELECT_UNIT for first target
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         assert state.execution_context.get("adj_rng_bonus") == 2
         state.execution_stack[-1].pending_input = {"selection": "adj_enemy_0"}
 
         # 3. SELECT_OPTION -> repeat? YES
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_OPTION"
         state.execution_stack[-1].pending_input = {"selection": "YES"}
 
         # 4. Recount runs, then SELECT_UNIT for repeat target (heroes only)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         # After killing adj_enemy_0, only 1 adjacent enemy left -> bonus = 1
         assert state.execution_context.get("adj_rng_bonus") == 1
         state.execution_stack[-1].pending_input = {"selection": "distant_hero_a"}
 
         # 5. SELECT_CARD_OR_PASS -> reaction
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD_OR_PASS"
         state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
         # 6. Done
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
     def test_full_flow_decline_repeat(self):
@@ -369,24 +369,24 @@ class TestRapidThrustsEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count + SELECT_UNIT -> first target
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "distant_hero_a"}
 
         # 3. SELECT_CARD_OR_PASS -> reaction
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD_OR_PASS"
         state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
         # 4. SELECT_OPTION -> decline repeat
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_OPTION"
         state.execution_stack[-1].pending_input = {"selection": "NO"}
 
         # 5. Done
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None

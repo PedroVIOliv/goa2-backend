@@ -8,7 +8,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero, Card
 from goa2.domain.types import UnitID
 from goa2.engine.steps import ReturnMinionToZoneStep, FinalizeHeroTurnStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def create_minion(id_str, team, m_type=MinionType.MELEE):
@@ -47,7 +47,7 @@ def test_no_minions_outside_zone(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     assert zone_state.unit_locations.get(m_red.id) == Hex(q=0, r=0, s=0)
     assert result is None
@@ -62,7 +62,7 @@ def test_auto_return_single_path(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     loc = zone_state.unit_locations.get(m_red.id)
     zone = zone_state.board.zones["battle_zone"]
@@ -83,7 +83,7 @@ def test_team_choice_multiple_paths(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     if result is not None:
         assert result["type"] == "SELECT_HEX"
@@ -107,7 +107,7 @@ def test_multiple_minions_tiebreaker_order(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     # Both minions should be returned to zone
     zone = zone_state.board.zones["battle_zone"]
@@ -130,7 +130,7 @@ def test_no_empty_space_in_zone(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     assert result is None
 
@@ -165,7 +165,7 @@ def test_finalize_hero_turn_spawns_check(zone_state):
 
     step = FinalizeHeroTurnStep(hero_id="hero_test")
     push_steps(zone_state, [step])
-    result = process_resolution_stack(zone_state)
+    result = process_stack(zone_state).input_request
 
     # Minion should be returned to zone
     zone = zone_state.board.zones["battle_zone"]

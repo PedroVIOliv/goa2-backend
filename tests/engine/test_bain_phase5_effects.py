@@ -21,7 +21,7 @@ from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
 from goa2.domain.types import HeroID
 from goa2.engine.steps import PlaceMarkerStep, ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ def _build_state(board, bain_card, bain_hex, enemy_hex, extra_units=None):
 def _drive_to_skill(state):
     """Drive through ResolveCardStep until SKILL action is chosen."""
     push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
@@ -197,14 +197,14 @@ class TestGetOverHere:
         _drive_to_skill(state)
 
         # Select enemy unit
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # Process remaining steps (ComputeHexStep auto + MoveUnitStep)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         final_loc = state.entity_locations.get("hero_enemy")
         assert final_loc == Hex(q=1, r=0, s=-1)
@@ -218,12 +218,12 @@ class TestGetOverHere:
 
         _drive_to_skill(state)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         final_loc = state.entity_locations.get("hero_enemy")
         assert final_loc == Hex(q=1, r=0, s=-1)
@@ -237,12 +237,12 @@ class TestGetOverHere:
 
         _drive_to_skill(state)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         final_loc = state.entity_locations.get("hero_enemy")
         assert final_loc == Hex(q=0, r=1, s=-1)
@@ -262,7 +262,7 @@ class TestGetOverHere:
 
         # The select step should not offer hero_enemy (blocked by obstacle)
         # blocker IS adjacent in straight line with clear path, so it's offered
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         option_ids = set(req["valid_options"])
@@ -279,9 +279,9 @@ class TestGetOverHere:
         _drive_to_skill(state)
 
         # Mandatory select with no valid targets → aborts, stack empties
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # Enemy didn't move
         final_loc = state.entity_locations.get("hero_enemy")
@@ -356,7 +356,7 @@ class TestAComplicatedProfession:
             ),
         ])
 
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
         # Passive fires: enemy must choose a card to discard
         assert result is not None
@@ -364,9 +364,9 @@ class TestAComplicatedProfession:
 
         state.execution_stack[-1].pending_input = {"selection": "enemy_c1"}
 
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         assert len(enemy.hand) == 1
@@ -387,11 +387,11 @@ class TestAComplicatedProfession:
             ),
         ])
 
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         # No passive — stack should be done (maybe CheckPassive runs but finds nothing)
         while result is not None:
             assert result.get("type") != "SELECT_CARD"
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         assert len(enemy.hand) == 2  # No cards discarded
@@ -410,9 +410,9 @@ class TestAComplicatedProfession:
             ),
         ])
 
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         # No crash, no discard
         assert len(enemy.hand) == 0

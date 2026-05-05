@@ -28,7 +28,7 @@ from goa2.engine.filters import (
     RangeFilter,
     TeamFilter,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import CardStats
 
 
@@ -137,7 +137,7 @@ def _get_crossbow_candidates(state, range_val=2):
             ),
         ],
     )
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     if req is None:
         return []
     return req.get("candidates", [])

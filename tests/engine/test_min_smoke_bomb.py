@@ -19,7 +19,7 @@ from goa2.domain.models import (
 from goa2.domain.models.effect import EffectType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, BoardEntityID
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 
 import goa2.scripts.min_effects  # noqa: F401
@@ -106,12 +106,12 @@ def test_smoke_bomb_places_token_and_blocks_los(smoke_bomb_state):
 
     # Resolve card → should get action choice
     push_steps(state, [ResolveCardStep(hero_id="hero_min")])
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
 
     # Select SKILL action
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Should now ask for hex selection (place smoke bomb)
     assert req["type"] == "SELECT_HEX"
@@ -120,7 +120,7 @@ def test_smoke_bomb_places_token_and_blocks_los(smoke_bomb_state):
     state.execution_stack[-1].pending_input = {
         "selection": {"q": 1, "r": -1, "s": 0}
     }
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Verify token is placed
     assert state.entity_locations.get(BoardEntityID("smoke_bomb_1")) == Hex(
@@ -174,13 +174,13 @@ def test_smoke_bomb_removing_token_removes_effect(smoke_bomb_state):
 
     # Play Smoke Bomb through the full card flow
     push_steps(state, [ResolveCardStep(hero_id="hero_min")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {
         "selection": {"q": 1, "r": -1, "s": 0}
     }
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Effect exists
     los_effects = [
@@ -209,11 +209,11 @@ def test_smoke_bomb_only_empty_hex(smoke_bomb_state):
     state = smoke_bomb_state
 
     push_steps(state, [ResolveCardStep(hero_id="hero_min")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Select SKILL
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Check hex options — occupied hexes should be excluded
     assert req["type"] == "SELECT_HEX"

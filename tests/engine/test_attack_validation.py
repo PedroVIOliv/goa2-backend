@@ -5,7 +5,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Tile, Zone
 from goa2.engine import rules
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 @pytest.fixture
 def base_state():
@@ -198,14 +198,14 @@ def test_secondary_attack_respects_immunity(base_state):
     push_steps(base_state, [step])
     
     # 4. CHOOSE_ACTION prompt
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     
     # 5. Select Secondary ATTACK
     base_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     
     # 6. Next step should be SelectStep (from AttackSequenceStep expansion)
-    req2 = process_resolution_stack(base_state)
+    req2 = process_stack(base_state).input_request
     
     # If SelectStep finds candidates, it prompts SELECT_UNIT.
     # If it finds NO candidates (because logic was broken), it returns None (abort).

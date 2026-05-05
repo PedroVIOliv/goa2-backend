@@ -5,7 +5,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveTieBreakerStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def _filler_cards():
     """Return dummy hand cards so heroes aren't auto-passed for empty hands."""
@@ -51,7 +51,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     push_steps(complex_tie_state, [step1])
     
     # Pass 1: Red Choice [A, D]
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTOR"
     assert req["team"] == TeamColor.RED
     
@@ -59,7 +59,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "A"}
     
     # Pass 2: A is winner. Spawns ResolveCardStep(A).
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "A"
     
@@ -67,11 +67,11 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
     
     # Pass 3: A finishes. Hits ConfirmResolutionStep.
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "A"
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req is None
 
     # Verify Coin
@@ -82,7 +82,7 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     push_steps(complex_tie_state, [step2])
     
     # Pass 4: Blue Choice [B, C]
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTOR"
     assert req["team"] == TeamColor.BLUE
     
@@ -90,15 +90,15 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "B"}
     
     # Pass 5: B Card Choice
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req is None
 
     assert complex_tie_state.tie_breaker_team == TeamColor.RED
@@ -114,16 +114,16 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     # So D wins automatically.
     # Returns ResolveCardStep(D).
     
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "D"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req is None
 
     assert complex_tie_state.tie_breaker_team == TeamColor.BLUE
@@ -133,14 +133,14 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     push_steps(complex_tie_state, [step4])
     
     # C wins auto. ResolveCardStep(C).
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "C"
     
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(complex_tie_state)
+    req = process_stack(complex_tie_state).input_request
     assert req is None

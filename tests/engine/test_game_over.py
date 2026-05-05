@@ -3,7 +3,7 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, GamePhase, Hero
 from goa2.engine.steps import DefeatUnitStep, TriggerGameOverStep, LanePushStep
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 from goa2.domain.types import HeroID
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_handler_stops_on_game_over(game_state):
     game_state.execution_stack.append(TriggerGameOverStep(winner=TeamColor.RED, condition="FAIL"))
     
     # Should return None immediately and NOT print "Game Over" again
-    res = process_resolution_stack(game_state)
+    res = process_stack(game_state).input_request
     assert res is None
 
 def test_last_push_victory(game_state):

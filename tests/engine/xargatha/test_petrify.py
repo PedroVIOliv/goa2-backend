@@ -28,7 +28,7 @@ from goa2.domain.models.effect import (
     AffectsFilter,
 )
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import TerrainFilter
 from goa2.engine.validation import ValidationService
@@ -339,7 +339,7 @@ def test_turn_into_statues_integration():
     effect = CardEffectRegistry.get("turn_into_statues")
     steps = effect.build_steps(state, xargatha, card, stats)
     push_steps(state, steps)
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Effect should be created but not active yet (NEXT_TURN timing)
     assert len(state.active_effects) == 1

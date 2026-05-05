@@ -37,7 +37,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 # Register tigerclaw effects
 import goa2.scripts.tigerclaw_effects  # noqa: F401
@@ -1262,7 +1262,7 @@ class TestBlendIntoShadowsEffect:
         push_steps(state, steps)
 
         # CountStep counts terrain adjacent → should find 1
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         # CheckContextConditionStep runs automatically
         # SelectStep asks for destination hex
         assert req is not None
@@ -1275,7 +1275,7 @@ class TestBlendIntoShadowsEffect:
         }
 
         # Process remaining steps (PlaceUnitStep + CreateEffectStep)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None  # All done
 
         # Hero moved to destination
@@ -1321,7 +1321,7 @@ class TestBlendIntoShadowsEffect:
         push_steps(state, steps)
 
         # All steps should run and skip (no input requested)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
         # Hero didn't move
@@ -1381,7 +1381,7 @@ class TestBlendIntoShadowsEffect:
         push_steps(state, steps)
 
         # SelectStep is mandatory → no valid options → abort_action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None  # Aborted, no input needed
 
         # Hero didn't move
@@ -1460,7 +1460,7 @@ class TestBlinkStrikeEffect:
         push_steps(state, steps)
 
         # SelectStep: select enemy to blink through
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
 
@@ -1468,7 +1468,7 @@ class TestBlinkStrikeEffect:
 
         # ComputeHexStep + PlaceUnitStep run, then AttackSequenceStep asks for target
         # (target_id_key is set, so it skips target selection and goes to reaction)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
         # Hero should now be at (2,-2,0) - behind enemy
         assert state.entity_locations["tigerclaw"] == Hex(q=2, r=-2, s=0)
@@ -1477,7 +1477,7 @@ class TestBlinkStrikeEffect:
         # Skip defense
         if req is not None and req.get("type") == "SELECT_CARD":
             state.execution_stack[-1].pending_input = {"selection": "SKIP"}
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # Attack resolved - stack should be empty
         assert req is None or req.get("type") != "SELECT_UNIT"
@@ -1517,7 +1517,7 @@ class TestBlinkStrikeEffect:
         push_steps(state, steps)
 
         # SelectStep is mandatory, but no valid targets → abort_action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None  # Aborted
 
         # Hero didn't move
@@ -1556,7 +1556,7 @@ class TestBlinkStrikeEffect:
         push_steps(state, steps)
 
         # SelectStep mandatory, no valid targets → abort
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
         # Hero didn't move
@@ -1743,14 +1743,14 @@ class TestPoisonedDaggerEffect:
         push_steps(tigerclaw_state, steps)
 
         # SelectStep: select enemy hero
-        req = process_resolution_stack(tigerclaw_state)
+        req = process_stack(tigerclaw_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
 
         tigerclaw_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
         # PlaceMarkerStep runs
-        req = process_resolution_stack(tigerclaw_state)
+        req = process_stack(tigerclaw_state).input_request
         assert req is None
 
         from goa2.domain.models.marker import MarkerType
@@ -1807,7 +1807,7 @@ class TestPoisonedDaggerEffect:
         steps = effect.get_steps(state, tc, card)
         push_steps(state, steps)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None  # Aborted
 
 
@@ -1854,13 +1854,13 @@ class TestPoisonedDartEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
         push_steps(tigerclaw_state, steps)
 
-        req = process_resolution_stack(tigerclaw_state)
+        req = process_stack(tigerclaw_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
 
         tigerclaw_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
-        req = process_resolution_stack(tigerclaw_state)
+        req = process_stack(tigerclaw_state).input_request
         assert req is None
 
         from goa2.domain.models.marker import MarkerType

@@ -7,7 +7,7 @@ from goa2.domain.hex import Hex
 from goa2.engine.steps import (
     SelectStep, MoveUnitStep, LogMessageStep, FinalizeHeroTurnStep
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ class TestMandatoryStepAbort:
         # Log and all steps until Finalize are cleared
         # Finalize runs
         
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         
         # Stack should be empty (Finalize executed and spawned FindNextActor which finished)
         # No input required since abort happened
@@ -88,7 +88,7 @@ class TestMandatoryStepAbort:
             )
         ])
         
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         
         # Tracking log should have executed since select was optional
         assert basic_state.execution_context.get("log_executed") == True
@@ -116,7 +116,7 @@ class TestMandatoryStepAbort:
             )
         ])
         
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         
         # Should not prompt for HEX selection since there are no valid options
         assert req is None or req.get("type") != "SELECT_HEX"
@@ -144,7 +144,7 @@ class TestMandatoryStepAbort:
         ])
         
         start_loc = basic_state.entity_locations["hero_red"]
-        req = process_resolution_stack(basic_state)
+        req = process_stack(basic_state).input_request
         
         # Hero did NOT move (path invalid)
         assert basic_state.entity_locations["hero_red"] == start_loc
@@ -183,7 +183,7 @@ class TestAbortClearsToFinalize:
             FinalizeHeroTurnStep(hero_id="hero_red"),
         ])
         
-        process_resolution_stack(basic_state)
+        process_stack(basic_state).input_request
         
         # None of the tracking logs should have executed
         assert "s2" not in executed

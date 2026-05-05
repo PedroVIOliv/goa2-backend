@@ -14,7 +14,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -77,18 +77,18 @@ def test_noble_blade_flow(noble_state):
     push_steps(noble_state, [step])
 
     # 1. Choose Action
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     noble_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "e1" in req["valid_options"]
     noble_state.execution_stack[-1].pending_input = {"selection": "e1"}
 
     # 3. Select Unit to Nudge (Optional)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "SELECT_UNIT"
     # Filters Check:
     # - Must be adj to E1 (M1 is adj, Arien is adj)
@@ -101,7 +101,7 @@ def test_noble_blade_flow(noble_state):
     noble_state.execution_stack[-1].pending_input = {"selection": "m1"}
 
     # 4. Select Dest for Nudge (Mandatory now)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "SELECT_HEX"
     # M1 is at 0,1,-1.
     # Neighbors: 1,1,-2 (Empty), 0,0,0 (Arien), 1,0,-1 (E1)
@@ -112,12 +112,12 @@ def test_noble_blade_flow(noble_state):
     }
 
     # 5. Reaction Window (E1)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     noble_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 6. Combat (Resolve)
-    res = process_resolution_stack(noble_state)
+    res = process_stack(noble_state).input_request
     assert res is None  # Finished
 
     # Verify Nudge
@@ -134,25 +134,25 @@ def test_noble_blade_skip(noble_state):
     push_steps(noble_state, [step])
 
     # 1. Action
-    process_resolution_stack(noble_state)
+    process_stack(noble_state).input_request
     noble_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target
-    process_resolution_stack(noble_state)
+    process_stack(noble_state).input_request
     noble_state.execution_stack[-1].pending_input = {"selection": "e1"}
 
     # 3. Nudge (Skip)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["can_skip"] == True
     noble_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # 4. Reaction (Should jump straight here, skipping Hex Select and Place)
-    req = process_resolution_stack(noble_state)
+    req = process_stack(noble_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"  # Reaction Window
     noble_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 5. End
-    process_resolution_stack(noble_state)
+    process_stack(noble_state).input_request
 
     # Verify NO move
     assert noble_state.entity_locations["m1"] == Hex(q=0, r=1, s=-1)

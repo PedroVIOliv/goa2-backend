@@ -36,7 +36,7 @@ from goa2.domain.models.enums import StatType
 from goa2.domain.types import UnitID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import LogMessageStep, MayRepeatOnceStep
 from goa2.engine.stats import compute_card_stats, get_computed_stat
 

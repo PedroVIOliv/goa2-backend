@@ -6,7 +6,7 @@ from goa2.domain.models import Team, TeamColor, Minion, MinionType
 from goa2.domain.types import UnitID
 from goa2.domain.input import InputResponse
 from goa2.engine.steps import EndPhaseStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def create_minion(id_str, team, m_type):
     return Minion(
@@ -55,7 +55,7 @@ def test_minion_battle_simple_removal(battle_state):
     # Run Step — auto-skips (to_remove=1 >= N-1=0)
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    process_resolution_stack(battle_state)
+    process_stack(battle_state).input_request
 
     # Verify Blue minion removed
     assert m_blue1.id not in battle_state.unit_locations
@@ -92,7 +92,7 @@ def test_minion_battle_heavy_constraint(battle_state):
     # Run Step — auto-skips (to_remove=2 >= N-1=1)
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    process_resolution_stack(battle_state)
+    process_stack(battle_state).input_request
 
     assert m_red_melee.id not in battle_state.unit_locations
     assert m_red_heavy.id not in battle_state.unit_locations
@@ -129,7 +129,7 @@ def test_minion_battle_heavy_protection(battle_state):
     # Run Step — requires input (to_remove=1 < N-1=2)
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    req = process_resolution_stack(battle_state)
+    req = process_stack(battle_state).input_request
 
     # Verify input request
     assert req is not None
@@ -145,7 +145,7 @@ def test_minion_battle_heavy_protection(battle_state):
     # Submit choice
     resp = InputResponse(selection="r_melee1")
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee1"}
-    process_resolution_stack(battle_state)
+    process_stack(battle_state).input_request
 
     # Verify: chosen melee gone, heavy remains, other melee remains
     assert "r_melee1" not in battle_state.unit_locations
@@ -177,7 +177,7 @@ def test_minion_battle_team_validation(battle_state):
 
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    req = process_resolution_stack(battle_state)
+    req = process_stack(battle_state).input_request
 
     assert req is not None
     assert req["player_id"] == "team:RED"
@@ -215,7 +215,7 @@ def test_minion_battle_multi_removal_choice(battle_state):
     push_steps(battle_state, [step])
 
     # Round 1: choose first minion to remove
-    req = process_resolution_stack(battle_state)
+    req = process_stack(battle_state).input_request
     assert req is not None
     assert req["type"] == "SELECT_UNIT"
     valid1 = req["valid_options"]
@@ -226,7 +226,7 @@ def test_minion_battle_multi_removal_choice(battle_state):
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee1"}
 
     # Round 2: choose second minion to remove
-    req2 = process_resolution_stack(battle_state)
+    req2 = process_stack(battle_state).input_request
     assert req2 is not None
     assert req2["type"] == "SELECT_UNIT"
     valid2 = req2["valid_options"]
@@ -236,7 +236,7 @@ def test_minion_battle_multi_removal_choice(battle_state):
 
     # Choose to remove melee2
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee2"}
-    process_resolution_stack(battle_state)
+    process_stack(battle_state).input_request
 
     # Verify final state
     assert "r_melee1" not in battle_state.unit_locations

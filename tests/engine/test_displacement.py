@@ -5,7 +5,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveDisplacementStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -72,13 +72,13 @@ def test_displacement_auto_select(displacement_state):
 
     # Run
     # Step 1: ResolveDisplacement -> Detects 1 Candidate -> Spawns PlaceUnitStep + Recursive Step
-    process_resolution_stack(displacement_state)
+    process_stack(displacement_state).input_request
 
     # Step 2: PlaceUnitStep runs
-    process_resolution_stack(displacement_state)
+    process_stack(displacement_state).input_request
 
     # Step 3: Recursive ResolveDisplacement (empty list) -> finishes
-    process_resolution_stack(displacement_state)
+    process_stack(displacement_state).input_request
 
     # Assert
     final_loc = displacement_state.entity_locations.get("m_disp")
@@ -96,7 +96,7 @@ def test_displacement_prompt(displacement_state):
     push_steps(displacement_state, [step])
 
     # Run
-    req = process_resolution_stack(displacement_state)
+    req = process_stack(displacement_state).input_request
 
     # Should request input
     assert req is not None
@@ -110,10 +110,10 @@ def test_displacement_prompt(displacement_state):
     displacement_state.execution_stack[-1].pending_input = {
         "selection": target.model_dump()
     }
-    process_resolution_stack(displacement_state)
+    process_stack(displacement_state).input_request
 
     # Should spawn placement
-    process_resolution_stack(displacement_state)  # PlaceUnit
+    process_stack(displacement_state).input_request  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == target
 
@@ -134,7 +134,7 @@ def test_displacement_multi_unit_selection(displacement_state):
     push_steps(displacement_state, [step])
 
     # Run 1: Should prompt for UNIT SELECTION
-    req = process_resolution_stack(displacement_state)
+    req = process_stack(displacement_state).input_request
     assert req is not None
     assert req["type"] == "SELECT_UNIT"
     assert "m_disp" in req["valid_options"]
@@ -149,9 +149,9 @@ def test_displacement_multi_unit_selection(displacement_state):
     # It sees 1 candidate (1,0,-1). Auto-places m_disp_2.
     # It returns new steps [PlaceUnit(m_disp_2), ResolveDisplacement(remaining)]
     # PlaceUnit runs.
-    process_resolution_stack(displacement_state)  # Resolve(Input) -> Spawns Split
-    process_resolution_stack(displacement_state)  # Resolve(m_disp_2) -> Spawns Place
-    process_resolution_stack(displacement_state)  # PlaceUnit(m_disp_2)
+    process_stack(displacement_state).input_request  # Resolve(Input) -> Spawns Split
+    process_stack(displacement_state).input_request  # Resolve(m_disp_2) -> Spawns Place
+    process_stack(displacement_state).input_request  # PlaceUnit(m_disp_2)
 
     assert displacement_state.entity_locations.get("m_disp_2") == Hex(q=1, r=0, s=-1)
 
@@ -162,8 +162,8 @@ def test_displacement_multi_unit_selection(displacement_state):
     # So m_disp has NO range 1 options!
     # It should look for Range 2. (2,0,-2) is in fixture and empty.
 
-    process_resolution_stack(displacement_state)  # Resolve(m_disp)
+    process_stack(displacement_state).input_request  # Resolve(m_disp)
     # Spawns PlaceUnit(m_disp) at (2,0,-2) (Auto-select)
-    process_resolution_stack(displacement_state)  # PlaceUnit
+    process_stack(displacement_state).input_request  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == Hex(q=2, r=0, s=-2)

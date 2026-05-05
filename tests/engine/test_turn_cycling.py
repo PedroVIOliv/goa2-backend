@@ -4,7 +4,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.phases import start_resolution_phase
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 
 def _filler_cards():
     """Return dummy hand cards so heroes aren't auto-passed for empty hands."""
@@ -65,7 +65,7 @@ def test_automatic_turn_cycling():
     
     # --- Turn A ---
     # 1. Process until Input (ResolveCardStep)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "A"
     
@@ -73,13 +73,13 @@ def test_automatic_turn_cycling():
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
 
     # 3. Process - hits ConfirmResolutionStep
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "A"
     state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
 
     # 4. Process until Next Input (B)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Should automatically cycle A -> Finalize -> FindNext -> B -> ResolveCardStep
     assert req is not None
@@ -88,10 +88,10 @@ def test_automatic_turn_cycling():
 
     # --- Turn B ---
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     assert req is not None
     assert req["type"] == "CHOOSE_ACTION"
@@ -99,10 +99,10 @@ def test_automatic_turn_cycling():
 
     # --- Turn C ---
     state.execution_stack[-1].pending_input = {"selection": "HOLD"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # --- End ---
     assert req is None # Finished

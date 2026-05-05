@@ -15,7 +15,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -111,11 +111,11 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
     push_steps(dangerous_current_state, [step])
 
     # 1. Action Choice (Attack)
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory) -> enemy_minion
-    req = process_resolution_stack(dangerous_current_state)
+    req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy_minion" in req["valid_options"]
     dangerous_current_state.execution_stack[-1].pending_input = {
@@ -124,7 +124,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
 
     # 3. Select Backstab Victim (Optional) -> enemy_victim
     # Note: Filter should allow enemy_victim at (2,0,-2) because it's behind (1,0,-1) from (0,0,0)
-    req = process_resolution_stack(dangerous_current_state)
+    req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy_victim" in req["valid_options"]
     dangerous_current_state.execution_stack[-1].pending_input = {
@@ -133,7 +133,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
 
     # 4. Force Discard -> Victim Selection
     # The system should now ask 'enemy_victim' to select a card.
-    req = process_resolution_stack(dangerous_current_state)
+    req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_CARD"
     assert (
         req["player_id"] == "enemy_victim"
@@ -143,7 +143,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "fodder"}
 
     # 5. Execute Discard and Attack
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
 
     # Verify Discard
     victim = dangerous_current_state.get_hero("enemy_victim")
@@ -177,23 +177,23 @@ def test_dangerous_current_defeat_flow(dangerous_current_state):
     push_steps(dangerous_current_state, [step])
 
     # 1. Action -> Attack
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target -> Minion
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {
         "selection": "enemy_minion"
     }
 
     # 3. Select Victim -> Victim
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {
         "selection": "enemy_victim"
     }
 
     # 4. Logic detects empty hand -> DefeatUnitStep -> RemoveUnitStep
-    process_resolution_stack(dangerous_current_state)
+    process_stack(dangerous_current_state).input_request
 
     # Verify Victim Defeated (removed from board)
     assert "enemy_victim" not in dangerous_current_state.entity_locations

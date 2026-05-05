@@ -4,7 +4,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Zone
 from goa2.domain.types import HeroID, UnitID
 from goa2.domain.state import GameState
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def setup_base_state():
@@ -42,7 +42,7 @@ def test_fast_travel_success_same_zone():
     push_steps(state, [step])
 
     # First process expands FastTravelSequenceStep into SelectStep
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Should find Safe Zone (Z1) and valid hex (Hex(1,0,-1)) which is empty
     # SelectStep returns input request
@@ -73,7 +73,7 @@ def test_fast_travel_success_adjacent_zone():
     step = FastTravelSequenceStep(unit_id="hero1")
     push_steps(state, [step])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     assert req is not None
     assert req["type"] == "SELECT_HEX"
@@ -105,7 +105,7 @@ def test_fast_travel_fail_enemy_in_start():
 
     # Should expand and then SelectStep should finish with "No candidates" because start zone is unsafe
     # Wait, SelectStep returns finished=True if no candidates and mandatory=False
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     assert req is None  # No input requested because no valid options
     assert state.entity_locations["hero1"] == Hex(q=0, r=0, s=0)
@@ -139,7 +139,7 @@ def test_fast_travel_exclude_unsafe_dest():
     step = FastTravelSequenceStep(unit_id="hero1")
     push_steps(state, [step])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Only Z2 should be in valid options
     assert req is not None
@@ -190,7 +190,7 @@ def test_fast_travel_option_filtering():
     # Run Step
     step = ResolveCardStep(hero_id="hero1")
     push_steps(state, [step])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Options should contain MOVEMENT and HOLD, but NOT FAST_TRAVEL
     assert result is not None

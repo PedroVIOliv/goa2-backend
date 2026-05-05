@@ -4,7 +4,7 @@ from goa2.domain.board import Board, Zone
 from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, Card, CardTier, CardColor, ActionType
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 @pytest.fixture
 def effect_state():
@@ -54,7 +54,7 @@ def test_arcane_whirlpool_swap(effect_state):
     push_steps(effect_state, [step])
     
     # 2. CHOOSE_ACTION
-    req = process_resolution_stack(effect_state)
+    req = process_stack(effect_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     
     # 3. Select SKILL (which is Arcane Whirlpool)
@@ -62,7 +62,7 @@ def test_arcane_whirlpool_swap(effect_state):
     
     # 4. ResolveCardStep finishes -> spawns ResolveCardTextStep
     # ResolveCardTextStep runs -> spawns SelectStep (from effect)
-    req = process_resolution_stack(effect_state)
+    req = process_stack(effect_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "M1" in req["valid_options"]
     
@@ -72,7 +72,7 @@ def test_arcane_whirlpool_swap(effect_state):
     # 6. SelectStep finishes -> spawns SwapWithSelectedStep
     # SwapWithSelectedStep runs -> spawns SwapUnitsStep
     # SwapUnitsStep runs and finishes.
-    res = process_resolution_stack(effect_state)
+    res = process_stack(effect_state).input_request
     assert res is None # Stack finished
     
     # 7. Verify Positions

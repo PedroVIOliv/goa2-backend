@@ -22,7 +22,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effects import CardEffectRegistry
 
 # Register xargatha effects
@@ -147,32 +147,32 @@ class TestCleaveEffect:
         push_steps(cleave_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(cleave_state)
+        process_stack(cleave_state).input_request
         cleave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> attack minion
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_UNIT"
         cleave_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
         # 3. SELECT_OPTION -> repeat? YES
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_OPTION"
         cleave_state.execution_stack[-1].pending_input = {"selection": "YES"}
 
         # 4. SELECT_UNIT -> repeat attack target (heroes only)
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_UNIT"
         assert "enemy_hero_a" in req["valid_options"] or "enemy_hero_b" in req["valid_options"]
         cleave_state.execution_stack[-1].pending_input = {"selection": "enemy_hero_a"}
 
         # 5. SELECT_CARD_OR_PASS -> reaction
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_CARD_OR_PASS"
         cleave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
         # 6. Finish
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req is None
 
     def test_cleave_skip_repeat(self, cleave_state):
@@ -181,23 +181,23 @@ class TestCleaveEffect:
         push_steps(cleave_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_resolution_stack(cleave_state)
+        process_stack(cleave_state).input_request
         cleave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> attack hero A
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         cleave_state.execution_stack[-1].pending_input = {"selection": "enemy_hero_a"}
 
         # 3. SELECT_CARD_OR_PASS -> reaction
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_CARD_OR_PASS"
         cleave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
         # 4. SELECT_OPTION -> decline repeat
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req["type"] == "SELECT_OPTION"
         cleave_state.execution_stack[-1].pending_input = {"selection": "NO"}
 
         # 5. Finish
-        req = process_resolution_stack(cleave_state)
+        req = process_stack(cleave_state).input_request
         assert req is None

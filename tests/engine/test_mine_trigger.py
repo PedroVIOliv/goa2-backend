@@ -4,7 +4,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.state import GameState
 from goa2.domain.models import Team, TeamColor, Hero, Token, TokenType, Card, CardTier, CardColor, CardState, ActionType
 from goa2.domain.types import HeroID, BoardEntityID
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import MoveSequenceStep, MoveUnitStep, TriggerMineStep
 from goa2.domain.events import GameEventType
 
@@ -45,11 +45,11 @@ def test_mine_triggered_and_removed_after_movement():
     state = _make_state_with_mine()
     push_steps(state, [MoveSequenceStep(range_val=2)])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
     assert BoardEntityID("mine_1") not in state.entity_locations
@@ -61,7 +61,7 @@ def test_trigger_mine_step_directly():
     state.execution_context["triggered_mine_ids"] = ["mine_1"]
 
     push_steps(state, [TriggerMineStep()])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert BoardEntityID("mine_1") not in state.entity_locations
 
@@ -72,7 +72,7 @@ def test_trigger_mine_step_no_mines():
     state.execution_context["triggered_mine_ids"] = []
 
     push_steps(state, [TriggerMineStep()])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     assert result is None
 
@@ -93,11 +93,11 @@ def test_no_mine_triggered_when_no_passable_tokens():
 
     push_steps(state, [MoveSequenceStep(range_val=2)])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
 
@@ -108,7 +108,7 @@ def test_forced_movement_triggers_mine():
     state.execution_context["target_hex"] = {"q": 2, "r": -2, "s": 0}
 
     push_steps(state, [MoveUnitStep(unit_id="hero_a", destination_key="target_hex", range_val=2)])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
     assert BoardEntityID("mine_1") not in state.entity_locations
@@ -127,11 +127,11 @@ def test_blast_mine_forces_discard():
     hero.hand.append(card)
 
     push_steps(state, [MoveSequenceStep(range_val=2)])
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Blast mine triggered — hero must discard
     assert req is not None
@@ -139,7 +139,7 @@ def test_blast_mine_forces_discard():
     assert req["player_id"] == "hero_a"
 
     state.execution_stack[-1].pending_input = {"selection": "card_1"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert len(hero.hand) == 0
     assert any(c.id == "card_1" for c in hero.discard_pile)
@@ -180,11 +180,11 @@ def test_dud_mine_no_discard():
     state.place_entity(BoardEntityID("mine_1"), Hex(q=1, r=-1, s=0))
 
     push_steps(state, [MoveSequenceStep(range_val=2)])
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # Dud mine — no discard, movement completes
     assert req is None

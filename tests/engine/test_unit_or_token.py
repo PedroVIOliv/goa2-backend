@@ -20,7 +20,7 @@ from goa2.domain.models.enums import TokenType
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
 from goa2.engine.steps import SelectStep, TargetType
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.filters import RangeFilter
 
 
@@ -148,7 +148,7 @@ class TestSelectStepUnitOrToken:
         )
 
         push_steps(state_with_units_and_tokens, [step])
-        req = process_resolution_stack(state_with_units_and_tokens)
+        req = process_stack(state_with_units_and_tokens).input_request
 
         assert req is not None
         assert req["type"] == "SELECT_UNIT_OR_TOKEN"
@@ -173,7 +173,7 @@ class TestSelectStepUnitOrToken:
         )
 
         push_steps(state_with_units_and_tokens, [step])
-        req = process_resolution_stack(state_with_units_and_tokens)
+        req = process_stack(state_with_units_and_tokens).input_request
 
         valid_options = req["valid_options"]
 
@@ -214,7 +214,7 @@ class TestSelectStepUnitOrToken:
         )
 
         push_steps(state, [step])
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
         # Should abort (mandatory with no candidates)
         assert req is None  # Stack exhausted due to abort

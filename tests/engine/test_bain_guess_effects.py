@@ -18,7 +18,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def _build_state(board, bain_card, enemy_hand):
 def _drive_to_skill(state):
     """Drive through ResolveCardStep until SKILL action is chosen."""
     push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
@@ -252,7 +252,7 @@ class TestGuessCardColorStep:
             GuessCardColorStep(output_key="guessed_color"),
         ])
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_OPTION"
         option_ids = {o["id"] for o in req["options"]}
@@ -269,10 +269,10 @@ class TestGuessCardColorStep:
             GuessCardColorStep(output_key="guessed_color"),
         ])
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         state.execution_stack[-1].pending_input = {"selection": "RED"}
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context["guessed_color"] == "RED"
 
 
@@ -309,7 +309,7 @@ class TestRevealAndResolveGuessStep:
         ])
         ctx["guess_victim"] = "hero_enemy"
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ctx.get("guess_correct") is True
         assert ctx.get("guess_wrong") is None
 
@@ -337,7 +337,7 @@ class TestRevealAndResolveGuessStep:
             ),
         ])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ctx.get("guess_correct") is None
         assert ctx.get("guess_wrong") is True
 
@@ -362,25 +362,25 @@ class TestAGameOfChance:
         _drive_to_skill(state)
 
         # 1. Select enemy hero (auto or manual)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # 2. Enemy chooses card from hand
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
         # 3. Bain guesses color
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_OPTION"
         # Guess RED (correct — card IS red)
         state.execution_stack[-1].pending_input = {"selection": "RED"}
 
         # 4. Resolve — process remaining steps
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         # e_red should be discarded
@@ -401,20 +401,20 @@ class TestAGameOfChance:
         _drive_to_skill(state)
 
         # Select enemy
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # Enemy chooses red card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
         # Bain guesses BLUE (wrong)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "BLUE"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         # Card should NOT be discarded
@@ -432,10 +432,10 @@ class TestAGameOfChance:
         _drive_to_skill(state)
 
         # Should skip (no valid targets) and finish
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
             # Should not get a SELECT_UNIT for enemy hero
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
 
 # ===========================================================================
@@ -459,18 +459,18 @@ class TestDeadMansHand:
 
         _drive_to_skill(state)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "BLUE"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         bain = state.get_hero(HeroID("hero_bain"))
         assert bain.gold == 2
@@ -499,20 +499,20 @@ class TestWereNotDoneYet:
 
         _drive_to_skill(state)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "RED"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
             # Should not be asked to repeat or gain coins
             assert req.get("type") != "SELECT_NUMBER"
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         assert any(c.id == "e_red" for c in enemy.discard_pile)
@@ -531,24 +531,24 @@ class TestWereNotDoneYet:
 
         _drive_to_skill(state)
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "BLUE"}
 
         # Choose: 1=repeat, 2=gain coins
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_NUMBER"
         state.execution_stack[-1].pending_input = {"selection": 2}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         bain = state.get_hero(HeroID("hero_bain"))
         assert bain.gold == 2
@@ -569,38 +569,38 @@ class TestWereNotDoneYet:
         _drive_to_skill(state)
 
         # First guess sequence
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "e_red"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "BLUE"}  # Wrong
 
         # Choose repeat
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_NUMBER"
         state.execution_stack[-1].pending_input = {"selection": 1}
 
         # Second guess sequence — select enemy again
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # Enemy chooses card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "e_blue"}
 
         # Guess correctly this time
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_OPTION"
         state.execution_stack[-1].pending_input = {"selection": "BLUE"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         enemy = state.get_hero(HeroID("hero_enemy"))
         assert any(c.id == "e_blue" for c in enemy.discard_pile)

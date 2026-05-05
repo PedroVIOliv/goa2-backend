@@ -5,7 +5,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Hero, Card, CardTier, CardColor, ActionType
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def create_test_hero(id_str, team, card_actions):
     primary_action, primary_val, secondary_actions = card_actions
@@ -49,7 +49,7 @@ def test_resolve_card_prompts_for_choice(choice_state):
     step = ResolveCardStep(hero_id="A")
     push_steps(choice_state, [step])
     
-    req = process_resolution_stack(choice_state)
+    req = process_stack(choice_state).input_request
     
     assert req is not None
     assert req["type"] == "CHOOSE_ACTION"
@@ -73,20 +73,20 @@ def test_choose_secondary_movement(choice_state):
     push_steps(choice_state, [step])
     
     # 1. Run to prompt
-    process_resolution_stack(choice_state)
+    process_stack(choice_state).input_request
     
     # 2. Provide Input: Secondary Move
     choice_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
     
     # 3. Run again
     # The ResolveCardStep should finish and spawn MoveUnitStep
-    # process_resolution_stack returns None if step finishes without new input
+    # process_stack returns None if step finishes without new input
     # But MoveUnitStep might fail immediately if no destination set (it expects context),
     # or it prints error and finishes. 
     # MoveUnitStep resolve -> returns is_finished=True (and prints error "No destination").
-    # So process_resolution_stack should empty the stack.
+    # So process_stack should empty the stack.
     
-    req = process_resolution_stack(choice_state)
+    req = process_stack(choice_state).input_request
     assert req is None # Stack emptied
     
     # We can't easily check "what step ran" without mocking, 
@@ -98,12 +98,12 @@ def test_choose_primary_script(choice_state):
     step = ResolveCardStep(hero_id="A")
     push_steps(choice_state, [step])
     
-    process_resolution_stack(choice_state)
+    process_stack(choice_state).input_request
     
     # Input: Primary
     choice_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
     
-    req = process_resolution_stack(choice_state)
+    req = process_stack(choice_state).input_request
     assert req is None
     
     # In a real test we'd capture stdout or check if script had side effects.
@@ -126,7 +126,7 @@ def test_resolve_card_no_primary():
     step = ResolveCardStep(hero_id="B")
     push_steps(state, [step])
     
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     opts = req["options"]
     
     # Should be no SKILL option (it is facedown)

@@ -14,7 +14,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep, MoveSequenceStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effect_manager import EffectManager
 
 
@@ -93,18 +93,18 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
     push_steps(slippery_state, [step])
 
     # Action: MOVEMENT (Primary)
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     # Move selection (Arien stays put)
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {
         "selection": {"q": 0, "r": 0, "s": 0}
     }
 
     # Finish turn
     while slippery_state.execution_stack:
-        process_resolution_stack(slippery_state)
+        process_stack(slippery_state).input_request
 
     # Verify effect created
     assert len(slippery_state.active_effects) == 1
@@ -132,16 +132,16 @@ def test_slippery_ground_movement_limited(slippery_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(slippery_state, [step])
 
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {
         "selection": {"q": 0, "r": 0, "s": 0}
     }
 
     while slippery_state.execution_stack:
-        process_resolution_stack(slippery_state)
+        process_stack(slippery_state).input_request
 
     # Finalize the hero's turn to move card to RESOLVED state
     # This is required because active effects only become active when the source card is RESOLVED
@@ -177,16 +177,16 @@ def test_move_sequence_step_caps_range_from_effect(slippery_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(slippery_state, [step])
 
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
-    process_resolution_stack(slippery_state)
+    process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {
         "selection": {"q": 0, "r": 0, "s": 0}
     }
 
     while slippery_state.execution_stack:
-        process_resolution_stack(slippery_state)
+        process_stack(slippery_state).input_request
 
     # Activate the effect
     hero = slippery_state.get_hero("arien")
@@ -201,7 +201,7 @@ def test_move_sequence_step_caps_range_from_effect(slippery_state):
     move_step = MoveSequenceStep(unit_id="e1", range_val=2)
     push_steps(slippery_state, [move_step])
 
-    result = process_resolution_stack(slippery_state)
+    result = process_stack(slippery_state).input_request
 
     # The input request should show Range 1, not Range 2
     assert result is not None

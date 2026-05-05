@@ -4,7 +4,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.state import GameState
 from goa2.domain.models import Team, TeamColor, Hero, Token, TokenType
 from goa2.domain.types import HeroID, BoardEntityID
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import MoveSequenceStep
 
 
@@ -66,11 +66,11 @@ def test_mine_path_choice_prompted():
     state = _make_diamond_state()
     push_steps(state, [MoveSequenceStep(range_val=3)])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -1, "s": -1}}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     assert req is not None
     assert req["type"] == "SELECT_OPTION"
@@ -89,11 +89,11 @@ def test_mine_path_choice_select_then_move():
     state = _make_diamond_state()
     push_steps(state, [MoveSequenceStep(range_val=3)])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -1, "s": -1}}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_OPTION"
 
     # Pick whichever option index corresponds to mine_A path
@@ -106,7 +106,7 @@ def test_mine_path_choice_select_then_move():
         )
     )
     state.execution_stack[-1].pending_input = {"selection": choice_idx}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-1, s=-1)
     assert BoardEntityID("mine_A") not in state.entity_locations
@@ -143,11 +143,11 @@ def test_single_mine_path_no_choice():
 
     push_steps(state, [MoveSequenceStep(range_val=2)])
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
     assert BoardEntityID("mine_1") not in state.entity_locations

@@ -14,7 +14,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.effect_manager import EffectManager
 
@@ -77,14 +77,14 @@ def test_venom_strike_applies_debuffs(rogue_state):
     push_steps(rogue_state, [ResolveCardStep(hero_id="rogue")])
 
     # 2. CHOOSE_ACTION
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Venom Strike)
     rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. ResolveCardStep -> ResolveCardTextStep -> AttackSequenceStep -> SelectStep
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "victim" in req["valid_options"]
 
@@ -92,13 +92,13 @@ def test_venom_strike_applies_debuffs(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "victim"}
 
     # 6. SelectStep finishes -> spawns ReactionWindowStep
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
 
     # 7. Provide Input: PASS reaction
     rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
-    process_resolution_stack(rogue_state)
+    process_stack(rogue_state).input_request
 
     att = get_computed_stat(rogue_state, "victim", StatType.ATTACK, base_value=3)
     dfe = get_computed_stat(rogue_state, "victim", StatType.DEFENSE, base_value=3)
@@ -129,14 +129,14 @@ def test_slippery_ground_limits_movement(rogue_state):
     push_steps(rogue_state, [ResolveCardStep(hero_id="rogue")])
 
     # 2. CHOOSE_ACTION
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Slippery Ground)
     rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. Resolve steps
-    process_resolution_stack(rogue_state)
+    process_stack(rogue_state).input_request
 
     # 5. Verify effect is active in state
     assert len(rogue_state.active_effects) == 1
@@ -200,24 +200,24 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     push_steps(rogue_state, [ResolveCardStep(hero_id="rogue")])
 
     # 2. CHOOSE_ACTION
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select ATTACK (Magnetic Dagger)
     rogue_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 4. Resolve steps until SELECT_UNIT (Attack Target)
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_UNIT"
     rogue_state.execution_stack[-1].pending_input = {"selection": "victim"}
 
     # 5. Resolve steps until SELECT_CARD_OR_PASS (Reaction)
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 6. Finish resolution
-    process_resolution_stack(rogue_state)
+    process_stack(rogue_state).input_request
 
     # 7. Verify effect is active
     assert any(
@@ -311,14 +311,14 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     push_steps(rogue_state, [ResolveCardStep(hero_id="rogue")])
 
     # 2. CHOOSE_ACTION
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
 
     # 3. Select SKILL (Rogue Skill Gold)
     rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. Resolve steps until SELECT_UNIT (Target Hero)
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "victim" in req["valid_options"]
 
@@ -326,7 +326,7 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "victim"}
 
     # 6. Resolve steps until SELECT_CARD (From Victim's Played)
-    req = process_resolution_stack(rogue_state)
+    req = process_stack(rogue_state).input_request
     assert req["type"] == "SELECT_CARD"
     assert "v_resolved" in req["valid_options"]
 
@@ -334,7 +334,7 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "v_resolved"}
 
     # 8. Finish resolution (SwapCardStep)
-    process_resolution_stack(rogue_state)
+    process_stack(rogue_state).input_request
 
     # 9. Verify Swap on Victim
     assert victim.current_turn_card.id == "v_resolved"

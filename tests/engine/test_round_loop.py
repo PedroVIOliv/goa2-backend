@@ -2,7 +2,7 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, GamePhase, CardState, CardColor
 from goa2.engine.phases import resolve_next_action
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 
 def test_turn_increment():
     """Verify Turn 1 -> Turn 2 transition."""
@@ -38,7 +38,7 @@ def test_round_end_transition():
     resolve_next_action(state)
     
     # Run stack to execute EndPhaseStep
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert state.round == 2
     assert state.turn == 1

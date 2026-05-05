@@ -31,7 +31,7 @@ from goa2.engine.filters import (
     TeamFilter,
     UnitTypeFilter,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
 from goa2.domain.models import (
@@ -387,13 +387,13 @@ class TestLeadAstrayIntegration:
         push_steps(silver_state, steps)
 
         # Step 1: Select adjacent enemy
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         silver_state.execution_stack[-1].pending_input = {"selection": "enemy_hero"}
 
         # Step 2: Select drag destination (move enemy 2 spaces away)
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
         drag_dest = Hex(q=3, r=0, s=-3)
@@ -402,7 +402,7 @@ class TestLeadAstrayIntegration:
         }
 
         # Step 3: Self-move in a straight line
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
         # Silverarrow is at (0,0,0), move 2 in opposite direction
@@ -412,7 +412,7 @@ class TestLeadAstrayIntegration:
         }
 
         # Done
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         # Verify positions
@@ -432,12 +432,12 @@ class TestLeadAstrayIntegration:
         push_steps(silver_state, steps)
 
         # Step 1: Skip the drag target selection
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         silver_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
         # Everything should resolve (no more input needed)
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         # Positions unchanged
@@ -463,12 +463,12 @@ class TestDisorientIntegration:
         push_steps(silver_state, steps)
 
         # Select enemy
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         silver_state.execution_stack[-1].pending_input = {"selection": "enemy_hero"}
 
         # Select dest for enemy (1 space)
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         enemy_dest = Hex(q=2, r=0, s=-2)
         silver_state.execution_stack[-1].pending_input = {
@@ -476,14 +476,14 @@ class TestDisorientIntegration:
         }
 
         # Self-move 1 space
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         self_dest = Hex(q=-1, r=0, s=1)
         silver_state.execution_stack[-1].pending_input = {
             "selection": self_dest.model_dump()
         }
 
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         assert silver_state.entity_locations.get("enemy_hero") == enemy_dest
@@ -558,19 +558,19 @@ class TestNaturesBlessingIntegration:
         push_steps(silver_state, steps)
 
         # Step 1: Select ally hero
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         silver_state.execution_stack[-1].pending_input = {"selection": "ally_hero"}
 
         # Step 2: Ally selects card from discard
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_CARD"
         silver_state.execution_stack[-1].pending_input = {"selection": "ally_discard_1"}
 
         # Steps 3 & 4: Retrieve + Coins resolve automatically
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         # Verify: card retrieved, coins gained
@@ -592,11 +592,11 @@ class TestNaturesBlessingIntegration:
         push_steps(silver_state, steps)
 
         # Skip hero selection
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is not None
         silver_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         # Nothing changed
@@ -616,14 +616,14 @@ class TestNaturesBlessingIntegration:
         push_steps(silver_state, steps)
 
         # Select ally hero
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         silver_state.execution_stack[-1].pending_input = {"selection": "ally_hero"}
 
         # Skip card selection
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         silver_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
-        req = process_resolution_stack(silver_state)
+        req = process_stack(silver_state).input_request
         assert req is None
 
         # No coins gained

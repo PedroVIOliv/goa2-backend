@@ -20,7 +20,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.types import UnitID
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps import PushUnitStep, CheckPassiveAbilitiesStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 # Ensure sabina effects are registered
 import goa2.scripts.sabina_effects  # noqa: F401
@@ -297,7 +297,7 @@ def test_push_enemy_hero_triggers_discard_or_defeat(push_state):
     )
 
     # Process the push
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
 
     # Enemy hero should have been pushed
     enemy_loc = push_state.entity_locations.get("enemy_hero")
@@ -314,7 +314,7 @@ def test_push_enemy_hero_triggers_discard_or_defeat(push_state):
     push_state.execution_stack[-1].pending_input = {
         "selection": "enemy_card_1"
     }
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
 
     # Should be done now
     assert result is None
@@ -331,7 +331,7 @@ def test_push_minion_does_not_trigger_passive(push_state):
         [PushUnitStep(target_id="enemy_minion", distance=1)],
     )
 
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
 
     # No input should be requested — passive doesn't fire for minions
     assert result is None
@@ -363,7 +363,7 @@ def test_push_friendly_hero_does_not_trigger_passive(push_state):
         [PushUnitStep(target_id="friendly_hero", distance=1)],
     )
 
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
 
     # No discard triggered
     assert result is None
@@ -382,7 +382,7 @@ def test_push_zero_distance_still_triggers(push_state):
         [PushUnitStep(target_id="enemy_hero", distance=1)],
     )
 
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
 
     # Enemy hero still at original position (couldn't move)
     enemy_loc = push_state.entity_locations.get("enemy_hero")
@@ -395,7 +395,7 @@ def test_push_zero_distance_still_triggers(push_state):
     push_state.execution_stack[-1].pending_input = {
         "selection": "enemy_card_1"
     }
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
     assert result is None
 
     enemy = push_state.get_hero("enemy_hero")
@@ -414,9 +414,9 @@ def test_push_enemy_hero_no_cards_defeats(push_state):
     )
 
     # Process everything
-    result = process_resolution_stack(push_state)
+    result = process_stack(push_state).input_request
     while result is not None:
-        result = process_resolution_stack(push_state)
+        result = process_stack(push_state).input_request
 
     # Enemy hero should be defeated (removed from board)
     assert push_state.entity_locations.get("enemy_hero") is None

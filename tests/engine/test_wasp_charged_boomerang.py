@@ -19,7 +19,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 
 
@@ -148,12 +148,12 @@ def test_charged_boomerang_valid_targets(wasp_boomerang_state):
     push_steps(wasp_boomerang_state, [step])
 
     # 1. Action Choice (Attack)
-    req = process_resolution_stack(wasp_boomerang_state)
+    req = process_stack(wasp_boomerang_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target - should only include diagonal enemies
-    req = process_resolution_stack(wasp_boomerang_state)
+    req = process_stack(wasp_boomerang_state).input_request
     assert req["type"] == "SELECT_UNIT"
 
     valid_options = req["valid_options"]
@@ -181,25 +181,25 @@ def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
     push_steps(wasp_boomerang_state, [step])
 
     # Action Choice
-    req = process_resolution_stack(wasp_boomerang_state)
+    req = process_stack(wasp_boomerang_state).input_request
     wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Select diagonal target
-    req = process_resolution_stack(wasp_boomerang_state)
+    req = process_stack(wasp_boomerang_state).input_request
     assert "enemy_diagonal" in req["valid_options"]
     wasp_boomerang_state.execution_stack[-1].pending_input = {
         "selection": "enemy_diagonal"
     }
 
     # Reaction window - pass
-    req = process_resolution_stack(wasp_boomerang_state)
+    req = process_stack(wasp_boomerang_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     wasp_boomerang_state.execution_stack[-1].pending_input = {
         "selection": "PASS"
     }
 
     # Finish resolution
-    process_resolution_stack(wasp_boomerang_state)
+    process_stack(wasp_boomerang_state).input_request
 
     # Target should be defeated (no defense, damage 3 vs defense None)
     assert "enemy_diagonal" not in wasp_boomerang_state.entity_locations
@@ -255,12 +255,12 @@ def test_charged_boomerang_no_valid_targets():
     push_steps(state, [step])
 
     # Action Choice
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Should abort because no valid targets (mandatory attack with no options)
     # The stack should be empty or the step should indicate abort
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # When mandatory selection fails, the action aborts
     # This means we skip to finalization
