@@ -230,6 +230,28 @@ def test_every_step_type_has_unique_discriminator():
         seen[step_type] = name
 
 
+def test_focused_step_modules_export_public_step_classes():
+    """New concern modules expose the same concrete classes as the legacy path."""
+    from goa2.engine.steps import (
+        AttackSequenceStep,
+        CreateEffectStep,
+        MoveUnitStep,
+        ResolveCardStep,
+        SelectStep,
+    )
+    from goa2.engine.steps.cards import ResolveCardStep as CardsResolveCardStep
+    from goa2.engine.steps.combat import AttackSequenceStep as CombatAttackSequenceStep
+    from goa2.engine.steps.effects import CreateEffectStep as EffectsCreateEffectStep
+    from goa2.engine.steps.movement import MoveUnitStep as MovementMoveUnitStep
+    from goa2.engine.steps.selection import SelectStep as SelectionSelectStep
+
+    assert CardsResolveCardStep is ResolveCardStep
+    assert CombatAttackSequenceStep is AttackSequenceStep
+    assert EffectsCreateEffectStep is CreateEffectStep
+    assert MovementMoveUnitStep is MoveUnitStep
+    assert SelectionSelectStep is SelectStep
+
+
 # ---------------------------------------------------------------------------
 # Filter union
 # ---------------------------------------------------------------------------
