@@ -28,7 +28,7 @@ from goa2.engine.steps import (
     SetActorStep,
 )
 from goa2.engine.filters import MinionTypesFilter, RangeFilter, TeamFilter
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.domain.models.enums import StepType, TargetType
 
 # Ensure step_types patching is applied (imports trigger it)
@@ -125,7 +125,7 @@ class TestFinishingStepsOnEndPhase:
         push_steps(embrace_state, [EndPhaseStep()])
 
         # EndPhaseStep should inject SetActorStep + SelectStep
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         assert "melee_1" in req["valid_options"]
@@ -133,7 +133,7 @@ class TestFinishingStepsOnEndPhase:
 
         # Select melee minion
         embrace_state.execution_stack[-1].pending_input = {"selection": "melee_1"}
-        process_resolution_stack(embrace_state)
+        process_stack(embrace_state).input_request
 
         # Melee minion should be defeated (removed from locations)
         assert "melee_1" not in embrace_state.entity_locations
@@ -143,13 +143,13 @@ class TestFinishingStepsOnEndPhase:
         _add_delayed_trigger(embrace_state)
         push_steps(embrace_state, [EndPhaseStep()])
 
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
 
         # Select ranged minion
         embrace_state.execution_stack[-1].pending_input = {"selection": "ranged_1"}
-        process_resolution_stack(embrace_state)
+        process_stack(embrace_state).input_request
 
         assert "ranged_1" not in embrace_state.entity_locations
 
@@ -158,7 +158,7 @@ class TestFinishingStepsOnEndPhase:
         _add_delayed_trigger(embrace_state)
         push_steps(embrace_state, [EndPhaseStep()])
 
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         assert req is not None
         assert "heavy_1" not in req["valid_options"]
 
@@ -167,7 +167,7 @@ class TestFinishingStepsOnEndPhase:
         _add_delayed_trigger(embrace_state)
         push_steps(embrace_state, [EndPhaseStep()])
 
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         assert req is not None
         assert "ally_melee" not in req["valid_options"]
 
@@ -181,7 +181,7 @@ class TestFinishingStepsOnEndPhase:
         push_steps(embrace_state, [EndPhaseStep()])
 
         # Should complete without asking for input
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         assert req is None
 
     def test_set_actor_step_sets_correct_actor(self, embrace_state):
@@ -190,7 +190,7 @@ class TestFinishingStepsOnEndPhase:
         embrace_state.current_actor_id = None  # Clear to verify it gets set
 
         push_steps(embrace_state, [EndPhaseStep()])
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
 
         # If we got a SELECT_UNIT request, actor must have been set correctly
         # (TeamFilter and RangeFilter depend on current_actor_id)
@@ -204,10 +204,10 @@ class TestFinishingStepsOnEndPhase:
         push_steps(embrace_state, [EndPhaseStep()])
 
         # Skip selection (no mandatory)
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         if req is not None:
             embrace_state.execution_stack[-1].pending_input = {"selection": "melee_1"}
-            process_resolution_stack(embrace_state)
+            process_stack(embrace_state).input_request
 
         # Effect should be gone
         assert len([
@@ -221,7 +221,7 @@ class TestFinishingStepsOnEndPhase:
 
         # Should complete without any SELECT_UNIT prompts
         # (minion battle may ask for removal, but not SELECT_UNIT for embrace)
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
         # No delayed trigger, so first request (if any) is from minion battle
         if req is not None:
             assert req["type"] != "SELECT_UNIT" or "final_embrace" not in str(req)
@@ -288,7 +288,7 @@ class TestCreateEffectStepWithFinishingSteps:
             ],
         )
         push_steps(embrace_state, [step])
-        process_resolution_stack(embrace_state)
+        process_stack(embrace_state).input_request
 
         assert len(embrace_state.active_effects) == 1
         effect = embrace_state.active_effects[0]
@@ -383,7 +383,7 @@ class TestMinionBattleAfterFinishingSteps:
 
         # Run EndPhaseStep
         push_steps(embrace_state, [EndPhaseStep()])
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
 
         # Should get SELECT_UNIT for finishing step
         assert req is not None
@@ -391,7 +391,7 @@ class TestMinionBattleAfterFinishingSteps:
 
         # Select blue_m_0 (ranged minion adjacent to xargatha)
         embrace_state.execution_stack[-1].pending_input = {"selection": "blue_m_0"}
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
 
         # blue_m_0 should be defeated
         assert "blue_m_0" not in embrace_state.entity_locations
@@ -404,7 +404,7 @@ class TestMinionBattleAfterFinishingSteps:
         """MinionBattleStep computes counts at resolve time."""
         # RED has 1 (ally_melee), BLUE has 3 (melee_1, ranged_1, heavy_1)
         push_steps(embrace_state, [MinionBattleStep()])
-        req = process_resolution_stack(embrace_state)
+        req = process_stack(embrace_state).input_request
 
         # BLUE has more, so RED loses 2 minions.
         # RED only has 1 minion → auto-remove (no choice needed)

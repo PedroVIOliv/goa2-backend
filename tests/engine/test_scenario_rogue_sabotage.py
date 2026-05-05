@@ -17,7 +17,7 @@ from goa2.domain.hex import Hex
 from goa2.data.heroes.arien import create_arien
 from goa2.data.heroes.rogue import create_rogue
 from goa2.engine.phases import commit_card
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 
 import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue_skill_gold effect
 import goa2.scripts.arien_effects  # noqa: F401 - Register arien effects
@@ -132,25 +132,25 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
 
     # --- EXECUTE ROGUE TURN (SABOTAGE) ---
     # 1. ResolveCardStep -> Choose Action -> SKILL
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # 2. Select Enemy Hero -> Arien
     state.execution_stack[-1].pending_input = {"selection": "hero_arien"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # 3. Select Card -> Noble Blade
     state.execution_stack[-1].pending_input = {"selection": "noble_blade"}
 
     # 4. ConfirmResolutionStep (no opponent prompted during Rogue's SKILL turn)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
 
     # After confirm, FinalizeHeroTurnStep + FindNextActorStep auto-resolve,
     # then the next hero's ResolveCardStep prompts.
-    # No extra process_resolution_stack call needed.
+    # No extra process_stack call needed.
 
     # --- CHECK NEXT ACTOR ---
     # Current State:
@@ -160,23 +160,23 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     # Order: Arien (11) > Hero3 (7)
 
     # We need to process to get to the next actor
-    process_resolution_stack(state)
+    process_stack(state).input_request
     assert state.current_actor_id == arien.id
     assert arien.current_turn_card.id == "noble_blade"
 
     # --- EXECUTE ARIEN TURN (REVENGE) ---
     # 1. ResolveCardStep -> Choose Action
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert "Noble Blade" in req["prompt"]
 
     # 2. Input: ATTACK
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # 3. Select Attack Target -> Rogue
     state.execution_stack[-1].pending_input = {"selection": "hero_rogue"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # 4. Optional Nudge -> Skip
     # "Select adjacent unit to move 1 space (Optional)"
@@ -191,10 +191,10 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
 
     # 5. Rogue Reaction -> Pass
     state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Finalize Arien
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # --- CHECK NEXT ACTOR ---
     # Arien Done.
@@ -238,24 +238,24 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     assert state.current_actor_id == rogue.id
 
     # 1. Rogue Choose Action -> MOVEMENT
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     # 2. Select Destination (if needed) or just resolve
     if req and req["type"] == "SELECT_HEX":
         target = next(opt for opt in req["valid_options"] if opt != Hex(q=0, r=0, s=0))
         state.execution_stack[-1].pending_input = {"selection": target}
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
     # ConfirmResolutionStep (no opponent prompted during Rogue's MOVEMENT turn)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     if req and req.get("type") == "CHOOSE_ACTION":
         state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
     # Finish Rogue Turn
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # --- CHECK NEXT ACTOR ---
     # Rogue Done.
@@ -269,16 +269,16 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     # Since primary is SKILL, it will prompt for CHOOSE_ACTION.
 
     # 1. Choose Action - SKILL (primary)
-    req = process_resolution_stack(state)  # Choose Action for Hero 3
+    req = process_stack(state).input_request  # Choose Action for Hero 3
     if req and req["type"] == "CHOOSE_ACTION":
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
     # SKILL with no effect just logs and finishes.
     # Process until Hero3 done
     # Loop until actor changes
     while state.current_actor_id == hero3.id:
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         if not req:
             break
         # If input needed, provide default or skip

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
-from typing import Dict, Any, List, Optional, Union
+from typing import List, Optional, Union
 
 from goa2.domain.state import GameState
 from goa2.domain.models import GamePhase
@@ -85,85 +85,6 @@ def process_stack(state: GameState) -> StackResult:
             state.execution_stack.extend(reversed(result.new_steps))
 
     return StackResult(events=collected_events)
-
-
-# Module-level pending events for legacy callers
-_pending_events: List[GameEvent] = []
-
-
-def get_pending_events() -> List[GameEvent]:
-    """Return and clear pending events from the last process_resolution_stack call."""
-    global _pending_events
-    events = _pending_events
-    _pending_events = []
-    return events
-
-
-def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
-    """
-    Main Engine Loop for the Step-Based System.
-
-    Returns a dict representation of InputRequest for backwards compatibility.
-    The internal steps now use typed InputRequest models.
-    """
-    global _pending_events
-
-    safety_counter = 0
-    MAX_STEPS = 1000
-    collected_events: List[GameEvent] = []
-
-    if state.phase == GamePhase.GAME_OVER:
-        logger.info("Game is over. Halting execution.")
-        _pending_events = collected_events
-        return None
-
-    while state.execution_stack:
-        safety_counter += 1
-        if safety_counter > MAX_STEPS:
-            raise RuntimeError("Infinite Loop detected in Engine Resolution Stack")
-
-        current_step: GameStep = state.execution_stack.pop()
-
-        # Centralized skip check — steps no longer need to call should_skip() themselves
-        if current_step.should_skip(state.execution_context):
-            continue
-
-        result: StepResult = current_step.resolve(state, state.execution_context)
-
-        # Collect events even from aborted steps
-        collected_events.extend(result.events)
-
-        # Handle Abort (GoA2 Rule: Mandatory step failure aborts action)
-        if result.abort_action:
-            logger.info("Action aborted. Clearing remaining action steps.")
-            _clear_to_finalize(state)
-            continue
-
-        if result.requires_input:
-            # The step needs input. Put it back.
-            state.execution_stack.append(current_step)
-            # Track rollback disabled: if input targets someone other than the current actor
-            if (
-                result.input_request
-                and state.current_actor_id is not None
-                and result.input_request.player_id != str(state.current_actor_id)
-            ):
-                state.execution_context["rollback_disabled"] = True
-            _pending_events = collected_events
-            # Convert InputRequest to dict for backwards compatibility
-            if result.input_request is not None:
-                return result.input_request.to_dict()
-            return None
-
-        if not result.is_finished:
-            # Step wants to stay on stack (e.g. multi-turn or waiting)
-            state.execution_stack.append(current_step)
-
-        if result.new_steps:
-            state.execution_stack.extend(reversed(result.new_steps))
-
-    _pending_events = collected_events
-    return None
 
 
 def _clear_to_finalize(state: GameState):

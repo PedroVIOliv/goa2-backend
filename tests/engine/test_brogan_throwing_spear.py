@@ -17,7 +17,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def _make_card(card_id, name, effect_id, **overrides):
@@ -97,28 +97,28 @@ def test_throwing_spear_melee_attacks_adjacent(spear_state):
     push_steps(spear_state, [ResolveCardStep(hero_id="brogan")])
 
     # CHOOSE_ACTION
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     spear_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # SELECT_NUMBER: choose melee (1)
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_NUMBER"
     spear_state.execution_stack[-1].pending_input = {"selection": 1}
 
     # SELECT_UNIT: select adjacent enemy
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy" in req["valid_options"]
     spear_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
     # SELECT_CARD_OR_PASS: reaction window
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     spear_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # Resolve combat
-    res = process_resolution_stack(spear_state)
+    res = process_stack(spear_state).input_request
     # Stack should be empty
     assert res is None
 
@@ -135,34 +135,34 @@ def test_throwing_spear_ranged_with_discard(spear_state):
     push_steps(spear_state, [ResolveCardStep(hero_id="brogan")])
 
     # CHOOSE_ACTION
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     spear_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # SELECT_NUMBER: choose ranged (2)
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_NUMBER"
     spear_state.execution_stack[-1].pending_input = {"selection": 2}
 
     # SELECT_CARD: optional discard from hand
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_CARD"
     assert "hand_card" in req["valid_options"]
     spear_state.execution_stack[-1].pending_input = {"selection": "hand_card"}
 
     # SELECT_UNIT: select target in range (enemy at range 3)
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy" in req["valid_options"]
     spear_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
     # SELECT_CARD_OR_PASS: reaction window
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     spear_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # Resolve combat
-    res = process_resolution_stack(spear_state)
+    res = process_stack(spear_state).input_request
     assert res is None
 
     # Verify card was discarded
@@ -183,17 +183,17 @@ def test_throwing_spear_ranged_no_discard_but_existing_discard(spear_state):
     push_steps(spear_state, [ResolveCardStep(hero_id="brogan")])
 
     # CHOOSE_ACTION
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     spear_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # SELECT_NUMBER: choose ranged (2)
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_NUMBER"
     spear_state.execution_stack[-1].pending_input = {"selection": 2}
 
     # SELECT_CARD: optional discard — skip it
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     # Could be SELECT_CARD if hand has cards, or might skip if hand empty
     # With empty hand, the SelectStep for card should auto-skip
     # Let's check what happens — with empty hand it should skip
@@ -206,12 +206,12 @@ def test_throwing_spear_ranged_no_discard_but_existing_discard(spear_state):
     spear_state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
     # SELECT_CARD_OR_PASS: reaction window
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     spear_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # Resolve combat
-    res = process_resolution_stack(spear_state)
+    res = process_stack(spear_state).input_request
     assert res is None
 
     # Discard pile still has the original card
@@ -230,17 +230,17 @@ def test_throwing_spear_ranged_no_discard_empty_pile_no_attack(spear_state):
     push_steps(spear_state, [ResolveCardStep(hero_id="brogan")])
 
     # CHOOSE_ACTION
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     spear_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # SELECT_NUMBER: choose ranged (2)
-    req = process_resolution_stack(spear_state)
+    req = process_stack(spear_state).input_request
     assert req["type"] == "SELECT_NUMBER"
     spear_state.execution_stack[-1].pending_input = {"selection": 2}
 
     # With empty hand, optional card select auto-skips
     # With empty discard, CountCardsStep stores 0, condition fails
     # AttackSequenceStep skipped due to active_if_key="has_discard" being None
-    res = process_resolution_stack(spear_state)
+    res = process_stack(spear_state).input_request
     assert res is None  # Stack finishes with no attack

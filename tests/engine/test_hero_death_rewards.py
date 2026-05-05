@@ -4,7 +4,7 @@ from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor, Hero
 from goa2.domain.types import HeroID
 from goa2.engine.steps import DefeatUnitStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def create_hero(id_str, team, level=1):
     hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
@@ -45,7 +45,7 @@ def test_hero_death_level_1_rewards(death_state):
     
     step = DefeatUnitStep(victim_id=victim.id, killer_id=killer.id)
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert killer.gold == 1
     assert ally.gold == 1
@@ -63,7 +63,7 @@ def test_hero_death_level_4_rewards(death_state):
     
     step = DefeatUnitStep(victim_id=victim.id, killer_id=killer.id)
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert killer.gold == 4
     assert ally.gold == 2
@@ -77,7 +77,7 @@ def test_annihilation_trigger(death_state):
     
     step = DefeatUnitStep(victim_id=victim.id, killer_id=killer.id)
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert state.teams[TeamColor.BLUE].life_counters == 0
     # Ideally we check for Game Over flag, but currently it's a print.

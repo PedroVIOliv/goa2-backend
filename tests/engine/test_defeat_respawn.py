@@ -20,7 +20,7 @@ from goa2.engine.steps import (
     ResolveCardStep,
     FinalizeHeroTurnStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def make_card(card_id="card_1", initiative=5):
@@ -81,7 +81,7 @@ def test_defeat_cancels_active_effects():
     assert len(state.active_effects) == 1
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert len(state.active_effects) == 0
 
@@ -112,7 +112,7 @@ def test_defeat_resolves_unresolved_card():
     state.move_unit(victim.id, Hex(q=0, r=0, s=0))
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert victim.current_turn_card is None
     assert len(victim.played_cards) == 1
@@ -141,7 +141,7 @@ def test_defeat_removes_from_unresolved_hero_ids():
     state.unresolved_hero_ids = [HeroID("Victim"), HeroID("Killer")]
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert HeroID("Victim") not in state.unresolved_hero_ids
     assert HeroID("Killer") in state.unresolved_hero_ids
@@ -339,6 +339,6 @@ def test_full_defeat_respawn_flow():
     )
 
     # First process should hit RespawnHeroStep and request input
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     assert result is not None
     assert result["type"] == "CHOOSE_RESPAWN"

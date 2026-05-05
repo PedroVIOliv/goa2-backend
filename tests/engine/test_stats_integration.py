@@ -19,7 +19,7 @@ from goa2.engine.steps import (
     ReactionWindowStep,
     MoveSequenceStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ def test_resolve_card_step_movement_bonus(stats_state):
     step = ResolveCardStep(hero_id="hero_red")
     push_steps(stats_state, [step])
 
-    req = process_resolution_stack(stats_state)
+    req = process_stack(stats_state).input_request
 
     # Check Options UI: Should be 3 (2+1)
     opt = next(o for o in req["options"] if o["id"] == "MOVEMENT")

@@ -25,7 +25,7 @@ from goa2.domain.models.effect import EffectType
 from goa2.domain.models.token import Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 from goa2.domain.models.enums import StepType
 
@@ -578,7 +578,7 @@ class TestPerfectSelf:
         state.execution_stack[-1].pending_input = None
         # Manually inject context
         state.execution_context = context
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         assert retired_card.state == CardState.ITEM
         assert hero.items.get(StatType.ATTACK, 0) >= 1
@@ -809,13 +809,13 @@ class TestFlurryOfBlows:
         )
 
         # Drive: passive prompt -> YES
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "CONFIRM_PASSIVE"
         state.execution_stack[-1].pending_input = {"selection": "YES"}
 
         # Continue processing - mandatory step aborts the turn
-        while process_resolution_stack(state) is not None:
+        while process_stack(state).input_request is not None:
             # Auto-skip any remaining prompts
             state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 

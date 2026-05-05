@@ -26,7 +26,7 @@ from goa2.engine.steps import (
     SelectStep,
 )
 from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.domain.models.enums import TargetType, CardContainerType, StepType
 
 # Ensure step_types patching is applied
@@ -145,7 +145,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         # melee_1 + hero_enemy = 2 adjacent enemies
         assert retrieve_state.execution_context["enemy_count"] == 2
 
@@ -165,7 +165,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         # Only melee_1 is an enemy minion
         assert retrieve_state.execution_context["minion_count"] == 1
 
@@ -185,7 +185,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["enemy_count"] == 0
 
     def test_skipped_when_active_if_key_missing(self, retrieve_state):
@@ -201,7 +201,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert "enemy_count" not in retrieve_state.execution_context
 
 
@@ -221,7 +221,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_gte_false(self, retrieve_state):
@@ -234,7 +234,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         # Stores None (not False) so active_if_key checks work
         assert retrieve_state.execution_context["result"] is None
 
@@ -248,7 +248,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_lt_operator(self, retrieve_state):
@@ -261,7 +261,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_missing_key_defaults_to_zero(self, retrieve_state):
@@ -276,7 +276,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is None
 
 
@@ -296,7 +296,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="card_sel")],
         )
-        result = process_resolution_stack(retrieve_state)
+        result = process_stack(retrieve_state).input_request
 
         assert len(hero.discard_pile) == 1
         assert any(c.id == "card_a" for c in hero.hand)
@@ -311,7 +311,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="missing_key")],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert len(hero.discard_pile) == 2
 
     def test_skips_when_active_if_key_missing(self, retrieve_state):
@@ -321,7 +321,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="card_sel", active_if_key="nope")],
         )
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
         assert len(hero.discard_pile) == 2
 
 
@@ -339,7 +339,7 @@ class TestDevotedFollowers:
         hero = state.get_hero("hero_xargatha")
         steps = effect.build_steps(state, hero, None, _make_fake_stats())
         push_steps(state, steps)
-        return process_resolution_stack(state)
+        return process_stack(state).input_request
 
     def test_adjacent_enemy_hero_retrieves_card(self, retrieve_state):
         """Adjacent enemy hero → can retrieve a discarded card."""
@@ -356,7 +356,7 @@ class TestDevotedFollowers:
         retrieve_state.execution_stack[-1].pending_input = {
             "selection": "card_a"
         }
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_a" for c in hero.hand)
@@ -374,7 +374,7 @@ class TestDevotedFollowers:
         retrieve_state.execution_stack[-1].pending_input = {
             "selection": "card_b"
         }
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_b" for c in hero.hand)
@@ -405,7 +405,7 @@ class TestDevotedFollowers:
         retrieve_state.execution_stack[-1].pending_input = {
             "selection": "SKIP"
         }
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert len(hero.hand) == 0
@@ -425,7 +425,7 @@ class TestFreshConverts:
         hero = state.get_hero("hero_xargatha")
         steps = effect.build_steps(state, hero, None, _make_fake_stats())
         push_steps(state, steps)
-        return process_resolution_stack(state)
+        return process_stack(state).input_request
 
     def test_adjacent_enemy_minion_retrieves_card(self, retrieve_state):
         """Adjacent enemy minion → can retrieve a discarded card."""
@@ -436,7 +436,7 @@ class TestFreshConverts:
         retrieve_state.execution_stack[-1].pending_input = {
             "selection": "card_a"
         }
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_a" for c in hero.hand)
@@ -472,7 +472,7 @@ class TestFreshConverts:
         retrieve_state.execution_stack[-1].pending_input = {
             "selection": "SKIP"
         }
-        process_resolution_stack(retrieve_state)
+        process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert len(hero.hand) == 0

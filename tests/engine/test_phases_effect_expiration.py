@@ -154,7 +154,7 @@ class TestEndPhaseCleanupStepExpiration:
     def test_cleanup_step_expires_this_round_effects(self, game_state):
         """EndPhaseCleanupStep expires THIS_ROUND effects."""
         from goa2.engine.steps import EndPhaseCleanupStep
-        from goa2.engine.handler import push_steps, process_resolution_stack
+        from goa2.engine.handler import push_steps, process_stack
 
         game_state.active_effects.append(
             ActiveEffect(
@@ -180,7 +180,7 @@ class TestEndPhaseCleanupStepExpiration:
         )
 
         push_steps(game_state, [EndPhaseCleanupStep()])
-        process_resolution_stack(game_state)
+        process_stack(game_state).input_request
 
         assert len(game_state.active_effects) == 1
         assert game_state.active_effects[0].id == "eff_2"
@@ -188,7 +188,7 @@ class TestEndPhaseCleanupStepExpiration:
     def test_cleanup_step_preserves_passive_effects(self, game_state):
         """EndPhaseCleanupStep preserves PASSIVE effects."""
         from goa2.engine.steps import EndPhaseCleanupStep
-        from goa2.engine.handler import push_steps, process_resolution_stack
+        from goa2.engine.handler import push_steps, process_stack
 
         game_state.active_effects.append(
             ActiveEffect(
@@ -203,6 +203,6 @@ class TestEndPhaseCleanupStepExpiration:
         )
 
         push_steps(game_state, [EndPhaseCleanupStep()])
-        process_resolution_stack(game_state)
+        process_stack(game_state).input_request
 
         assert len(game_state.active_effects) == 1

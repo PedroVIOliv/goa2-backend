@@ -15,7 +15,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -135,56 +135,56 @@ def test_violent_torrent_repeat_flow(violent_torrent_state):
     push_steps(violent_torrent_state, [step])
 
     # 1. Action Choice -> ATTACK
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target 1 -> minion1
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "minion1" in req["valid_options"]
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
     # 3. Select Backstab 1 -> victim1
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "victim1" in req["valid_options"]
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "victim1"}
 
     # 4. Victim 1 Discards
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_CARD"
     assert req["player_id"] == "victim1"
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "c1"}
 
     # 5. Resolve Attack 1
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
 
     assert len(violent_torrent_state.get_hero("victim1").hand) == 0
     assert "minion1" not in violent_torrent_state.entity_locations
 
     # 6. Repeat Prompt -> YES
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_OPTION"
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "YES"}
 
     # 7. Select Target 2 -> minion2
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "minion2" in req["valid_options"]
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion2"}
 
     # 8. Select Backstab 2 -> victim2
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert "victim2" in req["valid_options"]
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "victim2"}
 
     # 9. Victim 2 Discards
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["player_id"] == "victim2"
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "c2"}
 
     # 10. Resolve Attack 2
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
 
     assert len(violent_torrent_state.get_hero("victim2").hand) == 0
     assert "minion2" not in violent_torrent_state.entity_locations
@@ -198,29 +198,29 @@ def test_violent_torrent_no_repeat(violent_torrent_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(violent_torrent_state, [step])
 
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target 1
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
     # Backstab 1 - Skip (optional, even with valid candidates)
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "victim1" in req["valid_options"]
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # Resolve Attack 1
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
 
     # Repeat Prompt -> NO
-    req = process_resolution_stack(violent_torrent_state)
+    req = process_stack(violent_torrent_state).input_request
     assert req["type"] == "SELECT_OPTION"
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "NO"}
 
     # Done
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     assert len(violent_torrent_state.execution_stack) == 0
 
     # Verify: Minion 1 dead, Minion 2 alive
@@ -238,17 +238,17 @@ def test_violent_torrent_defeat_condition(violent_torrent_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(violent_torrent_state, [step])
 
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "victim1"}
 
     # Empty hand -> Defeat
-    process_resolution_stack(violent_torrent_state)
+    process_stack(violent_torrent_state).input_request
 
     assert "victim1" not in violent_torrent_state.entity_locations
     assert "minion1" not in violent_torrent_state.entity_locations
@@ -341,18 +341,18 @@ def test_violent_torrent_alignment_filter():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Select Target
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "target"}
 
     # After target selection, backstab SelectStep runs
     # Both heroes should be filtered out (far_hero dist=6>5, off_line_hero not in line)
     # Optional SelectStep with no candidates auto-skips
     # Flow continues to Attack -> MayRepeatOnceStep
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_OPTION", (
         "MayRepeatOnceStep reached - backstab correctly skipped due to no valid targets"
     )
@@ -425,29 +425,29 @@ def test_violent_torrent_repeat_no_valid_targets():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "minion"}
 
     # Skip backstab
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_UNIT"
     state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # Attack completes
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Repeat prompt -> YES (even though no other targets exist)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_OPTION"
     state.execution_stack[-1].pending_input = {"selection": "YES"}
 
     # Repeat steps spawn and auto-skip since no second target exists
     # Flow continues to completion
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Verify minion is defeated from first attack
     assert "minion" not in state.entity_locations
@@ -524,24 +524,24 @@ def test_violent_torrent_repeat_vs_heavy_minion():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion1 (gets defeated)
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
     # Attack completes, minion1 defeated
-    process_resolution_stack(state)
+    process_stack(state).input_request
     assert "minion1" not in state.entity_locations
 
     # Repeat prompt -> YES
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_OPTION"
     state.execution_stack[-1].pending_input = {"selection": "YES"}
 
     # Select second target -> heavy minion2 is NOT valid (immune due to support_minion)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     # Heavy minion is immune (support_minion present), so no candidates -> optional step auto-skips
     assert req is None, "Heavy minion should be filtered out (immune), step auto-skips"
 

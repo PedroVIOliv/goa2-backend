@@ -21,7 +21,7 @@ from goa2.engine.steps import (
     SwapUnitsStep,
     PushUnitStep,
 )
-from goa2.engine.handler import push_steps, process_resolution_stack
+from goa2.engine.handler import push_steps, process_stack
 
 
 @pytest.fixture
@@ -95,7 +95,7 @@ def test_fast_travel_step_scenarios(steps_state):
     push_steps(steps_state, [ft_seq])
 
     # Expand
-    res = process_resolution_stack(steps_state)
+    res = process_stack(steps_state).input_request
     assert res is not None
     assert res["type"] == "SELECT_HEX"
     # Should have multiple options (1,0,-1) and (1,-1,0) in Mid
@@ -105,7 +105,7 @@ def test_fast_travel_step_scenarios(steps_state):
     steps_state.execution_stack.clear()
     steps_state.place_entity("blocker", Hex(q=1, r=-1, s=0))
     push_steps(steps_state, [ft_seq])
-    res_auto = process_resolution_stack(steps_state)
+    res_auto = process_stack(steps_state).input_request
     # SelectStep with auto_select_if_one=False (default) still requests input if multiple hexes are candidate
     # But wait, FastTravelDestinationFilter should only allow (1,0,-1) now.
     assert res_auto is not None

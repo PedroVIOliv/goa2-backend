@@ -18,7 +18,7 @@ from goa2.engine.steps import (
     ResolveUpgradesStep,
     apply_hero_upgrade,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps, submit_input
+from goa2.engine.handler import process_stack, push_steps, submit_input
 
 
 @pytest.fixture
@@ -137,7 +137,7 @@ def test_end_phase_level_up_calculation(upgrade_state):
     step = EndPhaseCleanupStep()
     push_steps(upgrade_state, [step])
 
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     h1 = upgrade_state.get_hero("h1")
     assert h1.level == 3
@@ -156,7 +156,7 @@ def test_resolve_upgrades_options(upgrade_state):
     step = ResolveUpgradesStep()
     push_steps(upgrade_state, [step])
 
-    req = process_resolution_stack(upgrade_state)
+    req = process_stack(upgrade_state).input_request
     assert req["type"] == "UPGRADE_PHASE"
     assert req["player_id"] == "simultaneous"
 
@@ -203,17 +203,17 @@ def test_upgrade_loop_to_completion(upgrade_state):
     push_steps(upgrade_state, [step])
 
     # 1. End Phase -> Spawns ResolveUpgrades
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     # 2. ResolveUpgrades -> Returns Request
-    req = process_resolution_stack(upgrade_state)
+    req = process_stack(upgrade_state).input_request
     assert req["type"] == "UPGRADE_PHASE"
 
     # 3. Submit Choice 1: Red via submit_input
     submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "r2a"}})
 
     # 4. ResolveUpgrades processes input, then returns next request
-    req2 = process_resolution_stack(upgrade_state)
+    req2 = process_stack(upgrade_state).input_request
     assert req2 is not None
     assert req2["players"]["h1"]["remaining"] == 1
 
@@ -221,10 +221,10 @@ def test_upgrade_loop_to_completion(upgrade_state):
     submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "b2a"}})
 
     # 6. ResolveUpgrades processes input -> All done -> Spawns RoundReset
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     # 7. RoundReset runs
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     assert upgrade_state.round == 2
     assert upgrade_state.phase == GamePhase.PLANNING
@@ -240,7 +240,7 @@ def test_pity_coin_gain(upgrade_state):
     step = EndPhaseCleanupStep()
     push_steps(upgrade_state, [step])
 
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     assert h1.level == 1
     assert h1.gold == 1
@@ -323,14 +323,14 @@ def test_simultaneous_multi_player_upgrades(upgrade_state):
 
     # 1. Start End Phase
     push_steps(upgrade_state, [EndPhaseCleanupStep()])
-    process_resolution_stack(upgrade_state)
+    process_stack(upgrade_state).input_request
 
     # Verify Pending Counts
     assert upgrade_state.pending_upgrades["h1"] == 2
     assert upgrade_state.pending_upgrades["h2"] == 1
 
     # 2. Get first broadcast request
-    req = process_resolution_stack(upgrade_state)
+    req = process_stack(upgrade_state).input_request
     assert req["type"] == "UPGRADE_PHASE"
     assert "h1" in req["players"]
     assert "h2" in req["players"]
@@ -339,7 +339,7 @@ def test_simultaneous_multi_player_upgrades(upgrade_state):
     submit_input(upgrade_state, {"selection": {"hero_id": "h2", "card_id": "h2_b2a"}})
 
     # 4. Resolve again - H2 should be GONE from the broadcast, H1 still there with 2
-    req2 = process_resolution_stack(upgrade_state)
+    req2 = process_stack(upgrade_state).input_request
     assert "h2" not in req2["players"]
     assert req2["players"]["h1"]["remaining"] == 2
 
@@ -347,15 +347,15 @@ def test_simultaneous_multi_player_upgrades(upgrade_state):
     submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "r2a"}})
 
     # 6. Resolve again - H1 still there with 1
-    req3 = process_resolution_stack(upgrade_state)
+    req3 = process_stack(upgrade_state).input_request
     assert req3["players"]["h1"]["remaining"] == 1
 
     # 7. Submit H1 final pick via submit_input
     submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "b2a"}})
 
     # 8. Resolve again - All done, should reset round
-    process_resolution_stack(upgrade_state)  # ResolveUpgrades finishes
-    process_resolution_stack(upgrade_state)  # RoundReset runs
+    process_stack(upgrade_state).input_request  # ResolveUpgrades finishes
+    process_stack(upgrade_state).input_request  # RoundReset runs
 
     assert upgrade_state.round == 2
     assert upgrade_state.phase == GamePhase.PLANNING
@@ -407,7 +407,7 @@ def test_level_8_does_not_create_pending_upgrade():
 
     step = EndPhaseCleanupStep()
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Should be level 8
     assert h1.level == 8
@@ -466,7 +466,7 @@ def test_level_7_to_8_with_other_upgrades():
 
     step = EndPhaseCleanupStep()
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Should be level 8
     assert h1.level == 8
@@ -520,7 +520,7 @@ def test_no_pity_coin_when_only_ultimate_unlocked():
 
     step = EndPhaseCleanupStep()
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Should be level 8 with 0 gold (spent 7)
     assert h1.level == 8

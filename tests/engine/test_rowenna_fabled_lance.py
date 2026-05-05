@@ -31,7 +31,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.steps import AttackSequenceStep
-from goa2.engine.handler import push_steps, process_resolution_stack
+from goa2.engine.handler import push_steps, process_stack
 
 import goa2.scripts.rowenna_effects  # noqa: F401
 

@@ -11,7 +11,7 @@ from goa2.domain.models.unit import Hero
 from goa2.domain.types import HeroID
 from goa2.domain.input import InputResponse
 from goa2.engine.handler import (
-    process_stack, process_resolution_stack, submit_input, push_steps,
+    process_stack, submit_input, push_steps,
 )
 from goa2.engine.steps import (
     ConfirmResolutionStep, ResolveCardStep, FinalizeHeroTurnStep,

@@ -13,7 +13,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep, PlaceUnitStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 
@@ -91,23 +91,23 @@ def test_magnetic_dagger_flow(wasp_magnetic_state):
     push_steps(wasp_magnetic_state, [step])
 
     # 1. Action Choice (Attack)
-    req = process_resolution_stack(wasp_magnetic_state)
+    req = process_stack(wasp_magnetic_state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory) -> e1
-    req = process_resolution_stack(wasp_magnetic_state)
+    req = process_stack(wasp_magnetic_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "e1" in req["valid_options"]
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
 
     # 3. Reaction Window
-    req = process_resolution_stack(wasp_magnetic_state)
+    req = process_stack(wasp_magnetic_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Finish resolution
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
 
     # Verify effect created
     assert len(wasp_magnetic_state.active_effects) == 1
@@ -129,13 +129,13 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
     push_steps(wasp_magnetic_state, [step])
 
     # Attack e1
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
 
     # Finalize card to activate effects
     hero = wasp_magnetic_state.get_hero("wasp")
@@ -175,13 +175,13 @@ def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
     push_steps(wasp_magnetic_state, [step])
 
     # Attack e1
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_resolution_stack(wasp_magnetic_state)
+    process_stack(wasp_magnetic_state).input_request
 
     # Finalize card to activate effects
     hero = wasp_magnetic_state.get_hero("wasp")

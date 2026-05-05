@@ -5,7 +5,7 @@ from goa2.domain.models import Team, TeamColor, GamePhase
 from goa2.domain.types import HeroID
 from goa2.data.heroes.arien import create_arien
 from goa2.data.heroes.rogue import create_rogue
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 from goa2.engine.phases import commit_card
 from goa2.engine.map_loader import load_map
 
@@ -143,7 +143,7 @@ def test_swap_after_revelation_prompts_correct_card(state):
     # EXECUTE RESOLUTION
     # -------------------------------------------------------------------------
     # Process the step
-    input_request = process_resolution_stack(state)
+    input_request = process_stack(state).input_request
 
     # -------------------------------------------------------------------------
     # ASSERTIONS

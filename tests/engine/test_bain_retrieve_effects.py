@@ -18,7 +18,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.domain.types import HeroID
 from goa2.engine.steps import ResolveCardStep, RetrieveCardStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class TestRetrieveCardStepHeroKey:
         push_steps(state, [
             RetrieveCardStep(card_key="target_retrieve_card", hero_key="retrieve_target"),
         ])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         # Ally should have the card back in hand
         ally_ref = state.get_hero(HeroID("hero_ally"))
@@ -165,7 +165,7 @@ class TestRetrieveCardStepHeroKey:
         state.execution_context["my_card"] = "bain_discard"
 
         push_steps(state, [RetrieveCardStep(card_key="my_card")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         bain_ref = state.get_hero(HeroID("hero_bain"))
         assert any(c.id == "bain_discard" for c in bain_ref.hand)
@@ -180,7 +180,7 @@ class TestRetrieveCardStepHeroKey:
         push_steps(state, [
             RetrieveCardStep(card_key="my_card", hero_key="target_hero"),
         ])
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         assert result is None  # Stack finished, no crash
 
 
@@ -211,33 +211,33 @@ class TestDrinkingBuddies:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # 1. Choose action (SKILL)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "CHOOSE_ACTION"
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # 2. Select target hero (ally) — optional
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_ally"}
 
         # 3. Ally selects card from their discard
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "ally_discard_1"}
 
         # 4. Bain selects card from own discard (optional)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "bain_discard_1"}
 
         # 5. Process remaining steps (retrieve + finalize)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         ally_ref = state.get_hero(HeroID("hero_ally"))
         bain_ref = state.get_hero(HeroID("hero_bain"))
@@ -262,18 +262,18 @@ class TestDrinkingBuddies:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # Skip target selection
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
         # Should finish without more prompts
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # Nobody retrieved anything
         ally_ref = state.get_hero(HeroID("hero_ally"))
@@ -299,25 +299,25 @@ class TestDrinkingBuddies:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # Select ally
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_ally"}
 
         # Ally picks card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ally_discard_1"}
 
         # Bain skips his own retrieve
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         ally_ref = state.get_hero(HeroID("hero_ally"))
         bain_ref = state.get_hero(HeroID("hero_bain"))
@@ -337,24 +337,24 @@ class TestDrinkingBuddies:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # Select enemy hero
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # Enemy picks card from discard
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "enemy_discard_1"}
 
         # Bain's retrieve (skip — no cards in discard)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         enemy_ref = state.get_hero(HeroID("hero_enemy"))
         assert any(c.id == "enemy_discard_1" for c in enemy_ref.hand)
@@ -370,16 +370,16 @@ class TestDrinkingBuddies:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # No valid targets (ally has no discard) — step should be skipped or
         # offer no candidates. Since it's optional, it auto-skips.
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
             # Should not prompt for unit selection since no valid targets
             assert req["type"] != "SELECT_UNIT" or len(req.get("options", [])) > 0
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
 
 # ===========================================================================
@@ -414,17 +414,17 @@ class TestAnotherOne:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # Skip target selection (to get through quickly)
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
         # Process until done
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # A delayed trigger effect should have been created
         delayed = [
@@ -463,25 +463,25 @@ class TestAnotherOne:
         push_steps(state, [ResolveCardStep(hero_id="hero_bain")])
 
         # Choose action
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
         # Select ally for first retrieve
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "hero_ally"}
 
         # Ally picks card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ally_d1"}
 
         # Bain picks card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "bain_d1"}
 
         # Finish card resolution
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # Verify first retrieval worked
         ally_ref = state.get_hero(HeroID("hero_ally"))
@@ -496,25 +496,25 @@ class TestAnotherOne:
         # SetActorStep sets Bain as actor, then the retrieve sequence runs
 
         # Select ally for second retrieve
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "hero_ally"}
 
         # Ally picks second card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "ally_d2"}
 
         # Bain picks second card
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "bain_d2"}
 
         # Finish
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         while req is not None:
-            req = process_resolution_stack(state)
+            req = process_stack(state).input_request
 
         # Both should have retrieved second cards too
         ally_ref = state.get_hero(HeroID("hero_ally"))

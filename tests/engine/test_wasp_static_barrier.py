@@ -45,7 +45,7 @@ from goa2.engine.steps import (
     FinalizeHeroTurnStep,
 )
 from goa2.engine.filters import MovementPathFilter
-from goa2.engine.handler import process_resolution_stack, process_stack, push_steps, submit_input
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.effect_manager import EffectManager
 import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 
@@ -410,7 +410,7 @@ class TestStaticBarrierMovementIntegration:
             range_val=5,
         )
         push_steps(state, [step])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         # Unit should NOT have moved — barrier blocks destination
         from goa2.domain.state import BoardEntityID
@@ -432,7 +432,7 @@ class TestStaticBarrierMovementIntegration:
             range_val=2,
         )
         push_steps(state, [step])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         from goa2.domain.state import BoardEntityID
         loc = state.entity_locations.get(BoardEntityID("enemy_outside"))
@@ -470,7 +470,7 @@ class TestStaticBarrierMovementIntegration:
             distance=2,
         )
         push_steps(state, [step])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         # Push direction is from (4,0,-4) toward (3,0,-3), continuing to (2,0,-2)
         # (2,0,-2) is inside radius — should be obstacle for enemy_outside actor

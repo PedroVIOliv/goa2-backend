@@ -19,7 +19,7 @@ from goa2.domain.models.enums import StatType
 from goa2.domain.models.spawn import MinionType, SpawnPoint, SpawnType
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import compute_card_stats
 
 
@@ -128,9 +128,9 @@ def _run_effect(state):
     if not steps:
         return
     push_steps(state, steps)
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
 
 class TestDarkestRitualCoins:
@@ -222,9 +222,9 @@ class TestGainItemStep:
                 GainItemStep(hero_key="self", stat_type=StatType.ATTACK),
             ],
         )
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         assert hero.items[StatType.ATTACK] == 1
 
@@ -243,9 +243,9 @@ class TestGainItemStep:
                 GainItemStep(hero_key="self", stat_type=StatType.DEFENSE),
             ],
         )
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         assert hero.items[StatType.ATTACK] == 1
         assert hero.items[StatType.DEFENSE] == 1

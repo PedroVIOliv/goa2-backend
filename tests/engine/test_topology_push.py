@@ -17,7 +17,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import PushUnitStep
-from goa2.engine.handler import push_steps, process_resolution_stack
+from goa2.engine.handler import push_steps, process_stack
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ def test_push_blocked_by_split(push_topology_state):
     )
 
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Verify m_left did NOT move
     new_loc = state.unit_locations["m_left"]
@@ -164,7 +164,7 @@ def test_push_crosses_bridge(push_topology_state):
     )
 
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Verify m_left moved all the way to Right
     new_loc = state.unit_locations["m_left"]

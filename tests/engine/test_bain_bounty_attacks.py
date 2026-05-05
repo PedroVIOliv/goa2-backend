@@ -29,7 +29,7 @@ from goa2.engine.steps import (
     SelectStep,
 )
 from goa2.engine.filters import HasMarkerFilter, RangeFilter, TeamFilter, UnitTypeFilter
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import CardStats
 
 
@@ -186,9 +186,9 @@ def test_bounty_defeat_adds_extra_life_counter_penalty(game_state):
     initial_counters = game_state.teams[TeamColor.BLUE].life_counters
 
     push_steps(game_state, [DefeatUnitStep(victim_id="enemy_hero")])
-    result = process_resolution_stack(game_state)
+    result = process_stack(game_state).input_request
     while result is not None:
-        result = process_resolution_stack(game_state)
+        result = process_stack(game_state).input_request
 
     # Level 1 hero: base penalty 1 + bounty 1 = 2
     assert game_state.teams[TeamColor.BLUE].life_counters == initial_counters - 2
@@ -199,9 +199,9 @@ def test_defeat_without_bounty_normal_penalty(game_state):
     initial_counters = game_state.teams[TeamColor.BLUE].life_counters
 
     push_steps(game_state, [DefeatUnitStep(victim_id="enemy_hero")])
-    result = process_resolution_stack(game_state)
+    result = process_stack(game_state).input_request
     while result is not None:
-        result = process_resolution_stack(game_state)
+        result = process_stack(game_state).input_request
 
     # Level 1 hero: base penalty 1
     assert game_state.teams[TeamColor.BLUE].life_counters == initial_counters - 1

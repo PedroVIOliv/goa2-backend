@@ -5,7 +5,7 @@ from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero
 from goa2.domain.types import HeroID, UnitID
 from goa2.domain.hex import Hex
 from goa2.engine.steps import DefeatUnitStep, RemoveUnitStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def create_hero(id_str, team):
     hero = Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
@@ -46,7 +46,7 @@ def test_defeat_minion_rewards(combat_state):
     step = DefeatUnitStep(victim_id=minion.id, killer_id=killer.id)
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     # 1. Check Gold
     assert killer.gold == 2
@@ -64,7 +64,7 @@ def test_defeat_heavy_minion_rewards(combat_state):
     step = DefeatUnitStep(victim_id=heavy.id, killer_id=killer.id)
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert killer.gold == 4
     assert heavy.id not in state.unit_locations
@@ -76,7 +76,7 @@ def test_defeat_hero_rewards(combat_state):
     step = DefeatUnitStep(victim_id=hero_v.id, killer_id=killer.id)
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     # 1. Check Gold
     assert killer.gold == 3
@@ -91,7 +91,7 @@ def test_remove_unit_no_rewards(combat_state):
     step = RemoveUnitStep(unit_id=minion.id)
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     # 1. Check Gold (Should be 0)
     assert killer.gold == 0
@@ -110,4 +110,4 @@ def test_defeat_unknown_unit_raises_error():
     push_steps(state, [step])
     
     with pytest.raises(ValueError, match="Cannot defeat unknown unit: ghost_unit"):
-        process_resolution_stack(state)
+        process_stack(state).input_request

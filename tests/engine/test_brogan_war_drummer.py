@@ -23,7 +23,7 @@ from goa2.engine.steps import (
     ResolveCardStep,
     RoundResetStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def _make_card(card_id, name, effect_id, **overrides):
@@ -85,7 +85,7 @@ class TestGainCoinsStep:
 
         state.execution_context["target"] = "ally"
         push_steps(state, [GainCoinsStep(hero_key="target", amount=3)])
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
         assert ally.gold == 3
         assert result is None
@@ -93,13 +93,13 @@ class TestGainCoinsStep:
     def test_missing_hero_key_is_noop(self, coin_state):
         state = coin_state
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5)])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
     def test_invalid_hero_id_is_noop(self, coin_state):
         state = coin_state
         state.execution_context["target"] = "nonexistent_hero"
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5)])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
     def test_amount_key_overrides_static(self, coin_state):
         state = coin_state
@@ -107,7 +107,7 @@ class TestGainCoinsStep:
         state.execution_context["target"] = "ally"
         state.execution_context["dynamic_coins"] = 7
         push_steps(state, [GainCoinsStep(hero_key="target", amount=1, amount_key="dynamic_coins")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 7
 
     def test_amount_key_falls_back_to_static(self, coin_state):
@@ -115,7 +115,7 @@ class TestGainCoinsStep:
         ally = state.get_hero(HeroID("ally"))
         state.execution_context["target"] = "ally"
         push_steps(state, [GainCoinsStep(hero_key="target", amount=2, amount_key="missing_key")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 2
 
     def test_active_if_key_skips_when_none(self, coin_state):
@@ -124,7 +124,7 @@ class TestGainCoinsStep:
         state.execution_context["target"] = "ally"
         state.execution_context["flag"] = None
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5, active_if_key="flag")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 0
 
     def test_active_if_key_runs_when_set(self, coin_state):
@@ -133,7 +133,7 @@ class TestGainCoinsStep:
         state.execution_context["target"] = "ally"
         state.execution_context["flag"] = True
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5, active_if_key="flag")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 5
 
     def test_skip_if_key_skips_when_set(self, coin_state):
@@ -142,7 +142,7 @@ class TestGainCoinsStep:
         state.execution_context["target"] = "ally"
         state.execution_context["flag"] = True
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5, skip_if_key="flag")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 0
 
     def test_skip_if_key_runs_when_none(self, coin_state):
@@ -151,7 +151,7 @@ class TestGainCoinsStep:
         state.execution_context["target"] = "ally"
         state.execution_context["flag"] = None
         push_steps(state, [GainCoinsStep(hero_key="target", amount=5, skip_if_key="flag")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert ally.gold == 5
 
 
@@ -164,14 +164,14 @@ class TestCheckHeroDefeatedThisRoundStep:
     def test_no_defeats_sets_none(self, coin_state):
         state = coin_state
         push_steps(state, [CheckHeroDefeatedThisRoundStep(output_key="hero_died")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context["hero_died"] is None
 
     def test_with_defeats_sets_true(self, coin_state):
         state = coin_state
         state.heroes_defeated_this_round.append(HeroID("enemy"))
         push_steps(state, [CheckHeroDefeatedThisRoundStep(output_key="hero_died")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context["hero_died"] is True
 
 
@@ -186,7 +186,7 @@ class TestHeroDefeatedTracking:
         assert state.heroes_defeated_this_round == []
 
         push_steps(state, [DefeatUnitStep(victim_id="enemy", killer_id="brogan")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         assert HeroID("enemy") in state.heroes_defeated_this_round
 
@@ -195,7 +195,7 @@ class TestHeroDefeatedTracking:
         state.heroes_defeated_this_round.append(HeroID("enemy"))
 
         push_steps(state, [DefeatUnitStep(victim_id="enemy", killer_id="brogan")])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         assert state.heroes_defeated_this_round.count(HeroID("enemy")) == 1
 
@@ -204,7 +204,7 @@ class TestHeroDefeatedTracking:
         state.heroes_defeated_this_round.append(HeroID("enemy"))
 
         push_steps(state, [RoundResetStep()])
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
         assert state.heroes_defeated_this_round == []
 
@@ -217,15 +217,15 @@ class TestHeroDefeatedTracking:
 class TestWarDrummerIntegration:
     def _choose_action_and_select(self, state, ally_id="ally"):
         """Drive through CHOOSE_ACTION → SELECT_UNIT prompts."""
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "CHOOSE_ACTION"
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": ally_id}
-        return process_resolution_stack(state)
+        return process_stack(state).input_request
 
     def test_no_hero_died_grants_1_coin(self, coin_state):
         state = coin_state
@@ -268,15 +268,15 @@ class TestWarDrummerIntegration:
 class TestMasterSkaldIntegration:
     def _choose_action_and_select(self, state, ally_id="ally"):
         """Drive through CHOOSE_ACTION → SELECT_UNIT prompts."""
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "CHOOSE_ACTION"
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": ally_id}
-        return process_resolution_stack(state)
+        return process_stack(state).input_request
 
     def test_no_hero_died_grants_2_coins(self, coin_state):
         state = coin_state

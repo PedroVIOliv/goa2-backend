@@ -5,7 +5,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.steps import ResolveCombatStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 def create_hero(id_str, team):
     return Hero(id=HeroID(id_str), name=id_str, team=team, deck=[])
@@ -62,7 +62,7 @@ def test_combat_friendly_aura_save(aura_state):
     step = ResolveCombatStep(damage=4, target_key="victim_id")
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     # Check: Victim should be alive (Blocked)
     assert victim.id in state.unit_locations
@@ -91,7 +91,7 @@ def test_combat_enemy_debuff_kill(aura_state):
     step = ResolveCombatStep(damage=4, target_key="victim_id")
     push_steps(state, [step])
     
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     # Check: Victim should be dead (Hit -> Defeat -> Remove)
     assert victim.id not in state.unit_locations
@@ -115,6 +115,6 @@ def test_combat_ranged_debuff(aura_state):
     
     step = ResolveCombatStep(damage=4, target_key="victim_id")
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     
     assert victim.id not in state.unit_locations

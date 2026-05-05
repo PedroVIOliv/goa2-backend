@@ -28,7 +28,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.state import GameState
 from goa2.engine.setup import GameSetup
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     EndPhaseCleanupStep,
     LanePushStep,
@@ -173,11 +173,11 @@ def test_clear_action_removes_adjacent_tokens():
     )
 
     push_steps(state, [ResolveCardStep(hero_id="hero_a")])
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "CLEAR"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "smoke_bomb_1"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
     assert "smoke_bomb_1" not in state.entity_locations
 
 

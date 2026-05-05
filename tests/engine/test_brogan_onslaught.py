@@ -15,7 +15,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.steps import ResolveCardStep, RecordHexStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def _make_onslaught_card():

@@ -24,7 +24,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 
 # Register xargatha effects
@@ -216,11 +216,11 @@ class TestThreateningSlashEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count step runs, then SELECT_UNIT for attack target
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req["type"] == "SELECT_UNIT"
 
         # With 3 adjacent enemies, bonus = (3-1)*1 = 2, so damage = 5+2 = 7
@@ -279,10 +279,10 @@ class TestThreateningSlashEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         # Only 1 enemy adjacent, subtract 1 -> bonus = 0
         assert state.execution_context.get("adj_atk_bonus") == 0
 
@@ -318,10 +318,10 @@ class TestDeadlySwipeEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 4
 
     def test_attack_range_is_adjacent(self):
@@ -367,10 +367,10 @@ class TestLethalSpinEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 6
 
     def test_full_flow_bonus_with_six_adjacent(self):
@@ -383,10 +383,10 @@ class TestLethalSpinEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_resolution_stack(state)
+        process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 15
 
     def test_attack_range_is_adjacent(self):

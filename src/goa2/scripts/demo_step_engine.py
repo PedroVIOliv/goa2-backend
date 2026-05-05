@@ -2,7 +2,7 @@ from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor
 from goa2.engine.steps import LogMessageStep, SelectStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def run_demo():
@@ -42,21 +42,21 @@ def run_demo():
     push_steps(state, card_steps)
 
     print("\n[2] Engine Processing (Pass 1)...")
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     print(f"[!] Paused. Request: {req}")
 
     print("   -> Red Player selects 'hero_blue_01'")
     state.execution_stack[-1].pending_input = {"selected_id": "hero_blue_01"}
 
     print("\n[3] Engine Processing (Pass 2)...")
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     print(f"[!] Paused. Request: {req}")
 
     print("   -> Blue Player selects 'card_deflect'")
     state.execution_stack[-1].pending_input = {"selected_id": "card_deflect"}
 
     print("\n[4] Engine Processing (Pass 3)...")
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
 
     if not req:
         print("\n[=] Resolution Complete.")

@@ -30,7 +30,7 @@ from goa2.engine.steps import (
 )
 from goa2.engine.filters import RangeFilter, TeamFilter
 from goa2.domain.models.enums import TargetType
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 # --- Fixtures ---
 
@@ -127,13 +127,13 @@ def test_select_target_flow(empty_state):
     push_steps(empty_state, [step])
 
     # Pass 1: Request
-    req = process_resolution_stack(empty_state)
+    req = process_stack(empty_state).input_request
     assert req is not None
     assert req["type"] == "SELECT_UNIT"
 
     # Pass 2: Provide Input
     empty_state.execution_stack[-1].pending_input = {"selection": "target_1"}
-    req = process_resolution_stack(empty_state)
+    req = process_stack(empty_state).input_request
 
     assert req is None  # Done
     assert empty_state.execution_context["target_id"] == "target_1"
@@ -147,14 +147,14 @@ def test_reaction_window_validation(combat_state):
     push_steps(combat_state, [step])
 
     # Pass 1: Request Input
-    req = process_resolution_stack(combat_state)
+    req = process_stack(combat_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
     assert any(o["id"] == "def_card_1" for o in req["options"])
     assert any(o["id"] == "PASS" for o in req["options"])
 
     # Pass 2: Select Invalid Card
     combat_state.execution_stack[-1].pending_input = {"selection": "def_card_1"}
-    process_resolution_stack(combat_state)
+    process_stack(combat_state).input_request
 
     assert combat_state.execution_context["defense_value"] == 5
 
@@ -167,7 +167,7 @@ def test_combat_resolution_block(combat_state):
     step = ResolveCombatStep(damage=3, target_key="victim_id")
     push_steps(combat_state, [step])
 
-    process_resolution_stack(combat_state)
+    process_stack(combat_state).input_request
 
 
 def test_combat_resolution_hit(combat_state):
@@ -178,7 +178,7 @@ def test_combat_resolution_hit(combat_state):
     step = ResolveCombatStep(damage=3, target_key="victim_id")
     push_steps(combat_state, [step])
 
-    process_resolution_stack(combat_state)
+    process_stack(combat_state).input_request
 
 
 def test_attack_sequence_expansion(combat_state):
@@ -193,7 +193,7 @@ def test_attack_sequence_expansion(combat_state):
     push_steps(combat_state, [step])
 
     # Run once to expand
-    process_resolution_stack(combat_state)
+    process_stack(combat_state).input_request
 
     # Now stack should have SelectStep at top waiting for input
     current = combat_state.execution_stack[-1]
@@ -299,7 +299,7 @@ def test_reaction_window_minion_skip(combat_state):
     push_steps(combat_state, [step])
 
     # Run stack
-    req = process_resolution_stack(combat_state)
+    req = process_stack(combat_state).input_request
 
     # Assertions
     assert req is None  # Should not request input
@@ -315,7 +315,7 @@ def test_reaction_window_hero_prompt(combat_state):
     push_steps(combat_state, [step])
 
     # Run stack
-    req = process_resolution_stack(combat_state)
+    req = process_stack(combat_state).input_request
 
     # Assertions
     assert req is not None

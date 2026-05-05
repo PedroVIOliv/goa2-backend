@@ -27,7 +27,7 @@ from goa2.domain.models import (
 from goa2.domain.models.enums import TargetType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 
 
@@ -153,7 +153,7 @@ def _make_enraged(state):
 
 def _drive_choose_action(state, action: str):
     """Process stack and provide CHOOSE_ACTION input."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is not None, "Expected CHOOSE_ACTION request"
     assert req["type"] == "CHOOSE_ACTION"
     state.execution_stack[-1].pending_input = {"selection": action}
@@ -161,7 +161,7 @@ def _drive_choose_action(state, action: str):
 
 def _drive_select_unit(state, unit_id: str):
     """Process stack and provide SELECT_UNIT input."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is not None, "Expected SELECT_UNIT request"
     assert req["type"] == "SELECT_UNIT"
     state.execution_stack[-1].pending_input = {"selection": unit_id}
@@ -169,7 +169,7 @@ def _drive_select_unit(state, unit_id: str):
 
 def _drive_select_hex(state, hex_: Hex):
     """Process stack and provide SELECT_HEX input."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is not None, "Expected SELECT_HEX request"
     assert req["type"] == "SELECT_HEX"
     state.execution_stack[-1].pending_input = {"selection": hex_.model_dump()}
@@ -177,7 +177,7 @@ def _drive_select_hex(state, hex_: Hex):
 
 def _drive_reaction_pass(state):
     """Process stack and pass on reaction window."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is not None, "Expected reaction window"
     assert req["type"] == "SELECT_CARD_OR_PASS"
     state.execution_stack[-1].pending_input = {"selection": "PASS"}
@@ -185,7 +185,7 @@ def _drive_reaction_pass(state):
 
 def _drive_select_card(state, card_id: str):
     """Process stack and provide SELECT_CARD input."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is not None, "Expected SELECT_CARD request"
     assert req["type"] == "SELECT_CARD"
     state.execution_stack[-1].pending_input = {"selection": card_id}
@@ -193,7 +193,7 @@ def _drive_select_card(state, card_id: str):
 
 def _finish(state):
     """Process stack and assert it finishes."""
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req is None, f"Expected stack to finish but got: {req}"
 
 
@@ -212,7 +212,7 @@ class TestColdIre:
         _drive_choose_action(base_state, "MOVEMENT")
 
         # SELECT_HEX for movement — range=1 means adjacent hexes + current
-        req = process_resolution_stack(base_state)
+        req = process_stack(base_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
@@ -221,9 +221,9 @@ class TestColdIre:
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 
         # Finish (remaining steps auto-resolve)
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert base_state.entity_locations["hero_ursafar"] == dest
 
@@ -237,7 +237,7 @@ class TestColdIre:
         _drive_choose_action(base_state, "MOVEMENT")
 
         # SELECT_HEX — range=2 now
-        req = process_resolution_stack(base_state)
+        req = process_stack(base_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
@@ -245,9 +245,9 @@ class TestColdIre:
         dest = Hex(q=-2, r=0, s=2)
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert base_state.entity_locations["hero_ursafar"] == dest
 
@@ -262,13 +262,13 @@ class TestColdIre:
         _drive_choose_action(base_state, "MOVEMENT")
 
         # Move to adjacent
-        req = process_resolution_stack(base_state)
+        req = process_stack(base_state).input_request
         dest = Hex(q=-1, r=0, s=1)
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         enraged_effects = [
             e for e in base_state.active_effects if e.effect_type == EffectType.ENRAGED
@@ -291,16 +291,16 @@ class TestEyesOfFlame:
         push_steps(base_state, [ResolveCardStep(hero_id="hero_ursafar")])
         _drive_choose_action(base_state, "MOVEMENT")
 
-        req = process_resolution_stack(base_state)
+        req = process_stack(base_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
         dest = Hex(q=-1, r=0, s=1)
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert base_state.entity_locations["hero_ursafar"] == dest
 
@@ -313,7 +313,7 @@ class TestEyesOfFlame:
         push_steps(base_state, [ResolveCardStep(hero_id="hero_ursafar")])
         _drive_choose_action(base_state, "MOVEMENT")
 
-        req = process_resolution_stack(base_state)
+        req = process_stack(base_state).input_request
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
@@ -321,9 +321,9 @@ class TestEyesOfFlame:
         dest = Hex(q=-3, r=0, s=3)
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert base_state.entity_locations["hero_ursafar"] == dest
 
@@ -345,9 +345,9 @@ class TestRip:
         _drive_select_unit(base_state, "enemy")
         _drive_reaction_pass(base_state)
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         # 1 gold from defeating enemy, 0 from Rip effect (not enraged)
         assert hero.gold == 1
@@ -364,9 +364,9 @@ class TestRip:
         _drive_select_unit(base_state, "enemy")
         _drive_reaction_pass(base_state)
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         # 1 gold from defeating enemy + 1 from Rip effect (enraged)
         assert hero.gold == 2
@@ -383,9 +383,9 @@ class TestRip:
         _drive_select_unit(base_state, "enemy")
         _drive_reaction_pass(base_state)
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         enraged_effects = [
             e for e in base_state.active_effects if e.effect_type == EffectType.ENRAGED
@@ -409,9 +409,9 @@ class TestSniffOut:
         push_steps(base_state, [ResolveCardStep(hero_id="hero_ursafar")])
         _drive_choose_action(base_state, "SKILL")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert len(enemy.hand) == hand_size_before
 
@@ -432,9 +432,9 @@ class TestSniffOut:
         # ForceDiscardStep — enemy selects card to discard
         _drive_select_card(base_state, "enemy_card_1")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert len(enemy.hand) == hand_size_before - 1
         assert any(c.id == "enemy_card_1" for c in enemy.discard_pile)
@@ -452,9 +452,9 @@ class TestSniffOut:
         _drive_select_unit(base_state, "enemy")
         _drive_select_card(base_state, "enemy_card_1")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         enraged_effects = [
             e for e in base_state.active_effects if e.effect_type == EffectType.ENRAGED
@@ -476,9 +476,9 @@ class TestSniffOut:
         _drive_choose_action(base_state, "SKILL")
 
         # Should abort since mandatory select has no valid targets
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         enemy = base_state.get_hero(HeroID("enemy"))
         assert len(enemy.hand) == 2  # No discard happened
@@ -506,9 +506,9 @@ class TestEyesOnThePrey:
         _drive_select_unit(base_state, "enemy")
         _drive_select_card(base_state, "enemy_card_1")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         enemy = base_state.get_hero(HeroID("enemy"))
         assert len(enemy.hand) == 1
@@ -529,9 +529,9 @@ class TestApexPredator:
         push_steps(base_state, [ResolveCardStep(hero_id="hero_ursafar")])
         _drive_choose_action(base_state, "SKILL")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert len(enemy.hand) == 2
 
@@ -549,9 +549,9 @@ class TestApexPredator:
         # ForceDiscardOrDefeatStep — enemy has cards, so they discard
         _drive_select_card(base_state, "enemy_card_1")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         assert len(enemy.hand) == 1
         assert any(c.id == "enemy_card_1" for c in enemy.discard_pile)
@@ -568,9 +568,9 @@ class TestApexPredator:
         _drive_choose_action(base_state, "SKILL")
         _drive_select_unit(base_state, "enemy")
 
-        result = process_resolution_stack(base_state)
+        result = process_stack(base_state).input_request
         while result is not None:
-            result = process_resolution_stack(base_state)
+            result = process_stack(base_state).input_request
 
         # Enemy should be defeated (removed from board)
         assert base_state.entity_locations.get("enemy") is None

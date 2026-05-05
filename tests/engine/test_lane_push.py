@@ -6,7 +6,7 @@ from goa2.domain.models import Team, TeamColor, Minion, MinionType, GamePhase
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.types import UnitID
 from goa2.engine.steps import EndPhaseStep, DefeatUnitStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.map_logic import get_push_target_zone_id
 
@@ -60,7 +60,7 @@ def test_end_phase_push_trigger(push_state):
 
     step = EndPhaseStep()
     push_steps(push_state, [step])
-    process_resolution_stack(push_state)
+    process_stack(push_state).input_request
 
     assert push_state.wave_counter == 4
     assert push_state.active_zone_id == "z_red_beach"
@@ -82,7 +82,7 @@ def test_combat_push_trigger(push_state):
 
     step = DefeatUnitStep(victim_id=m_blue.id, killer_id=m_red.id)
     push_steps(push_state, [step])
-    process_resolution_stack(push_state)
+    process_stack(push_state).input_request
 
     assert push_state.active_zone_id == "z_blue_beach"
     assert push_state.wave_counter == 4
@@ -100,7 +100,7 @@ def test_last_push_victory(push_state):
 
     step = EndPhaseStep()
     push_steps(push_state, [step])
-    process_resolution_stack(push_state)
+    process_stack(push_state).input_request
 
     assert push_state.wave_counter == 0
     assert push_state.phase == GamePhase.GAME_OVER
@@ -159,7 +159,7 @@ def test_lane_push_spawns_minions_in_new_zone():
 
     step = EndPhaseStep()
     push_steps(state, [step])
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     assert state.active_zone_id == "z_red_beach"
     assert state.unit_locations.get(m_red.id) == red_beach_hex_1
@@ -180,7 +180,7 @@ def test_push_from_blue_beach_triggers_game_over(push_state):
 
     step = EndPhaseStep()
     push_steps(push_state, [step])
-    process_resolution_stack(push_state)
+    process_stack(push_state).input_request
 
     assert push_state.phase == GamePhase.GAME_OVER
     assert push_state.winner == TeamColor.RED
@@ -198,7 +198,7 @@ def test_push_from_red_beach_triggers_game_over(push_state):
 
     step = EndPhaseStep()
     push_steps(push_state, [step])
-    process_resolution_stack(push_state)
+    process_stack(push_state).input_request
 
     assert push_state.phase == GamePhase.GAME_OVER
     assert push_state.winner == TeamColor.BLUE

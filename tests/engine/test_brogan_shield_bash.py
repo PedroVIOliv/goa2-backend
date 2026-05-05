@@ -16,7 +16,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.engine.filters import PlayedCardFilter
 from goa2.engine.steps import ResolveCardStep, SelectStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.domain.models.enums import TargetType
 
 
@@ -314,7 +314,7 @@ class TestShieldBashEffect:
             ],
         )
         push_steps(state, [select])
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
@@ -350,7 +350,7 @@ class TestShieldBashEffect:
             ],
         )
         push_steps(state, [select])
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
         # Should auto-skip since no valid targets (optional step)
         assert req is None
@@ -394,19 +394,19 @@ class TestShieldBashEffect:
         )
 
         # 1. Select the enemy
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_UNIT"
         state.execution_stack[-1].pending_input = {"selection": "enemy"}
 
         # 2. ForceDiscardStep resolves and spawns card selection for victim
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is not None
         assert req["type"] == "SELECT_CARD"
         state.execution_stack[-1].pending_input = {"selection": "enemy_hand_card"}
 
         # 3. DiscardCardStep resolves
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
         assert req is None
 
         # Enemy's card was discarded

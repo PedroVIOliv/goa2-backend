@@ -8,7 +8,7 @@ from goa2.engine.steps import (
     MoveSequenceStep,
     FastTravelSequenceStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def test_move_sequence_spawns_selection(base_state):
     push_steps(base_state, [step])
 
     # Process
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is not None
     assert req["type"] == "SELECT_HEX"
@@ -64,7 +64,7 @@ def test_move_sequence_skips_selection_with_key(base_state):
     step = MoveSequenceStep(unit_id="hero_red", range_val=1)
     push_steps(base_state, [step])
 
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is None  # No input needed
     assert base_state.entity_locations["hero_red"] == Hex(q=1, r=0, s=-1)
@@ -75,7 +75,7 @@ def test_move_sequence_range_zero_only_current_hex(base_state):
     step = MoveSequenceStep(unit_id="hero_red", range_val=0)
     push_steps(base_state, [step])
 
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is not None
     assert len(req["valid_options"]) == 1
@@ -89,7 +89,7 @@ def test_fast_travel_sequence_flow(base_state):
     step = FastTravelSequenceStep(unit_id="hero_red")
     push_steps(base_state, [step])
 
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is not None
     assert req["type"] == "SELECT_HEX"
@@ -104,7 +104,7 @@ def test_fast_travel_sequence_skips_selection_with_key(base_state):
     step = FastTravelSequenceStep(unit_id="hero_red")
     push_steps(base_state, [step])
 
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is None
     assert base_state.entity_locations["hero_red"] == Hex(q=1, r=0, s=-1)
@@ -128,7 +128,7 @@ def test_move_sequence_obstacle_pathfinding(base_state):
     # Case 1: Movement range 2
     step_2 = MoveSequenceStep(unit_id="hero_red", range_val=2)
     push_steps(base_state, [step_2])
-    req_2 = process_resolution_stack(base_state)
+    req_2 = process_stack(base_state).input_request
 
     assert req_2 is not None
     # target should NOT be in options (compare as dict)
@@ -138,7 +138,7 @@ def test_move_sequence_obstacle_pathfinding(base_state):
     base_state.execution_stack.clear()
     step_3 = MoveSequenceStep(unit_id="hero_red", range_val=3)
     push_steps(base_state, [step_3])
-    req_3 = process_resolution_stack(base_state)
+    req_3 = process_stack(base_state).input_request
 
     assert req_3 is not None
     # target SHOULD be in options. Plus neighbors, plus current hex.
@@ -154,7 +154,7 @@ def test_move_sequence_always_allows_current_hex(base_state):
     step = MoveSequenceStep(unit_id="hero_red", range_val=2)
     push_steps(base_state, [step])
 
-    req = process_resolution_stack(base_state)
+    req = process_stack(base_state).input_request
 
     assert req is not None
     # start (0,0,0) SHOULD be in valid options even though range > 0

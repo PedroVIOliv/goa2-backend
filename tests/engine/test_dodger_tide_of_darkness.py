@@ -26,7 +26,7 @@ from goa2.domain.models.spawn import MinionType, SpawnPoint, SpawnType
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import BattleZoneFilter, SpawnPointTeamFilter
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import compute_card_stats
 
 
@@ -337,9 +337,9 @@ class TestDarkRitualWithTide:
         assert len(steps) > 0, "Should produce steps with Tide override"
 
         push_steps(state, steps)
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         assert hero.gold == 1
 
@@ -402,9 +402,9 @@ class TestDarkestRitualWithTide:
         assert len(steps) > 0
 
         push_steps(state, steps)
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
         while result is not None:
-            result = process_resolution_stack(state)
+            result = process_stack(state).input_request
 
         assert hero.gold == 2
         assert hero.items[StatType.ATTACK] == 1

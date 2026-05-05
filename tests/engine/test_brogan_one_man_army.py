@@ -18,7 +18,7 @@ from goa2.domain.models import (
 from goa2.domain.hex import Hex
 from goa2.domain.types import HeroID
 from goa2.engine.steps import MinionBattleStep
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 
 
 def _make_ultimate_card():
@@ -104,7 +104,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 3, start_q=3)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # Tied — no removals
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 2
@@ -119,7 +119,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 3, start_q=3)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # No bonus → 2 vs 3 → red loses 1
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 1
@@ -134,7 +134,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 3, start_q=3)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # No bonus → 2 vs 3 → red loses 1
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 1
@@ -146,7 +146,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 2, start_q=4)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # Blue loses 2 — all blue minions removed
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 3
@@ -161,7 +161,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 3, start_q=3)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # No bonus → 2 vs 3 → red loses 1
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 1
@@ -189,7 +189,7 @@ class TestOneManArmy:
         _add_minions(battle_state, TeamColor.BLUE, 3, start_q=3)
 
         push_steps(battle_state, [MinionBattleStep()])
-        process_resolution_stack(battle_state)
+        process_stack(battle_state).input_request
 
         # No bonus → 2 vs 3 → red loses 1
         assert _count_minions_in_zone(battle_state, TeamColor.RED) == 1

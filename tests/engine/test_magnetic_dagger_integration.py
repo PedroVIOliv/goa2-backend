@@ -15,7 +15,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.hex import Hex
 from goa2.domain.tile import Tile
-from goa2.engine.handler import process_resolution_stack
+from goa2.engine.handler import process_stack
 from goa2.engine.phases import commit_card
 
 import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
@@ -110,25 +110,25 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
     # 3. SELECT_CARD_OR_PASS (Reaction) -> PASS
 
     # -- Rogue's Turn --
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "CHOOSE_ACTION"
     assert req["player_id"] == "rogue"
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_UNIT"  # Attack Target
     state.execution_stack[-1].pending_input = {"selection": rogue_target}
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     if req and req["type"] == "SELECT_CARD_OR_PASS":  # Reaction
         state.execution_stack[-1].pending_input = {"selected_card_id": "PASS"}
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
     # Handle ConfirmResolutionStep for Rogue if it appears
     # (no opponent prompted when attacking a minion)
     if req and req.get("type") == "CHOOSE_ACTION" and req.get("player_id") == "rogue":
         state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-        req = process_resolution_stack(state)
+        req = process_stack(state).input_request
 
     # Rogue turn finishes. Effect created.
     # Engine automatically loops to FindNextActor -> Arien.
@@ -141,17 +141,17 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
     assert req["player_id"] == "arien"
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     assert req["type"] == "SELECT_HEX"
     if arien_target_hex:
         state.execution_stack[-1].pending_input = {"selection": arien_target_hex}
 
     # Execute Placement (will fail if blocked)
-    req = process_resolution_stack(state)
+    req = process_stack(state).input_request
     # Handle ConfirmResolutionStep if it appears (no opponent prompted during Arien's turn)
     if req and req.get("type") == "CHOOSE_ACTION" and "Confirm" in str(req.get("options", [])):
         state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-        process_resolution_stack(state)
+        process_stack(state).input_request
 
 
 def test_integration_dagger_blocks_leap(integrated_state):

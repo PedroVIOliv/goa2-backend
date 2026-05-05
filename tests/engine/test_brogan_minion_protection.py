@@ -19,7 +19,7 @@ from goa2.domain.hex import Hex
 from goa2.engine.steps import (
     DefeatUnitStep,
 )
-from goa2.engine.handler import process_resolution_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.effect_manager import EffectManager
 from goa2.domain.models.effect import (
     EffectType,
@@ -167,7 +167,7 @@ def test_basic_protection_saves_minion(protection_state):
 
     # Defeat the minion
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Should get CheckMinionProtectionStep asking Brogan to discard
     assert result is not None
@@ -176,7 +176,7 @@ def test_basic_protection_saves_minion(protection_state):
 
     # Brogan chooses to discard silver1
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Minion should still be on the board
     assert state.entity_locations.get("minion_red_1") is not None
@@ -195,14 +195,14 @@ def test_gold_awarded_even_when_protected(protection_state):
     gold_before = enemy.gold
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Gold was awarded in DefeatUnitStep before protection check
     assert enemy.gold == gold_before + 2  # MELEE minion value = 2
 
     # Protect the minion
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
-    process_resolution_stack(state)
+    process_stack(state).input_request
 
     # Minion stays, gold stays
     assert state.entity_locations.get("minion_red_1") is not None
@@ -215,16 +215,16 @@ def test_decline_protection_removes_minion(protection_state):
     _create_protection_effect(state)
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     assert result is not None
 
     # Skip protection
     state.execution_stack[-1].pending_input = {"selected_card_id": "SKIP"}
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Process RemoveUnitStep
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
     assert state.entity_locations.get("minion_red_1") is None
 
@@ -242,9 +242,9 @@ def test_no_qualifying_cards_auto_skips(protection_state):
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
     # Process everything — no input request expected
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
     assert state.entity_locations.get("minion_red_1") is None
 
@@ -260,9 +260,9 @@ def test_out_of_radius_no_protection(protection_state):
     _create_protection_effect(state)
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
     assert state.entity_locations.get("minion_red_1") is None
 
@@ -277,13 +277,13 @@ def test_fortify_accepts_gold_card(protection_state):
 
     # Defeat minion
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     assert result is not None
     assert result["type"] == "SELECT_CARD"
 
     # Discard gold card
     state.execution_stack[-1].pending_input = {"selected_card_id": "gold1"}
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
 
     # Minion saved
     assert state.entity_locations.get("minion_red_1") is not None
@@ -306,22 +306,22 @@ def test_multiple_defeats_protection_triggers_multiple_times(protection_state):
 
     # Defeat first minion — protect it
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     assert result is not None
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
     assert state.entity_locations.get("minion_red_1") is not None
 
     # Defeat second minion — protect it too
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_2", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     assert result is not None
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver2"}
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
     assert state.entity_locations.get("minion_red_2") is not None
 
     # Both cards discarded
@@ -338,9 +338,9 @@ def test_empty_hand_no_prompt(protection_state):
     _create_protection_effect(state)
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
     assert state.entity_locations.get("minion_red_1") is None
 
@@ -354,9 +354,9 @@ def test_shield_silver_only_rejects_gold(protection_state):
     _create_protection_effect(state)
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_resolution_stack(state)
+    result = process_stack(state).input_request
     while result is not None:
-        result = process_resolution_stack(state)
+        result = process_stack(state).input_request
 
     # Gold card not qualifying for Shield → minion removed
     assert state.entity_locations.get("minion_red_1") is None
