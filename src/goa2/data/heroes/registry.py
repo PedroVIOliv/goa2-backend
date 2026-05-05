@@ -23,7 +23,7 @@ HERO_DIFFICULTY_STARS = {
 
 def get_hero_difficulty_stars(hero_name: str) -> int:
     """Return pre-game hero difficulty as a star count."""
-    return HERO_DIFFICULTY_STARS[hero_name]
+    return HERO_DIFFICULTY_STARS.get(hero_name, 0)
 
 
 class HeroRegistry:
@@ -55,5 +55,6 @@ class HeroRegistry:
                 "id": hero_name,
                 "difficulty_stars": get_hero_difficulty_stars(hero_name),
             }
-            for hero_name in cls.list_heroes()
+            for hero_name in HERO_DIFFICULTY_STARS
+            if hero_name in cls._heroes
         ]
