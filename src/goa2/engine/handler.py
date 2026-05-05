@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from typing import Dict, Any, List, Optional, Union
 
 from goa2.domain.state import GameState
@@ -9,6 +10,9 @@ from goa2.domain.input import InputRequest, InputResponse
 from goa2.domain.events import GameEvent
 from goa2.engine.steps import FinishedExpiringEffectStep, GameStep, StepResult
 import goa2.engine.step_types as _step_types  # noqa: F401 — patches model annotations
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -109,7 +113,7 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
     collected_events: List[GameEvent] = []
 
     if state.phase == GamePhase.GAME_OVER:
-        print("   [ENGINE] Game is Over. Halting execution.")
+        logger.info("Game is over. Halting execution.")
         _pending_events = collected_events
         return None
 
@@ -131,7 +135,7 @@ def process_resolution_stack(state: GameState) -> Optional[Dict[str, Any]]:
 
         # Handle Abort (GoA2 Rule: Mandatory step failure aborts action)
         if result.abort_action:
-            print("   [ENGINE] Action aborted. Clearing remaining action steps.")
+            logger.info("Action aborted. Clearing remaining action steps.")
             _clear_to_finalize(state)
             continue
 
@@ -174,7 +178,7 @@ def _clear_to_finalize(state: GameState):
         if isinstance(step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)):
             break
         state.execution_stack.pop()
-        print(f"   [ENGINE] Skipped step: {step.type}")
+        logger.debug("Skipped step: %s", step.type)
 
 
 def push_steps(state: GameState, steps: list[GameStep]):

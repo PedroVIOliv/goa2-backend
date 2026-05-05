@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import deque
 from typing import Dict, List, Set, TYPE_CHECKING
 
@@ -9,6 +10,9 @@ from goa2.domain.models import TeamColor
 
 if TYPE_CHECKING:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
@@ -231,14 +235,15 @@ def load_map(file_path: str) -> Board:
         if label in label_to_id:
             lane_ids.append(label_to_id[label])
         else:
-            print(f"[MapLoader] Warning: Lane label '{label}' not found in zones.")
+            logger.warning("Lane label %r not found in zones.", label)
 
     if len(lane_ids) >= 3:
         board.lane = lane_ids
-        print(f"[MapLoader] Inferred Lane: {lane_labels}")
+        logger.info("Inferred lane: %s", lane_labels)
     else:
-        print(
-            f"[MapLoader] Could not infer minimal lane (RedBase->Mid->BlueBase). Found: {list(label_to_id.keys())}"
+        logger.warning(
+            "Could not infer minimal lane (RedBase->Mid->BlueBase). Found: %s",
+            list(label_to_id.keys()),
         )
 
     return board
