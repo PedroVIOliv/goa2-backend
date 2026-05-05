@@ -230,6 +230,34 @@ def test_every_step_type_has_unique_discriminator():
         seen[step_type] = name
 
 
+def test_step_registry_covers_concrete_step_classes():
+    """Step serialization registry is derived from concrete subclasses."""
+    from goa2.domain.models.enums import StepType
+    from goa2.engine import steps as steps_mod
+    from goa2.engine.step_types import _registered_union
+    import inspect
+    from typing import get_args
+
+    any_step = _registered_union(
+        steps_mod.GameStep,
+        field_name="type",
+        ignored_tags={StepType.GENERIC.value},
+        ignored_classes={steps_mod.MayRepeatOnceStep},
+        aliases={StepType.MAY_REPEAT_ONCE.value: steps_mod.MayRepeatNTimesStep},
+    )
+    union_members = get_args(any_step)
+    registered_classes = {get_args(member)[0] for member in union_members}
+
+    concrete_classes = {
+        cls
+        for _, cls in inspect.getmembers(steps_mod, inspect.isclass)
+        if issubclass(cls, steps_mod.GameStep)
+        and cls not in {steps_mod.GameStep, steps_mod.MayRepeatOnceStep}
+    }
+
+    assert registered_classes == concrete_classes
+
+
 # ---------------------------------------------------------------------------
 # Filter union
 # ---------------------------------------------------------------------------
@@ -292,6 +320,26 @@ def test_all_filter_types_round_trip(save_dir):
         assert type(restored_filter).__name__ == type(instance).__name__, (
             f"Filter {type(instance).__name__} did not round-trip correctly"
         )
+
+
+def test_filter_registry_covers_concrete_filter_classes():
+    """Filter serialization registry is derived from concrete subclasses."""
+    from goa2.engine import filters as f_mod
+    from goa2.engine.step_types import _registered_union
+    import inspect
+    from typing import get_args
+
+    any_filter = _registered_union(f_mod.FilterCondition, field_name="type")
+    union_members = get_args(any_filter)
+    registered_classes = {get_args(member)[0] for member in union_members}
+
+    concrete_classes = {
+        cls
+        for _, cls in inspect.getmembers(f_mod, inspect.isclass)
+        if issubclass(cls, f_mod.FilterCondition) and cls is not f_mod.FilterCondition
+    }
+
+    assert registered_classes == concrete_classes
 
 
 # ---------------------------------------------------------------------------
