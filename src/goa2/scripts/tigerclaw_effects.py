@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Dict, Any, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -31,7 +31,7 @@ from goa2.engine.filters import (
     UnitTypeFilter,
 )
 from goa2.domain.models import TargetType, ActionType
-from goa2.domain.models.enums import CardContainerType
+from goa2.domain.models.enums import CardContainerType, PassiveTrigger
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.models.effect import (
     AffectsFilter,
@@ -995,10 +995,7 @@ class CloakAndDaggersEffect(CardEffect):
     Reads the action type, value, and range from context to rebuild the repeat.
     """
 
-    def get_passive_config(self) -> Optional["PassiveConfig"]:
-        from goa2.engine.effects import PassiveConfig
-        from goa2.domain.models.enums import PassiveTrigger
-
+    def get_passive_config(self) -> Optional[PassiveConfig]:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_BASIC_ACTION,
             uses_per_turn=1,
@@ -1011,10 +1008,9 @@ class CloakAndDaggersEffect(CardEffect):
         state: "GameState",
         hero: "Hero",
         card: "Card",
-        trigger: "PassiveTrigger",
+        trigger: PassiveTrigger,
         context: Dict[str, Any],
     ) -> List[GameStep]:
-        from goa2.domain.models.enums import PassiveTrigger
         from goa2.engine.effects import CardEffectRegistry
 
         if trigger != PassiveTrigger.AFTER_BASIC_ACTION:

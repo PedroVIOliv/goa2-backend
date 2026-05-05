@@ -6720,7 +6720,9 @@ class SpendAdditionalLifeCounterStep(GameStep):
             )
             return StepResult(
                 is_finished=True,
-                new_steps=[TriggerGameOverStep(winning_team=winning_team)],
+                new_steps=[
+                    TriggerGameOverStep(winner=winning_team, condition="ANNIHILATION")
+                ],
                 events=events,
             )
 
