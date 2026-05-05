@@ -1,6 +1,7 @@
-from typing import List
+import hashlib
 import logging
 import random
+from typing import List, Optional
 
 from goa2.domain.state import GameState
 from goa2.domain.models import (
@@ -71,6 +72,7 @@ class GameSetup:
         blue_heroes: List[str],
         cheats_enabled: bool = False,
         game_type: str = "LONG",
+        seed: Optional[int] = None,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -79,6 +81,8 @@ class GameSetup:
         :param blue_heroes: List of Hero Names for Blue Team.
         :param cheats_enabled: Whether cheats are enabled for this game.
         :param game_type: "QUICK" or "LONG" (default: "LONG").
+        :param seed: Optional deterministic RNG seed. If omitted, a stable seed is
+            derived from the setup inputs.
         """
 
         # 1. Load Map
@@ -133,7 +137,22 @@ class GameSetup:
 
         # 8. Finalize Setup
         # Flip Coin
-        state.tie_breaker_team = random.choice([TeamColor.RED, TeamColor.BLUE])
+        if seed is None:
+            seed_material = "|".join(
+                [
+                    map_path,
+                    ",".join(red_heroes),
+                    ",".join(blue_heroes),
+                    str(cheats_enabled),
+                    game_type,
+                ]
+            )
+            seed = int.from_bytes(
+                hashlib.sha256(seed_material.encode("utf-8")).digest()[:8], "big"
+            )
+        state.rng_seed = seed
+        rng = random.Random(seed)
+        state.tie_breaker_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
 
         # Transition to Planning
         state.phase = GamePhase.PLANNING

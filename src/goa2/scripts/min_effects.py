@@ -520,7 +520,7 @@ def _smoke_bomb_swap_defense_steps(
             target_type=TargetType.UNIT_OR_TOKEN,
             filters=[
                 TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
-                RangeFilter(max_range=stats.range, origin_hex=defender_hex),
+                RangeFilter(max_range=stats.range, origin_id=str(defender.id)),
             ],
             output_key="smoke_bomb_count",
             skip_immunity_filter=True,

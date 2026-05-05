@@ -43,6 +43,7 @@ class GameState(BaseModel):
     turn: int = 1
     wave_counter: int = 5
     cheats_enabled: bool = False
+    rng_seed: Optional[int] = None
 
     current_actor_id: Optional[HeroID] = (
         None  # ID of the Hero currently acting (Resolution Phase)
