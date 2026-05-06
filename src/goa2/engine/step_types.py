@@ -12,9 +12,13 @@ from typing import Annotated, Any, Dict, List, TypeVar, Union
 from pydantic import BaseModel, Discriminator, Tag
 
 from goa2.domain.models.enums import StepType
-from goa2.engine import filters as filters_mod
+from goa2.engine import filters_cards as _filters_cards  # noqa: F401
+from goa2.engine import filters_geometry as _filters_geometry  # noqa: F401
+from goa2.engine import filters_hex as _filters_hex  # noqa: F401
+from goa2.engine import filters_units as _filters_units  # noqa: F401
 from goa2.engine import steps as steps_mod
-from goa2.engine.filters import FilterCondition
+from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.steps import GameStep
 
 
@@ -167,17 +171,15 @@ def rebuild_serialization_models() -> None:
     ]
     ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
     StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
-    filters_mod.OrFilter.model_fields["filters"].annotation = List[AnyFilter]
-    filters_mod.AndFilter.model_fields["filters"].annotation = List[AnyFilter]
-    filters_mod.CountMatchFilter.model_fields["sub_filters"].annotation = List[
-        AnyFilter
-    ]
+    OrFilter.model_fields["filters"].annotation = List[AnyFilter]
+    AndFilter.model_fields["filters"].annotation = List[AnyFilter]
+    CountMatchFilter.model_fields["sub_filters"].annotation = List[AnyFilter]
 
     for model_cls in (
         steps_mod.RespawnMinionAtHexStep,
-        filters_mod.OrFilter,
-        filters_mod.AndFilter,
-        filters_mod.CountMatchFilter,
+        OrFilter,
+        AndFilter,
+        CountMatchFilter,
         steps_mod.SelectStep,
         steps_mod.MultiSelectStep,
         steps_mod.AttackSequenceStep,

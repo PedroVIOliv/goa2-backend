@@ -36,12 +36,9 @@ from goa2.engine.stats import get_computed_stat  # For stat calculation
 from goa2.domain.models.enums import StatType, DisplacementType
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.topology import get_topology_service, are_connected
-from goa2.engine.filters import (
-    RangeFilter,
-    UnitTypeFilter,
-    FilterCondition,
-    TokenTypeFilter,
-)
+from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_hex import RangeFilter
+from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.domain.input import (
     InputRequest,
     InputRequestType,
@@ -924,7 +921,7 @@ class SelectStep(GameStep):
         - ExcludeIdentityFilter (self-exclusion) unless skip_self_filter is True
         - ImmunityFilter unless skip_immunity_filter is True
         """
-        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
+        from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter
 
         effective = list(self.filters)
 
@@ -1684,7 +1681,7 @@ class ResolvePreActionMovementStep(GameStep):
 
         move_range = effect.max_value or 1
 
-        from goa2.engine.filters import ObstacleFilter, MovementPathFilter
+        from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter
 
         logger.debug(
             f"   [PRE-ACTION MOVE] Granting {hero_id} optional move up to {move_range}"
@@ -1816,7 +1813,7 @@ class MoveSequenceStep(GameStep):
                 ],
             )
 
-        from goa2.engine.filters import ObstacleFilter, MovementPathFilter
+        from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter
 
         # Determine filters.
         # MovementPathFilter now always allows the current hex.
@@ -1833,14 +1830,14 @@ class MoveSequenceStep(GameStep):
 
         # Force straight line: add InStraightLineFilter + StraightLinePathFilter
         if self.force_straight_line:
-            from goa2.engine.filters import InStraightLineFilter, StraightLinePathFilter
+            from goa2.engine.filters_geometry import InStraightLineFilter, StraightLinePathFilter
 
             filters.append(InStraightLineFilter(origin_id=actor_id))
             filters.append(StraightLinePathFilter(origin_id=actor_id))
 
         # Force full distance: set min_range = max_range
         if self.force_full_distance:
-            from goa2.engine.filters import RangeFilter
+            from goa2.engine.filters_hex import RangeFilter
 
             filters.append(
                 RangeFilter(min_range=effective_range, max_range=effective_range)
@@ -1922,7 +1919,7 @@ class FastTravelSequenceStep(GameStep):
                 ],
             )
 
-        from goa2.engine.filters import FastTravelDestinationFilter
+        from goa2.engine.filters_hex import FastTravelDestinationFilter
 
         logger.debug("   [MACRO] Expanding Fast Travel Sequence")
 
@@ -5373,7 +5370,8 @@ class AttackSequenceStep(GameStep):
             f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
         )
 
-        from goa2.engine.filters import RangeFilter, TeamFilter
+        from goa2.engine.filters_hex import RangeFilter
+        from goa2.engine.filters_units import TeamFilter
 
         key = self.target_id_key if self.target_id_key else "victim_id"
 
@@ -5770,7 +5768,7 @@ class MultiSelectStep(GameStep):
 
     def _get_effective_filters(self) -> List[FilterCondition]:
         """Returns filters, auto-adding ExcludeIdentityFilter and ImmunityFilter for UNIT selections."""
-        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
+        from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter
 
         effective = list(self.filters)
         if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
@@ -6058,7 +6056,7 @@ class CountStep(GameStep):
             candidates = list(state.board.tiles.keys())
 
         # Build effective filters
-        from goa2.engine.filters import ExcludeIdentityFilter, ImmunityFilter
+        from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter
 
         effective_filters = list(self.filters)
         if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):

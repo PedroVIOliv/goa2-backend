@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Tuple, TYPE_CHECKING, Optional
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import ActionType, PassiveTrigger, StatType
-from goa2.engine.filters import FilterCondition
+from goa2.engine.filters_base import FilterCondition
 
 if TYPE_CHECKING:
     from goa2.engine.steps import GameStep
