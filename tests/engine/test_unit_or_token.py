@@ -15,11 +15,12 @@ from goa2.domain.models import (
     TeamColor,
     Hero,
     Token,
+    TargetType,
 )
 from goa2.domain.models.enums import TokenType
 from goa2.domain.hex import Hex
 from goa2.domain.types import BoardEntityID
-from goa2.engine.steps import SelectStep, TargetType
+from goa2.engine.steps import SelectStep
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.filters import RangeFilter
 

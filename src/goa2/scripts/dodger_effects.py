@@ -5,8 +5,8 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CreateEffectStep,
-    ForceDiscardStep,
     ForEachStep,
+    ForceDiscardStep,
     GainCoinsStep,
     GainItemStep,
     GameStep,
@@ -16,14 +16,16 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
 )
-from goa2.engine.filters import (
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_hex import (
     BattleZoneFilter,
-    ExcludeIdentityFilter,
-    CardsInContainerFilter,
     HasEmptyNeighborFilter,
     ObstacleFilter,
     RangeFilter,
     SpawnPointTeamFilter,
+)
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
     TeamFilter,
     UnitTypeFilter,
 )
@@ -280,7 +282,7 @@ class DeathTrapEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> List[GameStep]:
         from goa2.domain.types import BoardEntityID
-        from goa2.engine.filters import ExcludeIdentityFilter
+        from goa2.engine.filters_units import ExcludeIdentityFilter
 
         radius = stats.radius or 0
         active_zone_id = state.active_zone_id

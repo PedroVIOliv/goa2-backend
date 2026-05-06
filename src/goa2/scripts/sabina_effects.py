@@ -6,9 +6,9 @@ from goa2.engine.steps import (
     CheckAdjacencyStep,
     CheckContextConditionStep,
     CountStep,
+    ForEachStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
-    ForEachStep,
     GameStep,
     MayRepeatNTimesStep,
     MayRepeatOnceStep,
@@ -22,12 +22,14 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters import (
+from goa2.engine.filters_cards import PlayedCardFilter
+from goa2.engine.filters_hex import (
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
     AdjacencyFilter,
     ExcludeIdentityFilter,
-    ObstacleFilter,
-    PlayedCardFilter,
-    RangeFilter,
     TeamFilter,
     UnitTypeFilter,
 )

@@ -5,29 +5,31 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CheckDistanceStep,
-    CheckUnitTypeStep,
     CreateEffectStep,
     DefeatUnitStep,
     ForceDiscardStep,
     GameStep,
     MoveUnitStep,
     PlaceUnitStep,
-    PushUnitStep,
     RecordHexStep,
     RetrieveCardStep,
     SelectStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters import (
-    AdjacencyToContextFilter,
+from goa2.engine.filters_composite import CountMatchFilter
+from goa2.engine.filters_geometry import (
     BetweenHexesFilter,
-    CountMatchFilter,
-    ExcludeIdentityFilter,
     InStraightLineFilter,
-    ObstacleFilter,
-    RangeFilter,
     RelativeDistanceFilter,
     StraightLinePathFilter,
+)
+from goa2.engine.filters_hex import (
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
     TeamFilter,
     UnitTypeFilter,
 )

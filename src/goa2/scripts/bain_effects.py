@@ -20,13 +20,15 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
 )
-from goa2.engine.filters import (
-    CardsInContainerFilter,
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_geometry import (
     ClearLineOfSightFilter,
+    InStraightLineFilter,
+)
+from goa2.engine.filters_hex import RangeFilter
+from goa2.engine.filters_units import (
     ExcludeIdentityFilter,
     HasMarkerFilter,
-    InStraightLineFilter,
-    RangeFilter,
     TeamFilter,
     UnitTypeFilter,
 )

@@ -2,32 +2,34 @@ from __future__ import annotations
 from typing import List, Dict, Any, TYPE_CHECKING, Optional
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
-    GameStep,
-    SelectStep,
-    SwapUnitsStep,
-    PlaceUnitStep,
-    MoveUnitStep,
     AttackSequenceStep,
-    PushUnitStep,
-    CreateEffectStep,
-    MoveSequenceStep,
     CheckAdjacencyStep,
-    MayRepeatOnceStep,
-    SetContextFlagStep,
+    CreateEffectStep,
     ForceDiscardOrDefeatStep,
+    GameStep,
+    MayRepeatOnceStep,
+    MoveSequenceStep,
+    MoveUnitStep,
+    PlaceUnitStep,
+    PushUnitStep,
+    SelectStep,
+    SetContextFlagStep,
+    SwapUnitsStep,
 )
-from goa2.engine.filters import (
-    UnitTypeFilter,
-    TeamFilter,
-    RangeFilter,
-    LineBehindTargetFilter,
-    ObstacleFilter,
-    SpawnPointFilter,
+from goa2.engine.filters_geometry import LineBehindTargetFilter
+from goa2.engine.filters_hex import (
     AdjacentSpawnPointFilter,
+    HasEmptyNeighborFilter,
+    ObstacleFilter,
+    RangeFilter,
+    SpawnPointFilter,
+)
+from goa2.engine.filters_units import (
     AdjacencyToContextFilter,
     ExcludeIdentityFilter,
-    HasEmptyNeighborFilter,
     ForcedMovementByEnemyFilter,
+    TeamFilter,
+    UnitTypeFilter,
 )
 from goa2.domain.models import (
     TargetType,

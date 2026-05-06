@@ -18,15 +18,21 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
 )
-from goa2.engine.filters import (
+from goa2.engine.filters_composite import (
     CountMatchFilter,
-    ExcludeIdentityFilter,
+    OrFilter,
+)
+from goa2.engine.filters_geometry import (
     InStraightLineFilter,
+    StraightLinePathFilter,
+)
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
-    OrFilter,
     RangeFilter,
-    StraightLinePathFilter,
+)
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
     TeamFilter,
     UnitTypeFilter,
 )

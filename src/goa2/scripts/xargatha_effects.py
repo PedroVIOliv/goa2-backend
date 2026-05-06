@@ -15,15 +15,17 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
 )
-from goa2.engine.filters import (
-    ExcludeIdentityFilter,
-    ForcedMovementByEnemyFilter,
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
+    ForcedMovementByEnemyFilter,
+    MinionTypesFilter,
     TeamFilter,
     UnitTypeFilter,
-    MinionTypesFilter,
 )
 from goa2.domain.models.enums import (
     CardContainerType,

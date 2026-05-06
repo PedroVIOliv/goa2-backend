@@ -1,9 +1,8 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, register_effect, PassiveConfig
+from typing import List, TYPE_CHECKING
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
-    CheckAdjacencyStep,
     CheckContextConditionStep,
     CheckUnitTypeStep,
     CountCardsStep,
@@ -21,25 +20,25 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters import (
-    AdjacencyFilter,
-    AdjacencyToContextFilter,
-    CardsInContainerFilter,
-    ExcludeIdentityFilter,
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_composite import OrFilter
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
-    OrFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
     TeamFilter,
     UnitTypeFilter,
 )
 from goa2.domain.models import (
-    ActionType,
     CardContainerType,
     StatType,
     TargetType,
 )
-from goa2.domain.models.enums import PassiveTrigger
 from goa2.domain.types import UnitID
 from goa2.engine.stats import get_computed_stat
 

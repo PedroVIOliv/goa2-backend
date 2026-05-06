@@ -1,43 +1,45 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
+from typing import List, TYPE_CHECKING
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
-    GameStep,
-    SelectStep,
-    MultiSelectStep,
-    PlaceUnitStep,
-    MoveUnitStep,
-    SwapUnitsStep,
     AttackSequenceStep,
-    CreateEffectStep,
-    RetrieveCardStep,
-    CountStep,
     CheckContextConditionStep,
-    MayRepeatOnceStep,
-    MayRepeatNTimesStep,
-    ForceDiscardStep,
-    ForceDiscardOrDefeatStep,
+    CountStep,
+    CreateEffectStep,
     DefeatUnitStep,
     ForEachStep,
     ForceDefenseCardMovementStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
+    GameStep,
+    MayRepeatOnceStep,
+    MoveUnitStep,
+    MultiSelectStep,
+    PlaceUnitStep,
+    RetrieveCardStep,
+    SelectStep,
+    SwapUnitsStep,
 )
-from goa2.engine.filters import (
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_composite import (
+    AndFilter,
+    OrFilter,
+)
+from goa2.engine.filters_hex import (
+    AdjacentSpawnPointFilter,
+    BattleZoneFilter,
+    MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
     SpawnPointFilter,
-    BattleZoneFilter,
-    AdjacentSpawnPointFilter,
-    OrFilter,
-    AndFilter,
-    TeamFilter,
-    UnitTypeFilter,
-    UnitOnSpawnPointFilter,
-    MovementPathFilter,
-    CardsInContainerFilter,
+)
+from goa2.engine.filters_units import (
     ExcludeIdentityFilter,
+    TeamFilter,
+    UnitOnSpawnPointFilter,
+    UnitTypeFilter,
 )
 from goa2.domain.models import (
-    CardState,
     EffectType,
     DurationType,
     Shape,

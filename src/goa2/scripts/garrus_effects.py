@@ -8,32 +8,31 @@ from goa2.engine.steps import (
     CountStep,
     CreateEffectStep,
     DiscardCardStep,
-    ForceDiscardStep,
     ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
     GameStep,
     MayRepeatNTimesStep,
-    MoveSequenceStep,
     MoveUnitStep,
     PushUnitStep,
     RetrieveCardStep,
     SelectStep,
 )
-from goa2.engine.filters import (
-    AdjacencyFilter,
-    AdjacencyToContextFilter,
+from goa2.engine.filters_geometry import RelativeDistanceFilter
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
-    RelativeDistanceFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    AdjacencyToContextFilter,
     TeamFilter,
     UnitTypeFilter,
 )
 from goa2.domain.models import (
     ActionType,
-    CardColor,
     DurationType,
     EffectType,
-    StatType,
     TargetType,
 )
 from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape

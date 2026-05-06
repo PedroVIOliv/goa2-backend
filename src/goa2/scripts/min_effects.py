@@ -13,6 +13,7 @@ from goa2.domain.models.enums import (
     CardState,
     CardTier,
     PassiveTrigger,
+    TargetType,
     TokenType,
 )
 from goa2.engine.effects import (
@@ -27,25 +28,26 @@ from goa2.engine.steps import (
     ConvertCardToItemStep,
     CountStep,
     CreateEffectStep,
-    ForceDiscardOrDefeatStep,
     ForEachStep,
+    ForceDiscardOrDefeatStep,
     GameStep,
-    MultiSelectStep,
     MoveUnitStep,
+    MultiSelectStep,
     PlaceTokenStep,
     PushUnitStep,
     RemoveTokenStep,
     SelectStep,
     SetContextFlagStep,
     SwapUnitsStep,
-    TargetType,
 )
-from goa2.engine.filters import (
-    AdjacencyToContextFilter,
-    ExcludeIdentityFilter,
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
     TeamFilter,
     TokenTypeFilter,
     UnitTypeFilter,

@@ -81,7 +81,7 @@ class RogueSkillGoldEffect(CardEffect):
     """
 
     def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
-        from goa2.engine.filters import TeamFilter
+        from goa2.engine.filters_units import TeamFilter
 
         return [
             # 1. Select Enemy Hero

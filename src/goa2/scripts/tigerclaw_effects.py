@@ -7,8 +7,8 @@ from goa2.engine.steps import (
     ComputeHexStep,
     CountStep,
     CreateEffectStep,
-    ForceDiscardStep,
     ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
     GameStep,
     MoveSequenceStep,
     MoveUnitStep,
@@ -19,15 +19,17 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     StealCoinsStep,
 )
-from goa2.engine.filters import (
-    AdjacencyToContextFilter,
-    ExcludeIdentityFilter,
+from goa2.engine.filters_geometry import SpaceBehindEmptyFilter
+from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
-    SpaceBehindEmptyFilter,
-    TeamFilter,
     TerrainFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
+    TeamFilter,
     UnitTypeFilter,
 )
 from goa2.domain.models import TargetType, ActionType

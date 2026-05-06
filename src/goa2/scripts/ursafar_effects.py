@@ -8,9 +8,9 @@ from goa2.engine.steps import (
     CheckUnitTypeStep,
     CombineBooleanContextStep,
     CreateEffectStep,
+    ForEachStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
-    ForEachStep,
     GainCoinsStep,
     GameStep,
     MoveSequenceStep,
@@ -24,11 +24,13 @@ from goa2.engine.steps import (
     SpendAdditionalLifeCounterStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters import (
-    AdjacencyFilter,
-    ImmunityFilter,
+from goa2.engine.filters_hex import (
     ObstacleFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    ImmunityFilter,
     TeamFilter,
     UnitTypeFilter,
 )

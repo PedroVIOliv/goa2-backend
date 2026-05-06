@@ -1,35 +1,35 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from typing import List, TYPE_CHECKING, Optional
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CheckHeroDefeatedThisRoundStep,
     CountCardsStep,
-    CountStep,
     CreateEffectStep,
     DiscardCardStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
     GainCoinsStep,
     GameStep,
-    MoveSequenceStep,
     MoveUnitStep,
-    PlaceUnitStep,
     PushUnitStep,
     RecordHexStep,
     RetrieveCardStep,
     SelectStep,
-    SetContextFlagStep,
 )
-from goa2.engine.filters import (
-    AdjacencyFilter,
+from goa2.engine.filters_cards import PlayedCardFilter
+from goa2.engine.filters_composite import OrFilter
+from goa2.engine.filters_geometry import (
     InStraightLineFilter,
-    PlayedCardFilter,
     StraightLinePathFilter,
+)
+from goa2.engine.filters_hex import (
     ObstacleFilter,
-    OrFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
     TeamFilter,
     UnitTypeFilter,
 )

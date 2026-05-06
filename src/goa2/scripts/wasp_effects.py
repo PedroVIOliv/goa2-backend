@@ -9,6 +9,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import DisplacementType
+from goa2.domain.models import TargetType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
@@ -16,28 +17,31 @@ from goa2.engine.steps import (
     CombineBooleanContextStep,
     CreateEffectStep,
     DefeatUnitStep,
-    ForceDiscardStep,
-    ForceDiscardOrDefeatStep,
     ForEachStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
     GameStep,
-    MayRepeatOnceStep,
     MayRepeatNTimesStep,
+    MayRepeatOnceStep,
     MultiSelectStep,
     PlaceUnitStep,
     PushUnitStep,
     SelectStep,
     SetContextFlagStep,
-    TargetType,
 )
-from goa2.engine.filters import (
-    ExcludeIdentityFilter,
+from goa2.engine.filters_geometry import (
     NotInStraightLineFilter,
+    RelativeDistanceFilter,
+)
+from goa2.engine.filters_hex import (
     ObstacleFilter,
     RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
     TeamFilter,
     UnitTypeFilter,
-    AdjacencyToContextFilter,
-    RelativeDistanceFilter,
 )
 
 logger = logging.getLogger(__name__)
