@@ -1,20 +1,21 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -57,9 +58,7 @@ def rogue_wave_state():
     )
     hero.current_turn_card = card
 
-    enemy_hero = Hero(
-        id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy_hero = Hero(id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
     enemy_minion = Minion(
         id="enemy_minion", name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE
     )
@@ -68,9 +67,7 @@ def rogue_wave_state():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy_hero], minions=[enemy_minion]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy_hero], minions=[enemy_minion]),
         },
     )
 

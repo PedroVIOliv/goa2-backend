@@ -13,23 +13,22 @@ Cards covered:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.effects import CardEffectRegistry
 
 # Register wasp effects
 import goa2.scripts.wasp_effects  # noqa: F401
-
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
 
 # =============================================================================
 # Fixtures
@@ -315,9 +314,7 @@ class TestShockEffect:
                 break
 
         assert range_filter is not None
-        assert range_filter.min_range == 2, (
-            "Discard target must not be adjacent (min_range=2)"
-        )
+        assert range_filter.min_range == 2, "Discard target must not be adjacent (min_range=2)"
 
 
 # =============================================================================
@@ -472,8 +469,7 @@ class TestMassTelekinesisEffect:
 
         # Verify unit selection filter (Not in straight line)
         has_sl_filter = any(
-            f.__class__.__name__ == "NotInStraightLineFilter"
-            for f in unit_select.filters
+            f.__class__.__name__ == "NotInStraightLineFilter" for f in unit_select.filters
         )
         assert has_sl_filter, "Must filter out units in straight line"
 
@@ -644,22 +640,19 @@ class TestLiftUpEffect:
         unit_select = steps[0]
         # Range 2
         assert any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 2
-            for f in unit_select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 2 for f in unit_select.filters
         )
 
         # Verify destination selection filters
         hex_select = steps[1]
         # 1. AdjacencyToContextFilter (adjacent to target unit)
         assert any(
-            f.__class__.__name__ == "AdjacencyToContextFilter"
-            and f.target_key == "lift_target"
+            f.__class__.__name__ == "AdjacencyToContextFilter" and f.target_key == "lift_target"
             for f in hex_select.filters
         )
         # 2. RelativeDistanceFilter (preserve distance to Wasp/origin)
         assert any(
-            f.__class__.__name__ == "RelativeDistanceFilter"
-            and f.reference_key == "lift_target"
+            f.__class__.__name__ == "RelativeDistanceFilter" and f.reference_key == "lift_target"
             for f in hex_select.filters
         )
 
@@ -811,15 +804,13 @@ class TestCenterOfMassEffect:
 
         # Verify AdjacencyToContextFilter
         assert any(
-            f.__class__.__name__ == "AdjacencyToContextFilter"
-            and f.target_key == "lift_target"
+            f.__class__.__name__ == "AdjacencyToContextFilter" and f.target_key == "lift_target"
             for f in hex_select.filters
         )
 
         # Verify RelativeDistanceFilter
         assert any(
-            f.__class__.__name__ == "RelativeDistanceFilter"
-            and f.reference_key == "lift_target"
+            f.__class__.__name__ == "RelativeDistanceFilter" and f.reference_key == "lift_target"
             for f in hex_select.filters
         )
 
@@ -889,8 +880,7 @@ class TestKineticRepulseEffect:
 
         # Check filters: Range 1 (adjacent) + Enemy
         has_range = any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 1
-            for f in multi_select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 1 for f in multi_select.filters
         )
         has_enemy = any(
             f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"

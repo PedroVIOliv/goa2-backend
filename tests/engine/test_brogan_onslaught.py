@@ -1,21 +1,21 @@
 """Tests for Brogan's Onslaught card effect."""
 
 import pytest
+
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep, RecordHexStep
-from goa2.engine.handler import process_stack, push_steps
+from goa2.domain.state import GameState
+from goa2.engine.steps import RecordHexStep
 
 
 def _make_onslaught_card():
@@ -84,8 +84,8 @@ def test_onslaught_records_victim_hex_before_attack(onslaught_state):
 
 def test_onslaught_step_structure(onslaught_state):
     """Onslaught should have correct step sequence: Select → Record → Attack → Place."""
-    from goa2.scripts.brogan_effects import OnslaughtEffect
     from goa2.engine.stats import CardStats
+    from goa2.scripts.brogan_effects import OnslaughtEffect
 
     effect = OnslaughtEffect()
     stats = CardStats(primary_value=4, range=1, radius=None)
@@ -101,7 +101,7 @@ def test_onslaught_step_structure(onslaught_state):
     assert steps[0].__class__.__name__ == "SelectStep"
     assert steps[1].__class__.__name__ == "RecordHexStep"
     assert steps[2].__class__.__name__ == "AttackSequenceStep"
-    assert steps[3].__class__.__name__ == "MoveUnitStep" 
+    assert steps[3].__class__.__name__ == "MoveUnitStep"
 
     # Verify RecordHexStep parameters
     assert steps[1].unit_key == "victim_id"
@@ -117,8 +117,8 @@ def test_onslaught_moves_into_victim_space(onslaught_state):
     """After attack, Brogan should move into victim's original space."""
     # Onslaught uses PlaceUnitStep directly - it reads victim_hex from context,
     # no SELECT_HEX prompt is needed for player
-    from goa2.engine.steps import PlaceUnitStep
     from goa2.domain.types import HeroID
+    from goa2.engine.steps import PlaceUnitStep
 
     # Setup context as if attack completed AND victim removed
     onslaught_state.execution_context["victim_id"] = "victim"
@@ -128,9 +128,7 @@ def test_onslaught_moves_into_victim_space(onslaught_state):
     onslaught_state.remove_unit(HeroID("victim"))
 
     # Execute PlaceUnitStep
-    place_step = PlaceUnitStep(
-        unit_id="brogan", destination_key="victim_hex", is_mandatory=False
-    )
+    place_step = PlaceUnitStep(unit_id="brogan", destination_key="victim_hex", is_mandatory=False)
     result = place_step.resolve(onslaught_state, onslaught_state.execution_context)
 
     assert result.is_finished is True
@@ -184,9 +182,7 @@ def test_onslaught_placement_optional_if_able():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[brogan], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[victim, blocker], minions=[]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[victim, blocker], minions=[]),
         },
     )
 
@@ -210,9 +206,7 @@ def test_onslaught_placement_optional_if_able():
     # Try to place - should fail gracefully (is_mandatory=False)
     from goa2.engine.steps import PlaceUnitStep
 
-    place_step = PlaceUnitStep(
-        unit_id="brogan", destination_key="victim_hex", is_mandatory=False
-    )
+    place_step = PlaceUnitStep(unit_id="brogan", destination_key="victim_hex", is_mandatory=False)
     result = place_step.resolve(state, state.execution_context)
 
     # PlaceUnitStep should finish without error (is_mandatory=False)

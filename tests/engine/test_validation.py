@@ -1,21 +1,21 @@
 """Tests for ValidationService and ValidationResult."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    Hero,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.validation import ValidationResult, ValidationService
-
 
 # --- Fixtures ---
 
@@ -62,9 +62,7 @@ def state_with_heroes():
     red_hero = Hero(id="red_hero", name="Red Hero", team=TeamColor.RED, deck=[red_card])
     red_hero.hand.append(red_card)
 
-    blue_hero = Hero(
-        id="blue_hero", name="Blue Hero", team=TeamColor.BLUE, deck=[blue_card]
-    )
+    blue_hero = Hero(id="blue_hero", name="Blue Hero", team=TeamColor.BLUE, deck=[blue_card])
     blue_hero.hand.append(blue_card)
 
     # Create board with tiles
@@ -112,9 +110,7 @@ class TestValidationResult:
 
     def test_validation_result_deny_with_modifier_ids(self):
         """deny() can include blocking modifier IDs."""
-        result = ValidationResult.deny(
-            reason="Action blocked", modifier_ids=["mod_1", "mod_2"]
-        )
+        result = ValidationResult.deny(reason="Action blocked", modifier_ids=["mod_1", "mod_2"])
         assert result.allowed is False
         assert "mod_1" in result.blocking_modifier_ids
         assert "mod_2" in result.blocking_modifier_ids
@@ -228,9 +224,7 @@ class TestValidationServiceCanPerformAction:
     def test_can_perform_action_no_prevention(self, empty_state):
         """Action allowed when no prevention modifiers exist."""
         validator = ValidationService()
-        result = validator.can_perform_action(
-            empty_state, "hero_1", ActionType.MOVEMENT
-        )
+        result = validator.can_perform_action(empty_state, "hero_1", ActionType.MOVEMENT)
         assert result.allowed is True
 
 

@@ -1,36 +1,37 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.types import HeroID, CardID
-from goa2.domain.hex import Hex
+from goa2.domain.models.enums import TargetType
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.domain.types import CardID, HeroID
+from goa2.engine.filters import RangeFilter, TeamFilter
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
-    LogMessageStep,
-    SelectStep,
-    ReactionWindowStep,
-    ResolveCombatStep,
     AttackSequenceStep,
+    CheckUnitTypeStep,
+    ForEachStep,
+    LogMessageStep,
     MoveUnitStep,
     MultiSelectStep,
-    ForEachStep,
-    CheckUnitTypeStep,
     PushUnitStep,
+    ReactionWindowStep,
+    ResolveCombatStep,
+    SelectStep,
     SetContextFlagStep,
 )
-from goa2.engine.filters import RangeFilter, TeamFilter
-from goa2.domain.models.enums import TargetType
-from goa2.engine.handler import process_stack, push_steps
 
 # --- Fixtures ---
 
@@ -99,9 +100,7 @@ def combat_state(empty_state):
         is_facedown=False,
     )
     # Ensure it's in hand
-    defender = Hero(
-        name="Blue Hero", id=HeroID("hero_blue"), team=TeamColor.BLUE, deck=[def_card]
-    )
+    defender = Hero(name="Blue Hero", id=HeroID("hero_blue"), team=TeamColor.BLUE, deck=[def_card])
     defender.hand.append(def_card)
 
     empty_state.teams[TeamColor.BLUE].heroes.append(defender)
@@ -287,9 +286,7 @@ def test_log_message(empty_state):
 
 def test_reaction_window_minion_skip(combat_state):
     # Setup: Add a Minion to Blue Team
-    m1 = Minion(
-        id="minion_blue", name="Blue Minion", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    m1 = Minion(id="minion_blue", name="Blue Minion", type=MinionType.MELEE, team=TeamColor.BLUE)
     combat_state.teams[TeamColor.BLUE].minions.append(m1)
 
     # Target the Minion
@@ -363,9 +360,7 @@ def multi_unit_state():
     enemy1 = Hero(id="enemy1", name="Enemy1", team=TeamColor.BLUE, deck=[], level=1)
     enemy2 = Hero(id="enemy2", name="Enemy2", team=TeamColor.BLUE, deck=[], level=1)
     enemy3 = Hero(id="enemy3", name="Enemy3", team=TeamColor.BLUE, deck=[], level=1)
-    minion1 = Minion(
-        id="minion1", name="Blue Melee", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    minion1 = Minion(id="minion1", name="Blue Melee", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state = GameState(
         board=board,

@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
 import logging
+from typing import Any
 
-from goa2.engine.steps.base import GameStep, StepResult
+from goa2.domain.events import GameEvent, GameEventType, _hex_dict
+from goa2.domain.models import GamePhase, StepType
+from goa2.domain.models.effect import DurationType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.domain.models import Card, GamePhase, StepType
-from goa2.domain.models.effect import DurationType
-from goa2.domain.events import GameEvent, GameEventType, _hex_dict
-from goa2.engine import rules
 from goa2.engine.effect_manager import EffectManager
-
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +24,7 @@ class FindNextActorStep(GameStep):
 
     type: StepType = StepType.FIND_NEXT_ACTOR
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Import internally to avoid circular dependency (steps <-> phases)
         from goa2.engine.phases import resolve_next_action
 
@@ -44,14 +42,13 @@ class FinalizeHeroTurnStep(GameStep):
     type: StepType = StepType.FINALIZE_HERO_TURN
     hero_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import ReturnMinionToZoneStep
+
         hero = state.get_hero(HeroID(self.hero_id))
         if hero and hero.current_turn_card:
             card_id = hero.current_turn_card.id
-            logger.debug(
-                f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved."
-            )
+            logger.debug(f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved.")
             hero.resolve_current_card()
 
             # Activate all effects created by this card
@@ -93,8 +90,9 @@ class EndPhaseCleanupStep(GameStep):
 
     type: StepType = StepType.END_PHASE_CLEANUP
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.cards import ResolveUpgradesStep
+
         logger.debug("   [CLEANUP] Processing End Phase Cleanup...")
         from goa2.engine.effect_manager import EffectManager
 
@@ -133,19 +131,16 @@ class EndPhaseCleanupStep(GameStep):
                     if card:
                         EffectManager.deactivate_effects_by_card(state, card.id)
                 if hero.current_turn_card:
-                    EffectManager.deactivate_effects_by_card(
-                        state, hero.current_turn_card.id
-                    )
+                    EffectManager.deactivate_effects_by_card(state, hero.current_turn_card.id)
                 hero.retrieve_cards()
 
-    def _clear_tokens(self, state: GameState) -> List[GameEvent]:
+    def _clear_tokens(self, state: GameState) -> list[GameEvent]:
         from goa2.engine.steps.markers import _remove_token_from_board
-        events: List[GameEvent] = []
+
+        events: list[GameEvent] = []
         for token_list in state.token_pool.values():
             for token in token_list:
-                from_hex, removed_effects = _remove_token_from_board(
-                    state, str(token.id)
-                )
+                from_hex, removed_effects = _remove_token_from_board(state, str(token.id))
                 if from_hex:
                     events.append(
                         GameEvent(
@@ -196,9 +191,7 @@ class EndPhaseCleanupStep(GameStep):
                                     ult_effect = CardEffectRegistry.get(
                                         hero.ultimate_card.effect_id
                                     )
-                                    if ult_effect and hasattr(
-                                        ult_effect, "on_ultimate_unlocked"
-                                    ):
+                                    if ult_effect and hasattr(ult_effect, "on_ultimate_unlocked"):
                                         ult_effect.on_ultimate_unlocked(state, hero)
                             else:
                                 logger.debug(f"   [LEVEL] {hero.id} reached Level 8!")
@@ -232,16 +225,17 @@ class EndPhaseStep(GameStep):
 
     type: StepType = StepType.END_PHASE
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import CheckLanePushStep, MinionBattleStep
         from goa2.engine.steps.effects import FinishedExpiringEffectStep
         from goa2.engine.steps.utility import SetActorStep
+
         logger.debug("   [ROUND END] Processing End Phase (Battle)...")
 
         # Expire THIS_ROUND effects and collect finishing steps
         finishing = EffectManager.expire_effects(state, DurationType.THIS_ROUND)
 
-        new_steps: List[GameStep] = []
+        new_steps: list[GameStep] = []
 
         # Inject finishing steps (with SetActorStep wrappers) before battle
         for source_id, steps in finishing:
@@ -269,7 +263,7 @@ class AdvanceTurnStep(GameStep):
 
     type: StepType = StepType.ADVANCE_TURN
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.phases import _check_phase_transition, start_end_phase
 
         if state.turn < 4:
@@ -300,11 +294,10 @@ class RestoreActionTypeStep(GameStep):
 
     type: StepType = StepType.RESTORE_ACTION_TYPE
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         stack = context.get("action_type_stack", [])
         if stack:
             previous_type = stack.pop()
             context["current_action_type"] = previous_type
             logger.debug(f"   [CONTEXT] Restored action type to {previous_type.name}")
         return StepResult(is_finished=True)
-

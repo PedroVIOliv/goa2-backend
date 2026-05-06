@@ -1,12 +1,13 @@
 """Tests for Marker model and GameState marker integration."""
 
 import pytest
+
+from goa2.domain.models.enums import StatType
 from goa2.domain.models.marker import (
+    MARKER_EFFECTS,
     Marker,
     MarkerType,
-    MARKER_EFFECTS,
 )
-from goa2.domain.models.enums import StatType
 
 
 class TestMarkerType:
@@ -125,9 +126,9 @@ class TestGameStateMarkers:
     @pytest.fixture
     def game_state(self):
         """Create a minimal GameState for testing."""
-        from goa2.domain.state import GameState
         from goa2.domain.board import Board
-        from goa2.domain.models import TeamColor, Team
+        from goa2.domain.models import Team, TeamColor
+        from goa2.domain.state import GameState
 
         board = Board(zones={}, tiles={})
         teams = {

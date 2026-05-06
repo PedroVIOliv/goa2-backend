@@ -1,29 +1,29 @@
 """Tests for Sabina's Big Sodding Gun ultimate passive."""
 
 import pytest
-from goa2.domain.state import GameState
+
+# Ensure sabina effects are registered
+import goa2.scripts.sabina_effects  # noqa: F401
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
     StatType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.domain.types import UnitID
-from goa2.engine.stats import get_computed_stat
-from goa2.engine.steps import PushUnitStep, CheckPassiveAbilitiesStep
 from goa2.engine.handler import process_stack, push_steps
-
-# Ensure sabina effects are registered
-import goa2.scripts.sabina_effects  # noqa: F401
+from goa2.engine.stats import get_computed_stat
+from goa2.engine.steps import PushUnitStep
 
 
 def _make_ultimate_card(effect_id: str = "big_sodding_gun") -> Card:
@@ -167,12 +167,8 @@ def test_flat_bonus_applies_during_basic_attack(aura_state):
     basic_card = _make_basic_attack_card(attack_value=3, range_value=2)
     sabina.current_turn_card = basic_card
 
-    attack_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3
-    )
-    range_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.RANGE, 2
-    )
+    attack_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3)
+    range_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.RANGE, 2)
 
     assert attack_stat == 5  # 3 + 2
     assert range_stat == 4  # 2 + 2
@@ -183,12 +179,8 @@ def test_flat_bonus_does_not_apply_to_nonbasic_attack(aura_state):
     sabina = aura_state.get_hero("hero_sabina")
     sabina.current_turn_card = _make_nonbasic_attack_card()
 
-    attack_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.ATTACK, 4
-    )
-    range_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.RANGE, 3
-    )
+    attack_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.ATTACK, 4)
+    range_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.RANGE, 3)
 
     assert attack_stat == 4  # No bonus
     assert range_stat == 3  # No bonus
@@ -199,12 +191,8 @@ def test_flat_bonus_does_not_apply_to_basic_skill(aura_state):
     sabina = aura_state.get_hero("hero_sabina")
     sabina.current_turn_card = _make_basic_skill_card()
 
-    attack_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.ATTACK, 0
-    )
-    range_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.RANGE, 0
-    )
+    attack_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.ATTACK, 0)
+    range_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.RANGE, 0)
 
     assert attack_stat == 0  # No bonus
     assert range_stat == 0  # No bonus
@@ -215,9 +203,7 @@ def test_flat_bonus_does_not_apply_without_card(aura_state):
     sabina = aura_state.get_hero("hero_sabina")
     sabina.current_turn_card = None
 
-    attack_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3
-    )
+    attack_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3)
 
     assert attack_stat == 3  # No bonus
 
@@ -228,9 +214,7 @@ def test_flat_bonus_not_active_below_level_8(aura_state):
     sabina.level = 7
     sabina.current_turn_card = _make_basic_attack_card()
 
-    attack_stat = get_computed_stat(
-        aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3
-    )
+    attack_stat = get_computed_stat(aura_state, UnitID("hero_sabina"), StatType.ATTACK, 3)
 
     assert attack_stat == 3  # No bonus — level too low
 
@@ -311,9 +295,7 @@ def test_push_enemy_hero_triggers_discard_or_defeat(push_state):
     assert result["type"] == "SELECT_CARD"
 
     # Provide card selection (enemy chooses to discard their card)
-    push_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_card_1"
-    }
+    push_state.execution_stack[-1].pending_input = {"selection": "enemy_card_1"}
     result = process_stack(push_state).input_request
 
     # Should be done now
@@ -392,9 +374,7 @@ def test_push_zero_distance_still_triggers(push_state):
     assert result is not None
     assert result["type"] == "SELECT_CARD"
 
-    push_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_card_1"
-    }
+    push_state.execution_stack[-1].pending_input = {"selection": "enemy_card_1"}
     result = process_stack(push_state).input_request
     assert result is None
 

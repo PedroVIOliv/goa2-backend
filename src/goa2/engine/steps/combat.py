@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 import logging
+from typing import Any, cast
+
 from pydantic import Field
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID, UnitID
-from goa2.domain.models import Card, GamePhase, Hero, StepType, TargetType, TeamColor, Token
-from goa2.domain.models.effect import EffectType
-from goa2.domain.models.marker import MarkerType
+from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.events import GameEvent, GameEventType, _hex_dict
-from goa2.engine import rules
+from goa2.domain.models import GamePhase, Hero, StepType, TargetType, TeamColor, Token
+from goa2.domain.models.effect import EffectType
+from goa2.domain.models.marker import MarkerType
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.filters_base import FilterCondition
 from goa2.engine.filters_hex import RangeFilter
-
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +40,25 @@ class AttackSequenceStep(GameStep):
     damage: int
     range_val: int = 1
     is_ranged: bool = False
-    target_id_key: Optional[str] = (
-        None  # Optional: Use existing context key instead of selecting
-    )
-    target_filters: List[FilterCondition] = Field(
+    target_id_key: str | None = None  # Optional: Use existing context key instead of selecting
+    target_filters: list[FilterCondition] = Field(
         default_factory=list
     )  # Additional filters for target selection
-    damage_bonus_key: Optional[str] = None  # Add int from context to damage
-    range_bonus_key: Optional[str] = None  # Add int from context to range_val
+    damage_bonus_key: str | None = None  # Add int from context to damage
+    range_bonus_key: str | None = None  # Add int from context to range_val
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
         from goa2.engine.steps.movement import ResolvePreActionMovementStep
         from goa2.engine.steps.phases import RestoreActionTypeStep
-        from goa2.engine.steps.reactions import ReactionWindowStep, ResolveDefenseTextStep, ResolveOnBlockEffectStep
+        from goa2.engine.steps.reactions import (
+            ReactionWindowStep,
+            ResolveDefenseTextStep,
+            ResolveOnBlockEffectStep,
+        )
         from goa2.engine.steps.selection import SelectStep
         from goa2.engine.steps.utility import SetActorStep
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -76,27 +78,24 @@ class AttackSequenceStep(GameStep):
             f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
         )
 
-        from goa2.engine.filters_hex import RangeFilter
         from goa2.engine.filters_units import TeamFilter
 
         key = self.target_id_key if self.target_id_key else "victim_id"
 
         # Store attack context for defense effect resolution
         context["attack_is_ranged"] = self.is_ranged
-        context["attacker_id"] = (
-            str(state.current_actor_id) if state.current_actor_id else None
-        )
+        context["attacker_id"] = str(state.current_actor_id) if state.current_actor_id else None
         context["attack_damage"] = effective_damage
         logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )
 
-        new_steps: List[GameStep] = []
+        new_steps: list[GameStep] = []
 
         # Only spawn selection if we don't have a pre-selected key or if the key is not already set in context
         if not self.target_id_key or key not in context:
             # Base filters + any custom target_filters
-            all_filters: List[FilterCondition] = [
+            all_filters: list[FilterCondition] = [
                 RangeFilter(max_range=effective_range),
                 TeamFilter(relation="ENEMY"),
             ]
@@ -148,7 +147,7 @@ class ResolveCombatStep(GameStep):
     damage: int  # Base attack value from the card
     target_key: str = "victim_id"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         target_id = context.get(self.target_key)
         if not target_id:
             logger.debug("[COMBAT] No target selected. Combat cancelled.")
@@ -159,13 +158,11 @@ class ResolveCombatStep(GameStep):
         # regardless of what custom key the effect used (e.g. "blink_victim")
         context["last_combat_target"] = target_id
 
-        defense_card_val = context.get("defense_value", None)
+        defense_card_val = context.get("defense_value")
         attack_val = self.damage
         actor_id = state.current_actor_id
 
-        def _combat_event(
-            outcome: str, defense: Optional[int] = None, modifier: int = 0
-        ) -> GameEvent:
+        def _combat_event(outcome: str, defense: int | None = None, modifier: int = 0) -> GameEvent:
             return GameEvent(
                 event_type=GameEventType.COMBAT_RESOLVED,
                 actor_id=str(actor_id) if actor_id else None,
@@ -250,10 +247,10 @@ class RemoveUnitStep(GameStep):
     """
 
     type: StepType = StepType.REMOVE_UNIT
-    unit_id: Optional[str] = None
-    unit_key: Optional[str] = None  # Read unit ID from context
+    unit_id: str | None = None
+    unit_key: str | None = None  # Read unit ID from context
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         target_id = self.unit_id
         if self.unit_key:
             target_id = context.get(self.unit_key)
@@ -286,14 +283,12 @@ class DefeatUnitStep(GameStep):
     """
 
     type: StepType = StepType.DEFEAT_UNIT
-    victim_id: Optional[str] = None  # Direct ID
-    victim_key: Optional[str] = None  # Context key for victim ID
-    killer_id: Optional[str] = None
-    assist_multiplier: int = (
-        1  # Multiplier for assist coins (e.g. 3 for Glorious Triumph)
-    )
+    victim_id: str | None = None  # Direct ID
+    victim_key: str | None = None  # Context key for victim ID
+    killer_id: str | None = None
+    assist_multiplier: int = 1  # Multiplier for assist coins (e.g. 3 for Glorious Triumph)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -313,7 +308,7 @@ class DefeatUnitStep(GameStep):
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
 
-        events: List[GameEvent] = [
+        events: list[GameEvent] = [
             GameEvent(
                 event_type=GameEventType.UNIT_DEFEATED,
                 actor_id=self.killer_id,
@@ -324,9 +319,7 @@ class DefeatUnitStep(GameStep):
         # Check for bounty marker BEFORE markers are returned
         bounty = state.markers.get(MarkerType.BOUNTY)
         has_bounty = (
-            bounty is not None
-            and bounty.is_placed
-            and bounty.target_id == actual_victim_id
+            bounty is not None and bounty.is_placed and bounty.target_id == actual_victim_id
         )
 
         # Return markers from the defeated hero
@@ -375,9 +368,7 @@ class DefeatUnitStep(GameStep):
                 7: (7, 3, 3),
                 8: (8, 3, 3),
             }
-            kill_gold, assist_gold, penalty_counters = rewards_table.get(
-                level, (level, 1, 1)
-            )
+            kill_gold, assist_gold, penalty_counters = rewards_table.get(level, (level, 1, 1))
 
             # Bounty marker: defeated hero spends 1 additional life counter
             if has_bounty:
@@ -476,7 +467,7 @@ class DefeatUnitStep(GameStep):
                 )
 
             # Check for active MINION_PROTECTION effects covering this minion
-            from goa2.engine.stats import is_unit_in_effect_scope, _is_effect_active
+            from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
 
             has_protection = any(
                 e.effect_type == EffectType.MINION_PROTECTION
@@ -508,10 +499,10 @@ class CheckMinionProtectionStep(GameStep):
 
     type: StepType = StepType.CHECK_MINION_PROTECTION
     minion_id: str
-    tried_effect_ids: List[str] = Field(default_factory=list)
+    tried_effect_ids: list[str] = Field(default_factory=list)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        from goa2.engine.stats import is_unit_in_effect_scope, _is_effect_active
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
 
         # Find an untried active MINION_PROTECTION effect covering this minion
         protection = None
@@ -544,9 +535,7 @@ class CheckMinionProtectionStep(GameStep):
         ]
 
         if not qualifying_cards:
-            logger.debug(
-                f"   [PROTECT] {protector.id} has no qualifying cards for protection."
-            )
+            logger.debug(f"   [PROTECT] {protector.id} has no qualifying cards for protection.")
             return self._try_next(protection.id)
 
         # Ask protector if they want to discard
@@ -627,7 +616,7 @@ class RespawnHeroStep(GameStep):
     type: StepType = StepType.RESPAWN_HERO
     hero_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         hero = state.get_hero(HeroID(self.hero_id))
         if not hero:
             return StepResult(is_finished=True)
@@ -656,9 +645,7 @@ class RespawnHeroStep(GameStep):
         for sp in state.board.spawn_points:
             if sp.is_hero_spawn and sp.team == hero.team:
                 team_spawn_hexes.append(sp.location)
-                if not state.validator.is_obstacle_for_actor(
-                    state, sp.location, self.hero_id
-                ):
+                if not state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id):
                     valid_hexes.append(sp.location)
 
         # Fallback: BFS from spawn points to find nearest non-obstacle hex
@@ -712,7 +699,7 @@ class RespawnMinionStep(GameStep):
     team: TeamColor
     minion_type: Any  # MinionType enum
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         zone_id = state.active_zone_id
         if not zone_id:
             return StepResult(is_finished=True)
@@ -735,9 +722,7 @@ class RespawnMinionStep(GameStep):
         if not target_minion:
             # Safely handle team name if team exists, otherwise default
             team_name = self.team.name if self.team else "Unknown"
-            logger.debug(
-                f"   [RESPAWN] No available {team_name} {self.minion_type} to respawn."
-            )
+            logger.debug(f"   [RESPAWN] No available {team_name} {self.minion_type} to respawn.")
             return StepResult(is_finished=True)
 
         if self.pending_input:
@@ -755,9 +740,7 @@ class RespawnMinionStep(GameStep):
                 logger.debug(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
                 return StepResult(is_finished=True)
 
-        valid_spaces = [
-            h for h in zone.hexes if not state.board.get_tile(h).is_occupied
-        ]
+        valid_spaces = [h for h in zone.hexes if not state.board.get_tile(h).is_occupied]
         if not valid_spaces:
             return StepResult(is_finished=True)
 
@@ -765,9 +748,7 @@ class RespawnMinionStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
-                player_id=(
-                    str(state.current_actor_id) if state.current_actor_id else "system"
-                ),
+                player_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
                 prompt=f"Select space to respawn {self.minion_type}.",
                 options=valid_spaces,
             ),
@@ -785,9 +766,9 @@ class RespawnMinionAtHexStep(GameStep):
     type: StepType = StepType.RESPAWN_MINION_AT_HEX
     team: TeamColor
     unit_key: str  # Context key containing minion ID
-    hex_filters: List[FilterCondition] = Field(default_factory=list)
+    hex_filters: list[FilterCondition] = Field(default_factory=list)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -852,16 +833,14 @@ class RespawnMinionAtHexStep(GameStep):
                 valid_hexes.append(h)
 
         if not valid_hexes:
-            logger.debug(f"   [RESPAWN] No valid hexes for respawn.")
+            logger.debug("   [RESPAWN] No valid hexes for respawn.")
             return StepResult(is_finished=True)
 
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
-                player_id=(
-                    str(state.current_actor_id) if state.current_actor_id else "system"
-                ),
+                player_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
                 prompt=f"Select space to respawn {target_minion.id}.",
                 options=valid_hexes,
             ),
@@ -876,7 +855,7 @@ class CheckLanePushStep(GameStep):
 
     type: StepType = StepType.CHECK_LANE_PUSH
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import check_lane_push_trigger
 
         if not state.active_zone_id:
@@ -885,9 +864,7 @@ class CheckLanePushStep(GameStep):
         losing_team = check_lane_push_trigger(state, state.active_zone_id)
         if losing_team:
             logger.debug(f"   [CHECK] Lane Push Condition Met for {losing_team.name}")
-            return StepResult(
-                is_finished=True, new_steps=[LanePushStep(losing_team=losing_team)]
-            )
+            return StepResult(is_finished=True, new_steps=[LanePushStep(losing_team=losing_team)])
 
         return StepResult(is_finished=True)
 
@@ -905,10 +882,10 @@ class LanePushStep(GameStep):
     type: StepType = StepType.LANE_PUSH
     losing_team: TeamColor
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.map_logic import get_push_target_zone_id
         from goa2.engine.steps.markers import _remove_token_from_board
         from goa2.engine.steps.movement import ResolveDisplacementStep
-        from goa2.engine.map_logic import get_push_target_zone_id
 
         logger.debug(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
 
@@ -917,14 +894,10 @@ class LanePushStep(GameStep):
 
         if state.wave_counter <= 0:
             logger.debug("   [GAME OVER] Last Push Victory!")
-            winning_team = (
-                TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            )
+            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
             return StepResult(
                 is_finished=True,
-                new_steps=[
-                    TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")
-                ],
+                new_steps=[TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")],
             )
 
         next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
@@ -933,14 +906,10 @@ class LanePushStep(GameStep):
             logger.debug(
                 f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached."
             )
-            winning_team = (
-                TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            )
+            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
             return StepResult(
                 is_finished=True,
-                new_steps=[
-                    TriggerGameOverStep(winner=winning_team, condition="LANE_PUSH")
-                ],
+                new_steps=[TriggerGameOverStep(winner=winning_team, condition="LANE_PUSH")],
             )
 
         if not next_zone_id:
@@ -963,9 +932,7 @@ class LanePushStep(GameStep):
             for uid, loc in state.unit_locations.items():
                 if loc in current_zone.hexes:
                     unit = state.get_unit(UnitID(uid))
-                    if hasattr(unit, "type") and hasattr(
-                        unit, "value"
-                    ):  # Duck typing Minion
+                    if hasattr(unit, "type") and hasattr(unit, "value"):  # Duck typing Minion
                         to_remove.append(uid)
 
         for uid in to_remove:
@@ -989,8 +956,7 @@ class LanePushStep(GameStep):
                             (
                                 m
                                 for m in team.minions
-                                if m.type == sp.minion_type
-                                and m.id not in state.unit_locations
+                                if m.type == sp.minion_type and m.id not in state.unit_locations
                             ),
                             None,
                         )
@@ -999,9 +965,7 @@ class LanePushStep(GameStep):
                             tile = state.board.get_tile(sp.location)
                             if tile and not tile.is_occupied:
                                 state.move_unit(candidate.id, sp.location)
-                                logger.debug(
-                                    f"   [PUSH] Spawning {candidate.id} at {sp.location}"
-                                )
+                                logger.debug(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
                             else:
                                 occupant_id = None
                                 if tile and tile.occupant_id:
@@ -1021,9 +985,7 @@ class LanePushStep(GameStep):
                                     logger.debug(
                                         f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)"
                                     )
-                                    pending_displacements.append(
-                                        (candidate.id, sp.location)
-                                    )
+                                    pending_displacements.append((candidate.id, sp.location))
 
         if pending_displacements:
             # Explicitly type cast the list to match ResolveDisplacementStep's expectation
@@ -1033,7 +995,7 @@ class LanePushStep(GameStep):
                 is_finished=True,
                 new_steps=[
                     ResolveDisplacementStep(
-                        displacements=cast(List[Tuple[str, Hex]], pending_displacements)
+                        displacements=cast(list[tuple[str, Hex]], pending_displacements)
                     )
                 ],
             )
@@ -1050,13 +1012,14 @@ class MinionBattleStep(GameStep):
 
     type: StepType = StepType.MINION_BATTLE
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         battle_steps = self._resolve_minion_battle(state)
         return StepResult(is_finished=True, new_steps=battle_steps)
 
     def _resolve_minion_battle(self, state: GameState) -> list[GameStep]:
         from goa2.engine.steps.cards import _one_man_army_bonus
         from goa2.engine.steps.selection import ChooseMinionRemovalStep
+
         if not state.active_zone_id:
             return []
 
@@ -1113,9 +1076,7 @@ class ReturnMinionToZoneStep(GameStep):
 
     type: StepType = StepType.RETURN_MINION_TO_ZONE
 
-    def _get_minions_outside_zone(
-        self, state: GameState
-    ) -> List[Tuple[str, TeamColor]]:
+    def _get_minions_outside_zone(self, state: GameState) -> list[tuple[str, TeamColor]]:
         """Find all minions outside the active zone."""
         if not state.active_zone_id:
             return []
@@ -1137,8 +1098,9 @@ class ReturnMinionToZoneStep(GameStep):
                         outside.append((str(minion.id), minion.team))
         return outside
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.movement import PlaceUnitStep
+
         outside_minions = self._get_minions_outside_zone(state)
 
         if not outside_minions:
@@ -1196,7 +1158,7 @@ class ReturnMinionToZoneStep(GameStep):
 
                 if target_hex in candidates:
                     logger.debug(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
-                    new_steps: List[GameStep] = [
+                    new_steps: list[GameStep] = [
                         PlaceUnitStep(unit_id=minion_id, target_hex_arg=target_hex),
                     ]
                     if remaining:
@@ -1237,7 +1199,7 @@ class SpendAdditionalLifeCounterStep(GameStep):
     victim_key: str = "victim_id"
     amount: int = 1
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -1276,9 +1238,7 @@ class SpendAdditionalLifeCounterStep(GameStep):
         if victim_team.life_counters == 0:
             from goa2.domain.models import TeamColor
 
-            winning_team = (
-                TeamColor.BLUE if victim_team_color == TeamColor.RED else TeamColor.RED
-            )
+            winning_team = TeamColor.BLUE if victim_team_color == TeamColor.RED else TeamColor.RED
             events.append(
                 GameEvent(
                     event_type=GameEventType.GAME_OVER,
@@ -1290,9 +1250,7 @@ class SpendAdditionalLifeCounterStep(GameStep):
             )
             return StepResult(
                 is_finished=True,
-                new_steps=[
-                    TriggerGameOverStep(winner=winning_team, condition="ANNIHILATION")
-                ],
+                new_steps=[TriggerGameOverStep(winner=winning_team, condition="ANNIHILATION")],
                 events=events,
             )
 
@@ -1311,10 +1269,8 @@ class TriggerGameOverStep(GameStep):
     winner: TeamColor
     condition: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        logger.debug(
-            f"   [GAME OVER] Victory for {self.winner.name}! Reason: {self.condition}"
-        )
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        logger.debug(f"   [GAME OVER] Victory for {self.winner.name}! Reason: {self.condition}")
 
         state.winner = self.winner
         state.victory_condition = self.condition
@@ -1336,4 +1292,3 @@ class TriggerGameOverStep(GameStep):
                 )
             ],
         )
-

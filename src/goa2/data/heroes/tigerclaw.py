@@ -1,13 +1,14 @@
 from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
-    StatType,
+    Card,
+    CardColor,
     CardState,
+    CardTier,
+    Hero,
+    StatType,
 )
 from goa2.domain.types import HeroID
+
 from .registry import HeroRegistry
 
 
@@ -201,7 +202,7 @@ def create_tigerclaw() -> Hero:
             secondary_actions={ActionType.DEFENSE: 5, ActionType.MOVEMENT: 5},
             item=StatType.DEFENSE,
             effect_id="backstab",
-            effect_text="Target a unit adjacent to you; if a friendly unit is adjacent to the target, +2 :attack: Attack. (A \"friendly unit\" is another hero or a minion on your team.)",
+            effect_text='Target a unit adjacent to you; if a friendly unit is adjacent to the target, +2 :attack: Attack. (A "friendly unit" is another hero or a minion on your team.)',
         ),
         # =========================================================================
         # UNTIERED / TIER I

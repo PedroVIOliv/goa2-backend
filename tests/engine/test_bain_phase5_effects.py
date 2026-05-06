@@ -1,28 +1,27 @@
 """Tests for Bain Phase 5: Get Over Here! and A Complicated Profession."""
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    CardState,
-    ActionType,
+    Team,
+    TeamColor,
 )
 from goa2.domain.models.marker import MarkerType
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.steps import PlaceMarkerStep, ResolveCardStep
 from goa2.engine.handler import process_stack, push_steps
-
+from goa2.engine.steps import PlaceMarkerStep, ResolveCardStep
 
 # ---------------------------------------------------------------------------
 # Card factories
@@ -92,8 +91,11 @@ def _build_state(board, bain_card, bain_hex, enemy_hex, extra_units=None):
     bain.current_turn_card = bain_card
 
     enemy = Hero(
-        id=HeroID("hero_enemy"), name="Enemy", team=TeamColor.BLUE,
-        deck=[], hand=[_make_filler_card("enemy_card")],
+        id=HeroID("hero_enemy"),
+        name="Enemy",
+        team=TeamColor.BLUE,
+        deck=[],
+        hand=[_make_filler_card("enemy_card")],
     )
 
     red_minions = []
@@ -145,7 +147,8 @@ class TestClearLineOfSightObstacleMode:
         card = _make_skill_card("test", "Test", "get_over_here")
         blocker_hex = Hex(q=2, r=0, s=-2)
         state = _build_state(
-            board, card,
+            board,
+            card,
             bain_hex=Hex(q=0, r=0, s=0),
             enemy_hex=Hex(q=4, r=0, s=-4),
             extra_units=[("blocker", TeamColor.RED, blocker_hex)],
@@ -165,7 +168,8 @@ class TestClearLineOfSightObstacleMode:
 
         card = _make_skill_card("test", "Test", "get_over_here")
         state = _build_state(
-            board, card,
+            board,
+            card,
             bain_hex=Hex(q=0, r=0, s=0),
             enemy_hex=Hex(q=3, r=0, s=-3),
         )
@@ -254,7 +258,10 @@ class TestGetOverHere:
         enemy_hex = Hex(q=3, r=0, s=-3)
         blocker_hex = Hex(q=1, r=0, s=-1)
         state = _build_state(
-            board, card, bain_hex, enemy_hex,
+            board,
+            card,
+            bain_hex,
+            enemy_hex,
             extra_units=[("blocker", TeamColor.BLUE, blocker_hex)],
         )
 
@@ -314,15 +321,22 @@ def _make_ultimate_card():
 def _build_passive_state(board):
     """State with Bain (level 8, ultimate) and enemy with cards in hand."""
     bain = Hero(
-        id=HeroID("hero_bain"), name="Bain", team=TeamColor.RED,
-        deck=[], hand=[], level=8,
+        id=HeroID("hero_bain"),
+        name="Bain",
+        team=TeamColor.RED,
+        deck=[],
+        hand=[],
+        level=8,
     )
     bain.current_turn_card = _make_filler_card("bain_card")
     bain.ultimate_card = _make_ultimate_card()
 
     enemy = Hero(
-        id=HeroID("hero_enemy"), name="Enemy", team=TeamColor.BLUE,
-        deck=[], hand=[
+        id=HeroID("hero_enemy"),
+        name="Enemy",
+        team=TeamColor.BLUE,
+        deck=[],
+        hand=[
             _make_filler_card("enemy_c1"),
             _make_filler_card("enemy_c2"),
         ],
@@ -348,13 +362,16 @@ class TestAComplicatedProfession:
         """Placing Bounty marker on enemy triggers a forced discard."""
         state = _build_passive_state(board)
 
-        push_steps(state, [
-            PlaceMarkerStep(
-                marker_type=MarkerType.BOUNTY,
-                target_id="hero_enemy",
-                value=0,
-            ),
-        ])
+        push_steps(
+            state,
+            [
+                PlaceMarkerStep(
+                    marker_type=MarkerType.BOUNTY,
+                    target_id="hero_enemy",
+                    value=0,
+                ),
+            ],
+        )
 
         result = process_stack(state).input_request
 
@@ -379,13 +396,16 @@ class TestAComplicatedProfession:
         bain = state.get_hero(HeroID("hero_bain"))
         bain.level = 1  # Too low for ultimate
 
-        push_steps(state, [
-            PlaceMarkerStep(
-                marker_type=MarkerType.BOUNTY,
-                target_id="hero_enemy",
-                value=0,
-            ),
-        ])
+        push_steps(
+            state,
+            [
+                PlaceMarkerStep(
+                    marker_type=MarkerType.BOUNTY,
+                    target_id="hero_enemy",
+                    value=0,
+                ),
+            ],
+        )
 
         result = process_stack(state).input_request
         # No passive — stack should be done (maybe CheckPassive runs but finds nothing)
@@ -402,13 +422,16 @@ class TestAComplicatedProfession:
         enemy = state.get_hero(HeroID("hero_enemy"))
         enemy.hand = []  # No cards
 
-        push_steps(state, [
-            PlaceMarkerStep(
-                marker_type=MarkerType.BOUNTY,
-                target_id="hero_enemy",
-                value=0,
-            ),
-        ])
+        push_steps(
+            state,
+            [
+                PlaceMarkerStep(
+                    marker_type=MarkerType.BOUNTY,
+                    target_id="hero_enemy",
+                    value=0,
+                ),
+            ],
+        )
 
         result = process_stack(state).input_request
         while result is not None:

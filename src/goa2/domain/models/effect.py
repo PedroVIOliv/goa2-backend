@@ -1,13 +1,15 @@
 """ActiveEffect model and related enums for spatial/behavioral effects."""
 
 from __future__ import annotations
+
 from enum import Enum
-from typing import Any, Optional, List
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from goa2.domain.models.enums import ActionType, StatType, CardColor, DisplacementType
-from goa2.domain.models.marker import MarkerType
 from goa2.domain.hex import Hex
+from goa2.domain.models.enums import ActionType, CardColor, DisplacementType, StatType
+from goa2.domain.models.marker import MarkerType
 
 
 class DurationType(str, Enum):
@@ -25,18 +27,18 @@ class EffectType(str, Enum):
     TARGET_PREVENTION = "target_prevention"  # Smoke Bomb (General)
     LOS_BLOCKER = "los_blocker"  # Physical obstacle for targeting
     AREA_STAT_MODIFIER = "area_stat_modifier"  # Aura effects
-    ATTACK_IMMUNITY = "attack_immunity"  # Expert Duelist - immune to attacks except from specific attacker
+    ATTACK_IMMUNITY = (
+        "attack_immunity"  # Expert Duelist - immune to attacks except from specific attacker
+    )
 
     # Topology constraints (Nebkher)
-    TOPOLOGY_SPLIT = (
-        "topology_split"  # Tier 2: Crack in Reality - splits board into regions
-    )
-    TOPOLOGY_ISOLATION = (
-        "topology_isolation"  # Tier 3: Shift Reality - split + isolate caster
-    )
+    TOPOLOGY_SPLIT = "topology_split"  # Tier 2: Crack in Reality - splits board into regions
+    TOPOLOGY_ISOLATION = "topology_isolation"  # Tier 3: Shift Reality - split + isolate caster
 
     # Actor-conditional obstacle (Wasp)
-    STATIC_BARRIER = "static_barrier"  # Hexes become obstacles based on actor location relative to radius
+    STATIC_BARRIER = (
+        "static_barrier"  # Hexes become obstacles based on actor location relative to radius
+    )
 
     # Petrify (Xargatha) - affected heroes count as terrain
     PETRIFY = "petrify"
@@ -103,10 +105,10 @@ class EffectScope(BaseModel):
 
     shape: Shape
     range: int = 0  # For RADIUS/LINE
-    origin_id: Optional[str] = None  # Entity to measure from (defaults to source)
-    origin_hex: Optional[Hex] = None  # Fixed location (overrides origin_id)
+    origin_id: str | None = None  # Entity to measure from (defaults to source)
+    origin_hex: Hex | None = None  # Fixed location (overrides origin_id)
     affects: AffectsFilter = AffectsFilter.ALL_UNITS
-    direction: Optional[int] = None  # 0-5 for hex directions (LINE shape)
+    direction: int | None = None  # 0-5 for hex directions (LINE shape)
 
 
 class ActiveEffect(BaseModel):
@@ -118,28 +120,28 @@ class ActiveEffect(BaseModel):
 
     id: str
     source_id: str  # Hero ID that created this
-    source_card_id: Optional[str] = None  # Card ID (if card-based effect)
+    source_card_id: str | None = None  # Card ID (if card-based effect)
     effect_type: EffectType
 
     # Spatial scope
     scope: EffectScope
 
     # Effect-specific payload
-    restrictions: List[ActionType] = Field(
+    restrictions: list[ActionType] = Field(
         default_factory=list
     )  # For prevention effects (action types)
-    displacement_blocks: List[DisplacementType] = Field(
+    displacement_blocks: list[DisplacementType] = Field(
         default_factory=list
     )  # For displacement prevention (move, push, swap, place)
-    except_card_colors: List[CardColor] = Field(
+    except_card_colors: list[CardColor] = Field(
         default_factory=list
     )  # Exceptions to prevention (e.g. "except on Gold cards")
-    except_attacker_ids: List[str] = Field(
+    except_attacker_ids: list[str] = Field(
         default_factory=list
     )  # Attackers who bypass ATTACK_IMMUNITY (e.g. "except this attacker")
-    stat_type: Optional[StatType] = None  # For AREA_STAT_MODIFIER
+    stat_type: StatType | None = None  # For AREA_STAT_MODIFIER
     stat_value: int = 0  # Modifier amount
-    max_value: Optional[int] = None  # For movement caps
+    max_value: int | None = None  # For movement caps
     limit_actions_only: bool = False  # If True, only caps explicit MOVEMENT actions
 
     # Lifecycle
@@ -158,19 +160,17 @@ class ActiveEffect(BaseModel):
     blocks_self: bool = False  # True = source's own actions blocked
 
     # Marker linkage - if this effect was created by a marker
-    marker_type: Optional[MarkerType] = None
+    marker_type: MarkerType | None = None
 
     # Origin action type - tracks whether effect came from skill or attack
     # Used for cancelling effects by type (e.g., "cancel skill effects")
-    origin_action_type: Optional[ActionType] = None
+    origin_action_type: ActionType | None = None
 
     # Topology constraint fields (for TOPOLOGY_SPLIT / TOPOLOGY_ISOLATION)
     # Used by Nebkher's Crack in Reality / Shift Reality
-    split_axis: Optional[str] = (
-        None  # "q", "r", or "s" - which coordinate defines the split line
-    )
+    split_axis: str | None = None  # "q", "r", or "s" - which coordinate defines the split line
     split_value: int = 0  # The coordinate value of the dividing line
-    isolated_hex: Optional[Hex] = (
+    isolated_hex: Hex | None = (
         None  # For Tier 3 - the specific hex that is isolated (Nebkher's position)
     )
 
@@ -179,16 +179,14 @@ class ActiveEffect(BaseModel):
     # - Actor OUTSIDE radius -> hexes INSIDE radius are obstacles
     # - Actor INSIDE radius -> hexes OUTSIDE radius are obstacles
     barrier_radius: int = 0  # The radius boundary for the barrier
-    barrier_origin_id: Optional[str] = (
-        None  # Entity ID for radius calculation (Wasp's position)
-    )
+    barrier_origin_id: str | None = None  # Entity ID for radius calculation (Wasp's position)
 
     # Allowed discard colors for MINION_PROTECTION effects (Brogan)
-    allowed_discard_colors: List[CardColor] = Field(default_factory=list)
+    allowed_discard_colors: list[CardColor] = Field(default_factory=list)
 
     # Steps to push onto the execution stack when this effect expires
     # (for DELAYED_TRIGGER effects). Patched to List[AnyStep] in step_types.py.
-    finishing_steps: List[Any] = Field(default_factory=list)
+    finishing_steps: list[Any] = Field(default_factory=list)
 
     # MOVEMENT_AURA_ZONE payload (Trailblazer): when an affected unit begins
     # a MOVEMENT action inside scope, their pathfinding call is invoked with

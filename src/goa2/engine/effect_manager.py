@@ -1,13 +1,14 @@
 """EffectManager for creating and expiring effects."""
 
 from __future__ import annotations
-from typing import Optional, Tuple, TYPE_CHECKING, List
+
+from typing import TYPE_CHECKING
 
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
     DurationType,
+    EffectScope,
+    EffectType,
 )
 from goa2.domain.models.enums import ActionType
 
@@ -23,16 +24,16 @@ class EffectManager:
 
     @staticmethod
     def create_effect(
-        state: "GameState",
+        state: GameState,
         source_id: str,
         effect_type: EffectType,
         scope: EffectScope,
         duration: DurationType = DurationType.THIS_TURN,
-        source_card_id: Optional[str] = None,
-        except_card_colors: Optional[List] = None,
-        except_attacker_ids: Optional[List[str]] = None,
+        source_card_id: str | None = None,
+        except_card_colors: list | None = None,
+        except_attacker_ids: list[str] | None = None,
         is_active: bool = False,
-        origin_action_type: Optional["ActionType"] = None,
+        origin_action_type: ActionType | None = None,
         **kwargs,
     ) -> ActiveEffect:
         """Create and register a new spatial effect."""
@@ -59,31 +60,27 @@ class EffectManager:
         return effect
 
     @staticmethod
-    def _update_card_active_status(state: "GameState", card_id: str):
+    def _update_card_active_status(state: GameState, card_id: str):
         """
         Set card.is_active based on whether any effects reference it.
         """
-        has_active_effect = any(
-            e.source_card_id == card_id for e in state.active_effects
-        )
+        has_active_effect = any(e.source_card_id == card_id for e in state.active_effects)
         card = state.get_card_by_id(card_id)
         if card:
             card.is_active = has_active_effect
 
     @staticmethod
-    def expire_by_card(state: "GameState", card_id: str):
+    def expire_by_card(state: GameState, card_id: str):
         """Remove all effects linked to a specific card."""
-        state.active_effects = [
-            e for e in state.active_effects if e.source_card_id != card_id
-        ]
+        state.active_effects = [e for e in state.active_effects if e.source_card_id != card_id]
         card = state.get_card_by_id(card_id)
         if card:
             card.is_active = False
 
     @staticmethod
     def expire_active_turn_effects(
-        state: "GameState",
-    ) -> List[Tuple[str, List]]:
+        state: GameState,
+    ) -> list[tuple[str, list]]:
         """Expire THIS_TURN and active NEXT_TURN effects.
 
         NEXT_TURN effects are active on created_at_turn + 1 (same round only).
@@ -101,57 +98,41 @@ class EffectManager:
             return False
 
         expiring = [e for e in state.active_effects if is_expiring_this_turn(e)]
-        finishing: List[Tuple[str, List]] = [
-            (e.source_id, e.finishing_steps)
-            for e in expiring
-            if e.finishing_steps
+        finishing: list[tuple[str, list]] = [
+            (e.source_id, e.finishing_steps) for e in expiring if e.finishing_steps
         ]
-        affected_card_ids = {
-            e.source_card_id for e in expiring if e.source_card_id
-        }
-        state.active_effects = [
-            e for e in state.active_effects if not is_expiring_this_turn(e)
-        ]
+        affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
+        state.active_effects = [e for e in state.active_effects if not is_expiring_this_turn(e)]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
         return finishing
 
     @staticmethod
-    def expire_effects(
-        state: "GameState", duration: DurationType
-    ) -> List[Tuple[str, List]]:
+    def expire_effects(state: GameState, duration: DurationType) -> list[tuple[str, list]]:
         """Remove all effects matching duration type.
 
         Returns [(source_id, finishing_steps)] for expired effects that carry
         finishing steps (used by DELAYED_TRIGGER effects).
         """
         expiring = [e for e in state.active_effects if e.duration == duration]
-        finishing: List[Tuple[str, List]] = [
-            (e.source_id, e.finishing_steps)
-            for e in expiring
-            if e.finishing_steps
+        finishing: list[tuple[str, list]] = [
+            (e.source_id, e.finishing_steps) for e in expiring if e.finishing_steps
         ]
-        affected_card_ids = {
-            e.source_card_id for e in expiring if e.source_card_id
-        }
-        state.active_effects = [
-            e for e in state.active_effects if e.duration != duration
-        ]
+        affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
+        state.active_effects = [e for e in state.active_effects if e.duration != duration]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
         return finishing
 
     @staticmethod
-    def expire_by_source(state: "GameState", source_id: str):
+    def expire_by_source(state: GameState, source_id: str):
         """Remove all effects from a specific source (e.g., defeated hero)."""
         affected_card_ids = {
             e.source_card_id
             for e in state.active_effects
             if e.source_id == source_id and e.source_card_id
         }
-        state.active_effects = [
-            e for e in state.active_effects if e.source_id != source_id
-        ]
+        state.active_effects = [e for e in state.active_effects if e.source_id != source_id]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
 
@@ -160,7 +141,7 @@ class EffectManager:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    def activate_effects_by_card(state: "GameState", card_id: str):
+    def activate_effects_by_card(state: GameState, card_id: str):
         """
         Activate all effects linked to a specific card.
         Called when a card becomes RESOLVED (after hero's turn completes).
@@ -170,7 +151,7 @@ class EffectManager:
                 effect.is_active = True
 
     @staticmethod
-    def deactivate_effects_by_card(state: "GameState", card_id: str):
+    def deactivate_effects_by_card(state: GameState, card_id: str):
         """
         Deactivate all effects linked to a specific card.
         Called when a card leaves played state or is turned facedown.
@@ -180,7 +161,7 @@ class EffectManager:
                 effect.is_active = False
 
     @staticmethod
-    def activate_effect_by_id(state: "GameState", effect_id: str):
+    def activate_effect_by_id(state: GameState, effect_id: str):
         """Explicitly activate a specific effect by ID (for card abilities that reactivate)."""
         for effect in state.active_effects:
             if effect.id == effect_id:
@@ -188,7 +169,7 @@ class EffectManager:
                 return
 
     @staticmethod
-    def deactivate_effect_by_id(state: "GameState", effect_id: str):
+    def deactivate_effect_by_id(state: GameState, effect_id: str):
         """Explicitly deactivate a specific effect by ID."""
         for effect in state.active_effects:
             if effect.id == effect_id:
@@ -196,7 +177,7 @@ class EffectManager:
                 return
 
     @staticmethod
-    def cleanup_stale_effects(state: "GameState"):
+    def cleanup_stale_effects(state: GameState):
         """
         Remove effects that are no longer active and have expired.
         Called at round end for memory cleanup.

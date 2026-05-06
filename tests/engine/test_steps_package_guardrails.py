@@ -7,10 +7,7 @@ before, during, and after the split.
 
 import inspect
 
-import pytest
-
 from goa2.domain.board import Board
-from goa2.domain.hex import Hex
 from goa2.domain.models import Team, TeamColor
 from goa2.domain.models.effect import (
     AffectsFilter,
@@ -19,17 +16,10 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import (
-    FilterType,
-    StepType,
-    TargetType,
-)
 from goa2.domain.state import GameState
 from goa2.engine.filters_hex import RangeFilter
-from goa2.engine.filters_units import TeamFilter
 from goa2.engine.handler import push_steps
 from goa2.engine.steps import GameStep
-
 
 EXPECTED_STEP_CLASSES = {
     "AdvanceTurnStep",
@@ -150,7 +140,7 @@ def test_all_step_classes_importable_from_package_root():
 
 def test_key_non_step_exports():
     """Key non-step exports remain importable from goa2.engine.steps."""
-    from goa2.engine.steps import StepResult, GameStep, apply_hero_upgrade
+    from goa2.engine.steps import GameStep, StepResult, apply_hero_upgrade
 
     assert StepResult is not None
     assert GameStep is not None
@@ -227,9 +217,7 @@ def test_round_trip_respawn_minion_at_hex_with_filters():
 
 def test_import_smoke():
     """Basic import smoke test — catches package-level import cycles."""
-    import goa2.engine.steps
-    import goa2.engine.step_types
-    from goa2.engine.steps import MoveUnitStep, AttackSequenceStep, ResolveCardStep
+    from goa2.engine.steps import AttackSequenceStep, MoveUnitStep, ResolveCardStep
 
     assert MoveUnitStep is not None
     assert AttackSequenceStep is not None

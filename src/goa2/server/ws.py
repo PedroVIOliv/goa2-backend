@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
-from goa2.domain.views import build_view
-from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.types import HeroID
+from goa2.domain.views import build_view
 from goa2.server.errors import (
     CardNotInHandError,
     GameNotFoundError,
@@ -24,13 +24,13 @@ from goa2.server.registry import GameRegistry, ManagedGame
 router = APIRouter()
 
 
-def _build_state_update(game: ManagedGame, hero_id: str | None) -> Dict[str, Any]:
+def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
     """Build a STATE_UPDATE message for a specific player."""
     hero_id_typed = HeroID(hero_id) if hero_id else None
     view = build_view(game.session.state, for_hero_id=hero_id_typed)
     ir = game.last_result.input_request if game.last_result else None
     winner = game.last_result.winner if game.last_result else None
-    msg: Dict[str, Any] = {
+    msg: dict[str, Any] = {
         "type": "STATE_UPDATE",
         "view": view,
     }
@@ -41,7 +41,7 @@ def _build_state_update(game: ManagedGame, hero_id: str | None) -> Dict[str, Any
     return msg
 
 
-async def _send_json(ws: WebSocket, data: Dict[str, Any]) -> bool:
+async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
     """Send JSON to a websocket, returning False if the connection is dead."""
     try:
         await ws.send_json(data)
@@ -79,8 +79,8 @@ def _log_ws_result(game: ManagedGame, result) -> None:
 
 
 async def _handle_submit_input(
-    game: ManagedGame, hero_id: str, data: Dict[str, Any]
-) -> Dict[str, Any]:
+    game: ManagedGame, hero_id: str, data: dict[str, Any]
+) -> dict[str, Any]:
     """Handle SUBMIT_INPUT message."""
     # Turn validation (skip for simultaneous phases like UPGRADE_PHASE)
     if game.last_result and game.last_result.input_request:
@@ -101,16 +101,14 @@ async def _handle_submit_input(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (
-            result.input_request.to_dict() if result.input_request else None
-        ),
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
         "winner": result.winner,
     }
 
 
 async def _handle_commit_card(
-    game: ManagedGame, hero_id: str, data: Dict[str, Any]
-) -> Dict[str, Any]:
+    game: ManagedGame, hero_id: str, data: dict[str, Any]
+) -> dict[str, Any]:
     """Handle COMMIT_CARD message."""
     session = game.session
     if session.current_phase != GamePhase.PLANNING:
@@ -135,14 +133,12 @@ async def _handle_commit_card(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (
-            result.input_request.to_dict() if result.input_request else None
-        ),
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
         "winner": result.winner,
     }
 
 
-async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
+async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     """Handle PASS_TURN message."""
     session = game.session
     if session.current_phase != GamePhase.PLANNING:
@@ -158,14 +154,12 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (
-            result.input_request.to_dict() if result.input_request else None
-        ),
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
         "winner": result.winner,
     }
 
 
-async def _handle_rollback(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
+async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     """Handle ROLLBACK message."""
     session = game.session
     if session.state.current_actor_id is None:
@@ -180,16 +174,14 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> Dict[str, Any]:
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (
-            result.input_request.to_dict() if result.input_request else None
-        ),
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
         "winner": result.winner,
     }
 
 
 async def _handle_cheats_gold(
-    game: ManagedGame, hero_id: str, data: Dict[str, Any]
-) -> Dict[str, Any]:
+    game: ManagedGame, hero_id: str, data: dict[str, Any]
+) -> dict[str, Any]:
     """Handle CHEATS_GOLD message."""
     session = game.session
 
@@ -261,9 +253,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     game.ws_connections[token] = websocket
 
     if game.game_logger:
-        game.game_logger.log_ws_connect(
-            hero_id if not is_spectator else None, is_spectator
-        )
+        game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
 
     # Send initial state
     initial = _build_state_update(game, hero_id if not is_spectator else None)
@@ -344,6 +334,4 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     finally:
         game.ws_connections.pop(token, None)
         if game.game_logger:
-            game.game_logger.log_ws_disconnect(
-                hero_id if not is_spectator else None, is_spectator
-            )
+            game.game_logger.log_ws_disconnect(hero_id if not is_spectator else None, is_spectator)

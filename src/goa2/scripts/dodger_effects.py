@@ -1,21 +1,20 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING
-from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckContextConditionStep,
-    CreateEffectStep,
-    ForEachStep,
-    ForceDiscardStep,
-    GainCoinsStep,
-    GainItemStep,
-    GameStep,
-    MoveUnitStep,
-    MultiSelectStep,
-    RespawnMinionAtHexStep,
-    SelectStep,
-    SetContextFlagStep,
+
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.models.enums import (
+    CardContainerType,
+    StatType,
+    TargetType,
+)
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_hex import (
     BattleZoneFilter,
@@ -29,22 +28,25 @@ from goa2.engine.filters_units import (
     TeamFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models.enums import (
-    CardContainerType,
-    StatType,
-    TargetType,
-)
-from goa2.domain.models.effect import (
-    AffectsFilter,
-    DurationType,
-    EffectScope,
-    EffectType,
-    Shape,
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    CreateEffectStep,
+    ForceDiscardStep,
+    ForEachStep,
+    GainCoinsStep,
+    GainItemStep,
+    GameStep,
+    MoveUnitStep,
+    MultiSelectStep,
+    RespawnMinionAtHexStep,
+    SelectStep,
+    SetContextFlagStep,
 )
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -53,7 +55,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-def _has_tide_of_darkness(state: "GameState") -> bool:
+def _has_tide_of_darkness(state: GameState) -> bool:
     """Check if current actor has Tide of Darkness active (Dodger ultimate, level >= 8)."""
     actor_id = state.current_actor_id
     if not actor_id:
@@ -67,7 +69,7 @@ def _has_tide_of_darkness(state: "GameState") -> bool:
     return ult.effect_id == "tide_of_darkness"
 
 
-def _count_empty_spawn_points(state: "GameState", hero_id: str, radius: int) -> int:
+def _count_empty_spawn_points(state: GameState, hero_id: str, radius: int) -> int:
     """Count empty spawn points within radius of hero, in the active battle zone.
 
     With Tide of Darkness active, all non-terrain unoccupied hexes count.
@@ -104,7 +106,7 @@ def _count_empty_spawn_points(state: "GameState", hero_id: str, radius: int) -> 
 
 
 def _is_adjacent_to_empty_spawn_in_battle_zone(
-    state: "GameState", unit_hex, active_zone_id: str
+    state: GameState, unit_hex, active_zone_id: str
 ) -> bool:
     """Check if a hex is adjacent to an empty spawn point in the battle zone.
 
@@ -141,7 +143,7 @@ class WeaknessEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.AREA_STAT_MODIFIER,
@@ -178,8 +180,8 @@ class _SpawnPointDefenseEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         count = _count_empty_spawn_points(state, defender.id, stats.radius or 0)
         if count >= 2:
             return [
@@ -233,7 +235,7 @@ class _RitualEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         count = _count_empty_spawn_points(state, hero.id, stats.radius or 0)
         if count >= 2:
             return [
@@ -280,7 +282,7 @@ class DeathTrapEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         from goa2.domain.types import BoardEntityID
         from goa2.engine.filters_units import ExcludeIdentityFilter
 
@@ -299,29 +301,25 @@ class DeathTrapEffect(CardEffect):
 
         # Find valid targets at build time: enemy heroes in radius adjacent
         # to an empty spawn point in the battle zone
-        valid_target_ids: List[str] = []
+        valid_target_ids: list[str] = []
         for team in state.teams.values():
             for enemy_hero in team.heroes:
                 if enemy_hero.team == hero.team:
                     continue
-                enemy_hex = state.entity_locations.get(
-                    BoardEntityID(str(enemy_hero.id))
-                )
+                enemy_hex = state.entity_locations.get(BoardEntityID(str(enemy_hero.id)))
                 if not enemy_hex:
                     continue
                 dist = topology.distance(hero_hex, enemy_hex, state)
                 if dist > radius:
                     continue
-                if _is_adjacent_to_empty_spawn_in_battle_zone(
-                    state, enemy_hex, active_zone_id
-                ):
+                if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex, active_zone_id):
                     valid_target_ids.append(str(enemy_hero.id))
 
         if not valid_target_ids:
             return []
 
         # Build exclude list: all enemy hero IDs NOT in valid_target_ids
-        all_enemy_hero_ids: List[str] = []
+        all_enemy_hero_ids: list[str] = []
         for team in state.teams.values():
             for enemy_hero in team.heroes:
                 if enemy_hero.team != hero.team:
@@ -329,7 +327,7 @@ class DeathTrapEffect(CardEffect):
         exclude_ids = [eid for eid in all_enemy_hero_ids if eid not in valid_target_ids]
 
         # Store exclude list in context so ExcludeIdentityFilter can use it
-        steps: List[GameStep] = []
+        steps: list[GameStep] = []
         if exclude_ids:
             steps.append(
                 SetContextFlagStep(key="death_trap_exclude", value=exclude_ids),
@@ -371,7 +369,7 @@ class _FingerOfDeathEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose mode
             SelectStep(
@@ -454,7 +452,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose which attack to do first
             SelectStep(
@@ -462,7 +460,10 @@ class MiddlefingerOfDeathEffect(CardEffect):
                 prompt="Choose which attack first",
                 output_key="mfod_choice",
                 number_options=[1, 2],
-                number_labels={1: "Attack Adjacent Unit First", 2: "Attack Hero with Discard First"},
+                number_labels={
+                    1: "Attack Adjacent Unit First",
+                    2: "Attack Hero with Discard First",
+                },
                 is_mandatory=True,
             ),
             # 2. Branch flags
@@ -569,7 +570,7 @@ class DreadRazorEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         from goa2.domain.types import BoardEntityID
 
         active_zone_id = state.active_zone_id
@@ -577,9 +578,7 @@ class DreadRazorEffect(CardEffect):
 
         can_ranged = False
         if hero_hex and active_zone_id:
-            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(
-                state, hero_hex, active_zone_id
-            )
+            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, active_zone_id)
 
         if not can_ranged:
             # Only melee option available
@@ -642,7 +641,7 @@ class BurningSkullEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Ranged attack
             AttackSequenceStep(
@@ -697,7 +696,7 @@ class BlazingSkullEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Ranged attack
             AttackSequenceStep(
@@ -761,8 +760,8 @@ class EnfeeblementEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             # -6 Attack (same pattern as Weakness)
             CreateEffectStep(
@@ -799,11 +798,11 @@ class EnfeeblementEffect(CardEffect):
 
 
 def _build_respawn_steps(
-    state: "GameState",
-    hero: "Hero",
-    stats: "CardStats",
+    state: GameState,
+    hero: Hero,
+    stats: CardStats,
     max_range: int,
-) -> List[GameStep]:
+) -> list[GameStep]:
     """
     Shared logic for Necromancy/Necromastery: find limbo minions, let the
     player choose one (if multiple), then respawn it at a filtered hex.
@@ -822,7 +821,7 @@ def _build_respawn_steps(
     if not limbo_minions:
         return []
 
-    steps: List[GameStep] = []
+    steps: list[GameStep] = []
 
     if len(limbo_minions) == 1:
         # Auto-select the only limbo minion
@@ -832,13 +831,8 @@ def _build_respawn_steps(
     else:
         # Let player choose which minion type to respawn
         number_options = list(range(1, len(limbo_minions) + 1))
-        number_labels = {
-            i + 1: f"{m.type.value} Minion"
-            for i, m in enumerate(limbo_minions)
-        }
-        minion_id_map = {
-            i + 1: m.id for i, m in enumerate(limbo_minions)
-        }
+        number_labels = {i + 1: f"{m.type.value} Minion" for i, m in enumerate(limbo_minions)}
+        minion_id_map = {i + 1: m.id for i, m in enumerate(limbo_minions)}
         steps.append(
             SelectStep(
                 target_type=TargetType.NUMBER,
@@ -892,7 +886,7 @@ class NecromancyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _build_respawn_steps(state, hero, stats, max_range=1)
 
 
@@ -910,7 +904,7 @@ class NecromasteryEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _build_respawn_steps(state, hero, stats, max_range=stats.radius or 0)
 
 
@@ -928,10 +922,10 @@ class DarkestRitualEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         count = _count_empty_spawn_points(state, hero.id, stats.radius or 0)
         should_gain_coins = count >= 2
-        steps: List[GameStep] = []
+        steps: list[GameStep] = []
 
         if should_gain_coins:
             steps.extend(

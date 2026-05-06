@@ -1,14 +1,34 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, register_effect, StatAura, PassiveConfig
+
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models import (
+    ActionType,
+    CardContainerType,
+    TargetType,
+)
+from goa2.domain.models.enums import PassiveTrigger, StatType
+from goa2.domain.types import HeroID
+from goa2.engine.effects import CardEffect, PassiveConfig, StatAura, register_effect
+from goa2.engine.filters_cards import PlayedCardFilter
+from goa2.engine.filters_hex import (
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    ExcludeIdentityFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckAdjacencyStep,
     CheckContextConditionStep,
     CountStep,
-    ForEachStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
+    ForEachStep,
     GameStep,
     MayRepeatNTimesStep,
     MayRepeatOnceStep,
@@ -22,28 +42,10 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters_cards import PlayedCardFilter
-from goa2.engine.filters_hex import (
-    ObstacleFilter,
-    RangeFilter,
-)
-from goa2.engine.filters_units import (
-    AdjacencyFilter,
-    ExcludeIdentityFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models import (
-    ActionType,
-    CardContainerType,
-    TargetType,
-)
-from goa2.domain.models.enums import PassiveTrigger, StatType
-from goa2.domain.types import HeroID
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -62,7 +64,7 @@ class BackToBackEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -92,7 +94,7 @@ class ListenUpEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -134,7 +136,7 @@ class RogerRogerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -177,7 +179,7 @@ class ReadyAndWaitingEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -224,7 +226,7 @@ class PointBlankShotEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack (range 1 = adjacent)
             AttackSequenceStep(
@@ -254,9 +256,9 @@ class PointBlankShotEffect(CardEffect):
 
 
 def _build_minion_move_steps(
-    stats: "CardStats",
+    stats: CardStats,
     output_prefix: str = "tm",
-) -> List[GameStep]:
+) -> list[GameStep]:
     """
     Shared helper: select a friendly minion in radius, move it 1 space
     to a space in radius.
@@ -302,7 +304,7 @@ class TroopMovementEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="tm")
         return base_steps + [
             MayRepeatOnceStep(
@@ -327,7 +329,7 @@ class MarchingOrdersEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="mo")
         return base_steps + [
             MayRepeatOnceStep(
@@ -352,7 +354,7 @@ class PathToVictoryEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="ptv")
         return base_steps + [
             MayRepeatNTimesStep(
@@ -381,7 +383,7 @@ class SteadyAdvanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Count friendly minions in radius
             CountStep(
@@ -440,7 +442,7 @@ class UnwaveringResolveEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CountStep(
                 target_type=TargetType.UNIT,
@@ -493,7 +495,7 @@ class ShootoutEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack target in range
             AttackSequenceStep(
@@ -534,9 +536,9 @@ class ShootoutEffect(CardEffect):
 
 
 def _build_attack_with_played_card_bonus(
-    stats: "CardStats",
+    stats: CardStats,
     bonus: int,
-) -> List[GameStep]:
+) -> list[GameStep]:
     """
     Shared pattern for Quickdraw / Gunslinger / Dead Shot:
     "Target a unit in range. +N Attack if the target played an attack card
@@ -576,9 +578,7 @@ def _build_attack_with_played_card_bonus(
             output_key="target_played_attack",
         ),
         # 4. Set bonus if condition met
-        SetContextFlagStep(
-            key="atk_bonus", value=bonus, active_if_key="target_played_attack"
-        ),
+        SetContextFlagStep(key="atk_bonus", value=bonus, active_if_key="target_played_attack"),
         # 5. Attack with pre-selected target and conditional bonus
         AttackSequenceStep(
             damage=stats.primary_value,
@@ -599,7 +599,7 @@ class QuickdrawEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _build_attack_with_played_card_bonus(stats, bonus=3)
 
 
@@ -617,7 +617,7 @@ class GunslingerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _build_attack_with_played_card_bonus(stats, bonus=3)
 
 
@@ -635,7 +635,7 @@ class DeadShotEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _build_attack_with_played_card_bonus(stats, bonus=4)
 
 
@@ -653,7 +653,7 @@ class CloseSupportEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -688,7 +688,7 @@ class CoveringFireEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -724,7 +724,7 @@ class BulletHellEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack target in range
             AttackSequenceStep(
@@ -779,7 +779,7 @@ class BigSoddingGunEffect(CardEffect):
     Part 2: AFTER_PUSH passive trigger checks if victim is an enemy hero.
     """
 
-    def get_stat_auras(self) -> List["StatAura"]:
+    def get_stat_auras(self) -> list[StatAura]:
         return [
             StatAura(
                 stat_type=StatType.ATTACK,
@@ -795,7 +795,7 @@ class BigSoddingGunEffect(CardEffect):
             ),
         ]
 
-    def get_passive_config(self) -> Optional["PassiveConfig"]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_PUSH,
             uses_per_turn=0,  # Unlimited — fires on every push
@@ -804,12 +804,12 @@ class BigSoddingGunEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
-        trigger: "PassiveTrigger",
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         if trigger != PassiveTrigger.AFTER_PUSH:
             return []
 

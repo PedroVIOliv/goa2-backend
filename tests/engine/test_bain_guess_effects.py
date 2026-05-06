@@ -2,24 +2,23 @@
 A Game of Chance, Dead Man's Hand, We're Not Done Yet!"""
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.steps import ResolveCardStep
 from goa2.engine.handler import process_stack, push_steps
-
+from goa2.engine.steps import ResolveCardStep
 
 # ---------------------------------------------------------------------------
 # Card factories
@@ -87,7 +86,9 @@ def _build_state(board, bain_card, enemy_hand):
     bain = Hero(id=HeroID("hero_bain"), name="Bain", team=TeamColor.RED, deck=[], hand=[])
     bain.current_turn_card = bain_card
 
-    enemy = Hero(id=HeroID("hero_enemy"), name="Enemy", team=TeamColor.BLUE, deck=[], hand=enemy_hand)
+    enemy = Hero(
+        id=HeroID("hero_enemy"), name="Enemy", team=TeamColor.BLUE, deck=[], hand=enemy_hand
+    )
 
     state = GameState(
         board=board,
@@ -121,15 +122,26 @@ class TestCardsInContainerFilter:
 
     def test_filters_by_min_cards_in_hand(self, board):
         """Enemy with 2 cards passes min_cards=2, enemy with 1 card does not."""
-        from goa2.engine.filters import CardsInContainerFilter
         from goa2.domain.models.enums import CardContainerType
+        from goa2.engine.filters import CardsInContainerFilter
 
-        enemy2 = Hero(id=HeroID("hero_enemy2"), name="Enemy2", deck=[], hand=[
-            _make_filler_card("e2_c1"), _make_filler_card("e2_c2"),
-        ])
-        enemy1 = Hero(id=HeroID("hero_enemy1"), name="Enemy1", deck=[], hand=[
-            _make_filler_card("e1_c1"),
-        ])
+        enemy2 = Hero(
+            id=HeroID("hero_enemy2"),
+            name="Enemy2",
+            deck=[],
+            hand=[
+                _make_filler_card("e2_c1"),
+                _make_filler_card("e2_c2"),
+            ],
+        )
+        enemy1 = Hero(
+            id=HeroID("hero_enemy1"),
+            name="Enemy1",
+            deck=[],
+            hand=[
+                _make_filler_card("e1_c1"),
+            ],
+        )
 
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         bain = Hero(id=HeroID("hero_bain"), name="Bain", deck=[], hand=[])
@@ -152,12 +164,18 @@ class TestCardsInContainerFilter:
 
     def test_filters_by_max_cards_in_hand(self, board):
         """max_cards=1 should only pass heroes with ≤1 card."""
-        from goa2.engine.filters import CardsInContainerFilter
         from goa2.domain.models.enums import CardContainerType
+        from goa2.engine.filters import CardsInContainerFilter
 
-        enemy = Hero(id=HeroID("hero_enemy"), name="Enemy", deck=[], hand=[
-            _make_filler_card("c1"), _make_filler_card("c2"),
-        ])
+        enemy = Hero(
+            id=HeroID("hero_enemy"),
+            name="Enemy",
+            deck=[],
+            hand=[
+                _make_filler_card("c1"),
+                _make_filler_card("c2"),
+            ],
+        )
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         bain = Hero(id=HeroID("hero_bain"), name="Bain", deck=[], hand=[])
         bain.current_turn_card = card
@@ -180,9 +198,9 @@ class TestCardsInContainerFilter:
 
     def test_filters_discard_container(self, board):
         """Works with DISCARD container (replaces HasCardsInDiscardFilter)."""
-        from goa2.engine.filters import CardsInContainerFilter
-        from goa2.domain.models.enums import CardContainerType
         from goa2.domain.models import CardState
+        from goa2.domain.models.enums import CardContainerType
+        from goa2.engine.filters import CardsInContainerFilter
 
         enemy = Hero(id=HeroID("hero_enemy"), name="Enemy", deck=[], hand=[])
         discard = _make_filler_card("d1")
@@ -208,8 +226,8 @@ class TestCardsInContainerFilter:
 
     def test_rejects_non_hero(self, board):
         """Non-hero candidates (minions, hexes) should be rejected."""
-        from goa2.engine.filters import CardsInContainerFilter
         from goa2.domain.models.enums import CardContainerType
+        from goa2.engine.filters import CardsInContainerFilter
 
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         bain = Hero(id=HeroID("hero_bain"), name="Bain", deck=[], hand=[])
@@ -248,9 +266,12 @@ class TestGuessCardColorStep:
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         state = _build_state(board, card, enemy_hand)
 
-        push_steps(state, [
-            GuessCardColorStep(output_key="guessed_color"),
-        ])
+        push_steps(
+            state,
+            [
+                GuessCardColorStep(output_key="guessed_color"),
+            ],
+        )
 
         req = process_stack(state).input_request
         assert req is not None
@@ -265,9 +286,12 @@ class TestGuessCardColorStep:
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         state = _build_state(board, card, [])
 
-        push_steps(state, [
-            GuessCardColorStep(output_key="guessed_color"),
-        ])
+        push_steps(
+            state,
+            [
+                GuessCardColorStep(output_key="guessed_color"),
+            ],
+        )
 
         req = process_stack(state).input_request
         assert req is not None
@@ -298,15 +322,18 @@ class TestRevealAndResolveGuessStep:
         red_card = _make_filler_card("e_red", color=CardColor.RED)
         enemy.hand = [red_card]
 
-        push_steps(state, [
-            RevealAndResolveGuessStep(
-                card_key="chosen_card",
-                guess_key="guessed_color",
-                victim_key="guess_victim",
-                correct_output_key="guess_correct",
-                wrong_output_key="guess_wrong",
-            ),
-        ])
+        push_steps(
+            state,
+            [
+                RevealAndResolveGuessStep(
+                    card_key="chosen_card",
+                    guess_key="guessed_color",
+                    victim_key="guess_victim",
+                    correct_output_key="guess_correct",
+                    wrong_output_key="guess_wrong",
+                ),
+            ],
+        )
         ctx["guess_victim"] = "hero_enemy"
 
         process_stack(state).input_request
@@ -327,15 +354,18 @@ class TestRevealAndResolveGuessStep:
         red_card = _make_filler_card("e_red", color=CardColor.RED)
         enemy.hand = [red_card]
 
-        push_steps(state, [
-            RevealAndResolveGuessStep(
-                card_key="chosen_card",
-                guess_key="guessed_color",
-                victim_key="guess_victim",
-                correct_output_key="guess_correct",
-                wrong_output_key="guess_wrong",
-            ),
-        ])
+        push_steps(
+            state,
+            [
+                RevealAndResolveGuessStep(
+                    card_key="chosen_card",
+                    guess_key="guessed_color",
+                    victim_key="guess_victim",
+                    correct_output_key="guess_correct",
+                    wrong_output_key="guess_wrong",
+                ),
+            ],
+        )
 
         process_stack(state).input_request
         assert ctx.get("guess_correct") is None
@@ -452,8 +482,11 @@ class TestDeadMansHand:
             _make_filler_card("e_blue", color=CardColor.BLUE),
         ]
         card = _make_skill_card(
-            "dead_mans_hand", "Dead Man's Hand", "dead_mans_hand",
-            tier=CardTier.II, radius=3,
+            "dead_mans_hand",
+            "Dead Man's Hand",
+            "dead_mans_hand",
+            tier=CardTier.II,
+            radius=3,
         )
         state = _build_state(board, card, enemy_hand)
 
@@ -492,8 +525,11 @@ class TestWereNotDoneYet:
             _make_filler_card("e_blue", color=CardColor.BLUE),
         ]
         card = _make_skill_card(
-            "were_not_done_yet", "We're Not Done Yet!", "were_not_done_yet",
-            tier=CardTier.III, radius=3,
+            "were_not_done_yet",
+            "We're Not Done Yet!",
+            "were_not_done_yet",
+            tier=CardTier.III,
+            radius=3,
         )
         state = _build_state(board, card, enemy_hand)
 
@@ -524,8 +560,11 @@ class TestWereNotDoneYet:
             _make_filler_card("e_blue", color=CardColor.BLUE),
         ]
         card = _make_skill_card(
-            "were_not_done_yet", "We're Not Done Yet!", "were_not_done_yet",
-            tier=CardTier.III, radius=3,
+            "were_not_done_yet",
+            "We're Not Done Yet!",
+            "were_not_done_yet",
+            tier=CardTier.III,
+            radius=3,
         )
         state = _build_state(board, card, enemy_hand)
 
@@ -561,8 +600,11 @@ class TestWereNotDoneYet:
             _make_filler_card("e_green", color=CardColor.GREEN),
         ]
         card = _make_skill_card(
-            "were_not_done_yet", "We're Not Done Yet!", "were_not_done_yet",
-            tier=CardTier.III, radius=3,
+            "were_not_done_yet",
+            "We're Not Done Yet!",
+            "were_not_done_yet",
+            tier=CardTier.III,
+            radius=3,
         )
         state = _build_state(board, card, enemy_hand)
 

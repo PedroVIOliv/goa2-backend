@@ -1,19 +1,20 @@
 import pytest
+
+from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Minion,
     MinionType,
     Team,
     TeamColor,
 )
-from goa2.domain.types import HeroID, UnitID
 from goa2.domain.state import GameState
-from goa2.domain.hex import Hex
-from goa2.domain.board import Board
+from goa2.domain.types import HeroID, UnitID
 from goa2.engine.steps import CheckAdjacencyStep
 from goa2.scripts.arien_effects import EbbAndFlowEffect
 
@@ -37,9 +38,7 @@ def test_ebb_and_flow_distant(empty_state: GameState):
 
     # Setup Entities
     arien = Hero(id=HeroID(arien_id), name="Arien", deck=[], team=TeamColor.RED)
-    minion = Minion(
-        id=UnitID(minion_id), name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    minion = Minion(id=UnitID(minion_id), name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state.teams[TeamColor.RED].heroes.append(arien)
     state.teams[TeamColor.BLUE].minions.append(minion)
@@ -90,9 +89,7 @@ def test_ebb_and_flow_adjacent(empty_state: GameState):
 
     # Setup Entities
     arien = Hero(id=HeroID(arien_id), name="Arien", deck=[], team=TeamColor.RED)
-    minion = Minion(
-        id=UnitID(minion_id), name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    minion = Minion(id=UnitID(minion_id), name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state.teams[TeamColor.RED].heroes.append(arien)
     state.teams[TeamColor.BLUE].minions.append(minion)

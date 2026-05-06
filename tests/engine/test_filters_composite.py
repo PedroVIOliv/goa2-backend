@@ -1,20 +1,21 @@
 """Tests for OrFilter, AndFilter composite filters."""
 
-import goa2.engine.step_types  # noqa: F401 — triggers model patching for serialization tests
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.engine.step_types  # noqa: F401 — triggers model patching for serialization tests
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
-from goa2.domain.models.token import Token
-from goa2.domain.models.enums import TokenType
 from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.models.enums import TokenType
+from goa2.domain.models.token import Token
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.filters import (
-    OrFilter,
     AndFilter,
+    OrFilter,
+    RangeFilter,
     TeamFilter,
     UnitTypeFilter,
-    RangeFilter,
 )
 
 
@@ -55,26 +56,32 @@ def composite_state():
 
 class TestOrFilter:
     def test_passes_if_first_filter_passes(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         # h2 is enemy — passes via first filter
         assert f.apply("h2", composite_state, {}) is True
 
     def test_passes_if_second_filter_passes(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         # token_1 has no team, so TeamFilter fails, but UnitTypeFilter("TOKEN") passes
         assert f.apply("token_1", composite_state, {}) is True
 
     def test_fails_if_neither_passes(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         # m1 is friendly, not a token — both fail
         assert f.apply("m1", composite_state, {}) is False
 
@@ -85,18 +92,22 @@ class TestOrFilter:
 
 class TestAndFilter:
     def test_passes_if_all_pass(self, composite_state):
-        f = AndFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="HERO"),
-        ])
+        f = AndFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="HERO"),
+            ]
+        )
         # h2 is enemy hero — both pass
         assert f.apply("h2", composite_state, {}) is True
 
     def test_fails_if_one_fails(self, composite_state):
-        f = AndFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="MINION"),
-        ])
+        f = AndFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="MINION"),
+            ]
+        )
         # h2 is enemy but not a minion
         assert f.apply("h2", composite_state, {}) is False
 
@@ -109,31 +120,39 @@ class TestOrFilterBroganPattern:
     """Tests the specific pattern used in Brogan's push effects."""
 
     def test_enemy_unit_passes(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         assert f.apply("h2", composite_state, {}) is True
 
     def test_token_passes(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         assert f.apply("token_1", composite_state, {}) is True
 
     def test_friendly_unit_rejected(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         assert f.apply("m1", composite_state, {}) is False
 
     def test_self_rejected(self, composite_state):
-        f = OrFilter(filters=[
-            TeamFilter(relation="ENEMY"),
-            UnitTypeFilter(unit_type="TOKEN"),
-        ])
+        f = OrFilter(
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                UnitTypeFilter(unit_type="TOKEN"),
+            ]
+        )
         assert f.apply("h1", composite_state, {}) is False
 
 
@@ -141,18 +160,20 @@ class TestCompositeFilterSerialization:
     """Tests that OrFilter/AndFilter round-trip through Pydantic serialization."""
 
     def test_or_filter_round_trip(self):
-        from goa2.engine.steps import SelectStep
         from goa2.domain.models.enums import TargetType
+        from goa2.engine.steps import SelectStep
 
         step = SelectStep(
             target_type=TargetType.UNIT,
             prompt="test",
             output_key="test_key",
             filters=[
-                OrFilter(filters=[
-                    TeamFilter(relation="ENEMY"),
-                    UnitTypeFilter(unit_type="TOKEN"),
-                ]),
+                OrFilter(
+                    filters=[
+                        TeamFilter(relation="ENEMY"),
+                        UnitTypeFilter(unit_type="TOKEN"),
+                    ]
+                ),
                 RangeFilter(max_range=1),
             ],
         )
@@ -165,18 +186,20 @@ class TestCompositeFilterSerialization:
         assert isinstance(restored.filters[0].filters[1], UnitTypeFilter)
 
     def test_and_filter_round_trip(self):
-        from goa2.engine.steps import SelectStep
         from goa2.domain.models.enums import TargetType
+        from goa2.engine.steps import SelectStep
 
         step = SelectStep(
             target_type=TargetType.UNIT,
             prompt="test",
             output_key="test_key",
             filters=[
-                AndFilter(filters=[
-                    TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=2),
-                ]),
+                AndFilter(
+                    filters=[
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=2),
+                    ]
+                ),
             ],
         )
         data = step.model_dump()
@@ -185,21 +208,25 @@ class TestCompositeFilterSerialization:
         assert len(restored.filters[0].filters) == 2
 
     def test_nested_composite_round_trip(self):
-        from goa2.engine.steps import SelectStep
         from goa2.domain.models.enums import TargetType
+        from goa2.engine.steps import SelectStep
 
         step = SelectStep(
             target_type=TargetType.UNIT,
             prompt="test",
             output_key="test_key",
             filters=[
-                OrFilter(filters=[
-                    AndFilter(filters=[
-                        TeamFilter(relation="ENEMY"),
-                        UnitTypeFilter(unit_type="HERO"),
-                    ]),
-                    UnitTypeFilter(unit_type="TOKEN"),
-                ]),
+                OrFilter(
+                    filters=[
+                        AndFilter(
+                            filters=[
+                                TeamFilter(relation="ENEMY"),
+                                UnitTypeFilter(unit_type="HERO"),
+                            ]
+                        ),
+                        UnitTypeFilter(unit_type="TOKEN"),
+                    ]
+                ),
             ],
         )
         data = step.model_dump()

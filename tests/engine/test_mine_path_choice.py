@@ -1,9 +1,9 @@
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.tile import Tile
+from goa2.domain.models import Hero, Team, TeamColor, Token, TokenType
 from goa2.domain.state import GameState
-from goa2.domain.models import Team, TeamColor, Hero, Token, TokenType
-from goa2.domain.types import HeroID, BoardEntityID
+from goa2.domain.tile import Tile
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import MoveSequenceStep
 
@@ -99,11 +99,9 @@ def test_mine_path_choice_select_then_move():
     # Pick whichever option index corresponds to mine_A path
     opts = req["options"]
     choice_idx = next(
-        o["id"] for o in opts
-        if any(
-            h == {"q": 1, "r": -1, "s": 0}
-            for h in o["metadata"]["mine_hexes"]
-        )
+        o["id"]
+        for o in opts
+        if any(h == {"q": 1, "r": -1, "s": 0} for h in o["metadata"]["mine_hexes"])
     )
     state.execution_stack[-1].pending_input = {"selection": choice_idx}
     process_stack(state).input_request

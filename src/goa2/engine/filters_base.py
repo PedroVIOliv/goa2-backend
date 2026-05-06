@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 from typing import Any
+
 from pydantic import BaseModel
 
-from goa2.domain.state import GameState
 from goa2.domain.models import FilterType
+from goa2.domain.state import GameState
 
 
 class FilterCondition(BaseModel):

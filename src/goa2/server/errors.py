@@ -48,9 +48,7 @@ class NotYourTurnError(Exception):
     def __init__(self, authenticated_hero: str, expected_hero: str):
         self.authenticated_hero = authenticated_hero
         self.expected_hero = expected_hero
-        super().__init__(
-            f"Input expected from '{expected_hero}', not '{authenticated_hero}'"
-        )
+        super().__init__(f"Input expected from '{expected_hero}', not '{authenticated_hero}'")
 
 
 def validate_input_turn(expected: str, hero_id: str, state: GameState) -> None:

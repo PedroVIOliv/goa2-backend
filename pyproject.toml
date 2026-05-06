@@ -20,6 +20,28 @@ packages = ["src/goa2"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.coverage.run]
+source = ["src/goa2"]
+branch = true
+
 [dependency-groups]
 dev = [
     "black>=25.11.0",

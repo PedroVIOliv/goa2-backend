@@ -1,7 +1,7 @@
 """Tests for effect expiration during phase transitions."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.models import (
     Team,
@@ -9,13 +9,14 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
-from goa2.engine.phases import end_turn
+from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.phases import end_turn
 
 
 @pytest.fixture
@@ -153,8 +154,8 @@ class TestEndPhaseCleanupStepExpiration:
 
     def test_cleanup_step_expires_this_round_effects(self, game_state):
         """EndPhaseCleanupStep expires THIS_ROUND effects."""
+        from goa2.engine.handler import process_stack, push_steps
         from goa2.engine.steps import EndPhaseCleanupStep
-        from goa2.engine.handler import push_steps, process_stack
 
         game_state.active_effects.append(
             ActiveEffect(
@@ -187,8 +188,8 @@ class TestEndPhaseCleanupStepExpiration:
 
     def test_cleanup_step_preserves_passive_effects(self, game_state):
         """EndPhaseCleanupStep preserves PASSIVE effects."""
+        from goa2.engine.handler import process_stack, push_steps
         from goa2.engine.steps import EndPhaseCleanupStep
-        from goa2.engine.handler import push_steps, process_stack
 
         game_state.active_effects.append(
             ActiveEffect(

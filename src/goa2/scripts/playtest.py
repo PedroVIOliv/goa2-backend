@@ -5,36 +5,35 @@ Run with: PYTHONPATH=src uv run python -m goa2.scripts.playtest
 """
 
 from __future__ import annotations
-import os
-import sys
+
 import json
 import logging
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-
-from goa2.domain.state import GameState
-from goa2.domain.hex import Hex
-from goa2.domain.models import (
-    GamePhase,
-    TeamColor,
-    MinionType,
-    CardTier,
-    CardColor,
-    ActionType,
-    StatType,
-)
-from goa2.domain.models.unit import Hero, Minion
-from goa2.domain.models.card import Card
-from goa2.domain.types import HeroID, UnitID
-from goa2.engine.setup import GameSetup
-from goa2.engine.session import GameSession, SessionResultType
+from typing import Any
 
 # Import effect scripts to register card effects
-import goa2.scripts.arien_effects  # noqa: F401
-import goa2.scripts.dodger_effects  # noqa: F401
+import goa2.scripts.arien_effects
+import goa2.scripts.dodger_effects
 import goa2.scripts.wasp_effects  # noqa: F401
-
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    CardColor,
+    CardTier,
+    GamePhase,
+    MinionType,
+    StatType,
+    TeamColor,
+)
+from goa2.domain.models.card import Card
+from goa2.domain.models.unit import Hero, Minion
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID, UnitID
+from goa2.engine.session import GameSession, SessionResultType
+from goa2.engine.setup import GameSetup
 
 # =============================================================================
 # Game Logger
@@ -60,13 +59,11 @@ class GameLogger:
         # File handler - detailed logs
         fh = logging.FileHandler(self.log_file)
         fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s")
-        )
+        fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"))
         self.logger.addHandler(fh)
 
         # Also store structured events for JSON export
-        self.events: List[Dict[str, Any]] = []
+        self.events: list[dict[str, Any]] = []
         self.turn_number = 0
         self.round_number = 0
 
@@ -74,14 +71,10 @@ class GameLogger:
         self.logger.info("PLAYTEST SESSION STARTED")
         self.logger.info("=" * 60)
 
-    def log_game_start(
-        self, state: GameState, red_heroes: List[str], blue_heroes: List[str]
-    ):
+    def log_game_start(self, state: GameState, red_heroes: list[str], blue_heroes: list[str]):
         """Log game initialization."""
         self.logger.info(f"Game initialized: RED={red_heroes}, BLUE={blue_heroes}")
-        self.logger.info(
-            f"Map: {state.active_zone_id} active, {len(state.board.tiles)} tiles"
-        )
+        self.logger.info(f"Map: {state.active_zone_id} active, {len(state.board.tiles)} tiles")
         self.logger.info(
             f"Life counters: RED={state.teams[TeamColor.RED].life_counters}, BLUE={state.teams[TeamColor.BLUE].life_counters}"
         )
@@ -101,9 +94,7 @@ class GameLogger:
         """Log phase transitions."""
         self.round_number = state.round
         self.turn_number = state.turn
-        self.logger.info(
-            f"Phase: {state.phase.value} (Round {state.round}, Turn {state.turn})"
-        )
+        self.logger.info(f"Phase: {state.phase.value} (Round {state.round}, Turn {state.turn})")
 
         self._add_event(
             "PHASE_CHANGE",
@@ -125,7 +116,7 @@ class GameLogger:
             },
         )
 
-    def log_input_request(self, request: Dict[str, Any]):
+    def log_input_request(self, request: dict[str, Any]):
         """Log when engine requests player input."""
         req_type = request.get("type", "UNKNOWN")
         player_id = request.get("player_id", "?")
@@ -155,9 +146,7 @@ class GameLogger:
             },
         )
 
-    def log_player_input(
-        self, request_type: str, player_id: str, response: Dict[str, Any]
-    ):
+    def log_player_input(self, request_type: str, player_id: str, response: dict[str, Any]):
         """Log player's response to input request."""
         # Sanitize response for logging
         safe_response = {k: str(v) for k, v in response.items()}
@@ -172,9 +161,7 @@ class GameLogger:
             },
         )
 
-    def log_action(
-        self, actor_id: str, action: str, details: Optional[Dict[str, Any]] = None
-    ):
+    def log_action(self, actor_id: str, action: str, details: dict[str, Any] | None = None):
         """Log game actions (attacks, movements, etc.)."""
         self.logger.info(f"ACTION: {actor_id} {action}")
         if details:
@@ -191,7 +178,7 @@ class GameLogger:
 
     def log_state_snapshot(self, state: GameState):
         """Log a snapshot of current game state."""
-        snapshot: Dict[str, Any] = {
+        snapshot: dict[str, Any] = {
             "phase": state.phase.value,
             "round": state.round,
             "turn": state.turn,
@@ -205,16 +192,14 @@ class GameLogger:
         # Log unit positions
         for entity_id, hex_pos in state.entity_locations.items():
             snapshot["units"][entity_id] = {  # type: ignore[index]
-                "hex": (
-                    hex_pos.model_dump() if hasattr(hex_pos, "model_dump") else hex_pos
-                ),
+                "hex": (hex_pos.model_dump() if hasattr(hex_pos, "model_dump") else hex_pos),
                 "type": "HERO" if state.get_hero(HeroID(entity_id)) else "MINION",
             }
 
         self.logger.debug(f"STATE_SNAPSHOT: {json.dumps(snapshot, indent=2)}")
         self._add_event("STATE_SNAPSHOT", snapshot)
 
-    def log_error(self, error: str, exception: Optional[Exception] = None):
+    def log_error(self, error: str, exception: Exception | None = None):
         """Log errors."""
         self.logger.error(f"ERROR: {error}")
         if exception:
@@ -228,7 +213,7 @@ class GameLogger:
             },
         )
 
-    def log_game_end(self, winner: Optional[str], red_lives: int, blue_lives: int):
+    def log_game_end(self, winner: str | None, red_lives: int, blue_lives: int):
         """Log game end."""
         self.logger.info("=" * 60)
         self.logger.info(f"GAME ENDED - Winner: {winner or 'None'}")
@@ -247,7 +232,7 @@ class GameLogger:
         # Save JSON log
         self._save_json()
 
-    def _add_event(self, event_type: str, data: Dict[str, Any]):
+    def _add_event(self, event_type: str, data: dict[str, Any]):
         """Add structured event."""
         self.events.append(
             {
@@ -274,7 +259,7 @@ class GameLogger:
 
 
 # Global logger instance
-game_logger: Optional[GameLogger] = None
+game_logger: GameLogger | None = None
 
 
 def init_logger() -> GameLogger:
@@ -284,7 +269,7 @@ def init_logger() -> GameLogger:
     return game_logger
 
 
-def get_logger() -> Optional[GameLogger]:
+def get_logger() -> GameLogger | None:
     """Get the current game logger."""
     return game_logger
 
@@ -356,9 +341,9 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def get_input(prompt: str, valid_range: Optional[range] = None) -> str:
+def get_input(prompt: str, valid_range: range | None = None) -> str:
     """Get user input with optional numeric validation."""
-    value: Optional[str] = None
+    value: str | None = None
     while True:
         try:
             value = input(f"{Colors.CYAN}> {prompt}: {Colors.RESET}").strip()
@@ -393,7 +378,7 @@ def format_hex(h: Hex) -> str:
 # =============================================================================
 
 
-def get_unit_symbol(state: GameState, entity_id: str) -> Tuple[str, str]:
+def get_unit_symbol(state: GameState, entity_id: str) -> tuple[str, str]:
     """
     Returns (symbol, color) for a unit.
     Heroes: First letter of name
@@ -425,14 +410,14 @@ def get_unit_symbol(state: GameState, entity_id: str) -> Tuple[str, str]:
 # =============================================================================
 
 
-def cube_to_offset(h: Hex) -> Tuple[int, int]:
+def cube_to_offset(h: Hex) -> tuple[int, int]:
     """Convert cube coordinates to offset coordinates for rendering."""
     col = h.q
     row = h.r + (h.q + (h.q & 1)) // 2
     return (col, row)
 
 
-def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) -> str:
+def render_board(state: GameState, highlight_hexes: list[Hex] | None = None) -> str:
     """
     Render the board as an ASCII hex grid.
     Uses a simplified representation due to the large map size.
@@ -443,7 +428,7 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
     lines = []
 
     # Group hexes by zone for a zone-based view (more readable for large maps)
-    zone_hexes: Dict[str, List[Tuple[Hex, Optional[str]]]] = {}
+    zone_hexes: dict[str, list[tuple[Hex, str | None]]] = {}
 
     for hex_coord, tile in state.board.tiles.items():
         zone_id = state.board.get_zone_for_hex(hex_coord)
@@ -460,9 +445,7 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
     active_zone = state.active_zone_id
 
     lines.append(f"\n{Colors.BOLD}{'=' * 70}{Colors.RESET}")
-    lines.append(
-        f"{Colors.BOLD}  BOARD - Active Zone: {Colors.YELLOW}{active_zone}{Colors.RESET}"
-    )
+    lines.append(f"{Colors.BOLD}  BOARD - Active Zone: {Colors.YELLOW}{active_zone}{Colors.RESET}")
     lines.append(f"{Colors.BOLD}{'=' * 70}{Colors.RESET}\n")
 
     for zone_id in lane_order:
@@ -474,9 +457,7 @@ def render_board(state: GameState, highlight_hexes: Optional[List[Hex]] = None) 
 
         # Zone header
         marker = " **ACTIVE**" if is_active else ""
-        lines.append(
-            f"{zone_color} {zone_id} {Colors.RESET}{Colors.YELLOW}{marker}{Colors.RESET}"
-        )
+        lines.append(f"{zone_color} {zone_id} {Colors.RESET}{Colors.YELLOW}{marker}{Colors.RESET}")
 
         # Collect units in this zone
         units_in_zone = []
@@ -529,9 +510,7 @@ def render_status(state: GameState) -> str:
     lines = []
 
     lines.append(f"\n{Colors.BOLD}{'=' * 70}{Colors.RESET}")
-    lines.append(
-        f"{Colors.BOLD}  GUARDS OF ATLANTIS II - Playtest Interface{Colors.RESET}"
-    )
+    lines.append(f"{Colors.BOLD}  GUARDS OF ATLANTIS II - Playtest Interface{Colors.RESET}")
     lines.append(f"{Colors.BOLD}{'=' * 70}{Colors.RESET}")
 
     # Phase info
@@ -553,9 +532,7 @@ def render_status(state: GameState) -> str:
 
     # Current actor (if in resolution)
     if state.phase == GamePhase.RESOLUTION and state.current_actor_id:
-        lines.append(
-            f"  Current Actor: {Colors.BOLD}{state.current_actor_id}{Colors.RESET}"
-        )
+        lines.append(f"  Current Actor: {Colors.BOLD}{state.current_actor_id}{Colors.RESET}")
 
     # Unresolved heroes
     if state.unresolved_hero_ids:
@@ -574,9 +551,7 @@ def render_status(state: GameState) -> str:
 def format_card(card: Card, index: int) -> str:
     """Format a card for display (summary format)."""
     # Color indicator
-    color_code = (
-        CARD_COLOR_MAP.get(card.color, Colors.WHITE) if card.color else Colors.WHITE
-    )
+    color_code = CARD_COLOR_MAP.get(card.color, Colors.WHITE) if card.color else Colors.WHITE
     color_name = card.color.value if card.color else "?"
     tier_name = card.tier.value if card.tier != CardTier.UNTIERED else "Basic"
 
@@ -624,9 +599,7 @@ def render_hand(hero: Hero) -> str:
 
     # Show played cards if any
     if hero.current_turn_card:
-        lines.append(
-            f"\n  {Colors.DIM}Current card: {hero.current_turn_card.name}{Colors.RESET}"
-        )
+        lines.append(f"\n  {Colors.DIM}Current card: {hero.current_turn_card.name}{Colors.RESET}")
 
     if hero.played_cards:
         resolved = [c.name for c in hero.played_cards if c]
@@ -647,7 +620,7 @@ def handle_planning_phase(session: GameSession) -> None:
     print(f"{Colors.DIM}Each hero must select a card to play.{Colors.RESET}\n")
 
     # Get all heroes
-    all_heroes: List[Hero] = []
+    all_heroes: list[Hero] = []
     for team in state.teams.values():
         all_heroes.extend(team.heroes)
 
@@ -676,9 +649,7 @@ def handle_planning_phase(session: GameSession) -> None:
         if game_logger:
             game_logger.log_card_commit(hero.id, selected_card.name)
 
-        print(
-            f"{Colors.GREEN}{hero.name} committed {selected_card.name}{Colors.RESET}\n"
-        )
+        print(f"{Colors.GREEN}{hero.name} committed {selected_card.name}{Colors.RESET}\n")
 
 
 # =============================================================================
@@ -686,7 +657,7 @@ def handle_planning_phase(session: GameSession) -> None:
 # =============================================================================
 
 
-def handle_action_choice(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_action_choice(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle action choice (ATTACK, MOVEMENT, SKILL, HOLD, etc.)."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
@@ -716,7 +687,7 @@ def handle_action_choice(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"choice_id": selected.get("id")}
 
 
-def handle_select_unit(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_select_unit(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle unit selection from valid candidates."""
     valid_ids = request.get("valid_options", [])
     prompt = request.get("prompt", "Select a unit")
@@ -736,9 +707,7 @@ def handle_select_unit(state: GameState, request: Dict[str, Any]) -> Dict[str, A
 
         if isinstance(unit, Hero):
             team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
-            print(
-                f"  [{i}] {Colors.BOLD}{unit.name}{Colors.RESET} ({team_value}) @ {hex_str}"
-            )
+            print(f"  [{i}] {Colors.BOLD}{unit.name}{Colors.RESET} ({team_value}) @ {hex_str}")
         elif isinstance(unit, Minion):
             team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
             print(f"  [{i}] {unit.type.value} Minion ({team_value}) @ {hex_str}")
@@ -760,7 +729,7 @@ def handle_select_unit(state: GameState, request: Dict[str, Any]) -> Dict[str, A
     return {"selection": valid_ids[int(choice) - 1]}
 
 
-def handle_select_hex(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_select_hex(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle hex selection from valid candidates."""
     valid_hexes = request.get("valid_options", [])
     prompt = request.get("prompt", "Select a hex")
@@ -802,14 +771,12 @@ def handle_select_hex(state: GameState, request: Dict[str, Any]) -> Dict[str, An
         return {"selection": {"q": selected.q, "r": selected.r, "s": selected.s}}
 
 
-def handle_defense_card(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_defense_card(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle defense card selection during reaction window."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
 
-    print(
-        f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - DEFEND! ==={Colors.RESET}"
-    )
+    print(f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - DEFEND! ==={Colors.RESET}")
 
     attacker_id = request.get("attacker_id", "Unknown")
     attack_value = request.get("attack_value", 0)
@@ -821,7 +788,7 @@ def handle_defense_card(state: GameState, request: Dict[str, Any]) -> Dict[str, 
         return {"selected_card_id": None, "pass_defense": True}
 
     # Find defense cards in hand
-    defense_cards: List[Tuple[int, Card]] = []
+    defense_cards: list[tuple[int, Card]] = []
     idx = 1
 
     for card in hero.hand:
@@ -849,14 +816,12 @@ def handle_defense_card(state: GameState, request: Dict[str, Any]) -> Dict[str, 
     return {"selected_card_id": selected_card.id, "pass_defense": False}
 
 
-def handle_upgrade_choice(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_upgrade_choice(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle upgrade card selection during level-up phase."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
 
-    print(
-        f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - LEVEL UP! ==={Colors.RESET}"
-    )
+    print(f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - LEVEL UP! ==={Colors.RESET}")
 
     upgrade_options = request.get("upgrade_options", [])
 
@@ -881,7 +846,7 @@ def handle_upgrade_choice(state: GameState, request: Dict[str, Any]) -> Dict[str
     return {"selected_card_id": upgrade_options[int(choice) - 1]}
 
 
-def handle_tie_breaker(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_tie_breaker(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle tie-breaker selection."""
     tied_hero_ids = request.get("tied_hero_ids", [])
 
@@ -913,7 +878,7 @@ def handle_tie_breaker(state: GameState, request: Dict[str, Any]) -> Dict[str, A
     return {"winner_id": tied_hero_ids[0] if tied_hero_ids else None}
 
 
-def handle_confirm_passive(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_confirm_passive(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle passive ability confirmation."""
     prompt = request.get("prompt", "Use passive ability?")
     card_name = request.get("card_name", "Unknown")
@@ -930,7 +895,7 @@ def handle_confirm_passive(state: GameState, request: Dict[str, Any]) -> Dict[st
     return {"choice": options[int(choice) - 1]}
 
 
-def handle_select_option(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_select_option(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle generic option selection (YES/NO prompts, etc.)."""
     prompt = request.get("prompt", "Select an option")
     options = request.get("options", [])
@@ -953,9 +918,7 @@ def handle_select_option(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"selection": selected}
 
 
-def handle_select_card_or_pass(
-    state: GameState, request: Dict[str, Any]
-) -> Dict[str, Any]:
+def handle_select_card_or_pass(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle defense card selection (can pass)."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
@@ -996,7 +959,7 @@ def handle_select_card_or_pass(
     return {"selected_card_id": valid_cards[int(choice) - 1]}
 
 
-def handle_select_card(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_select_card(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle card selection (e.g., for forced discard)."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
@@ -1035,7 +998,7 @@ def handle_select_card(state: GameState, request: Dict[str, Any]) -> Dict[str, A
     return {"selection": valid_cards[int(choice) - 1]}
 
 
-def handle_select_number(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_select_number(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle number selection (e.g., choose push distance)."""
     prompt = request.get("prompt", "Select a number")
     valid_numbers = request.get("valid_options", [])
@@ -1065,7 +1028,7 @@ def handle_select_number(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"selection": int(valid_numbers[int(choice) - 1])}
 
 
-def handle_choose_actor(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_choose_actor(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle tie-breaker actor selection."""
     tied_hero_ids = request.get("tied_hero_ids", [])
 
@@ -1095,7 +1058,7 @@ def handle_choose_actor(state: GameState, request: Dict[str, Any]) -> Dict[str, 
     return {"selected_hero_id": tied_hero_ids[0] if tied_hero_ids else None}
 
 
-def handle_choose_respawn(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_choose_respawn(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """
     Handle respawn selection. This can be either:
     1. YES/NO choice (options = ["RESPAWN", "PASS"])
@@ -1142,15 +1105,13 @@ def handle_choose_respawn(state: GameState, request: Dict[str, Any]) -> Dict[str
         return {"spawn_hex": {"q": selected.q, "r": selected.r, "s": selected.s}}
 
 
-def handle_upgrade_phase(state: GameState, request: Dict[str, Any]) -> Dict[str, Any]:
+def handle_upgrade_phase(state: GameState, request: dict[str, Any]) -> dict[str, Any]:
     """Handle upgrade phase card selection."""
     hero_id = request.get("player_id")
     hero = state.get_hero(HeroID(hero_id)) if hero_id else None
     valid_options = request.get("valid_options", [])
 
-    print(
-        f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - UPGRADE ==={Colors.RESET}"
-    )
+    print(f"\n{Colors.BOLD}=== {hero.name if hero else hero_id} - UPGRADE ==={Colors.RESET}")
 
     if not valid_options:
         print(f"  {Colors.DIM}No upgrade options{Colors.RESET}")
@@ -1170,9 +1131,7 @@ def handle_upgrade_phase(state: GameState, request: Dict[str, Any]) -> Dict[str,
     return {"selected_card_id": valid_options[int(choice) - 1]}
 
 
-def handle_input_request(
-    state: GameState, request: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
+def handle_input_request(state: GameState, request: dict[str, Any]) -> dict[str, Any] | None:
     """Route input request to appropriate handler. Returns the response dict."""
     request_type = request.get("type", "UNKNOWN")
     player_id = request.get("player_id", "?")
@@ -1272,9 +1231,7 @@ def run_playtest():
         return
 
     print(f"{Colors.GREEN}Game initialized successfully!{Colors.RESET}")
-    start_input = get_input(
-        "Press Enter to start (or type 'close' to start at close positions)"
-    )
+    start_input = get_input("Press Enter to start (or type 'close' to start at close positions)")
 
     if start_input.lower() == "close":
         print(f"{Colors.YELLOW}Setting up close positions...{Colors.RESET}")
@@ -1347,9 +1304,7 @@ def run_playtest():
     # Log game end
     if game_logger:
         game_logger.log_game_end(winner, red_lives, blue_lives)
-        print(
-            f"\n  {Colors.DIM}Log saved to: {game_logger.get_log_path()}{Colors.RESET}"
-        )
+        print(f"\n  {Colors.DIM}Log saved to: {game_logger.get_log_path()}{Colors.RESET}")
 
     print("\n  Final Score:")
     print(f"    {Colors.RED}RED: {red_lives} lives{Colors.RESET}")

@@ -1,25 +1,26 @@
 """Tests for validation integration in Steps."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    Hero,
     Team,
     TeamColor,
-    Hero,
 )
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
 from goa2.domain.models.enums import DisplacementType
-from goa2.domain.hex import Hex
-from goa2.engine.steps import PlaceUnitStep, MoveUnitStep
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.engine.steps import MoveUnitStep, PlaceUnitStep
 
 
 @pytest.fixture
@@ -84,9 +85,7 @@ def test_place_unit_step_blocked_by_effect(game_state_with_heroes):
     state.current_actor_id = "red_hero"
 
     # Try to place self
-    step = PlaceUnitStep(
-        unit_id="red_hero", target_hex_arg=Hex(q=3, r=-2, s=-1), is_mandatory=True
-    )
+    step = PlaceUnitStep(unit_id="red_hero", target_hex_arg=Hex(q=3, r=-2, s=-1), is_mandatory=True)
 
     result = step.resolve(state, {})
 

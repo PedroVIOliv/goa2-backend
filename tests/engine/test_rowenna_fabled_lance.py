@@ -16,25 +16,23 @@ Tests verify:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    StatType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.steps import AttackSequenceStep
-from goa2.engine.handler import push_steps, process_stack
 
 import goa2.scripts.rowenna_effects  # noqa: F401
-
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    StatType,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.steps import AttackSequenceStep
 
 # =============================================================================
 # Helpers
@@ -104,28 +102,18 @@ def rowenna_state():
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    card = _make_attack_card(
-        "token_of_gratitude", "Token of Gratitude", "token_of_gratitude"
-    )
-    rowenna = Hero(
-        id="rowenna", name="Rowenna", team=TeamColor.RED, deck=[], level=1
-    )
+    card = _make_attack_card("token_of_gratitude", "Token of Gratitude", "token_of_gratitude")
+    rowenna = Hero(id="rowenna", name="Rowenna", team=TeamColor.RED, deck=[], level=1)
     rowenna.current_turn_card = card
 
-    enemy = Hero(
-        id="enemy", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy = Hero(id="enemy", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
     enemy.hand = [_make_filler_card("enemy_filler")]
 
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[rowenna], minions=[]
-            ),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[rowenna], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy], minions=[]),
         },
     )
     state.place_entity("rowenna", Hex(q=0, r=0, s=0))

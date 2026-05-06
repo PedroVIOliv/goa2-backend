@@ -1,5 +1,18 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    AffectsFilter,
+    CardContainerType,
+    DurationType,
+    EffectScope,
+    EffectType,
+    MarkerType,
+    Shape,
+    StatType,
+    TargetType,
+)
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AttackSequenceStep,
@@ -9,21 +22,10 @@ from goa2.engine.steps import (
     SelectStep,
     SwapCardStep,
 )
-from goa2.domain.models import (
-    TargetType,
-    CardContainerType,
-    StatType,
-    DurationType,
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-    MarkerType,
-)
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, CardContainerType, Hero, TargetType
     from goa2.domain.state import GameState
-    from goa2.domain.models import TargetType, CardContainerType, Hero, Card
 
 
 @register_effect("venom_strike")
@@ -35,7 +37,7 @@ class VenomStrikeEffect(CardEffect):
     The marker applies stat debuffs via get_computed_stat() reading markers.
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> list[GameStep]:
         from goa2.engine.stats import get_computed_stat
 
         base_dmg = 2
@@ -59,7 +61,7 @@ class SlipperyGroundEffect(CardEffect):
     Card Text: "This Turn: Adjacent enemies can only move up to 1 space."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -80,7 +82,7 @@ class RogueSkillGoldEffect(CardEffect):
     Card Text: "Swap target enemy's current turn card with a card from their Resolved pile."
     """
 
-    def get_steps(self, state: GameState, hero: Hero, card: Card) -> List[GameStep]:
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> list[GameStep]:
         from goa2.engine.filters_units import TeamFilter
 
         return [
@@ -102,7 +104,5 @@ class RogueSkillGoldEffect(CardEffect):
                 is_mandatory=True,
             ),
             # 3. Perform Swap on THAT Hero
-            SwapCardStep(
-                target_card_key="swap_card_id", context_hero_id_key="target_hero_id"
-            ),
+            SwapCardStep(target_card_key="swap_card_id", context_hero_id_key="target_hero_id"),
         ]

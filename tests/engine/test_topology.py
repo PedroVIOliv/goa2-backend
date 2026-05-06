@@ -14,29 +14,30 @@ Tier 3 (TOPOLOGY_ISOLATION): Same as Tier 2 + isolated_hex only reachable from Z
 """
 
 import math
+
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero
+from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Team, TeamColor
 from goa2.domain.models.effect import (
     ActiveEffect,
+    DurationType,
+    EffectScope,
     EffectType,
     Shape,
-    EffectScope,
-    DurationType,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.topology import (
     TopologyService,
-    get_topology_service,
-    topology_distance,
-    are_connected,
     are_adjacent,
+    are_connected,
     get_connected_neighbors,
+    get_topology_service,
     hex_in_scope,
+    topology_distance,
 )
-
 
 # =============================================================================
 # FIXTURES
@@ -371,9 +372,7 @@ class TestHexInScope:
         origin = Hex(q=0, r=0, s=0)
 
         assert topo.hex_in_scope(origin, origin, Shape.POINT, 0, basic_state)
-        assert not topo.hex_in_scope(
-            origin, Hex(q=1, r=0, s=-1), Shape.POINT, 0, basic_state
-        )
+        assert not topo.hex_in_scope(origin, Hex(q=1, r=0, s=-1), Shape.POINT, 0, basic_state)
 
     def test_adjacent_shape(self, topo, basic_state):
         """ADJACENT shape matches hexes at distance 1."""

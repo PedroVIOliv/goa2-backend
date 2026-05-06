@@ -1,26 +1,24 @@
 import hashlib
 import logging
 import random
-from typing import List, Optional
 
-from goa2.domain.state import GameState
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    GamePhase,
-    GameType,
-    CardTier,
-    CardState,
-    Token,
-    TokenType,
-    TOKEN_SUPPLY,
-)
-from goa2.domain.types import BoardEntityID
-from goa2.engine.map_loader import load_map
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.factory import EntityFactory
+from goa2.domain.models import (
+    TOKEN_SUPPLY,
+    CardState,
+    CardTier,
+    GamePhase,
+    GameType,
+    Team,
+    TeamColor,
+    Token,
+    TokenType,
+)
 from goa2.domain.models.spawn import SpawnType
-
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID
+from goa2.engine.map_loader import load_map
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +66,11 @@ class GameSetup:
     @staticmethod
     def create_game(
         map_path: str,
-        red_heroes: List[str],
-        blue_heroes: List[str],
+        red_heroes: list[str],
+        blue_heroes: list[str],
         cheats_enabled: bool = False,
         game_type: str = "LONG",
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -90,9 +88,7 @@ class GameSetup:
 
         # 2. Calculate Wave & Life Counters
         total_players = len(red_heroes) + len(blue_heroes)
-        wave_counters, life_counters = GameSetup.get_game_config(
-            game_type, total_players
-        )
+        wave_counters, life_counters = GameSetup.get_game_config(game_type, total_players)
 
         # 3. Initialize State
         state = GameState(
@@ -147,9 +143,7 @@ class GameSetup:
                     game_type,
                 ]
             )
-            seed = int.from_bytes(
-                hashlib.sha256(seed_material.encode("utf-8")).digest()[:8], "big"
-            )
+            seed = int.from_bytes(hashlib.sha256(seed_material.encode("utf-8")).digest()[:8], "big")
         state.rng_seed = seed
         rng = random.Random(seed)
         state.tie_breaker_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
@@ -181,9 +175,7 @@ class GameSetup:
 
             is_mine = token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
             for _ in range(supply):
-                token_id = state.create_entity_id(
-                    "mine" if is_mine else token_type.value
-                )
+                token_id = state.create_entity_id("mine" if is_mine else token_type.value)
                 token = Token(
                     id=BoardEntityID(token_id),
                     name=token_type.value.replace("_", " ").title(),
@@ -195,7 +187,7 @@ class GameSetup:
                 state.token_pool[token_type].append(token)
 
     @staticmethod
-    def _setup_team(state: GameState, team_color: TeamColor, hero_names: List[str]):
+    def _setup_team(state: GameState, team_color: TeamColor, hero_names: list[str]):
         """
         Instantiates heroes, sets up their hand, and places them at spawn points.
         """

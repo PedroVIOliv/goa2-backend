@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 from abc import ABC
-from typing import List, Dict, Any, Tuple, TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
+
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import ActionType, PassiveTrigger, StatType
 from goa2.engine.filters_base import FilterCondition
 
 if TYPE_CHECKING:
-    from goa2.engine.steps import GameStep
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
+    from goa2.engine.steps import GameStep
 
 
 class StatAura(BaseModel):
@@ -24,12 +26,12 @@ class StatAura(BaseModel):
     Use basic_only and/or action_type_only to restrict when the aura applies.
     """
 
-    stat_type: "StatType"
-    count_filters: List["FilterCondition"] = []
+    stat_type: StatType
+    count_filters: list[FilterCondition] = []
     multiplier: int = 1
-    flat_bonus: Optional[int] = None
+    flat_bonus: int | None = None
     basic_only: bool = False
-    action_type_only: Optional[ActionType] = None
+    action_type_only: ActionType | None = None
 
 
 class MovementAura(BaseModel):
@@ -79,9 +81,7 @@ class CardEffect(ABC):
     # Public API - Called by engine. Computes stats and delegates to build_*.
     # -------------------------------------------------------------------------
 
-    def get_steps(
-        self, state: "GameState", hero: "Hero", card: "Card"
-    ) -> List["GameStep"]:
+    def get_steps(self, state: GameState, hero: Hero, card: Card) -> list[GameStep]:
         """
         Returns steps for the card's primary action on your turn.
 
@@ -95,11 +95,11 @@ class CardEffect(ABC):
 
     def get_defense_steps(
         self,
-        state: "GameState",
-        defender: "Hero",
-        card: "Card",
-        context: Dict[str, Any],
-    ) -> Optional[List["GameStep"]]:
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         """
         Returns steps when used as primary DEFENSE in reaction.
 
@@ -116,11 +116,11 @@ class CardEffect(ABC):
 
     def get_on_block_steps(
         self,
-        state: "GameState",
-        defender: "Hero",
-        card: "Card",
-        context: Dict[str, Any],
-    ) -> List["GameStep"]:
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         """
         Returns steps to run after a successful block ('if you do' effects).
 
@@ -138,11 +138,11 @@ class CardEffect(ABC):
 
     def build_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
-        stats: "CardStats",
-    ) -> List["GameStep"]:
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
         """
         Returns steps for the card's primary action on your turn.
 
@@ -161,12 +161,12 @@ class CardEffect(ABC):
 
     def build_defense_steps(
         self,
-        state: "GameState",
-        defender: "Hero",
-        card: "Card",
-        stats: "CardStats",
-        context: Dict[str, Any],
-    ) -> Optional[List["GameStep"]]:
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: CardStats,
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         """
         Returns steps when used as primary DEFENSE in reaction.
 
@@ -189,12 +189,12 @@ class CardEffect(ABC):
 
     def build_on_block_steps(
         self,
-        state: "GameState",
-        defender: "Hero",
-        card: "Card",
-        stats: "CardStats",
-        context: Dict[str, Any],
-    ) -> List["GameStep"]:
+        state: GameState,
+        defender: Hero,
+        card: Card,
+        stats: CardStats,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         """
         Returns steps to run after a successful block ('if you do' effects).
 
@@ -216,11 +216,11 @@ class CardEffect(ABC):
     # Aura methods (always-on stat/movement modifiers)
     # -------------------------------------------------------------------------
 
-    def get_stat_auras(self) -> List["StatAura"]:
+    def get_stat_auras(self) -> list[StatAura]:
         """Return always-on stat auras. Counted via filters. Default: none."""
         return []
 
-    def get_movement_aura(self) -> Optional["MovementAura"]:
+    def get_movement_aura(self) -> MovementAura | None:
         """Return movement rule modifications. Default: none."""
         return None
 
@@ -228,7 +228,7 @@ class CardEffect(ABC):
     # Passive ability methods (unchanged)
     # -------------------------------------------------------------------------
 
-    def get_passive_config(self) -> Optional[PassiveConfig]:
+    def get_passive_config(self) -> PassiveConfig | None:
         """
         Returns passive configuration if this card has a passive ability.
 
@@ -245,11 +245,11 @@ class CardEffect(ABC):
 
     def should_offer_passive(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
+        state: GameState,
+        hero: Hero,
+        card: Card,
         trigger: PassiveTrigger,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> bool:
         """
         Runtime predicate checked before offering the passive to the player.
@@ -261,12 +261,12 @@ class CardEffect(ABC):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
+        state: GameState,
+        hero: Hero,
+        card: Card,
         trigger: PassiveTrigger,
-        context: Dict[str, Any],
-    ) -> List["GameStep"]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         """
         Returns steps to execute when this passive ability triggers.
 
@@ -290,14 +290,14 @@ class CardEffectRegistry:
     Global registry for card effects, indexed by effect_id.
     """
 
-    _effects: Dict[str, CardEffect] = {}
+    _effects: dict[str, CardEffect] = {}
 
     @classmethod
     def register(cls, effect_id: str, effect: CardEffect):
         cls._effects[effect_id] = effect
 
     @classmethod
-    def get(cls, effect_id: str) -> Optional[CardEffect]:
+    def get(cls, effect_id: str) -> CardEffect | None:
         return cls._effects.get(effect_id)
 
 
@@ -311,13 +311,11 @@ def register_effect(effect_id: str):
     return decorator
 
 
-def get_active_aura_effects(
-    state: "GameState", hero: "Hero"
-) -> List[Tuple["Card", CardEffect]]:
+def get_active_aura_effects(state: GameState, hero: Hero) -> list[tuple[Card, CardEffect]]:
     """Get all CardEffects with active auras for a hero."""
     from goa2.domain.models.enums import CardState
 
-    results: List[Tuple["Card", CardEffect]] = []
+    results: list[tuple[Card, CardEffect]] = []
     # Check ultimate (level >= 8)
     if hero.level >= 8 and hero.ultimate_card and hero.ultimate_card.current_effect_id:
         effect = CardEffectRegistry.get(hero.ultimate_card.current_effect_id)

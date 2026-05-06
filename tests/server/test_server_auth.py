@@ -1,14 +1,14 @@
 """Unit tests for auth dependency."""
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import HTTPException
 
-from goa2.server.auth import get_current_player, PlayerContext
-from goa2.server.registry import GameRegistry
-from goa2.engine.setup import GameSetup
 from goa2.engine.session import GameSession
+from goa2.engine.setup import GameSetup
+from goa2.server.auth import PlayerContext, get_current_player
+from goa2.server.registry import GameRegistry
 
 MAP_PATH = "src/goa2/data/maps/forgotten_island.json"
 

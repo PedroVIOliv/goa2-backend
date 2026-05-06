@@ -1,17 +1,20 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, Minion, MinionType, GamePhase
+from goa2.domain.models import GamePhase, Minion, MinionType, Team, TeamColor
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
+from goa2.domain.state import GameState
 from goa2.domain.types import UnitID
-from goa2.engine.steps import EndPhaseStep, DefeatUnitStep
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.map_logic import get_push_target_zone_id
+from goa2.engine.session import GameSession, SessionResultType
+from goa2.engine.steps import DefeatUnitStep, EndPhaseStep
+
 
 def create_minion(id_str, team):
     return Minion(id=UnitID(id_str), name=id_str, team=team, type=MinionType.MELEE)
+
 
 @pytest.fixture
 def push_state():
@@ -26,9 +29,13 @@ def push_state():
     blue_beach_hexes = [Hex(q=2, r=-1, s=-1), Hex(q=2, r=0, s=-2)]
 
     board.zones["z_red_base"] = Zone(id="z_red_base", name="Red Base", hexes=set())
-    board.zones["z_red_beach"] = Zone(id="z_red_beach", name="Red Beach", hexes=set(red_beach_hexes))
+    board.zones["z_red_beach"] = Zone(
+        id="z_red_beach", name="Red Beach", hexes=set(red_beach_hexes)
+    )
     board.zones["z_mid"] = Zone(id="z_mid", name="Mid", hexes=set(mid_hexes))
-    board.zones["z_blue_beach"] = Zone(id="z_blue_beach", name="Blue Beach", hexes=set(blue_beach_hexes))
+    board.zones["z_blue_beach"] = Zone(
+        id="z_blue_beach", name="Blue Beach", hexes=set(blue_beach_hexes)
+    )
     board.zones["z_blue_base"] = Zone(id="z_blue_base", name="Blue Base", hexes=set())
 
     for h in mid_hexes:
@@ -42,12 +49,13 @@ def push_state():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
-            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[])
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
         },
         active_zone_id="z_mid",
-        wave_counter=5
+        wave_counter=5,
     )
     return state
+
 
 def test_end_phase_push_trigger(push_state):
     """
@@ -65,6 +73,7 @@ def test_end_phase_push_trigger(push_state):
     assert push_state.wave_counter == 4
     assert push_state.active_zone_id == "z_red_beach"
     assert m_blue.id not in push_state.unit_locations
+
 
 def test_combat_push_trigger(push_state):
     """
@@ -87,6 +96,7 @@ def test_combat_push_trigger(push_state):
     assert push_state.active_zone_id == "z_blue_beach"
     assert push_state.wave_counter == 4
     assert m_red.id not in push_state.unit_locations
+
 
 def test_last_push_victory(push_state):
     """
@@ -122,15 +132,23 @@ def test_lane_push_spawns_minions_in_new_zone():
     red_beach_hexes = [red_beach_hex_1, red_beach_hex_2]
 
     red_spawn_1 = SpawnPoint(
-        location=red_beach_hex_1, team=TeamColor.RED, type=SpawnType.MINION, minion_type=MinionType.MELEE
+        location=red_beach_hex_1,
+        team=TeamColor.RED,
+        type=SpawnType.MINION,
+        minion_type=MinionType.MELEE,
     )
     red_spawn_2 = SpawnPoint(
-        location=red_beach_hex_2, team=TeamColor.BLUE, type=SpawnType.MINION, minion_type=MinionType.MELEE
+        location=red_beach_hex_2,
+        team=TeamColor.BLUE,
+        type=SpawnType.MINION,
+        minion_type=MinionType.MELEE,
     )
 
     board.zones["z_red_base"] = Zone(id="z_red_base", name="Red Base", hexes=set())
     board.zones["z_red_beach"] = Zone(
-        id="z_red_beach", name="Red Beach", hexes=set(red_beach_hexes),
+        id="z_red_beach",
+        name="Red Beach",
+        hexes=set(red_beach_hexes),
         spawn_points=[red_spawn_1, red_spawn_2],
     )
     board.zones["z_mid"] = Zone(id="z_mid", name="Mid", hexes=set(mid_hexes))
@@ -143,14 +161,18 @@ def test_lane_push_spawns_minions_in_new_zone():
         board.tiles[h] = Tile(hex=h, zone_id="z_red_beach")
 
     m_red = Minion(id=UnitID("r_melee"), name="r_melee", team=TeamColor.RED, type=MinionType.MELEE)
-    m_blue_spawnable = Minion(id=UnitID("b_melee"), name="b_melee", team=TeamColor.BLUE, type=MinionType.MELEE)
+    m_blue_spawnable = Minion(
+        id=UnitID("b_melee"), name="b_melee", team=TeamColor.BLUE, type=MinionType.MELEE
+    )
     m_blue_in_mid = create_minion("b1", TeamColor.BLUE)
 
     state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[m_red]),
-            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[m_blue_in_mid, m_blue_spawnable]),
+            TeamColor.BLUE: Team(
+                color=TeamColor.BLUE, heroes=[], minions=[m_blue_in_mid, m_blue_spawnable]
+            ),
         },
         active_zone_id="z_mid",
         wave_counter=5,
@@ -167,6 +189,7 @@ def test_lane_push_spawns_minions_in_new_zone():
 
 
 # --- Game-over boundary tests ---
+
 
 def test_push_from_blue_beach_triggers_game_over(push_state):
     """
@@ -186,6 +209,7 @@ def test_push_from_blue_beach_triggers_game_over(push_state):
     assert push_state.winner == TeamColor.RED
     assert push_state.victory_condition == "LANE_PUSH"
 
+
 def test_push_from_red_beach_triggers_game_over(push_state):
     """
     Red loses at RedBeach → push reaches RedBase → game over.
@@ -204,6 +228,7 @@ def test_push_from_red_beach_triggers_game_over(push_state):
     assert push_state.winner == TeamColor.BLUE
     assert push_state.victory_condition == "LANE_PUSH"
 
+
 def test_push_from_mid_not_game_over(push_state):
     """
     Push from Mid goes to a Beach zone, NOT game over.
@@ -217,6 +242,7 @@ def test_push_from_mid_not_game_over(push_state):
     target, is_over = get_push_target_zone_id(push_state, TeamColor.BLUE)
     assert target == "z_blue_beach"
     assert is_over is False
+
 
 def test_get_push_target_zone_id_beach_to_base_is_game_over(push_state):
     """
@@ -236,6 +262,7 @@ def test_get_push_target_zone_id_beach_to_base_is_game_over(push_state):
 
 
 # --- SessionResult.winner tests ---
+
 
 def test_session_winner_set_for_lane_push(push_state):
     """GameSession.advance() returns winner for lane push game over."""

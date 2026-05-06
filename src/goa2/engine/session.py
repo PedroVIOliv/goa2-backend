@@ -6,15 +6,17 @@ without touching execution_stack or calling internal functions.
 """
 
 from __future__ import annotations
+
 from enum import Enum
-from typing import List, Optional, Union, Dict, Any
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from goa2.domain.state import GameState
-from goa2.domain.models import GamePhase, Card, TeamColor
-from goa2.domain.types import HeroID
-from goa2.domain.input import InputRequest, InputResponse
 from goa2.domain.events import GameEvent
+from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.models import Card, GamePhase, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 
 
 class SessionResultType(str, Enum):
@@ -26,10 +28,10 @@ class SessionResultType(str, Enum):
 
 class SessionResult(BaseModel):
     result_type: SessionResultType
-    input_request: Optional[InputRequest] = None
+    input_request: InputRequest | None = None
     current_phase: GamePhase
-    winner: Optional[str] = None
-    events: List[GameEvent] = Field(default_factory=list)
+    winner: str | None = None
+    events: list[GameEvent] = Field(default_factory=list)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -46,8 +48,8 @@ class GameSession:
     def __init__(self, state: GameState):
         self.state = state
         self._last_phase = state.phase
-        self._rollback_snapshot: Optional[dict] = None
-        self._rollback_actor_id: Optional[str] = None
+        self._rollback_snapshot: dict | None = None
+        self._rollback_actor_id: str | None = None
 
     @property
     def current_phase(self) -> GamePhase:
@@ -69,14 +71,10 @@ class GameSession:
         _pass_turn(self.state, hero_id)
         return self._check_after_planning()
 
-    def advance(
-        self, response: Optional[Union[InputResponse, Dict[str, Any]]] = None
-    ) -> SessionResult:
+    def advance(self, response: InputResponse | dict[str, Any] | None = None) -> SessionResult:
         if self.state.phase == GamePhase.PLANNING:
-            raise ValueError(
-                "Cannot advance() during PLANNING. Use commit_card() or pass_turn()."
-            )
-        from goa2.engine.handler import submit_input, process_stack
+            raise ValueError("Cannot advance() during PLANNING. Use commit_card() or pass_turn().")
+        from goa2.engine.handler import process_stack, submit_input
 
         if response is not None:
             submit_input(self.state, response)
@@ -86,9 +84,7 @@ class GameSession:
         # Snapshot & rollback flag management
         self._manage_rollback(stack_result)
 
-        return self._build_result(
-            stack_result.input_request, events=stack_result.events
-        )
+        return self._build_result(stack_result.input_request, events=stack_result.events)
 
     def rollback(self) -> SessionResult:
         """Rollback to the snapshot taken at the start of the current actor's resolution."""
@@ -128,10 +124,7 @@ class GameSession:
             self._rollback_actor_id = None
 
         # Take snapshot on the first input request targeting the current actor
-        if (
-            self._rollback_snapshot is None
-            and stack_result.input_request.player_id == actor_id
-        ):
+        if self._rollback_snapshot is None and stack_result.input_request.player_id == actor_id:
             self._rollback_snapshot = self.state.model_dump(mode="json")
             self._rollback_actor_id = actor_id
 
@@ -150,9 +143,7 @@ class GameSession:
 
             stack_result = process_stack(self.state)
             self._manage_rollback(stack_result)
-            result = self._build_result(
-                stack_result.input_request, events=stack_result.events
-            )
+            result = self._build_result(stack_result.input_request, events=stack_result.events)
             self._last_phase = self.state.phase
             return result
         return SessionResult(
@@ -162,8 +153,8 @@ class GameSession:
 
     def _build_result(
         self,
-        request: Optional[InputRequest] = None,
-        events: Optional[List[GameEvent]] = None,
+        request: InputRequest | None = None,
+        events: list[GameEvent] | None = None,
     ) -> SessionResult:
         ev = events or []
         if self.state.phase == GamePhase.GAME_OVER:
@@ -194,7 +185,7 @@ class GameSession:
             events=ev,
         )
 
-    def _determine_winner(self) -> Optional[str]:
+    def _determine_winner(self) -> str | None:
         # Authoritative: TriggerGameOverStep sets state.winner for all victory types
         if self.state.winner is not None:
             return self.state.winner.value

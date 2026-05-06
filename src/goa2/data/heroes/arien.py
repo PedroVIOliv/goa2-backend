@@ -1,13 +1,14 @@
 from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
-    StatType,
+    Card,
+    CardColor,
     CardState,
+    CardTier,
+    Hero,
+    StatType,
 )
 from goa2.domain.types import HeroID
+
 from .registry import HeroRegistry
 
 # Register effects
@@ -96,9 +97,7 @@ def create_arien() -> Hero:
             initiative=10,
             primary_action=ActionType.DEFENSE,
             primary_action_value=6,
-            secondary_actions={
-                ActionType.MOVEMENT: 3  # Corrected from Defense to Movement
-            },
+            secondary_actions={ActionType.MOVEMENT: 3},  # Corrected from Defense to Movement
             item=StatType.RANGE,
             effect_id="master_duelist",
             effect_text="Ignore all minion defense modifiers. This round: You are immune to attack actions of all enemy heroes, except this attacker.",
@@ -172,9 +171,7 @@ def create_arien() -> Hero:
             initiative=10,
             primary_action=ActionType.DEFENSE,
             primary_action_value=6,
-            secondary_actions={
-                ActionType.MOVEMENT: 3  # Corrected from Defense to Movement
-            },
+            secondary_actions={ActionType.MOVEMENT: 3},  # Corrected from Defense to Movement
             item=StatType.INITIATIVE,
             effect_id="expert_duelist",
             effect_text="Ignore all minion defense modifiers. This turn: You are immune to attack actions of all enemy heroes, except this attacker.",

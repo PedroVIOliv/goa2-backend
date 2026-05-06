@@ -8,27 +8,26 @@ All use CountAdjacentEnemiesStep -> AttackSequenceStep(damage_bonus_key=...).
 The bonus is computed at resolve time, not build time.
 """
 
-from goa2.domain.state import GameState
+# Register xargatha effects
+import goa2.scripts.xargatha_effects  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
     StatType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
-
-# Register xargatha effects
-import goa2.scripts.xargatha_effects  # noqa: F401
 
 
 def make_threatening_slash_card():
@@ -97,9 +96,7 @@ def _make_state(adjacent_enemy_count: int) -> GameState:
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    xargatha = Hero(
-        id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-    )
+    xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
 
     enemies_heroes = []
     enemies_minions = []
@@ -239,9 +236,7 @@ class TestThreateningSlashEffect:
         board.zones = {"z1": z1}
         board.populate_tiles_from_zones()
 
-        xargatha = Hero(
-            id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-        )
+        xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
         friendly = Minion(
             id="friendly_minion",
             name="Friendly",
@@ -258,12 +253,8 @@ class TestThreateningSlashEffect:
         state = GameState(
             board=board,
             teams={
-                TeamColor.RED: Team(
-                    color=TeamColor.RED, heroes=[xargatha], minions=[friendly]
-                ),
-                TeamColor.BLUE: Team(
-                    color=TeamColor.BLUE, heroes=[], minions=[enemy]
-                ),
+                TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[friendly]),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[enemy]),
             },
         )
 

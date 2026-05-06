@@ -1,21 +1,22 @@
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    EffectType,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    EffectType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep, PlaceUnitStep
-from goa2.engine.handler import process_stack, push_steps
+from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
-import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import PlaceUnitStep, ResolveCardStep
 
 
 @pytest.fixture
@@ -64,9 +65,7 @@ def wasp_magnetic_state():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[wasp], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy1, enemy2, enemy3], minions=[]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy1, enemy2, enemy3], minions=[]),
         },
     )
 
@@ -152,9 +151,7 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
         unit_id="e2", target_hex_arg=Hex(q=2, r=0, s=-2), is_mandatory=True
     )
     res_blocked = place_step_blocked.resolve(wasp_magnetic_state, {})
-    assert res_blocked.abort_action is True, (
-        "Placement of enemy hero in radius should be blocked"
-    )
+    assert res_blocked.abort_action is True, "Placement of enemy hero in radius should be blocked"
 
     # Try to place e3 (outside radius 3) by enemy e3 - should be allowed
     wasp_magnetic_state.current_actor_id = "e3"
@@ -162,9 +159,9 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
         unit_id="e3", target_hex_arg=Hex(q=2, r=0, s=-2), is_mandatory=True
     )
     res_allowed = place_step_allowed.resolve(wasp_magnetic_state, {})
-    assert res_allowed.abort_action is False, (
-        "Placement of enemy hero outside radius should be allowed"
-    )
+    assert (
+        res_allowed.abort_action is False
+    ), "Placement of enemy hero outside radius should be allowed"
 
 
 def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
@@ -194,8 +191,6 @@ def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
 
     # Try to place e2 (in radius 3) by e2's own action - should be blocked
     wasp_magnetic_state.current_actor_id = "e2"
-    place_step = PlaceUnitStep(
-        unit_id="e2", target_hex_arg=Hex(q=2, r=0, s=-2), is_mandatory=True
-    )
+    place_step = PlaceUnitStep(unit_id="e2", target_hex_arg=Hex(q=2, r=0, s=-2), is_mandatory=True)
     res = place_step.resolve(wasp_magnetic_state, {})
     assert res.abort_action is True, "Self-placement in radius should be blocked"

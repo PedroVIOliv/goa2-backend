@@ -9,9 +9,26 @@ Covered:
 
 import pytest
 
+import goa2.data.heroes.silverarrow
 import goa2.scripts.silverarrow_effects  # noqa: F401 — registers effects
-import goa2.data.heroes.silverarrow  # noqa: F401 — registers hero
+from goa2.data.heroes.registry import HeroRegistry
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    DurationType,
+    EffectType,
+    Team,
+    TeamColor,
+)
+from goa2.domain.models.effect import AffectsFilter, Shape
+from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.filters import (
+    ExcludeIdentityFilter,
+    RangeFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -22,24 +39,6 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     SelectStep,
 )
-from goa2.engine.filters import (
-    ExcludeIdentityFilter,
-    RangeFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    ActionType,
-    DurationType,
-    EffectType,
-    Hero,
-    Team,
-    TeamColor,
-)
-from goa2.domain.models.effect import AffectsFilter, Shape
-from goa2.domain.hex import Hex
-from goa2.data.heroes.registry import HeroRegistry
 
 
 def _card_by_id(card_id: str):
@@ -141,8 +140,7 @@ class TestRainOfArrows:
         assert second_select.active_if_key == "rain_first_was_hero"
         assert second_select.is_mandatory is True
         assert any(
-            isinstance(f, UnitTypeFilter) and f.unit_type == "HERO"
-            for f in second_select.filters
+            isinstance(f, UnitTypeFilter) and f.unit_type == "HERO" for f in second_select.filters
         )
         assert any(
             isinstance(f, ExcludeIdentityFilter) and "rain_victim_1" in f.exclude_keys
@@ -157,8 +155,7 @@ class TestRainOfArrows:
         assert third_select.active_if_key == "rain_victim_2"
         assert third_select.is_mandatory is False
         assert any(
-            isinstance(f, UnitTypeFilter) and f.unit_type == "MINION"
-            for f in third_select.filters
+            isinstance(f, UnitTypeFilter) and f.unit_type == "MINION" for f in third_select.filters
         )
         assert any(
             isinstance(f, ExcludeIdentityFilter)
@@ -240,8 +237,7 @@ class TestSentinel:
         assert select_step.is_mandatory is True
         assert select_step.output_key == "sentinel_victim"
         assert any(
-            isinstance(f, UnitTypeFilter) and f.unit_type == "HERO"
-            for f in select_step.filters
+            isinstance(f, UnitTypeFilter) and f.unit_type == "HERO" for f in select_step.filters
         )
         # Radius anchored at Silverarrow's id, resolved at resolve time
         rfs = [f for f in select_step.filters if isinstance(f, RangeFilter)]

@@ -10,24 +10,24 @@ Two effects:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, ActionType
-from goa2.domain.models.effect import (
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-    DurationType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.steps import SelectStep, CreateEffectStep, SetContextFlagStep
-from goa2.engine.filters import TeamFilter, ImmunityFilter, RangeFilter
-from goa2.engine.effect_manager import EffectManager
 
 # Import to register effects
 import goa2.scripts.arien_effects  # noqa: F401
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import ActionType, Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.engine.effect_manager import EffectManager
+from goa2.engine.filters import ImmunityFilter, RangeFilter, TeamFilter
+from goa2.engine.steps import CreateEffectStep, SelectStep, SetContextFlagStep
 
 
 @pytest.fixture
@@ -69,9 +69,7 @@ def duelist_state():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[arien], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[h_enemy1, h_enemy2], minions=[m1]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[h_enemy1, h_enemy2], minions=[m1]),
         },
         entity_locations={},
         current_actor_id="h_enemy1",  # Enemy 1 is attacking
@@ -396,11 +394,13 @@ class TestMasterDuelistDefenseSteps:
         but expire when cards are retrieved at end of round.
         """
         from goa2.domain.models import (
-            Card,
-            CardTier,
-            CardColor,
             ActionType as CardActionType,
+        )
+        from goa2.domain.models import (
+            Card,
+            CardColor,
             CardState,
+            CardTier,
         )
 
         # Setup: Give Arien a card that will be "played" and create the effect linked to it
@@ -445,9 +445,7 @@ class TestMasterDuelistDefenseSteps:
 
         # Arien should still be immune (effect lasts entire round)
         result = immunity_filter.apply("hero_arien", duelist_state, context)
-        assert result is False, (
-            "Arien should still be immune on next turn within same round"
-        )
+        assert result is False, "Arien should still be immune on next turn within same round"
 
         # Now simulate end of round: deactivate effects and retrieve cards
         # This is what EndPhaseStep._retrieve_cards() does
@@ -457,14 +455,10 @@ class TestMasterDuelistDefenseSteps:
 
         # Verify effect is now inactive
         effect = duelist_state.active_effects[0]
-        assert effect.is_active is False, (
-            "Effect should be deactivated after card retrieval"
-        )
+        assert effect.is_active is False, "Effect should be deactivated after card retrieval"
 
         # Arien should NO LONGER be immune
-        result_after_retrieval = immunity_filter.apply(
-            "hero_arien", duelist_state, context
-        )
-        assert result_after_retrieval is True, (
-            "Arien should not be immune after cards are retrieved at end of round"
-        )
+        result_after_retrieval = immunity_filter.apply("hero_arien", duelist_state, context)
+        assert (
+            result_after_retrieval is True
+        ), "Arien should not be immune after cards are retrieved at end of round"

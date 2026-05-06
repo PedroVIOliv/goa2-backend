@@ -115,9 +115,7 @@ def test_game_survives_restart(tmp_path):
         assert body["view"]["phase"] == "PLANNING"
 
         # Spectator token should also work
-        resp = client2.get(
-            f"/games/{game_id}", headers=_auth(spectator_token)
-        )
+        resp = client2.get(f"/games/{game_id}", headers=_auth(spectator_token))
         assert resp.status_code == 200
 
 
@@ -132,9 +130,7 @@ def test_committed_card_survives_restart(tmp_path):
         arien_token = _token_for(data, "hero_arien")
 
         # Get and commit a card
-        view = client1.get(
-            f"/games/{game_id}", headers=_auth(arien_token)
-        ).json()
+        view = client1.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
         arien_hand = None
         for team_data in view["view"]["teams"].values():
             for hero in team_data["heroes"]:
@@ -153,9 +149,7 @@ def test_committed_card_survives_restart(tmp_path):
 
     # Session 2: restart
     with _make_client(save_dir) as client2:
-        view = client2.get(
-            f"/games/{game_id}", headers=_auth(arien_token)
-        ).json()
+        view = client2.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
 
         # Find Arien's hand in restored state
         restored_hand = None
@@ -180,9 +174,7 @@ def test_full_planning_survives_restart(tmp_path):
         wasp_token = _token_for(data, "hero_wasp")
 
         # Get cards for both heroes
-        view = client1.get(
-            f"/games/{game_id}", headers=_auth(arien_token)
-        ).json()
+        view = client1.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
         arien_hand = None
         for td in view["view"]["teams"].values():
             for h in td["heroes"]:
@@ -190,9 +182,7 @@ def test_full_planning_survives_restart(tmp_path):
                     arien_hand = h["hand"]
         assert arien_hand
 
-        view = client1.get(
-            f"/games/{game_id}", headers=_auth(wasp_token)
-        ).json()
+        view = client1.get(f"/games/{game_id}", headers=_auth(wasp_token)).json()
         wasp_hand = None
         for td in view["view"]["teams"].values():
             for h in td["heroes"]:
@@ -217,9 +207,7 @@ def test_full_planning_survives_restart(tmp_path):
 
     # Session 2: restart — phase should be preserved
     with _make_client(save_dir) as client2:
-        view = client2.get(
-            f"/games/{game_id}", headers=_auth(arien_token)
-        ).json()
+        view = client2.get(f"/games/{game_id}", headers=_auth(arien_token)).json()
         assert view["view"]["phase"] == phase_after
 
 
@@ -263,9 +251,7 @@ def test_ws_reconnect_after_restart(tmp_path):
 
     # Session 2: reconnect via WebSocket
     with _make_client(save_dir) as client2:
-        with client2.websocket_connect(
-            f"/games/{game_id}/ws?token={arien_token}"
-        ) as ws:
+        with client2.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
             msg = ws.receive_json()
             assert msg["type"] == "STATE_UPDATE"
             assert "view" in msg

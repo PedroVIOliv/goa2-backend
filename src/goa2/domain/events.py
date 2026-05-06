@@ -9,7 +9,7 @@ NOT part of GameState.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -50,7 +50,7 @@ class GameEventType(str, Enum):
     MINE_TRIGGERED = "MINE_TRIGGERED"
 
 
-def _hex_dict(h: Optional[Hex]) -> Optional[Dict[str, int]]:
+def _hex_dict(h: Hex | None) -> dict[str, int] | None:
     """Serialize a Hex to a {q, r, s} dict for JSON compatibility."""
     if h is None:
         return None
@@ -61,8 +61,8 @@ class GameEvent(BaseModel):
     """A single game event emitted by a step during resolution."""
 
     event_type: GameEventType
-    actor_id: Optional[str] = None
-    target_id: Optional[str] = None
-    from_hex: Optional[Dict[str, int]] = None
-    to_hex: Optional[Dict[str, int]] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    actor_id: str | None = None
+    target_id: str | None = None
+    from_hex: dict[str, int] | None = None
+    to_hex: dict[str, int] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

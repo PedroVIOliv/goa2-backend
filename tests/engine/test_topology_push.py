@@ -4,20 +4,21 @@ Verifies that units cannot be pushed across topology splits.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Minion, MinionType
+from goa2.domain.hex import Hex
+from goa2.domain.models import Minion, MinionType, Team, TeamColor
 from goa2.domain.models.effect import (
     ActiveEffect,
+    DurationType,
+    EffectScope,
     EffectType,
     Shape,
-    EffectScope,
-    DurationType,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import PushUnitStep
-from goa2.engine.handler import push_steps, process_stack
 
 
 @pytest.fixture
@@ -37,15 +38,9 @@ def push_topology_state():
     for h in hexes:
         board.tiles[h] = Tile(hex=h)
 
-    m_left = Minion(
-        id="m_left", name="LeftMinion", type=MinionType.MELEE, team=TeamColor.RED
-    )
-    m_center = Minion(
-        id="m_center", name="CenterMinion", type=MinionType.MELEE, team=TeamColor.RED
-    )
-    m_right = Minion(
-        id="m_right", name="RightMinion", type=MinionType.MELEE, team=TeamColor.RED
-    )
+    m_left = Minion(id="m_left", name="LeftMinion", type=MinionType.MELEE, team=TeamColor.RED)
+    m_center = Minion(id="m_center", name="CenterMinion", type=MinionType.MELEE, team=TeamColor.RED)
+    m_right = Minion(id="m_right", name="RightMinion", type=MinionType.MELEE, team=TeamColor.RED)
 
     state = GameState(
         board=board,
@@ -113,9 +108,7 @@ def test_push_blocked_by_split(push_topology_state):
     pusher_hex = Hex(q=-2, r=0, s=2)  # Virtual pusher
     # (-2) -> (-1) is East. (-1) -> (0) is East.
 
-    step = PushUnitStep(
-        target_id="m_left", source_hex=pusher_hex, distance=1, is_mandatory=True
-    )
+    step = PushUnitStep(target_id="m_left", source_hex=pusher_hex, distance=1, is_mandatory=True)
 
     push_steps(state, [step])
     process_stack(state).input_request
@@ -159,9 +152,7 @@ def test_push_crosses_bridge(push_topology_state):
     # NEG -> ZERO -> POS
 
     pusher_hex = Hex(q=-2, r=0, s=2)
-    step = PushUnitStep(
-        target_id="m_left", source_hex=pusher_hex, distance=2, is_mandatory=True
-    )
+    step = PushUnitStep(target_id="m_left", source_hex=pusher_hex, distance=2, is_mandatory=True)
 
     push_steps(state, [step])
     process_stack(state).input_request

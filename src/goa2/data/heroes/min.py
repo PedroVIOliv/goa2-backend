@@ -1,13 +1,14 @@
 from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
-    StatType,
+    Card,
+    CardColor,
     CardState,
+    CardTier,
+    Hero,
+    StatType,
 )
 from goa2.domain.types import HeroID
+
 from .registry import HeroRegistry
 
 
@@ -222,7 +223,7 @@ def create_min() -> Hero:
             is_ranged=True,
             range_value=1,
             effect_id="fast_as_lightning",
-            effect_text="Target a unit in range. After the attack: Apply the \"After the attack\" text of your resolved or discarded red card.\n(If it has radius, use that card's value.)",
+            effect_text='Target a unit in range. After the attack: Apply the "After the attack" text of your resolved or discarded red card.\n(If it has radius, use that card\'s value.)',
         ),
         Card(
             id="smoke_bomb",

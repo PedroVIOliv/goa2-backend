@@ -1,21 +1,22 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     SpawnPoint,
     SpawnType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep, MoveSequenceStep
-from goa2.engine.handler import process_stack, push_steps
+from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import MoveSequenceStep, ResolveCardStep
 
 
 @pytest.fixture
@@ -98,9 +99,7 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
 
     # Move selection (Arien stays put)
     process_stack(slippery_state).input_request
-    slippery_state.execution_stack[-1].pending_input = {
-        "selection": {"q": 0, "r": 0, "s": 0}
-    }
+    slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     # Finish turn
     while slippery_state.execution_stack:
@@ -136,9 +135,7 @@ def test_slippery_ground_movement_limited(slippery_state):
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     process_stack(slippery_state).input_request
-    slippery_state.execution_stack[-1].pending_input = {
-        "selection": {"q": 0, "r": 0, "s": 0}
-    }
+    slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     while slippery_state.execution_stack:
         process_stack(slippery_state).input_request
@@ -181,9 +178,7 @@ def test_move_sequence_step_caps_range_from_effect(slippery_state):
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     process_stack(slippery_state).input_request
-    slippery_state.execution_stack[-1].pending_input = {
-        "selection": {"q": 0, "r": 0, "s": 0}
-    }
+    slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     while slippery_state.execution_stack:
         process_stack(slippery_state).input_request
@@ -206,9 +201,7 @@ def test_move_sequence_step_caps_range_from_effect(slippery_state):
     # The input request should show Range 1, not Range 2
     assert result is not None
     assert result["type"] == "SELECT_HEX"
-    assert "Range 1" in result["prompt"], (
-        f"Expected Range 1 in prompt, got: {result['prompt']}"
-    )
+    assert "Range 1" in result["prompt"], f"Expected Range 1 in prompt, got: {result['prompt']}"
 
     # Valid hexes should only include distance 1 hexes
     # e1 is at (1, 0, -1), so valid distance-1 hexes are:

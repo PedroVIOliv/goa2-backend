@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import Set, Dict, Optional, List, Any
+
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
@@ -14,12 +16,12 @@ class Zone(BaseModel):
     """
 
     id: str
-    label: Optional[str] = None
-    hexes: Set[Hex]
-    neighbors: List[str] = Field(default_factory=list)  # IDs of connected zones
+    label: str | None = None
+    hexes: set[Hex]
+    neighbors: list[str] = Field(default_factory=list)  # IDs of connected zones
 
     # Spawn Points contained in this zone
-    spawn_points: List[SpawnPoint] = Field(default_factory=list)
+    spawn_points: list[SpawnPoint] = Field(default_factory=list)
 
     def contains(self, h: Hex) -> bool:
         return h in self.hexes
@@ -30,18 +32,18 @@ class Board(BaseModel):
     The static map container.
     """
 
-    zones: Dict[str, Zone] = Field(default_factory=dict)
+    zones: dict[str, Zone] = Field(default_factory=dict)
 
-    spawn_points: List[SpawnPoint] = Field(default_factory=list)
+    spawn_points: list[SpawnPoint] = Field(default_factory=list)
 
-    tiles: Dict[Hex, Tile] = Field(default_factory=dict)
+    tiles: dict[Hex, Tile] = Field(default_factory=dict)
 
     # E.g. [RedBase, Zone1, Mid, Zone2, BlueBase]
-    lane: List[str] = Field(default_factory=list)
+    lane: list[str] = Field(default_factory=list)
 
     # Private optimized lookup for O(1) zone resolution
     # Populated by validation
-    _hex_lookup: Dict[Hex, str] = {}
+    _hex_lookup: dict[Hex, str] = {}
 
     def model_post_init(self, __context: Any) -> None:
         """
@@ -56,7 +58,7 @@ class Board(BaseModel):
             for h in zone.hexes:
                 self._hex_lookup[h] = z_id
 
-    def get_zone_for_hex(self, h: Hex) -> Optional[str]:
+    def get_zone_for_hex(self, h: Hex) -> str | None:
         # Optimization: Check Tile first
         if h in self.tiles:
             return self.tiles[h].zone_id
@@ -67,7 +69,7 @@ class Board(BaseModel):
                 return z.id
         return None
 
-    def get_spawn_point(self, h: Hex) -> Optional[SpawnPoint]:
+    def get_spawn_point(self, h: Hex) -> SpawnPoint | None:
         for sp in self.spawn_points:
             if sp.location == h:
                 return sp
@@ -91,10 +93,10 @@ class Board(BaseModel):
         """O(1) check if a hex coordinate exists on the board."""
         return h in self.tiles
 
-    def get_neighbors(self, h: Hex) -> List[Hex]:
+    def get_neighbors(self, h: Hex) -> list[Hex]:
         """Returns all adjacent hexes (off-map hexes are treated as terrain)."""
         return h.neighbors()
 
-    def get_ring(self, h: Hex, radius: int) -> List[Hex]:
+    def get_ring(self, h: Hex, radius: int) -> list[Hex]:
         """Returns all hexes in a ring (off-map hexes are treated as terrain)."""
         return h.ring(radius)

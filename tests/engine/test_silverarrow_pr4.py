@@ -8,14 +8,14 @@ Covered:
 
 import pytest
 
+import goa2.data.heroes.silverarrow
 import goa2.scripts.silverarrow_effects  # noqa: F401 - registers effects
-import goa2.data.heroes.silverarrow  # noqa: F401 - registers hero
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import DurationType, EffectType, Hero, Team, TeamColor
-from goa2.domain.models.enums import PassiveTrigger
 from goa2.domain.models.effect import AffectsFilter, Shape
+from goa2.domain.models.enums import PassiveTrigger
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import (
@@ -164,10 +164,7 @@ class TestWildHunt:
         assert isinstance(select, SelectStep)
         assert select.output_key == "wild_hunt_dest"
         assert select.is_mandatory is False
-        assert any(
-            isinstance(f, RangeFilter) and f.max_range == 2
-            for f in select.filters
-        )
+        assert any(isinstance(f, RangeFilter) and f.max_range == 2 for f in select.filters)
         assert any(isinstance(f, InStraightLineFilter) for f in select.filters)
         assert any(isinstance(f, StraightLinePathFilter) for f in select.filters)
         assert any(isinstance(f, ObstacleFilter) for f in select.filters)

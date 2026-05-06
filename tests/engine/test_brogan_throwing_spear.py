@@ -1,23 +1,22 @@
 """Tests for Brogan's Throwing Spear card effect."""
 
 import pytest
+
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Minion,
-    MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 def _make_card(card_id, name, effect_id, **overrides):

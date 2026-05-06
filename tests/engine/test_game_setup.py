@@ -1,18 +1,19 @@
 import pytest
-from goa2.engine.setup import GameSetup
+
+from goa2.data.heroes.arien import create_arien
+from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.models import (
-    TeamColor,
-    GamePhase,
-    CardTier,
-    CardState,
-    Hero,
-    Card,
     ActionType,
+    Card,
     CardColor,
+    CardState,
+    CardTier,
+    GamePhase,
+    Hero,
+    TeamColor,
 )
 from goa2.domain.types import HeroID
-from goa2.data.heroes.registry import HeroRegistry
-from goa2.data.heroes.arien import create_arien
+from goa2.engine.setup import GameSetup
 
 
 @pytest.fixture
@@ -170,9 +171,7 @@ class TestQuickGameSetup:
         red_heroes = ["Arien"]
         blue_heroes = ["Knight"]
 
-        state = GameSetup.create_game(
-            map_path, red_heroes, blue_heroes, game_type="QUICK"
-        )
+        state = GameSetup.create_game(map_path, red_heroes, blue_heroes, game_type="QUICK")
 
         assert state.wave_counter == 3
         assert state.teams[TeamColor.RED].life_counters == 3

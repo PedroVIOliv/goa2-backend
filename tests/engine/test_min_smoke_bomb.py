@@ -1,28 +1,27 @@
 """Tests for Min's Smoke Bomb (silver card) effect."""
+
 import pytest
 
+import goa2.scripts.min_effects  # noqa: F401
 from goa2.domain.board import Board
-from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
-from goa2.domain.tile import Tile
 from goa2.domain.models import (
+    ActionType,
     Card,
     CardColor,
     CardTier,
-    ActionType,
+    Hero,
     Team,
     TeamColor,
-    Hero,
     Token,
     TokenType,
 )
 from goa2.domain.models.effect import EffectType
 from goa2.domain.state import GameState
-from goa2.domain.types import HeroID, BoardEntityID
+from goa2.domain.tile import Tile
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
-
-import goa2.scripts.min_effects  # noqa: F401
 
 
 @pytest.fixture
@@ -117,20 +116,14 @@ def test_smoke_bomb_places_token_and_blocks_los(smoke_bomb_state):
     assert req["type"] == "SELECT_HEX"
 
     # Place at (1,-1,0) — between Min at (0,0,0) and enemy at (3,-3,0)
-    state.execution_stack[-1].pending_input = {
-        "selection": {"q": 1, "r": -1, "s": 0}
-    }
+    state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
     process_stack(state).input_request
 
     # Verify token is placed
-    assert state.entity_locations.get(BoardEntityID("smoke_bomb_1")) == Hex(
-        q=1, r=-1, s=0
-    )
+    assert state.entity_locations.get(BoardEntityID("smoke_bomb_1")) == Hex(q=1, r=-1, s=0)
 
     # Verify LOS_BLOCKER effect was created
-    los_effects = [
-        e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER
-    ]
+    los_effects = [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER]
     assert len(los_effects) == 1
     assert los_effects[0].scope.origin_id == "smoke_bomb_1"
     assert los_effects[0].source_card_id is None  # token-bound, not card-bound
@@ -149,8 +142,8 @@ def test_smoke_bomb_does_not_block_off_axis(smoke_bomb_state):
     # Manually place token and create effect (skip card flow)
     state.place_entity(BoardEntityID("smoke_bomb_1"), Hex(q=1, r=-1, s=0))
 
-    from goa2.engine.effect_manager import EffectManager
     from goa2.domain.models.effect import DurationType, EffectScope, Shape
+    from goa2.engine.effect_manager import EffectManager
 
     EffectManager.create_effect(
         state,
@@ -177,15 +170,11 @@ def test_smoke_bomb_removing_token_removes_effect(smoke_bomb_state):
     process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
     process_stack(state).input_request
-    state.execution_stack[-1].pending_input = {
-        "selection": {"q": 1, "r": -1, "s": 0}
-    }
+    state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
     process_stack(state).input_request
 
     # Effect exists
-    los_effects = [
-        e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER
-    ]
+    los_effects = [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER]
     assert len(los_effects) == 1
 
     # Remove the token
@@ -194,9 +183,7 @@ def test_smoke_bomb_removing_token_removes_effect(smoke_bomb_state):
     _remove_token_from_board(state, "smoke_bomb_1")
 
     # Effect should be gone
-    los_effects = [
-        e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER
-    ]
+    los_effects = [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER]
     assert len(los_effects) == 0
 
     # Targeting is no longer blocked

@@ -1,17 +1,18 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType, StatType
+from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Minion, MinionType, StatType, Team, TeamColor
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
-from goa2.domain.models.effect import DurationType
 from goa2.domain.models.marker import MarkerType
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.engine.stats import calculate_minion_defense_modifier, get_computed_stat
 
 
@@ -25,15 +26,9 @@ def aura_state():
     # Enemy Ranged (BLUE) at 2,0,-2 (Range 2) -> -1
 
     h1 = Hero(id="H1", name="Hero", team=TeamColor.RED, deck=[])
-    m_ally_melee = Minion(
-        id="M1", name="AllyMelee", team=TeamColor.RED, type=MinionType.MELEE
-    )
-    m_ally_ranged = Minion(
-        id="M2", name="AllyRanged", team=TeamColor.RED, type=MinionType.RANGED
-    )
-    m_enemy_melee = Minion(
-        id="M3", name="EnemyMelee", team=TeamColor.BLUE, type=MinionType.MELEE
-    )
+    m_ally_melee = Minion(id="M1", name="AllyMelee", team=TeamColor.RED, type=MinionType.MELEE)
+    m_ally_ranged = Minion(id="M2", name="AllyRanged", team=TeamColor.RED, type=MinionType.RANGED)
+    m_enemy_melee = Minion(id="M3", name="EnemyMelee", team=TeamColor.BLUE, type=MinionType.MELEE)
     m_enemy_ranged = Minion(
         id="M4", name="EnemyRanged", team=TeamColor.BLUE, type=MinionType.RANGED
     )
@@ -284,15 +279,11 @@ class TestGetComputedStatWithActiveEffects:
         state.add_effect(effect)
 
         # hero_1 (RED, friendly) should not be affected
-        result_friendly = get_computed_stat(
-            state, "hero_1", StatType.INITIATIVE, base_value=5
-        )
+        result_friendly = get_computed_stat(state, "hero_1", StatType.INITIATIVE, base_value=5)
         assert result_friendly == 5
 
         # hero_2 (BLUE, enemy) should be affected
-        result_enemy = get_computed_stat(
-            state, "hero_2", StatType.INITIATIVE, base_value=5
-        )
+        result_enemy = get_computed_stat(state, "hero_2", StatType.INITIATIVE, base_value=5)
         assert result_enemy == 4
 
     def test_multiple_effects_stack(self, stat_effect_state):
@@ -337,9 +328,7 @@ class TestGetComputedStatWithMarkers:
         # Check all three stats are debuffed
         attack = get_computed_stat(state, "hero_1", StatType.ATTACK, base_value=3)
         defense = get_computed_stat(state, "hero_1", StatType.DEFENSE, base_value=2)
-        initiative = get_computed_stat(
-            state, "hero_1", StatType.INITIATIVE, base_value=5
-        )
+        initiative = get_computed_stat(state, "hero_1", StatType.INITIATIVE, base_value=5)
 
         assert attack == 2  # 3 - 1
         assert defense == 1  # 2 - 1

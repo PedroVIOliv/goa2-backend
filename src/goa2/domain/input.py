@@ -11,9 +11,10 @@ Phase 1 of Client-Readiness Roadmap:
 - Fixes pain point #8 (type coercion)
 """
 
-from typing import Dict, Any, List, Optional, Union
-from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class InputRequestType(str, Enum):
@@ -60,12 +61,12 @@ class InputOption(BaseModel):
 
     id: str  # Unique identifier for this option
     text: str  # Human-readable display text
-    metadata: Dict[str, Any] = Field(default_factory=dict)  # Additional data
+    metadata: dict[str, Any] = Field(default_factory=dict)  # Additional data
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
-    def from_value(cls, value: Any, text: Optional[str] = None) -> "InputOption":
+    def from_value(cls, value: Any, text: str | None = None) -> "InputOption":
         """
         Create an InputOption from various input types.
 
@@ -81,9 +82,7 @@ class InputOption(BaseModel):
                 return cls(
                     id=str(value.get("id")),
                     text=str(value.get("text", value.get("id"))),
-                    metadata={
-                        k: v for k, v in value.items() if k not in ("id", "text")
-                    },
+                    metadata={k: v for k, v in value.items() if k not in ("id", "text")},
                 )
             # Hex-like dict
             if "q" in value and "r" in value and "s" in value:
@@ -127,14 +126,14 @@ class InputRequest(BaseModel):
     prompt: str = ""  # Human-readable instruction
 
     # Unified options list - always present, may be empty
-    options: List[InputOption] = Field(default_factory=list)
+    options: list[InputOption] = Field(default_factory=list)
 
     # Common flags
     can_skip: bool = False  # Whether player can skip/pass
     can_rollback: bool = False  # Whether player can rollback to action choice
 
     # Legacy/additional context (for backwards compatibility during transition)
-    context: Dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -166,14 +165,14 @@ class InputRequest(BaseModel):
         except KeyError:
             return default
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert to dictionary format for backwards compatibility.
 
         This method produces output compatible with the existing playtest.py
         handlers while we transition to the typed model.
         """
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "type": self.request_type.value,
             "prompt": self.prompt,
             "player_id": self.player_id,
@@ -211,18 +210,14 @@ class InputRequest(BaseModel):
             InputRequestType.SELECT_CARD,
         ):
             # These expect valid_options as list of raw values
-            result["valid_options"] = [
-                get_serializable_value(opt) for opt in self.options
-            ]
+            result["valid_options"] = [get_serializable_value(opt) for opt in self.options]
             # Also add as candidates for MultiSelectStep compatibility
             result["candidates"] = result["valid_options"]
             # For NUMBER options with labels, include options with text
             if self.request_type == InputRequestType.SELECT_NUMBER:
                 has_labels = any(opt.text != opt.id for opt in self.options)
                 if has_labels:
-                    result["options"] = [
-                        {"id": opt.id, "text": opt.text} for opt in self.options
-                    ]
+                    result["options"] = [{"id": opt.id, "text": opt.text} for opt in self.options]
         elif self.request_type == InputRequestType.SELECT_HEX:
             # Hex selection expects valid_options as list of hex dicts (JSON-serializable)
             hex_values = [opt.metadata.get("hex", opt.id) for opt in self.options]
@@ -234,9 +229,7 @@ class InputRequest(BaseModel):
             if any(opt.metadata.get("hex") for opt in self.options):
                 # Return hex dicts for JSON compatibility
                 result["valid_hexes"] = [
-                    opt.metadata.get("hex")
-                    for opt in self.options
-                    if opt.metadata.get("hex")
+                    opt.metadata.get("hex") for opt in self.options if opt.metadata.get("hex")
                 ]
             else:
                 result["options"] = [opt.id for opt in self.options]
@@ -244,20 +237,16 @@ class InputRequest(BaseModel):
             if "valid_hexes" in self.context:
                 ctx_hexes = self.context["valid_hexes"]
                 result["valid_hexes"] = [
-                    {"q": h.q, "r": h.r, "s": h.s} if hasattr(h, "q") else h
-                    for h in ctx_hexes
+                    {"q": h.q, "r": h.r, "s": h.s} if hasattr(h, "q") else h for h in ctx_hexes
                 ]
         elif self.request_type == InputRequestType.CHOOSE_RESPAWN_HEX:
             # Respawn hex selection - use hex dicts for JSON compatibility
-            result["valid_hexes"] = [
-                opt.metadata.get("hex", opt.id) for opt in self.options
-            ]
+            result["valid_hexes"] = [opt.metadata.get("hex", opt.id) for opt in self.options]
             # Serialize context valid_hexes if present
             if "valid_hexes" in self.context:
                 ctx_hexes = self.context["valid_hexes"]
                 result["valid_hexes"] = [
-                    {"q": h.q, "r": h.r, "s": h.s} if hasattr(h, "q") else h
-                    for h in ctx_hexes
+                    {"q": h.q, "r": h.r, "s": h.s} if hasattr(h, "q") else h for h in ctx_hexes
                 ]
         elif self.request_type == InputRequestType.CONFIRM_PASSIVE:
             # Confirm passive expects simple string IDs ("YES", "NO")
@@ -288,8 +277,7 @@ class InputRequest(BaseModel):
             # Default: include options as-is
             if self.options:
                 result["options"] = [
-                    {"id": opt.id, "text": opt.text, **opt.metadata}
-                    for opt in self.options
+                    {"id": opt.id, "text": opt.text, **opt.metadata} for opt in self.options
                 ]
 
         # Merge any additional context
@@ -314,9 +302,7 @@ class InputResponse(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
-    def from_legacy(
-        cls, legacy_dict: Dict[str, Any], request_id: str = ""
-    ) -> "InputResponse":
+    def from_legacy(cls, legacy_dict: dict[str, Any], request_id: str = "") -> "InputResponse":
         """
         Create an InputResponse from legacy handler response formats.
 
@@ -346,10 +332,10 @@ class InputResponse(BaseModel):
 
 # Helper function for creating InputRequest from raw values
 def create_input_request(
-    request_type: Union[InputRequestType, str],
+    request_type: InputRequestType | str,
     player_id: str,
     prompt: str = "",
-    options: Optional[List[Any]] = None,
+    options: list[Any] | None = None,
     can_skip: bool = False,
     **context: Any,
 ) -> InputRequest:

@@ -1,6 +1,31 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models import ActionType, TargetType
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.models.enums import CardContainerType, PassiveTrigger
+from goa2.domain.models.marker import MarkerType
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
+from goa2.engine.filters_geometry import SpaceBehindEmptyFilter
+from goa2.engine.filters_hex import (
+    MovementPathFilter,
+    ObstacleFilter,
+    RangeFilter,
+    TerrainFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -19,33 +44,10 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     StealCoinsStep,
 )
-from goa2.engine.filters_geometry import SpaceBehindEmptyFilter
-from goa2.engine.filters_hex import (
-    MovementPathFilter,
-    ObstacleFilter,
-    RangeFilter,
-    TerrainFilter,
-)
-from goa2.engine.filters_units import (
-    AdjacencyToContextFilter,
-    ExcludeIdentityFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models import TargetType, ActionType
-from goa2.domain.models.enums import CardContainerType, PassiveTrigger
-from goa2.domain.models.marker import MarkerType
-from goa2.domain.models.effect import (
-    AffectsFilter,
-    DurationType,
-    EffectScope,
-    EffectType,
-    Shape,
-)
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -66,8 +68,8 @@ class DodgeEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if context.get("attack_is_ranged"):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
@@ -88,7 +90,7 @@ class HitAndRunEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # Post-attack: you may move 1 space
@@ -130,8 +132,8 @@ class SidestepEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if context.get("attack_is_ranged"):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
@@ -143,8 +145,8 @@ class SidestepEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -184,8 +186,8 @@ class ParryEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if not context.get("attack_is_ranged"):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
@@ -197,8 +199,8 @@ class ParryEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         return [
             ForceDiscardStep(victim_key="attacker_id"),
         ]
@@ -221,8 +223,8 @@ class RiposteEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if not context.get("attack_is_ranged"):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
@@ -234,8 +236,8 @@ class RiposteEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         return [
             ForceDiscardOrDefeatStep(victim_key="attacker_id"),
         ]
@@ -255,7 +257,7 @@ class LeapingStrikeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # Pre-attack: you may move 1 space
             SelectStep(
@@ -314,7 +316,7 @@ class BackstabEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select adjacent enemy target
             SelectStep(
@@ -375,7 +377,7 @@ class BackstabWithABallistaEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select target in range
             SelectStep(
@@ -440,7 +442,7 @@ class CombatReflexesEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Optional pre-move (stores destination in context if taken)
             SelectStep(
@@ -504,8 +506,8 @@ class EvadeEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if context.get("attack_is_ranged"):
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
@@ -517,8 +519,8 @@ class EvadeEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         return [
             # 1. Optional move 1 space
             SelectStep(
@@ -570,7 +572,7 @@ class LightFingeredEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Optional move 1 space
             SelectStep(
@@ -647,7 +649,7 @@ class PickPocketEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Move up to 2 spaces
             SelectStep(
@@ -724,7 +726,7 @@ class MasterThiefEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Move up to 2 spaces
             SelectStep(
@@ -812,7 +814,7 @@ class BlendIntoShadowsEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Count terrain hexes adjacent to hero
             CountStep(
@@ -878,7 +880,7 @@ class BlinkStrikeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select adjacent enemy with empty space behind
             SelectStep(
@@ -926,7 +928,7 @@ class PoisonedDaggerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -961,7 +963,7 @@ class PoisonedDartEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -997,7 +999,7 @@ class CloakAndDaggersEffect(CardEffect):
     Reads the action type, value, and range from context to rebuild the repeat.
     """
 
-    def get_passive_config(self) -> Optional[PassiveConfig]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_BASIC_ACTION,
             uses_per_turn=1,
@@ -1007,12 +1009,12 @@ class CloakAndDaggersEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
+        state: GameState,
+        hero: Hero,
+        card: Card,
         trigger: PassiveTrigger,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         from goa2.engine.effects import CardEffectRegistry
 
         if trigger != PassiveTrigger.AFTER_BASIC_ACTION:
@@ -1039,23 +1041,13 @@ class CloakAndDaggersEffect(CardEffect):
                     steps = effect.get_steps(state, hero, basic_card)
                     # Inject "cannot target same unit" filter
                     for step in steps:
-                        if (
-                            isinstance(step, AttackSequenceStep)
-                            and not step.target_id_key
-                        ):
+                        if isinstance(step, AttackSequenceStep) and not step.target_id_key:
                             step.target_filters.append(
-                                ExcludeIdentityFilter(
-                                    exclude_keys=["last_combat_target"]
-                                )
+                                ExcludeIdentityFilter(exclude_keys=["last_combat_target"])
                             )
-                        elif (
-                            isinstance(step, SelectStep)
-                            and step.target_type == TargetType.UNIT
-                        ):
+                        elif isinstance(step, SelectStep) and step.target_type == TargetType.UNIT:
                             step.filters.append(
-                                ExcludeIdentityFilter(
-                                    exclude_keys=["last_combat_target"]
-                                )
+                                ExcludeIdentityFilter(exclude_keys=["last_combat_target"])
                             )
                     return steps
 
@@ -1065,9 +1057,7 @@ class CloakAndDaggersEffect(CardEffect):
                 AttackSequenceStep(
                     damage=action_value,
                     range_val=action_range,
-                    target_filters=[
-                        ExcludeIdentityFilter(exclude_keys=["last_combat_target"])
-                    ],
+                    target_filters=[ExcludeIdentityFilter(exclude_keys=["last_combat_target"])],
                 ),
             ]
         elif action_type == ActionType.MOVEMENT.value:

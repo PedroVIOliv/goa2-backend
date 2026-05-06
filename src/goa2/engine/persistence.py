@@ -11,14 +11,13 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
-
-from goa2.domain.state import GameState
-from goa2.engine.session import GameSession
-from goa2.engine.handler import process_stack
+from typing import Any
 
 # Ensure step_types patching is applied before any serialization
 import goa2.engine.step_types as _step_types  # noqa: F401
+from goa2.domain.state import GameState
+from goa2.engine.handler import process_stack
+from goa2.engine.session import GameSession
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +27,14 @@ SAVE_VERSION = 1
 def save_game(
     game_id: str,
     state: GameState,
-    player_tokens: Dict[str, str],
+    player_tokens: dict[str, str],
     spectator_token: str,
-    hero_to_token: Dict[str, str],
+    hero_to_token: dict[str, str],
     created_at: float,
     save_dir: str,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "version": SAVE_VERSION,
         "game_id": game_id,
         "player_tokens": player_tokens,
@@ -66,7 +65,7 @@ def save_game(
     return target
 
 
-def load_game(file_path: str) -> Dict[str, Any]:
+def load_game(file_path: str) -> dict[str, Any]:
     """Load game data from a JSON file.
 
     Returns a dict with keys: game_id, state (GameState), player_tokens,
@@ -75,7 +74,7 @@ def load_game(file_path: str) -> Dict[str, Any]:
     The last_result is re-derived by calling process_stack() if the
     execution stack is non-empty.
     """
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         payload = json.load(f)
 
     state = GameState.model_validate(payload["state"])
@@ -103,9 +102,9 @@ def load_game(file_path: str) -> Dict[str, Any]:
     }
 
 
-def load_all_games(save_dir: str) -> list[Dict[str, Any]]:
+def load_all_games(save_dir: str) -> list[dict[str, Any]]:
     """Load all saved games from a directory, skipping failures."""
-    results: list[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     save_path = Path(save_dir)
     if not save_path.is_dir():
         return results

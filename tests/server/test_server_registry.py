@@ -2,10 +2,10 @@
 
 import pytest
 
-from goa2.engine.setup import GameSetup
 from goa2.engine.session import GameSession
-from goa2.server.registry import GameRegistry, ManagedGame
+from goa2.engine.setup import GameSetup
 from goa2.server.errors import GameNotFoundError
+from goa2.server.registry import GameRegistry, ManagedGame
 
 MAP_PATH = "src/goa2/data/maps/forgotten_island.json"
 

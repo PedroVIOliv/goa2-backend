@@ -4,23 +4,26 @@ Hunter-Seeker), the HasMarkerFilter, and the bounty defeat penalty.
 """
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.marker import MarkerType
+from goa2.domain.state import GameState
+from goa2.engine.filters import HasMarkerFilter, TeamFilter, UnitTypeFilter
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.stats import CardStats
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -28,10 +31,6 @@ from goa2.engine.steps import (
     PlaceMarkerStep,
     SelectStep,
 )
-from goa2.engine.filters import HasMarkerFilter, RangeFilter, TeamFilter, UnitTypeFilter
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.stats import CardStats
-
 
 # =============================================================================
 # Card Factories
@@ -112,20 +111,12 @@ def game_state():
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1
-    )
-    enemy = Hero(
-        id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
+    hero = Hero(id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1)
+    enemy = Hero(id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
     enemy.hand = [_make_filler_card("e_card")]
-    enemy2 = Hero(
-        id="enemy_hero_2", name="Enemy2", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy2 = Hero(id="enemy_hero_2", name="Enemy2", team=TeamColor.BLUE, deck=[], level=1)
     enemy2.hand = [_make_filler_card("e2_card")]
-    minion = Minion(
-        id="minion_1", name="Grunt", team=TeamColor.BLUE, type=MinionType.MELEE
-    )
+    minion = Minion(id="minion_1", name="Grunt", team=TeamColor.BLUE, type=MinionType.MELEE)
 
     state = GameState(
         board=board,
@@ -289,9 +280,7 @@ def test_hunter_seeker_builds_dual_path_steps(game_state):
 
     effect = HunterSeekerEffect()
     hero = game_state.get_hero("hero_bain")
-    card = _make_ranged_attack_card(
-        "hs", "Hunter-Seeker", "hunter_seeker", primary_value=5
-    )
+    card = _make_ranged_attack_card("hs", "Hunter-Seeker", "hunter_seeker", primary_value=5)
     stats = CardStats(primary_value=5, range=3)
 
     steps = effect.build_steps(game_state, hero, card, stats)
@@ -306,9 +295,7 @@ def test_hunter_seeker_bounty_path_uses_has_marker_filter(game_state):
 
     effect = HunterSeekerEffect()
     hero = game_state.get_hero("hero_bain")
-    card = _make_ranged_attack_card(
-        "hs", "Hunter-Seeker", "hunter_seeker", primary_value=5
-    )
+    card = _make_ranged_attack_card("hs", "Hunter-Seeker", "hunter_seeker", primary_value=5)
     stats = CardStats(primary_value=5, range=3)
 
     steps = effect.build_steps(game_state, hero, card, stats)
@@ -323,6 +310,7 @@ def test_hunter_seeker_bounty_path_uses_has_marker_filter(game_state):
     bounty_select_b = steps[7]
     assert isinstance(bounty_select_b, SelectStep)
     from goa2.engine.filters import ExcludeIdentityFilter
+
     filter_types_b = [type(f) for f in bounty_select_b.filters]
     assert HasMarkerFilter in filter_types_b
     assert ExcludeIdentityFilter in filter_types_b

@@ -1,25 +1,26 @@
 """Tests for EffectManager."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.models.effect import DurationType
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
 
 

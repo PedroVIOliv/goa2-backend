@@ -4,24 +4,23 @@ and Perfect Getaway defense card.
 """
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.marker import MarkerType
-from goa2.engine.steps import ResolveCardStep, SelectStep
+from goa2.domain.state import GameState
 from goa2.engine.filters import (
     ClearLineOfSightFilter,
     InStraightLineFilter,
@@ -30,7 +29,7 @@ from goa2.engine.filters import (
 )
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import CardStats
-
+from goa2.engine.steps import SelectStep
 
 # =============================================================================
 # Card Factories
@@ -90,23 +89,15 @@ def crossbow_state():
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1
-    )
-    enemy = Hero(
-        id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
-    minion = Minion(
-        id="minion_1", name="Blocker", team=TeamColor.BLUE, type=MinionType.MELEE
-    )
+    hero = Hero(id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1)
+    enemy = Hero(id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
+    minion = Minion(id="minion_1", name="Blocker", team=TeamColor.BLUE, type=MinionType.MELEE)
 
     state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy], minions=[minion]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy], minions=[minion]),
         },
     )
     state.place_entity("hero_bain", Hex(q=0, r=0, s=0))
@@ -130,9 +121,7 @@ def _get_crossbow_candidates(state, range_val=2):
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=range_val),
                     InStraightLineFilter(),
-                    ClearLineOfSightFilter(
-                        blocked_by_units=True, blocked_by_terrain=True
-                    ),
+                    ClearLineOfSightFilter(blocked_by_units=True, blocked_by_terrain=True),
                 ],
             ),
         ],
@@ -307,13 +296,9 @@ def test_perfect_getaway_blocks_regardless_of_ranged(crossbow_state):
     stats = CardStats(primary_value=0, range=1)
 
     # Non-ranged
-    steps = effect.build_defense_steps(
-        state, hero, card, stats, {"attack_is_ranged": False}
-    )
+    steps = effect.build_defense_steps(state, hero, card, stats, {"attack_is_ranged": False})
     assert steps[0].key == "auto_block"
 
     # Ranged
-    steps = effect.build_defense_steps(
-        state, hero, card, stats, {"attack_is_ranged": True}
-    )
+    steps = effect.build_defense_steps(state, hero, card, stats, {"attack_is_ranged": True})
     assert steps[0].key == "auto_block"

@@ -1,21 +1,22 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -66,12 +67,8 @@ def violent_torrent_state():
     arien.current_turn_card = card
 
     # Enemies
-    minion1 = Minion(
-        id="minion1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
-    minion2 = Minion(
-        id="minion2", name="M2", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    minion1 = Minion(id="minion1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
+    minion2 = Minion(id="minion2", name="M2", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     victim1 = Hero(id="victim1", name="V1", team=TeamColor.BLUE, deck=[], level=1)
     victim1.hand = [
@@ -303,9 +300,7 @@ def test_violent_torrent_alignment_filter():
         )
     ]
 
-    off_line_hero = Hero(
-        id="offline_hero", name="OLH", team=TeamColor.BLUE, deck=[], level=1
-    )
+    off_line_hero = Hero(id="offline_hero", name="OLH", team=TeamColor.BLUE, deck=[], level=1)
     off_line_hero.hand = [
         Card(
             id="c2",
@@ -353,9 +348,9 @@ def test_violent_torrent_alignment_filter():
     # Optional SelectStep with no candidates auto-skips
     # Flow continues to Attack -> MayRepeatOnceStep
     req = process_stack(state).input_request
-    assert req["type"] == "SELECT_OPTION", (
-        "MayRepeatOnceStep reached - backstab correctly skipped due to no valid targets"
-    )
+    assert (
+        req["type"] == "SELECT_OPTION"
+    ), "MayRepeatOnceStep reached - backstab correctly skipped due to no valid targets"
 
 
 def test_violent_torrent_repeat_no_valid_targets():
@@ -410,9 +405,7 @@ def test_violent_torrent_repeat_no_valid_targets():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[arien], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[victim], minions=[minion]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[victim], minions=[minion]),
         },
     )
 
@@ -468,9 +461,7 @@ def test_violent_torrent_repeat_vs_heavy_minion():
     hexes = {
         Hex(q=0, r=0, s=0),
         Hex(q=1, r=0, s=-1),  # Minion 1 (adjacent, gets defeated)
-        Hex(
-            q=0, r=1, s=-1
-        ),  # Heavy Minion 2 (adjacent, immune while support minion present)
+        Hex(q=0, r=1, s=-1),  # Heavy Minion 2 (adjacent, immune while support minion present)
         Hex(q=1, r=1, s=-2),  # Support Minion 3 (stays alive to provide immunity)
     }
     z1 = Zone(id="z1", hexes=hexes, neighbors=[])
@@ -492,12 +483,8 @@ def test_violent_torrent_repeat_vs_heavy_minion():
     )
     arien.current_turn_card = card
 
-    minion1 = Minion(
-        id="minion1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
-    minion2 = Minion(
-        id="minion2", name="Heavy M2", type=MinionType.HEAVY, team=TeamColor.BLUE
-    )
+    minion1 = Minion(id="minion1", name="M1", type=MinionType.MELEE, team=TeamColor.BLUE)
+    minion2 = Minion(id="minion2", name="Heavy M2", type=MinionType.HEAVY, team=TeamColor.BLUE)
     support_minion = Minion(
         id="support_minion", name="Supp M3", type=MinionType.MELEE, team=TeamColor.BLUE
     )

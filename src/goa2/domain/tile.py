@@ -1,9 +1,8 @@
-from typing import Optional
 from pydantic import BaseModel
-from goa2.domain.hex import Hex
-from goa2.domain.types import BoardEntityID
 
+from goa2.domain.hex import Hex
 from goa2.domain.models.spawn import SpawnPoint
+from goa2.domain.types import BoardEntityID
 
 
 class Tile(BaseModel):
@@ -13,14 +12,14 @@ class Tile(BaseModel):
     """
 
     hex: Hex
-    zone_id: Optional[str] = None
+    zone_id: str | None = None
 
-    spawn_point: Optional[SpawnPoint] = None
+    spawn_point: SpawnPoint | None = None
 
     # We store the ID of the entity here.
     # Why ID? Because storing the object makes serialization harder (circular refs)
     # and we have Entity Repositories (State.teams, State.minions) to look up the object.
-    occupant_id: Optional[BoardEntityID] = None
+    occupant_id: BoardEntityID | None = None
 
     is_terrain: bool = False
 

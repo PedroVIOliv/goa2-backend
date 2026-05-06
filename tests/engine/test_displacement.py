@@ -1,11 +1,12 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveDisplacementStep
+from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveDisplacementStep
 
 
 @pytest.fixture
@@ -34,16 +35,12 @@ def displacement_state():
     )  # Blocks neighbor
 
     # Displaced Unit (Not on board yet)
-    m_disp = Minion(
-        id="m_disp", name="Displaced", type=MinionType.MELEE, team=TeamColor.RED
-    )
+    m_disp = Minion(id="m_disp", name="Displaced", type=MinionType.MELEE, team=TeamColor.RED)
 
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[h1], minions=[m_block, m_disp]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[h1], minions=[m_block, m_disp]),
             TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
         },
         entity_locations={},
@@ -107,9 +104,7 @@ def test_displacement_prompt(displacement_state):
 
     # Provide Input
     target = Hex(q=1, r=-1, s=0)
-    displacement_state.execution_stack[-1].pending_input = {
-        "selection": target.model_dump()
-    }
+    displacement_state.execution_stack[-1].pending_input = {"selection": target.model_dump()}
     process_stack(displacement_state).input_request
 
     # Should spawn placement
@@ -121,16 +116,12 @@ def test_displacement_prompt(displacement_state):
 def test_displacement_multi_unit_selection(displacement_state):
     # Scenario: 2 Minions displaced from same spot.
     # m_disp is already there. Add m_disp_2.
-    m_disp_2 = Minion(
-        id="m_disp_2", name="Displaced2", type=MinionType.MELEE, team=TeamColor.RED
-    )
+    m_disp_2 = Minion(id="m_disp_2", name="Displaced2", type=MinionType.MELEE, team=TeamColor.RED)
     displacement_state.teams[TeamColor.RED].minions.append(m_disp_2)
 
     origin = Hex(q=0, r=0, s=0)
     # Queue both
-    step = ResolveDisplacementStep(
-        displacements=[("m_disp", origin), ("m_disp_2", origin)]
-    )
+    step = ResolveDisplacementStep(displacements=[("m_disp", origin), ("m_disp_2", origin)])
     push_steps(displacement_state, [step])
 
     # Run 1: Should prompt for UNIT SELECTION
@@ -141,9 +132,7 @@ def test_displacement_multi_unit_selection(displacement_state):
     assert "m_disp_2" in req["valid_options"]
 
     # Input: Select m_disp_2 first
-    displacement_state.execution_stack[-1].pending_input = {
-        "selection": "m_disp_2"
-    }
+    displacement_state.execution_stack[-1].pending_input = {"selection": "m_disp_2"}
 
     # Run 2: Spawns recursive steps. Resolve(m_disp_2) runs.
     # It sees 1 candidate (1,0,-1). Auto-places m_disp_2.

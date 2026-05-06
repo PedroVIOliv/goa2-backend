@@ -15,33 +15,33 @@ Key behaviors:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
-    TeamColor,
-    Team,
-    Minion,
-    MinionType,
-    PassiveTrigger,
-)
-from goa2.domain.hex import Hex
-from goa2.domain.types import HeroID, UnitID
-from goa2.engine.steps import (
-    CheckPassiveAbilitiesStep,
-    OfferPassiveStep,
-    SelectStep,
-    DefeatUnitStep,
-    ForceDiscardStep,
-)
 
 # Import to register the effect
 import goa2.scripts.wasp_effects  # noqa: F401
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
+    Minion,
+    MinionType,
+    PassiveTrigger,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID, UnitID
+from goa2.engine.steps import (
+    CheckPassiveAbilitiesStep,
+    DefeatUnitStep,
+    ForceDiscardStep,
+    OfferPassiveStep,
+    SelectStep,
+)
 
 
 @pytest.fixture
@@ -300,9 +300,7 @@ class TestHighVoltagePassiveSteps:
         card = hero.ultimate_card
 
         effect = HighVoltageEffect()
-        steps = effect.get_passive_steps(
-            state, hero, card, PassiveTrigger.AFTER_BASIC_SKILL, {}
-        )
+        steps = effect.get_passive_steps(state, hero, card, PassiveTrigger.AFTER_BASIC_SKILL, {})
 
         assert len(steps) == 4
 
@@ -334,9 +332,7 @@ class TestHighVoltagePassiveSteps:
         card = hero.ultimate_card
 
         effect = HighVoltageEffect()
-        steps = effect.get_passive_steps(
-            state, hero, card, PassiveTrigger.BEFORE_ATTACK, {}
-        )
+        steps = effect.get_passive_steps(state, hero, card, PassiveTrigger.BEFORE_ATTACK, {})
 
         assert len(steps) == 0
 

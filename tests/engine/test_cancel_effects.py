@@ -1,22 +1,23 @@
 """Tests for CancelEffectsStep."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
-    DurationType,
-    EffectType,
-    EffectScope,
-    Shape,
     ActiveEffect,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.state import GameState
 from goa2.engine.steps import CancelEffectsStep
 
 
@@ -230,9 +231,7 @@ class TestCancelEffectsStep:
             ),
         ]
 
-        step = CancelEffectsStep(
-            scope=EffectScope(shape=Shape.RADIUS, range=3, origin_id="turret")
-        )
+        step = CancelEffectsStep(scope=EffectScope(shape=Shape.RADIUS, range=3, origin_id="turret"))
         result = step.resolve(state_with_heroes, {})
 
         assert result.is_finished

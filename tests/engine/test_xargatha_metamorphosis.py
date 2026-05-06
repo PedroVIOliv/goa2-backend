@@ -1,34 +1,31 @@
 """Tests for Xargatha's Metamorphosis ultimate effect (aura system)."""
 
 import pytest
-from goa2.domain.state import GameState
+
+# Ensure xargatha effects are registered
+import goa2.scripts.xargatha_effects  # noqa: F401
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
     StatType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.stats import get_computed_stat
-from goa2.engine.rules import validate_movement_path
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.effects import (
-    StatAura,
-    MovementAura,
-    get_active_aura_effects,
     CardEffectRegistry,
+    get_active_aura_effects,
 )
-from goa2.engine.filters import TeamFilter, RangeFilter
-
-# Ensure xargatha effects are registered
-import goa2.scripts.xargatha_effects  # noqa: F401
+from goa2.engine.rules import validate_movement_path
+from goa2.engine.stats import get_computed_stat
 
 
 def _make_ultimate_card(effect_id: str = "metamorphosis") -> Card:
@@ -71,25 +68,15 @@ def metamorphosis_state():
         level=8,
         ultimate_card=_make_ultimate_card(),
     )
-    enemy1 = Minion(
-        id="enemy_m1", name="EnemyMelee", team=TeamColor.BLUE, type=MinionType.MELEE
-    )
-    enemy2 = Minion(
-        id="enemy_m2", name="EnemyRanged", team=TeamColor.BLUE, type=MinionType.RANGED
-    )
-    ally = Minion(
-        id="ally_m1", name="AllyMelee", team=TeamColor.RED, type=MinionType.MELEE
-    )
+    enemy1 = Minion(id="enemy_m1", name="EnemyMelee", team=TeamColor.BLUE, type=MinionType.MELEE)
+    enemy2 = Minion(id="enemy_m2", name="EnemyRanged", team=TeamColor.BLUE, type=MinionType.RANGED)
+    ally = Minion(id="ally_m1", name="AllyMelee", team=TeamColor.RED, type=MinionType.MELEE)
 
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[xargatha], minions=[ally]
-            ),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[], minions=[enemy1, enemy2]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[ally]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[enemy1, enemy2]),
         },
         entity_locations={},
         current_actor_id="hero_xargatha",
@@ -140,20 +127,14 @@ class TestMetamorphosisStatAuras:
         state = GameState(
             board=board,
             teams={
-                TeamColor.RED: Team(
-                    color=TeamColor.RED, heroes=[xargatha], minions=[]
-                ),
-                TeamColor.BLUE: Team(
-                    color=TeamColor.BLUE, heroes=[], minions=[]
-                ),
+                TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[]),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
             },
             entity_locations={},
             current_actor_id="hero_xargatha",
         )
         state.place_entity("hero_xargatha", center)
-        result = get_computed_stat(
-            state, "hero_xargatha", StatType.MOVEMENT, base_value=3
-        )
+        result = get_computed_stat(state, "hero_xargatha", StatType.MOVEMENT, base_value=3)
         assert result == 3  # No bonus
 
     def test_friendly_units_dont_count(self, metamorphosis_state):
@@ -201,9 +182,7 @@ class TestMetamorphosisMovementAura:
         board.tiles[end] = Tile(hex=end)
 
         # Without pass_through: blocked
-        assert not validate_movement_path(
-            board=board, start=start, end=end, max_steps=2
-        )
+        assert not validate_movement_path(board=board, start=start, end=end, max_steps=2)
 
         # With pass_through: allowed
         assert validate_movement_path(
@@ -254,14 +233,22 @@ class TestMetamorphosisMovementAura:
 
         # Without pass_through: blocked (topology path)
         assert not validate_movement_path(
-            board=board, start=start, end=end, max_steps=2,
-            state=state, actor_id="h1",
+            board=board,
+            start=start,
+            end=end,
+            max_steps=2,
+            state=state,
+            actor_id="h1",
         )
 
         # With pass_through: allowed (topology path)
         assert validate_movement_path(
-            board=board, start=start, end=end, max_steps=2,
-            state=state, actor_id="h1",
+            board=board,
+            start=start,
+            end=end,
+            max_steps=2,
+            state=state,
+            actor_id="h1",
             pass_through_obstacles=True,
         )
 

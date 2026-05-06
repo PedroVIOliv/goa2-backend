@@ -1,24 +1,25 @@
 """Tests for Brogan's One Man Army ultimate effect."""
 
 import pytest
+
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Minion,
     MinionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.steps import MinionBattleStep
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import MinionBattleStep
 
 
 def _make_ultimate_card():
@@ -57,9 +58,7 @@ def battle_state():
         level=8,
         ultimate_card=_make_ultimate_card(),
     )
-    enemy_hero = Hero(
-        id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy_hero = Hero(id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
 
     red_team = Team(color=TeamColor.RED, heroes=[brogan])
     blue_team = Team(color=TeamColor.BLUE, heroes=[enemy_hero])

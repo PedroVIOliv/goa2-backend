@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 import logging
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models import TargetType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -9,26 +12,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import DisplacementType
-from goa2.domain.models import TargetType
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckUnitTypeStep,
-    CombineBooleanContextStep,
-    CreateEffectStep,
-    DefeatUnitStep,
-    ForEachStep,
-    ForceDiscardOrDefeatStep,
-    ForceDiscardStep,
-    GameStep,
-    MayRepeatNTimesStep,
-    MayRepeatOnceStep,
-    MultiSelectStep,
-    PlaceUnitStep,
-    PushUnitStep,
-    SelectStep,
-    SetContextFlagStep,
-)
 from goa2.engine.filters_geometry import (
     NotInStraightLineFilter,
     RelativeDistanceFilter,
@@ -43,13 +27,31 @@ from goa2.engine.filters_units import (
     TeamFilter,
     UnitTypeFilter,
 )
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckUnitTypeStep,
+    CombineBooleanContextStep,
+    CreateEffectStep,
+    DefeatUnitStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
+    ForEachStep,
+    GameStep,
+    MayRepeatNTimesStep,
+    MayRepeatOnceStep,
+    MultiSelectStep,
+    PlaceUnitStep,
+    PushUnitStep,
+    SelectStep,
+    SetContextFlagStep,
+)
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
+    from goa2.domain.models import Card, Hero
     from goa2.domain.models.enums import PassiveTrigger
+    from goa2.domain.state import GameState
     from goa2.engine.effects import PassiveConfig
     from goa2.engine.stats import CardStats
 
@@ -70,8 +72,8 @@ class StopProjectilesEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         logger.debug(
             "[DEFLECT] build_defense_steps called, context keys: %s",
             list(context.keys()),
@@ -94,7 +96,7 @@ class MagneticDaggerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Standard attack
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
@@ -129,7 +131,7 @@ class ChargedBoomerangEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -153,7 +155,7 @@ class ShockEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack adjacent target
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
@@ -185,7 +187,7 @@ class ElectrocuteEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack adjacent target
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
@@ -202,9 +204,7 @@ class ElectrocuteEffect(CardEffect):
                 ],
             ),
             # 3. Force discard
-            ForceDiscardStep(
-                victim_key="electrocute_victim", active_if_key="electrocute_victim"
-            ),
+            ForceDiscardStep(victim_key="electrocute_victim", active_if_key="electrocute_victim"),
         ]
 
 
@@ -222,7 +222,7 @@ class TelekinesisEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select unit or token in range, not in straight line
             SelectStep(
@@ -269,7 +269,7 @@ class MassTelekinesisEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         effect_steps = [
             # 1. Select unit or token in range, not in straight line
             SelectStep(
@@ -314,7 +314,7 @@ class ElectroblastEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack adjacent target
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
@@ -350,7 +350,7 @@ class ThunderBoomerangEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select target with NotInStraightLineFilter FIRST
             SelectStep(
@@ -419,8 +419,8 @@ class ReflectProjectilesEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         logger.debug(
             "[REFLECT] build_defense_steps called, context keys: %s",
             list(context.keys()),
@@ -439,8 +439,8 @@ class ReflectProjectilesEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         """Triggered only if block succeeded."""
         return [
             SelectStep(
@@ -473,8 +473,8 @@ class DeflectProjectilesEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         logger.debug(
             "[DEFLECT] build_defense_steps called, context keys: %s",
             list(context.keys()),
@@ -493,8 +493,8 @@ class DeflectProjectilesEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         """Triggered only if block succeeded. Excludes the attacker."""
         return [
             SelectStep(
@@ -524,7 +524,7 @@ class LiftUpEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         orbit_steps = [
             # 2. Select destination adjacent to target + preserving distance
             SelectStep(
@@ -545,7 +545,7 @@ class LiftUpEffect(CardEffect):
             ),
         ]
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             # 1. Select unit or token in radius
             SelectStep(
                 target_type=TargetType.UNIT_OR_TOKEN,
@@ -583,7 +583,7 @@ class CenterOfMassEffect(LiftUpEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         orbit_steps = [
             # 2. Select destination adjacent to target + preserving distance
             SelectStep(
@@ -604,7 +604,7 @@ class CenterOfMassEffect(LiftUpEffect):
             ),
         ]
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             # 1. Select unit or token in radius
             SelectStep(
                 target_type=TargetType.UNIT_OR_TOKEN,
@@ -645,7 +645,7 @@ class KineticRepulseEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select up to 2 adjacent enemies
             MultiSelectStep(
@@ -705,7 +705,7 @@ class KineticBlastEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose push distance (3 or 4)
             SelectStep(
@@ -783,8 +783,8 @@ class StaticBarrierEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.STATIC_BARRIER,
@@ -817,9 +817,9 @@ class HighVoltageEffect(CardEffect):
     As an ultimate, it's always active once the hero reaches Level 8.
     """
 
-    def get_passive_config(self) -> Optional["PassiveConfig"]:
-        from goa2.engine.effects import PassiveConfig
+    def get_passive_config(self) -> PassiveConfig | None:
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import PassiveConfig
 
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_BASIC_SKILL,
@@ -830,12 +830,12 @@ class HighVoltageEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
-        trigger: "PassiveTrigger",
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         from goa2.domain.models.enums import PassiveTrigger
 
         # Only respond to AFTER_BASIC_SKILL trigger

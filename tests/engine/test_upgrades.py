@@ -1,24 +1,25 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    GamePhase,
+    Hero,
+    StatType,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
-    StatType,
-    GamePhase,
 )
+from goa2.domain.state import GameState
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.steps import (
     EndPhaseCleanupStep,
     ResolveUpgradesStep,
     apply_hero_upgrade,
 )
-from goa2.engine.handler import process_stack, push_steps, submit_input
 
 
 @pytest.fixture

@@ -7,26 +7,26 @@ target was a minion.)"
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Minion,
-    MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.effects import CardEffectRegistry
 
 # Register xargatha effects
 import goa2.scripts.xargatha_effects  # noqa: F401
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Minion,
+    MinionType,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 def make_cleave_card():
@@ -64,20 +64,14 @@ def cleave_state():
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    xargatha = Hero(
-        id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-    )
+    xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
     xargatha.current_turn_card = make_cleave_card()
 
     enemy_minion = Minion(
         id="enemy_minion", name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE
     )
-    enemy_hero_a = Hero(
-        id="enemy_hero_a", name="Hero A", team=TeamColor.BLUE, deck=[], level=1
-    )
-    enemy_hero_b = Hero(
-        id="enemy_hero_b", name="Hero B", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy_hero_a = Hero(id="enemy_hero_a", name="Hero A", team=TeamColor.BLUE, deck=[], level=1)
+    enemy_hero_b = Hero(id="enemy_hero_b", name="Hero B", team=TeamColor.BLUE, deck=[], level=1)
 
     state = GameState(
         board=board,

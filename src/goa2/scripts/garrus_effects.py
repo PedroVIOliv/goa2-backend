@@ -1,6 +1,28 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, PassiveConfig, register_effect, CardEffectRegistry
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    ActionType,
+    DurationType,
+    EffectType,
+    TargetType,
+)
+from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
+from goa2.domain.models.enums import CardContainerType, PassiveTrigger
+from goa2.engine.effects import CardEffect, CardEffectRegistry, PassiveConfig, register_effect
+from goa2.engine.filters_geometry import RelativeDistanceFilter
+from goa2.engine.filters_hex import (
+    MovementPathFilter,
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    AdjacencyToContextFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -17,30 +39,10 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
 )
-from goa2.engine.filters_geometry import RelativeDistanceFilter
-from goa2.engine.filters_hex import (
-    MovementPathFilter,
-    ObstacleFilter,
-    RangeFilter,
-)
-from goa2.engine.filters_units import (
-    AdjacencyFilter,
-    AdjacencyToContextFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models import (
-    ActionType,
-    DurationType,
-    EffectType,
-    TargetType,
-)
-from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
-from goa2.domain.models.enums import CardContainerType, PassiveTrigger
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -61,7 +63,7 @@ class _ChargeAttackEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.NUMBER,
@@ -108,7 +110,7 @@ class _ChargeAttackEffect(CardEffect):
                     RangeFilter(max_range=self.move_distance),
                     MovementPathFilter(
                         range_val=self.move_distance,
-                    ), 
+                    ),
                     ObstacleFilter(is_obstacle=False),
                 ],
                 is_mandatory=False,
@@ -166,7 +168,7 @@ class _DashPushEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -179,7 +181,7 @@ class _DashPushEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=self.dash_distance),
                     MovementPathFilter(range_val=self.dash_distance),
-                    AdjacencyFilter(target_tags=["ENEMY","HERO"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY", "HERO"], skip_immune=True),
                     ObstacleFilter(is_obstacle=False),
                 ],
                 is_mandatory=False,
@@ -236,8 +238,8 @@ class _PullFriendlyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        pull_template: List[GameStep] = [
+    ) -> list[GameStep]:
+        pull_template: list[GameStep] = [
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select a friendly unit in range to pull closer",
@@ -300,8 +302,8 @@ class _PushEnemyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        push_template: List[GameStep] = [
+    ) -> list[GameStep]:
+        push_template: list[GameStep] = [
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy unit in range to push farther",
@@ -329,7 +331,7 @@ class _PushEnemyEffect(CardEffect):
                 range_val=1,
             ),
         ]
-        steps: List[GameStep] = [*push_template]
+        steps: list[GameStep] = [*push_template]
         if self.repeats > 0:
             steps.append(
                 MayRepeatNTimesStep(
@@ -371,8 +373,8 @@ class _ConditionalRetrieveEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        steps: List[GameStep] = [
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
             CountStep(
                 target_type=TargetType.UNIT,
                 filters=[
@@ -438,7 +440,7 @@ class LightPilumEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -481,7 +483,7 @@ class HeavyPilumEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -529,7 +531,7 @@ class AngryStrikeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CountCardsStep(
                 hero_id=hero.id,
@@ -559,7 +561,7 @@ class ChillingHowlEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.CARD,
@@ -602,7 +604,7 @@ class BattleFuryEffect(CardEffect):
     may perform its primary action."
     """
 
-    def get_passive_config(self) -> Optional[PassiveConfig]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_CARD_DISCARD,
             uses_per_turn=0,  # unlimited — chains allowed
@@ -633,7 +635,7 @@ class BattleFuryEffect(CardEffect):
         card: Card,
         trigger: PassiveTrigger,
         context: dict,
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         if trigger != PassiveTrigger.AFTER_CARD_DISCARD:
             return []
 
@@ -642,16 +644,13 @@ class BattleFuryEffect(CardEffect):
             return []
 
         # Find discarded card in hero's discard pile
-        discarded = next(
-            (c for c in hero.discard_pile if c.id == discarded_id), None
-        )
+        discarded = next((c for c in hero.discard_pile if c.id == discarded_id), None)
         if not discarded:
             return []
 
         primary = discarded.primary_action
         if not primary:
             return []
-
 
         effect = CardEffectRegistry.get(discarded.effect_id)
         if effect:

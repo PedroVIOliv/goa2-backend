@@ -1,26 +1,26 @@
 """Tests for hero defeat cleanup and respawn mechanics."""
 
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
-from goa2.domain.models import Team, TeamColor, Hero, Card, CardState
-from goa2.domain.models.card import ActionType, CardTier, CardColor
+from goa2.domain.hex import Hex
+from goa2.domain.models import Card, CardState, Hero, Team, TeamColor
+from goa2.domain.models.card import ActionType, CardColor, CardTier
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.domain.hex import Hex
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     DefeatUnitStep,
-    RespawnHeroStep,
-    ResolveCardStep,
     FinalizeHeroTurnStep,
+    ResolveCardStep,
+    RespawnHeroStep,
 )
-from goa2.engine.handler import process_stack, push_steps
 
 
 def make_card(card_id="card_1", initiative=5):
@@ -158,24 +158,18 @@ def _make_respawn_state(spawn_hex, hero_team=TeamColor.BLUE):
     zone = Zone(
         id="base",
         hexes={spawn_hex, Hex(q=0, r=1, s=-1), Hex(q=1, r=0, s=-1)},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=hero_team, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=hero_team, type=SpawnType.HERO)],
     )
     board = Board(
         zones={"base": zone},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=hero_team, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=hero_team, type=SpawnType.HERO)],
     )
     board.populate_tiles_from_zones()
 
     state = GameState(
         board=board,
         teams={
-            hero_team: Team(
-                color=hero_team, heroes=[hero], minions=[], life_counters=5
-            ),
+            hero_team: Team(color=hero_team, heroes=[hero], minions=[], life_counters=5),
         },
     )
     # Hero is NOT on the board (defeated)
@@ -224,15 +218,11 @@ def test_respawn_bfs_fallback():
     zone = Zone(
         id="base",
         hexes={spawn_hex, nearby_hex, Hex(q=1, r=0, s=-1)},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)],
     )
     board = Board(
         zones={"base": zone},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)],
     )
     board.populate_tiles_from_zones()
 
@@ -240,9 +230,7 @@ def test_respawn_bfs_fallback():
     state = GameState(
         board=board,
         teams={
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5),
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[blocker], minions=[]),
         },
     )
@@ -273,9 +261,7 @@ def test_skip_respawn_skips_card_action():
     state = GameState(
         board=Board(),
         teams={
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5),
         },
     )
     # Hero is NOT on the board (didn't respawn)
@@ -308,24 +294,18 @@ def test_full_defeat_respawn_flow():
     zone = Zone(
         id="base",
         hexes={spawn_hex, Hex(q=1, r=0, s=-1)},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)],
     )
     board = Board(
         zones={"base": zone},
-        spawn_points=[
-            SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)
-        ],
+        spawn_points=[SpawnPoint(location=spawn_hex, team=TeamColor.BLUE, type=SpawnType.HERO)],
     )
     board.populate_tiles_from_zones()
 
     state = GameState(
         board=board,
         teams={
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[hero], minions=[], life_counters=5),
         },
     )
     # Hero is off board (defeated) — simulate the respawn→resolve→finalize flow

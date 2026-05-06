@@ -1,23 +1,22 @@
 """Tests for Brogan's Shield Bash / Counterattack and PlayedCardFilter."""
 
-import pytest
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.filters import PlayedCardFilter
-from goa2.engine.steps import ResolveCardStep, SelectStep
-from goa2.engine.handler import process_stack, push_steps
 from goa2.domain.models.enums import TargetType
+from goa2.domain.state import GameState
+from goa2.engine.filters import PlayedCardFilter
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import SelectStep
 
 
 def _make_attack_card(card_id="atk_card", is_facedown=False):
@@ -299,7 +298,7 @@ class TestShieldBashEffect:
         # Enemy played an attack card
         enemy.current_turn_card = _make_attack_card()
 
-        from goa2.engine.filters import TeamFilter, UnitTypeFilter, RangeFilter
+        from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
 
         select = SelectStep(
             target_type=TargetType.UNIT,
@@ -335,7 +334,7 @@ class TestShieldBashEffect:
         # Enemy played a MOVEMENT card, not attack
         enemy.current_turn_card = _make_movement_card()
 
-        from goa2.engine.filters import TeamFilter, UnitTypeFilter, RangeFilter
+        from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
 
         select = SelectStep(
             target_type=TargetType.UNIT,
@@ -370,7 +369,7 @@ class TestShieldBashEffect:
         filler = _make_filler_card("enemy_hand_card")
         enemy.hand = [filler]
 
-        from goa2.engine.filters import TeamFilter, UnitTypeFilter, RangeFilter
+        from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
         from goa2.engine.steps import ForceDiscardStep
 
         # Push the same steps that ShieldBashEffect.build_steps would create

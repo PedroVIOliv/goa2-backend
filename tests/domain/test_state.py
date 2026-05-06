@@ -1,28 +1,29 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
     Token,
     TokenType,
 )
-from goa2.domain.hex import Hex
-from goa2.domain.types import BoardEntityID
-from goa2.domain.input import InputRequestType, InputRequest
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID
 from goa2.engine.validation import ValidationService
 
 
@@ -142,7 +143,9 @@ def test_misc_entities_storage(empty_state):
 
     token_id = BoardEntityID("trap_1")
     token = Token(
-        id=token_id, name="Trap", token_type=TokenType.SMOKE_BOMB,
+        id=token_id,
+        name="Trap",
+        token_type=TokenType.SMOKE_BOMB,
     )
     state.misc_entities[token_id] = token
 

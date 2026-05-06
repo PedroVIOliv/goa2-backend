@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from enum import Enum
-from pydantic import BaseModel, field_validator, ConfigDict, model_validator
-from typing import List, Optional, Any
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class HexDirection(int, Enum):
@@ -110,7 +112,7 @@ class Hex(BaseModel):
         ]
         return self + vectors[direction_index % 6]
 
-    def neighbors(self) -> List[Hex]:
+    def neighbors(self) -> list[Hex]:
         """Returns the 6 adjacent hexes."""
         vectors = [
             Hex(q=1, r=0, s=-1),
@@ -122,7 +124,7 @@ class Hex(BaseModel):
         ]
         return [self + v for v in vectors]
 
-    def ring(self, radius: int) -> List[Hex]:
+    def ring(self, radius: int) -> list[Hex]:
         """
         Returns all hexes in the ring at exact distance 'radius'.
         """
@@ -179,7 +181,7 @@ class Hex(BaseModel):
 
         return True
 
-    def line_to(self, other: Hex) -> List[Hex]:
+    def line_to(self, other: Hex) -> list[Hex]:
         """
         Returns the path to the target.
         Strictly assumes the target is in a 'Straight Line' (one of 6 axes).
@@ -208,7 +210,7 @@ class Hex(BaseModel):
 
         return results
 
-    def direction_to(self, other: Hex) -> Optional[int]:
+    def direction_to(self, other: Hex) -> int | None:
         """
         Returns the direction index (0-5) from self to other.
         Returns None if not in a straight line or same hex.

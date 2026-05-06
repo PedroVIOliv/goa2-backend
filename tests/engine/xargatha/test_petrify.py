@@ -5,36 +5,32 @@ Card text: "Next turn: Enemy heroes in radius count as both heroes and terrain,
 and cannot perform movement actions. (If you move, the radius 'moves' with you.)"
 """
 
-import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-)
-from goa2.domain.hex import Hex
-from goa2.domain.models.effect import (
-    ActiveEffect,
-    EffectType,
-    DurationType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-)
-from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.filters import TerrainFilter
-from goa2.engine.validation import ValidationService
-
 # Register xargatha effects
 import goa2.scripts.xargatha_effects  # noqa: F401
+from goa2.domain.board import Board
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Team,
+    TeamColor,
+)
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.filters import TerrainFilter
+from goa2.engine.handler import process_stack, push_steps
 
 
 def make_stone_gaze_card():
@@ -106,13 +102,9 @@ def _make_petrify_state() -> GameState:
     xargatha = Hero(id="hero_xargatha", name="Xargatha", team=TeamColor.BLUE, deck=[])
     xargatha.hand.append(make_stone_gaze_card())
 
-    enemy_hero_1 = Hero(
-        id="hero_enemy_1", name="Enemy Hero 1", team=TeamColor.RED, deck=[]
-    )
+    enemy_hero_1 = Hero(id="hero_enemy_1", name="Enemy Hero 1", team=TeamColor.RED, deck=[])
 
-    enemy_hero_2 = Hero(
-        id="hero_enemy_2", name="Enemy Hero 2", team=TeamColor.RED, deck=[]
-    )
+    enemy_hero_2 = Hero(id="hero_enemy_2", name="Enemy Hero 2", team=TeamColor.RED, deck=[])
 
     state = GameState(
         board=board,
@@ -258,9 +250,7 @@ def test_movement_prevention():
     state.active_effects.append(effect)
     state.turn = 2  # Activate NEXT_TURN effect
 
-    result = state.validator.can_perform_action(
-        state, "hero_enemy_1", ActionType.MOVEMENT
-    )
+    result = state.validator.can_perform_action(state, "hero_enemy_1", ActionType.MOVEMENT)
     assert not result.allowed
     assert "action" in result.reason.lower()
 
@@ -288,9 +278,7 @@ def test_fast_travel_prevention():
     state.active_effects.append(effect)
     state.turn = 2  # Activate NEXT_TURN effect
 
-    result = state.validator.can_perform_action(
-        state, "hero_enemy_1", ActionType.FAST_TRAVEL
-    )
+    result = state.validator.can_perform_action(state, "hero_enemy_1", ActionType.FAST_TRAVEL)
     assert not result.allowed
     assert "action" in result.reason.lower()
 

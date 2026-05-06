@@ -1,6 +1,29 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    CardContainerType,
+    StatType,
+    TargetType,
+)
+from goa2.domain.types import UnitID
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_composite import OrFilter
+from goa2.engine.filters_hex import (
+    MovementPathFilter,
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    AdjacencyToContextFilter,
+    ExcludeIdentityFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
+from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -20,31 +43,10 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     SwapUnitsStep,
 )
-from goa2.engine.filters_cards import CardsInContainerFilter
-from goa2.engine.filters_composite import OrFilter
-from goa2.engine.filters_hex import (
-    MovementPathFilter,
-    ObstacleFilter,
-    RangeFilter,
-)
-from goa2.engine.filters_units import (
-    AdjacencyFilter,
-    AdjacencyToContextFilter,
-    ExcludeIdentityFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models import (
-    CardContainerType,
-    StatType,
-    TargetType,
-)
-from goa2.domain.types import UnitID
-from goa2.engine.stats import get_computed_stat
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -84,7 +86,7 @@ class TokenOfGratitudeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -136,7 +138,7 @@ class ParagonOfGraceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         coin_steps = [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -196,7 +198,7 @@ class FeatOfBraveryEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -214,9 +216,7 @@ class FeatOfBraveryEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.radius),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, min_cards=1
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
             ),
             # Ally picks which card to retrieve
@@ -253,7 +253,7 @@ class ParagonOfValorEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         range_val = _attack_range(state, hero)
         is_ranged = _attack_is_ranged(hero)
 
@@ -268,9 +268,7 @@ class ParagonOfValorEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.radius),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, min_cards=1
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
             ),
             SelectStep(
@@ -332,7 +330,7 @@ class StandGuardEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -387,7 +385,7 @@ class DefendTheInnocentEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # Swap (same as Stand Guard)
             SelectStep(
@@ -438,7 +436,7 @@ class AcceptSurrenderEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -449,9 +447,7 @@ class AcceptSurrenderEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
-                    CardsInContainerFilter(
-                        container=CardContainerType.HAND, max_cards=0
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.HAND, max_cards=0),
                 ],
             ),
             DefeatUnitStep(victim_key="defeat_target", killer_id=hero.id),
@@ -472,7 +468,7 @@ class GloriousTriumphEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -483,9 +479,7 @@ class GloriousTriumphEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
-                    CardsInContainerFilter(
-                        container=CardContainerType.HAND, max_cards=0
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.HAND, max_cards=0),
                 ],
             ),
             DefeatUnitStep(
@@ -510,7 +504,7 @@ class OpeningShotsEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # Check actor's discard is empty
             CountCardsStep(
@@ -534,9 +528,7 @@ class OpeningShotsEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.radius),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, max_cards=0
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, max_cards=0),
                 ],
             ),
             ForceDiscardStep(
@@ -560,7 +552,7 @@ class OpeningVolleyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         opening_shot_steps = [
             CountCardsStep(
                 card_container=CardContainerType.DISCARD,
@@ -582,9 +574,7 @@ class OpeningVolleyEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.radius),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, max_cards=0
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, max_cards=0),
                 ],
             ),
             ForceDiscardStep(
@@ -619,7 +609,7 @@ class CloseQuartersEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
             # Check if adjacent to an enemy hero
@@ -773,9 +763,7 @@ class GrandMeleeEffect(CardEffect):
     - Place an enemy minion in radius into a space adjacent to you.
     """
 
-    def _build_choose_and_place(
-        self, hero: Hero, stats: CardStats, suffix: str
-    ) -> List[GameStep]:
+    def _build_choose_and_place(self, hero: Hero, stats: CardStats, suffix: str) -> list[GameStep]:
         """Build one round of the choose-and-place sequence."""
         return [
             SelectStep(
@@ -877,7 +865,7 @@ class GrandMeleeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
             CountStep(
@@ -915,7 +903,7 @@ class CodeOfChivalryEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         range_val = _attack_range(state, hero)
         is_ranged = _attack_is_ranged(hero)
 
@@ -991,7 +979,7 @@ class ThrowTheGauntletEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # Select the enemy hero
             SelectStep(

@@ -1,21 +1,18 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
-from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckAdjacencyStep,
-    CreateEffectStep,
-    ForceDiscardOrDefeatStep,
-    GameStep,
-    MayRepeatOnceStep,
-    MoveSequenceStep,
-    MoveUnitStep,
-    PlaceUnitStep,
-    PushUnitStep,
-    SelectStep,
-    SetContextFlagStep,
-    SwapUnitsStep,
+
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models import (
+    ActionType,
+    AffectsFilter,
+    CardColor,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+    TargetType,
 )
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_geometry import LineBehindTargetFilter
 from goa2.engine.filters_hex import (
     AdjacentSpawnPointFilter,
@@ -31,21 +28,26 @@ from goa2.engine.filters_units import (
     TeamFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models import (
-    TargetType,
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-    DurationType,
-    ActionType,
-    CardColor,
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckAdjacencyStep,
+    CreateEffectStep,
+    ForceDiscardOrDefeatStep,
+    GameStep,
+    MayRepeatOnceStep,
+    MoveSequenceStep,
+    MoveUnitStep,
+    PlaceUnitStep,
+    PushUnitStep,
+    SelectStep,
+    SetContextFlagStep,
+    SwapUnitsStep,
 )
 
 if TYPE_CHECKING:
-    from goa2.domain.state import GameState
-    from goa2.domain.models import TargetType, Hero, Card
+    from goa2.domain.models import Card, Hero, TargetType
     from goa2.domain.models.enums import PassiveTrigger
+    from goa2.domain.state import GameState
     from goa2.engine.effects import PassiveConfig
     from goa2.engine.stats import CardStats
 
@@ -59,7 +61,7 @@ class SpellBreakEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.TARGET_PREVENTION,
@@ -85,7 +87,7 @@ class NobleBladeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select Attack Target (Mandatory)
             SelectStep(
@@ -106,9 +108,7 @@ class NobleBladeEffect(CardEffect):
                 is_mandatory=False,
                 filters=[
                     AdjacencyToContextFilter(target_key="victim_id"),
-                    ExcludeIdentityFilter(
-                        exclude_self=True, exclude_keys=["victim_id"]
-                    ),
+                    ExcludeIdentityFilter(exclude_self=True, exclude_keys=["victim_id"]),
                     HasEmptyNeighborFilter(),  # Must have somewhere to go
                     ForcedMovementByEnemyFilter(),  # Cannot move if protected
                 ],
@@ -134,9 +134,7 @@ class NobleBladeEffect(CardEffect):
             ),
             # 5. Resolve Attack Sequence (Using pre-selected target)
             # Note: range_val=1 is hardcoded as Noble Blade is adjacent-only (not buffable)
-            AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, target_id_key="victim_id", range_val=1),
         ]
 
 
@@ -148,7 +146,7 @@ class SwapEnemyMinionEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -172,7 +170,7 @@ class EbbAndFlowEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select First Target
             SelectStep(
@@ -203,9 +201,7 @@ class EbbAndFlowEffect(CardEffect):
                         filters=[
                             UnitTypeFilter(unit_type="MINION"),
                             TeamFilter(relation="ENEMY"),
-                            RangeFilter(
-                                max_range=stats.range
-                            ),  # Range from NEW position
+                            RangeFilter(max_range=stats.range),  # Range from NEW position
                             ExcludeIdentityFilter(
                                 exclude_self=True, exclude_keys=["swap_target_1"]
                             ),
@@ -234,7 +230,7 @@ class DangerousCurrentEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select Attack Target (Mandatory)
             SelectStep(
@@ -264,9 +260,7 @@ class DangerousCurrentEffect(CardEffect):
                 victim_key="backstab_victim_id",
             ),
             # 4. Resolve Attack Sequence
-            AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, target_id_key="victim_id", range_val=1),
         ]
 
 
@@ -280,7 +274,7 @@ class RagingStreamEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -306,9 +300,7 @@ class RagingStreamEffect(CardEffect):
             ForceDiscardOrDefeatStep(
                 victim_key="backstab_victim_id",
             ),
-            AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, target_id_key="victim_id", range_val=1),
         ]
 
 
@@ -322,7 +314,7 @@ class ViolentTorrentEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         attack_steps = [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -403,7 +395,7 @@ class TeleportStrictEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -430,7 +422,7 @@ class TeleportNoSpawnEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -456,7 +448,7 @@ class RogueWaveEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack Sequence (selects target, reaction, damage)
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
@@ -499,7 +491,7 @@ class TidalBlastEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Attack Sequence
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
@@ -542,7 +534,7 @@ class SlipperyGroundEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -569,7 +561,7 @@ class DelugeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -603,8 +595,8 @@ class AspiringDuelistEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         return [SetContextFlagStep(key="ignore_minion_defense", value=True)]
 
 
@@ -626,8 +618,8 @@ class ExpertDuelistEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         return [
             # Effect 1: Ignore minion defense modifiers
             SetContextFlagStep(key="ignore_minion_defense", value=True),
@@ -662,8 +654,8 @@ class MasterDuelistEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         return [
             # Effect 1: Ignore minion defense modifiers
             SetContextFlagStep(key="ignore_minion_defense", value=True),
@@ -699,9 +691,9 @@ class LivingTsunamiEffect(CardEffect):
     As an ultimate, it's always active once the hero reaches Level 8.
     """
 
-    def get_passive_config(self) -> Optional["PassiveConfig"]:
-        from goa2.engine.effects import PassiveConfig
+    def get_passive_config(self) -> PassiveConfig | None:
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import PassiveConfig
 
         return PassiveConfig(
             trigger=PassiveTrigger.BEFORE_ATTACK,
@@ -712,12 +704,12 @@ class LivingTsunamiEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
-        trigger: "PassiveTrigger",
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         from goa2.domain.models.enums import PassiveTrigger
 
         # Only respond to BEFORE_ATTACK trigger

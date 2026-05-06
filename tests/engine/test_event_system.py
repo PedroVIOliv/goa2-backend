@@ -1,21 +1,22 @@
 """Tests for Phase 3: Event emission from steps and collection in handler."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Tile
-from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, GamePhase
-from goa2.domain.models.unit import Hero
 from goa2.domain.events import GameEvent, GameEventType
-from goa2.engine.handler import process_stack, push_steps, StackResult
+from goa2.domain.hex import Hex
+from goa2.domain.models import GamePhase, Team, TeamColor
+from goa2.domain.models.unit import Hero
+from goa2.domain.state import GameState
+from goa2.engine.handler import StackResult, process_stack, push_steps
 from goa2.engine.steps import (
-    StepResult,
+    FinalizeHeroTurnStep,
+    LogMessageStep,
     MoveUnitStep,
     PlaceUnitStep,
     RemoveUnitStep,
-    FinalizeHeroTurnStep,
+    StepResult,
     TriggerGameOverStep,
-    LogMessageStep,
 )
 
 
@@ -63,9 +64,7 @@ class TestHandlerCollectsEvents:
         result = process_stack(two_hex_state)
         assert isinstance(result, StackResult)
         assert len(result.events) >= 1
-        move_events = [
-            e for e in result.events if e.event_type == GameEventType.UNIT_MOVED
-        ]
+        move_events = [e for e in result.events if e.event_type == GameEventType.UNIT_MOVED]
         assert len(move_events) == 1
         assert move_events[0].actor_id == "hero_a"
         assert move_events[0].from_hex == {"q": 0, "r": 0, "s": 0}
@@ -83,9 +82,7 @@ class TestHandlerCollectsEvents:
         )
         result = process_stack(two_hex_state)
         # LogMessageStep emits no events, MoveUnitStep emits 1
-        move_events = [
-            e for e in result.events if e.event_type == GameEventType.UNIT_MOVED
-        ]
+        move_events = [e for e in result.events if e.event_type == GameEventType.UNIT_MOVED]
         assert len(move_events) == 1
 
     def test_no_events_from_empty_stack(self, two_hex_state):
@@ -135,9 +132,7 @@ class TestFinalizeHeroTurnStepEvent:
     def test_emits_turn_ended(self, two_hex_state):
         step = FinalizeHeroTurnStep(hero_id="hero_a")
         result = step.resolve(two_hex_state, two_hex_state.execution_context)
-        turn_events = [
-            e for e in result.events if e.event_type == GameEventType.TURN_ENDED
-        ]
+        turn_events = [e for e in result.events if e.event_type == GameEventType.TURN_ENDED]
         assert len(turn_events) == 1
         assert turn_events[0].actor_id == "hero_a"
 
@@ -156,11 +151,11 @@ class TestTriggerGameOverStepEvent:
 class TestSessionResultEvents:
     def test_advance_returns_events(self):
         """GameSession.advance() populates SessionResult.events."""
-        import goa2.scripts.arien_effects  # noqa: F401
+        import goa2.scripts.arien_effects
         import goa2.scripts.wasp_effects  # noqa: F401
-        from goa2.engine.setup import GameSetup
-        from goa2.engine.session import GameSession, SessionResultType
         from goa2.domain.types import HeroID
+        from goa2.engine.session import GameSession, SessionResultType
+        from goa2.engine.setup import GameSetup
 
         state = GameSetup.create_game(
             map_path="src/goa2/data/maps/forgotten_island.json",

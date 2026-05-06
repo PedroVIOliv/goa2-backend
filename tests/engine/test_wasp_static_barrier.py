@@ -17,37 +17,41 @@ Key test scenarios:
 """
 
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.input import InputResponse
 from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    GamePhase,
+    Hero,
     Minion,
     MinionType,
+    Team,
+    TeamColor,
 )
 from goa2.domain.models.effect import (
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
-from goa2.domain.hex import Hex
-from goa2.domain.models import GamePhase
-from goa2.domain.input import InputResponse
-from goa2.engine.steps import (
-    CreateEffectStep, ResolveCardStep, MoveUnitStep, PushUnitStep,
-    FinalizeHeroTurnStep,
-)
+from goa2.domain.state import GameState
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.filters import MovementPathFilter
 from goa2.engine.handler import process_stack, push_steps, submit_input
-from goa2.engine.effect_manager import EffectManager
-import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
+from goa2.engine.steps import (
+    CreateEffectStep,
+    FinalizeHeroTurnStep,
+    MoveUnitStep,
+    PushUnitStep,
+    ResolveCardStep,
+)
 
 
 @pytest.fixture
@@ -104,16 +108,12 @@ def static_barrier_state():
     )
 
     # Friendly hero for testing friendly unaffected
-    friendly = Hero(
-        id="friendly", name="Friendly", team=TeamColor.RED, deck=[], level=1
-    )
+    friendly = Hero(id="friendly", name="Friendly", team=TeamColor.RED, deck=[], level=1)
 
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[wasp, friendly], minions=[]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[wasp, friendly], minions=[]),
             TeamColor.BLUE: Team(
                 color=TeamColor.BLUE, heroes=[enemy_inside, enemy_outside], minions=[]
             ),
@@ -190,24 +190,15 @@ class TestStaticBarrierObstacleChecks:
 
         # Wasp's position (distance 0) - should be obstacle
         hex_at_wasp = Hex(q=0, r=0, s=0)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_at_wasp, "enemy_outside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_at_wasp, "enemy_outside") is True
 
         # Distance 1 - should be obstacle
         hex_dist_1 = Hex(q=1, r=0, s=-1)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_1, "enemy_outside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_1, "enemy_outside") is True
 
         # Distance 2 (boundary) - should be obstacle
         hex_dist_2 = Hex(q=2, r=0, s=-2)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_2, "enemy_outside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_2, "enemy_outside") is True
 
         # Distance 3 - should NOT be obstacle (outside radius)
         hex_dist_3 = Hex(q=3, r=0, s=-3)
@@ -215,9 +206,7 @@ class TestStaticBarrierObstacleChecks:
         # But the barrier itself should not block it
         # We need an empty hex at distance 3
         hex_dist_3_empty = Hex(q=3, r=1, s=-4)
-        result = state.validator.is_obstacle_for_actor(
-            state, hex_dist_3_empty, "enemy_outside"
-        )
+        result = state.validator.is_obstacle_for_actor(state, hex_dist_3_empty, "enemy_outside")
         assert result is False
 
     def test_actor_inside_radius_sees_outside_as_obstacles(self, static_barrier_state):
@@ -230,31 +219,20 @@ class TestStaticBarrierObstacleChecks:
 
         # Distance 3 - should be obstacle
         hex_dist_3 = Hex(q=3, r=1, s=-4)  # Empty hex at distance 3
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_3, "enemy_inside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_3, "enemy_inside") is True
 
         # Distance 4 - should be obstacle
         # enemy_outside is there, but barrier should still apply
         hex_dist_4 = Hex(q=4, r=0, s=-4)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_4, "enemy_inside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_4, "enemy_inside") is True
 
         # Distance 5 - should be obstacle
         hex_dist_5 = Hex(q=5, r=0, s=-5)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_5, "enemy_inside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_5, "enemy_inside") is True
 
         # Distance 0-2 - should NOT be obstacle (inside radius)
         hex_dist_0 = Hex(q=0, r=1, s=-1)  # Empty hex adjacent to Wasp
-        result = state.validator.is_obstacle_for_actor(
-            state, hex_dist_0, "enemy_inside"
-        )
+        result = state.validator.is_obstacle_for_actor(state, hex_dist_0, "enemy_inside")
         # Should only be obstacle if occupied - not from barrier
         assert result is False
 
@@ -298,9 +276,7 @@ class TestStaticBarrierWithMinions:
 
         # Minion should not be affected by barrier (only heroes are)
         hex_inside = Hex(q=0, r=1, s=-1)  # Empty, distance 1
-        result = state.validator.is_obstacle_for_actor(
-            state, hex_inside, "enemy_minion"
-        )
+        result = state.validator.is_obstacle_for_actor(state, hex_inside, "enemy_minion")
         assert result is False
 
 
@@ -309,8 +285,8 @@ class TestStaticBarrierEffectCreation:
 
     def test_effect_builds_correct_steps(self, static_barrier_state):
         """Verify the effect creates the correct CreateEffectStep."""
-        from goa2.scripts.wasp_effects import StaticBarrierEffect
         from goa2.engine.stats import CardStats
+        from goa2.scripts.wasp_effects import StaticBarrierEffect
 
         state = static_barrier_state
         wasp = state.get_hero("hero_wasp")
@@ -350,17 +326,12 @@ class TestStaticBarrierOnBoundary:
 
         # Distance 3 - should be obstacle
         hex_dist_3 = Hex(q=3, r=0, s=-3)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_dist_3, "enemy_inside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_dist_3, "enemy_inside") is True
 
         # Distance 2 - should NOT be obstacle (same distance = inside)
         # Use (1, 1, -2) which is also at distance 2 from origin
         hex_dist_2_other = Hex(q=1, r=1, s=-2)
-        result = state.validator.is_obstacle_for_actor(
-            state, hex_dist_2_other, "enemy_inside"
-        )
+        result = state.validator.is_obstacle_for_actor(state, hex_dist_2_other, "enemy_inside")
         assert result is False
 
 
@@ -374,21 +345,12 @@ class TestStaticBarrierNoEffectWithoutBarrier:
 
         # Empty hex should not be obstacle for any actor
         hex_empty = Hex(q=2, r=1, s=-3)
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_empty, "enemy_outside")
-            is False
-        )
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_empty, "enemy_inside")
-            is False
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_empty, "enemy_outside") is False
+        assert state.validator.is_obstacle_for_actor(state, hex_empty, "enemy_inside") is False
 
         # Occupied hex should be obstacle (base check)
         hex_occupied = Hex(q=0, r=0, s=0)  # Wasp's position
-        assert (
-            state.validator.is_obstacle_for_actor(state, hex_occupied, "enemy_outside")
-            is True
-        )
+        assert state.validator.is_obstacle_for_actor(state, hex_occupied, "enemy_outside") is True
 
 
 class TestStaticBarrierMovementIntegration:
@@ -414,6 +376,7 @@ class TestStaticBarrierMovementIntegration:
 
         # Unit should NOT have moved — barrier blocks destination
         from goa2.domain.state import BoardEntityID
+
         loc = state.entity_locations.get(BoardEntityID("enemy_outside"))
         assert loc == Hex(q=4, r=0, s=-4), f"Expected enemy to stay at (4,0,-4), got {loc}"
 
@@ -435,6 +398,7 @@ class TestStaticBarrierMovementIntegration:
         process_stack(state).input_request
 
         from goa2.domain.state import BoardEntityID
+
         loc = state.entity_locations.get(BoardEntityID("enemy_outside"))
         assert loc == Hex(q=3, r=1, s=-4), f"Expected enemy to move to (3,1,-4), got {loc}"
 
@@ -479,6 +443,7 @@ class TestStaticBarrierMovementIntegration:
         # Target at (3,0,-3) pushed in direction away from (4,0,-4) = toward (2,0,-2)
         # (2,0,-2) is obstacle -> push stops, target stays at (3,0,-3)
         from goa2.domain.state import BoardEntityID
+
         loc = state.entity_locations.get(BoardEntityID("push_target"))
         assert loc == Hex(q=3, r=0, s=-3), f"Expected push_target to stay at (3,0,-3), got {loc}"
 
@@ -518,23 +483,21 @@ class TestStaticBarrierEndToEnd:
         # Build a board with enough hexes
         board = Board()
         hexes = {
-            Hex(q=0, r=0, s=0),    # Wasp
-            Hex(q=1, r=0, s=-1),   # dist 1 from Wasp
-            Hex(q=2, r=0, s=-2),   # dist 2 from Wasp (boundary)
-            Hex(q=3, r=0, s=-3),   # dist 3 (outside)
-            Hex(q=4, r=0, s=-4),   # dist 4 (outside)
-            Hex(q=0, r=1, s=-1),   # neighbor
-            Hex(q=1, r=1, s=-2),   # dist 2
-            Hex(q=2, r=1, s=-3),   # dist 3
-            Hex(q=3, r=1, s=-4),   # dist 3
+            Hex(q=0, r=0, s=0),  # Wasp
+            Hex(q=1, r=0, s=-1),  # dist 1 from Wasp
+            Hex(q=2, r=0, s=-2),  # dist 2 from Wasp (boundary)
+            Hex(q=3, r=0, s=-3),  # dist 3 (outside)
+            Hex(q=4, r=0, s=-4),  # dist 4 (outside)
+            Hex(q=0, r=1, s=-1),  # neighbor
+            Hex(q=1, r=1, s=-2),  # dist 2
+            Hex(q=2, r=1, s=-3),  # dist 3
+            Hex(q=3, r=1, s=-4),  # dist 3
         }
         z1 = Zone(id="z1", hexes=hexes, neighbors=[])
         board.zones = {"z1": z1}
         board.populate_tiles_from_zones()
 
-        wasp = Hero(
-            id="hero_wasp", name="Wasp", team=TeamColor.BLUE, deck=[], level=1
-        )
+        wasp = Hero(id="hero_wasp", name="Wasp", team=TeamColor.BLUE, deck=[], level=1)
         wasp_card = Card(
             id="static_barrier",
             name="Static Barrier",
@@ -550,9 +513,7 @@ class TestStaticBarrierEndToEnd:
         )
         wasp.current_turn_card = wasp_card
 
-        arien = Hero(
-            id="hero_arien", name="Arien", team=TeamColor.RED, deck=[], level=1
-        )
+        arien = Hero(id="hero_arien", name="Arien", team=TeamColor.RED, deck=[], level=1)
         arien_card = Card(
             id="test_move_card",
             name="Test Move Card",
@@ -588,10 +549,13 @@ class TestStaticBarrierEndToEnd:
         state.unresolved_hero_ids.remove("hero_wasp")
 
         # Push Wasp's turn: ResolveCardStep + FinalizeHeroTurnStep
-        push_steps(state, [
-            ResolveCardStep(hero_id="hero_wasp"),
-            FinalizeHeroTurnStep(hero_id="hero_wasp"),
-        ])
+        push_steps(
+            state,
+            [
+                ResolveCardStep(hero_id="hero_wasp"),
+                FinalizeHeroTurnStep(hero_id="hero_wasp"),
+            ],
+        )
 
         # Step 1: Process until Wasp needs input (CHOOSE_ACTION)
         result = process_stack(state)
@@ -605,21 +569,22 @@ class TestStaticBarrierEndToEnd:
         # After Wasp's SKILL action + FinalizeHeroTurnStep + FindNextActorStep,
         # Arien should be next actor. Check if we get CHOOSE_ACTION for Arien.
         assert result.input_request is not None, "Expected input request after Wasp's turn"
-        assert result.input_request.player_id == "hero_arien", \
-            f"Expected Arien's turn, got {result.input_request.player_id}"
+        assert (
+            result.input_request.player_id == "hero_arien"
+        ), f"Expected Arien's turn, got {result.input_request.player_id}"
 
         # Verify barrier effect is active
         barrier_effects = [
-            e for e in state.active_effects
-            if e.effect_type == EffectType.STATIC_BARRIER
+            e for e in state.active_effects if e.effect_type == EffectType.STATIC_BARRIER
         ]
         assert len(barrier_effects) == 1, f"Expected 1 barrier effect, got {len(barrier_effects)}"
         effect = barrier_effects[0]
         assert effect.is_active, "Barrier effect should be active after FinalizeHeroTurnStep"
 
         # Verify current_actor_id is Arien
-        assert state.current_actor_id == "hero_arien", \
-            f"Expected current_actor_id=hero_arien, got {state.current_actor_id}"
+        assert (
+            state.current_actor_id == "hero_arien"
+        ), f"Expected current_actor_id=hero_arien, got {state.current_actor_id}"
 
         # Arien chooses MOVEMENT
         submit_input(state, InputResponse(request_id="", selection="MOVEMENT"))
@@ -635,19 +600,44 @@ class TestStaticBarrierEndToEnd:
 
         # Arien is inside radius (dist 1), so outside-radius hexes should be blocked
         # (3,0,-3) is dist 3 = outside radius → should NOT be in valid options
-        assert (3, 0, -3) not in valid_hex_set, \
+        assert (
+            3,
+            0,
+            -3,
+        ) not in valid_hex_set, (
             f"Hex (3,0,-3) should be blocked by barrier but is in valid options: {valid_hex_set}"
+        )
         # (4,0,-4) is dist 4 = outside radius → should NOT be in valid options
-        assert (4, 0, -4) not in valid_hex_set, \
+        assert (
+            4,
+            0,
+            -4,
+        ) not in valid_hex_set, (
             f"Hex (4,0,-4) should be blocked by barrier but is in valid options: {valid_hex_set}"
+        )
         # (3,1,-4) is dist 3 = outside radius → should NOT be in valid options
-        assert (3, 1, -4) not in valid_hex_set, \
+        assert (
+            3,
+            1,
+            -4,
+        ) not in valid_hex_set, (
             f"Hex (3,1,-4) should be blocked by barrier but is in valid options: {valid_hex_set}"
+        )
         # (2,1,-3) is dist 3 = outside radius → should NOT be in valid options
-        assert (2, 1, -3) not in valid_hex_set, \
+        assert (
+            2,
+            1,
+            -3,
+        ) not in valid_hex_set, (
             f"Hex (2,1,-3) should be blocked by barrier but is in valid options: {valid_hex_set}"
+        )
 
         # Inside-radius hexes should be available (if reachable)
         # (0,1,-1) is dist 1 = inside radius → should be in valid options
-        assert (0, 1, -1) in valid_hex_set, \
+        assert (
+            0,
+            1,
+            -1,
+        ) in valid_hex_set, (
             f"Hex (0,1,-1) should be available but not in valid options: {valid_hex_set}"
+        )

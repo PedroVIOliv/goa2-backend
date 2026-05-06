@@ -1,16 +1,17 @@
 from __future__ import annotations
-from typing import Optional, Any, Literal
 
-from goa2.domain.state import GameState
-from goa2.domain.models import FilterType
+from typing import Any, Literal
+
 from goa2.domain.hex import Hex
+from goa2.domain.models import FilterType
+from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
-from goa2.engine.topology import get_topology_service
 
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
 from goa2.engine.filters_base import FilterCondition
+from goa2.engine.topology import get_topology_service
 
 
 class LineBehindTargetFilter(FilterCondition):
@@ -22,7 +23,7 @@ class LineBehindTargetFilter(FilterCondition):
     type: FilterType = FilterType.LINE_BEHIND_TARGET
     target_key: str
     length: int = 1
-    origin_id: Optional[str] = None
+    origin_id: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve Target Location
@@ -74,6 +75,7 @@ class LineBehindTargetFilter(FilterCondition):
         dist = topology.distance(target_hex, cand_hex, state)
         return dist <= self.length
 
+
 class NotInStraightLineFilter(FilterCondition):
     """
     Excludes targets in a straight line from the actor.
@@ -86,8 +88,8 @@ class NotInStraightLineFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.NOT_IN_STRAIGHT_LINE
-    origin_id: Optional[str] = None  # Literal ID (defaults to current actor)
-    origin_key: Optional[str] = None  # Key in context to find ID
+    origin_id: str | None = None  # Literal ID (defaults to current actor)
+    origin_key: str | None = None  # Key in context to find ID
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve origin
@@ -119,9 +121,8 @@ class NotInStraightLineFilter(FilterCondition):
 
         # Use topology-aware is_straight_line (respects reality splits)
         # Returns True if NOT in straight line (i.e., valid target)
-        return not get_topology_service().is_straight_line(
-            origin_hex, target_hex, state
-        )
+        return not get_topology_service().is_straight_line(origin_hex, target_hex, state)
+
 
 class InStraightLineFilter(FilterCondition):
     """
@@ -135,8 +136,8 @@ class InStraightLineFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.IN_STRAIGHT_LINE
-    origin_id: Optional[str] = None  # Literal ID (defaults to current actor)
-    origin_key: Optional[str] = None  # Key in context to find ID
+    origin_id: str | None = None  # Literal ID (defaults to current actor)
+    origin_key: str | None = None  # Key in context to find ID
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve origin
@@ -170,6 +171,7 @@ class InStraightLineFilter(FilterCondition):
         # Returns True if IN straight line (i.e., valid target)
         return get_topology_service().is_straight_line(origin_hex, target_hex, state)
 
+
 class StraightLinePathFilter(FilterCondition):
     """
     Validates that the straight-line path between origin and candidate is
@@ -180,8 +182,8 @@ class StraightLinePathFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.STRAIGHT_LINE_PATH
-    origin_id: Optional[str] = None
-    origin_key: Optional[str] = None
+    origin_id: str | None = None
+    origin_key: str | None = None
     pass_through_obstacles: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -230,6 +232,7 @@ class StraightLinePathFilter(FilterCondition):
 
         return True
 
+
 class SpaceBehindEmptyFilter(FilterCondition):
     """
     For unit targeting: validates that the hex directly behind the candidate
@@ -239,8 +242,8 @@ class SpaceBehindEmptyFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.SPACE_BEHIND_EMPTY
-    origin_id: Optional[str] = None
-    origin_key: Optional[str] = None
+    origin_id: str | None = None
+    origin_key: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Candidate is a unit ID string
@@ -280,6 +283,7 @@ class SpaceBehindEmptyFilter(FilterCondition):
         is_obs = state.validator.is_obstacle_for_actor(state, behind, actor_id, context)
         return not is_obs
 
+
 class RelativeDistanceFilter(FilterCondition):
     """
     Compares the distance(origin, candidate) against the distance(origin, reference)
@@ -291,9 +295,9 @@ class RelativeDistanceFilter(FilterCondition):
 
     type: FilterType = FilterType.RELATIVE_DISTANCE
     reference_key: str
-    origin_id: Optional[str] = None
+    origin_id: str | None = None
     operator: Literal[">", ">=", "==", "<=", "<"] = ">"
-    origin_key: Optional[str] = None
+    origin_key: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         origin_uid = self.origin_id
@@ -335,6 +339,7 @@ class RelativeDistanceFilter(FilterCondition):
         }
         return ops[self.operator](new_dist, current_dist)
 
+
 class ClearLineOfSightFilter(FilterCondition):
     """
     Validates that the straight-line path between origin and candidate has no
@@ -354,8 +359,8 @@ class ClearLineOfSightFilter(FilterCondition):
     blocked_by_units: bool = True
     blocked_by_terrain: bool = True
     blocked_by_obstacles: bool = False
-    origin_id: Optional[str] = None
-    origin_key: Optional[str] = None
+    origin_id: str | None = None
+    origin_key: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve candidate hex
@@ -416,6 +421,7 @@ class ClearLineOfSightFilter(FilterCondition):
 
         return True
 
+
 class BetweenHexesFilter(FilterCondition):
     """
     Unit filter: passes if the candidate unit sits on the straight-line path
@@ -430,7 +436,7 @@ class BetweenHexesFilter(FilterCondition):
     from_hex_key: str
     to_hex_key: str
 
-    def _resolve_hex(self, context: dict, key: str) -> Optional[Hex]:
+    def _resolve_hex(self, context: dict, key: str) -> Hex | None:
         raw = context.get(key)
         if isinstance(raw, Hex):
             return raw
@@ -452,7 +458,7 @@ class BetweenHexesFilter(FilterCondition):
             return False
 
         # Resolve candidate's current hex
-        cand_hex: Optional[Hex] = None
+        cand_hex: Hex | None = None
         if isinstance(candidate, Hex):
             cand_hex = candidate
         elif isinstance(candidate, str):

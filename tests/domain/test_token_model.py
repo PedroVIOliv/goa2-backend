@@ -1,13 +1,11 @@
-from goa2.domain.models.token import Token
-from goa2.domain.models.enums import TokenType
-from goa2.domain.types import BoardEntityID
 import goa2.engine.step_types  # noqa: F401 — triggers model patching for serialization
+from goa2.domain.models.enums import TokenType
+from goa2.domain.models.token import Token
+from goa2.domain.types import BoardEntityID
 
 
 def test_token_passable_default_false():
-    t = Token(
-        id=BoardEntityID("smoke_1"), name="Smoke", token_type=TokenType.SMOKE_BOMB
-    )
+    t = Token(id=BoardEntityID("smoke_1"), name="Smoke", token_type=TokenType.SMOKE_BOMB)
     assert t.is_passable is False
 
 
@@ -22,9 +20,7 @@ def test_token_mine_blast_passable():
 
 
 def test_token_facedown_default_false():
-    t = Token(
-        id=BoardEntityID("smoke_1"), name="Smoke", token_type=TokenType.SMOKE_BOMB
-    )
+    t = Token(id=BoardEntityID("smoke_1"), name="Smoke", token_type=TokenType.SMOKE_BOMB)
     assert t.is_facedown is False
 
 
@@ -42,11 +38,11 @@ def test_misc_entities_survive_serialization_roundtrip():
     """Tokens in misc_entities must remain Token instances after JSON round-trip
     (simulates rollback). Without AnyMiscEntity, they become plain dicts and
     is_passable checks break."""
-    from goa2.domain.state import GameState
     from goa2.domain.board import Board
     from goa2.domain.hex import Hex
+    from goa2.domain.models import Hero, Team, TeamColor
+    from goa2.domain.state import GameState
     from goa2.domain.tile import Tile
-    from goa2.domain.models import Team, TeamColor, Hero
     from goa2.domain.types import HeroID
 
     board = Board()
@@ -59,8 +55,11 @@ def test_misc_entities_survive_serialization_roundtrip():
     )
 
     mine = Token(
-        id=BoardEntityID("mine_1"), name="Mine",
-        token_type=TokenType.MINE_BLAST, is_passable=True, is_facedown=True,
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_BLAST,
+        is_passable=True,
+        is_facedown=True,
     )
     state.misc_entities[BoardEntityID("mine_1")] = mine
     state.place_entity(BoardEntityID("mine_1"), Hex(q=0, r=0, s=0))

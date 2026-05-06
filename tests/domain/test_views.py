@@ -10,22 +10,22 @@ Tests verify that:
 
 import pytest
 
-from goa2.domain.state import GameState
+from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    TeamColor,
-    Hero,
+    ActionType,
     Card,
-    CardTier,
     CardColor,
     CardState,
-    ActionType,
+    CardTier,
     GamePhase,
+    Hero,
+    TeamColor,
 )
+from goa2.domain.models.team import Team
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
-from goa2.domain.board import Board, Zone
-from goa2.domain.models.team import Team
 
 
 @pytest.fixture
@@ -285,9 +285,7 @@ class TestHeroScopedView:
         # Should see empty array
         assert hand_cards == []
 
-    def test_other_hero_sees_facedown_played_cards_with_hidden_fields(
-        self, sample_state
-    ):
+    def test_other_hero_sees_facedown_played_cards_with_hidden_fields(self, sample_state):
         """Hero A looking at Hero B's played cards: facedown cards hide 5 fields."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
 

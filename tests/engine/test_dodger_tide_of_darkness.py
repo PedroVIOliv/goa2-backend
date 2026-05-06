@@ -1,14 +1,6 @@
 """Tests for Dodger's Tide of Darkness ultimate card effect."""
 
-import pytest
-
 import goa2.scripts.dodger_effects  # noqa: F401 — registers effects
-from goa2.scripts.dodger_effects import (
-    _has_tide_of_darkness,
-    _count_empty_spawn_points,
-    _is_adjacent_to_empty_spawn_in_battle_zone,
-)
-
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
@@ -28,6 +20,11 @@ from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import BattleZoneFilter, SpawnPointTeamFilter
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import compute_card_stats
+from goa2.scripts.dodger_effects import (
+    _count_empty_spawn_points,
+    _has_tide_of_darkness,
+    _is_adjacent_to_empty_spawn_in_battle_zone,
+)
 
 
 def _make_ultimate_card():
@@ -210,8 +207,12 @@ class TestIsAdjacentToEmptySpawnWithOverride:
         hero_hex = Hex(q=0, r=0, s=0)
         # Occupy all 6 neighbors
         neighbors = [
-            Hex(q=1, r=0, s=-1), Hex(q=0, r=1, s=-1), Hex(q=-1, r=1, s=0),
-            Hex(q=-1, r=0, s=1), Hex(q=0, r=-1, s=1), Hex(q=1, r=-1, s=0),
+            Hex(q=1, r=0, s=-1),
+            Hex(q=0, r=1, s=-1),
+            Hex(q=-1, r=1, s=0),
+            Hex(q=-1, r=0, s=1),
+            Hex(q=0, r=-1, s=1),
+            Hex(q=1, r=-1, s=0),
         ]
         for i, n in enumerate(neighbors):
             bid = f"block_{i}"

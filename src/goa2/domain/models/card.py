@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any
-from pydantic import Field, model_validator, ConfigDict
-from .enums import CardTier, CardColor, ActionType, StatType, CardState
+
+from typing import Any
+
+from pydantic import ConfigDict, Field, model_validator
+
 from .base import GameEntity
+from .enums import ActionType, CardColor, CardState, CardTier, StatType
 
 
 class Card(GameEntity):
@@ -13,10 +16,10 @@ class Card(GameEntity):
 
     # Renamed internal storage for masking logic
     tier: CardTier = Field(alias="tier")
-    color: Optional[CardColor] = Field(alias="color")
-    primary_action: Optional[ActionType] = Field(alias="primary_action")
-    primary_action_value: Optional[int] = Field(None, alias="primary_action_value")
-    secondary_actions: Dict[ActionType, int] = Field(
+    color: CardColor | None = Field(alias="color")
+    primary_action: ActionType | None = Field(alias="primary_action")
+    primary_action_value: int | None = Field(None, alias="primary_action_value")
+    secondary_actions: dict[ActionType, int] = Field(
         default_factory=dict, alias="secondary_actions"
     )
     effect_id: str = Field(alias="effect_id")
@@ -33,13 +36,11 @@ class Card(GameEntity):
 
     # Range/Targeting Logic
     is_ranged: bool = False
-    range_value: Optional[int] = Field(None, description="Max distance if ranged")
-    radius_value: Optional[int] = Field(
-        None, description="Area of effect size (1 = adjacent)"
-    )
+    range_value: int | None = Field(None, description="Max distance if ranged")
+    radius_value: int | None = Field(None, description="Area of effect size (1 = adjacent)")
 
     # Item (Passive bonuses when equipped as item)
-    item: Optional[StatType] = None
+    item: StatType | None = None
 
     # Passive ability usage tracking (reset at turn end)
     passive_uses_this_turn: int = 0
@@ -65,7 +66,7 @@ class Card(GameEntity):
     def is_active(self, value: bool) -> None:
         self.is_active_base = value
 
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -82,25 +83,25 @@ class Card(GameEntity):
         return self.tier
 
     @property
-    def current_color(self) -> Optional[CardColor]:
+    def current_color(self) -> CardColor | None:
         if self.is_facedown:
             return None
         return self.color
 
     @property
-    def current_primary_action(self) -> Optional[ActionType]:
+    def current_primary_action(self) -> ActionType | None:
         if self.is_facedown:
             return None
         return self.primary_action
 
     @property
-    def current_primary_action_value(self) -> Optional[int]:
+    def current_primary_action_value(self) -> int | None:
         if self.is_facedown:
             return None
         return self.primary_action_value
 
     @property
-    def current_secondary_actions(self) -> Dict[ActionType, int]:
+    def current_secondary_actions(self) -> dict[ActionType, int]:
         if self.is_facedown:
             # Hold is always available and not hidden info
             if ActionType.HOLD in self.secondary_actions:
@@ -109,7 +110,7 @@ class Card(GameEntity):
         return self.secondary_actions
 
     @property
-    def current_effect_id(self) -> Optional[str]:
+    def current_effect_id(self) -> str | None:
         if self.is_facedown:
             return None
         return self.effect_id
@@ -159,9 +160,7 @@ class Card(GameEntity):
         # Case 1: Gold/Silver must be UNTIERED
         if color in (CardColor.GOLD, CardColor.SILVER):
             if tier != CardTier.UNTIERED:
-                raise ValueError(
-                    f"Card color {color.name} must be UNTIERED, got {tier.name}"
-                )
+                raise ValueError(f"Card color {color.name} must be UNTIERED, got {tier.name}")
 
         # Case 2: Red/Blue/Green must be I, II, or III
         elif color in (CardColor.RED, CardColor.BLUE, CardColor.GREEN):
@@ -173,9 +172,7 @@ class Card(GameEntity):
         # Case 3: Purple must be IV
         elif color == CardColor.PURPLE:
             if tier != CardTier.IV:
-                raise ValueError(
-                    f"Card color {color.name} must be Tier IV, got {tier.name}"
-                )
+                raise ValueError(f"Card color {color.name} must be Tier IV, got {tier.name}")
 
         return self
 
@@ -245,13 +242,8 @@ class Card(GameEntity):
             raise ValueError(
                 "Primary action must have a value if it is not a Skill, Defense_Skill, or Defense."
             )
-        if (
-            self.primary_action == ActionType.SKILL
-            and self.primary_action_value is not None
-        ):
-            raise ValueError(
-                "Skill primary action must have None as primary_action_value."
-            )
+        if self.primary_action == ActionType.SKILL and self.primary_action_value is not None:
+            raise ValueError("Skill primary action must have None as primary_action_value.")
         return self
 
     def get_base_stat_value(self, stat_type: StatType) -> int:

@@ -1,24 +1,25 @@
 """Tests for origin_action_type tracking on effects."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
     DurationType,
-    EffectType,
     EffectScope,
+    EffectType,
     Shape,
 )
+from goa2.domain.state import GameState
 from goa2.engine.steps import (
     CreateEffectStep,
     ReactionWindowStep,
@@ -186,10 +187,7 @@ class TestReactionWindowSetsDefenseType:
         step.resolve(state_with_defender, context)
 
         assert context.get("current_action_type") == ActionType.ATTACK
-        assert (
-            "action_type_stack" not in context
-            or len(context.get("action_type_stack", [])) == 0
-        )
+        assert "action_type_stack" not in context or len(context.get("action_type_stack", [])) == 0
 
 
 class TestRestoreActionTypeStep:

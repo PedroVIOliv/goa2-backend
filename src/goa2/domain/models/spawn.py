@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import Optional
+
 from pydantic import BaseModel, model_validator
+
 from goa2.domain.hex import Hex
-from goa2.domain.models.enums import TeamColor, MinionType
+from goa2.domain.models.enums import MinionType, TeamColor
 
 
 class SpawnType(str, Enum):
@@ -18,7 +19,7 @@ class SpawnPoint(BaseModel):
     location: Hex
     team: TeamColor
     type: SpawnType
-    minion_type: Optional[MinionType] = None
+    minion_type: MinionType | None = None
 
     @model_validator(mode="after")
     def validate_spawn_type(self) -> "SpawnPoint":

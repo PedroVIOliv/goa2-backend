@@ -1,19 +1,20 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.steps import ResolveCardStep, ResolveCardTextStep
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep, ResolveCardTextStep
 
 
 @pytest.fixture

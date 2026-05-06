@@ -4,36 +4,35 @@ plus the generic CountStep, CheckContextConditionStep, and RetrieveCardStep.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
+# Ensure step_types patching is applied
+import goa2.engine.step_types
+
+# Register xargatha effects
+import goa2.scripts.xargatha_effects  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.models.enums import StepType, TargetType
+from goa2.domain.state import GameState
+from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     CheckContextConditionStep,
     CountStep,
     RetrieveCardStep,
-    SelectStep,
 )
-from goa2.engine.filters import RangeFilter, TeamFilter, UnitTypeFilter
-from goa2.engine.handler import process_stack, push_steps
-from goa2.domain.models.enums import TargetType, CardContainerType, StepType
-
-# Ensure step_types patching is applied
-import goa2.engine.step_types  # noqa: F401
-
-# Register xargatha effects
-import goa2.scripts.xargatha_effects  # noqa: F401
 
 
 def _make_discardable_card(card_id="card_a", name="Card A"):
@@ -99,9 +98,7 @@ def retrieve_state():
         level=1,
     )
 
-    melee = Minion(
-        id="melee_1", name="Melee", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    melee = Minion(id="melee_1", name="Melee", type=MinionType.MELEE, team=TeamColor.BLUE)
     ally_melee = Minion(
         id="ally_melee", name="AllyMelee", type=MinionType.MELEE, team=TeamColor.RED
     )
@@ -109,12 +106,8 @@ def retrieve_state():
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[hero], minions=[ally_melee]
-            ),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy_hero], minions=[melee]
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[ally_melee]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy_hero], minions=[melee]),
         },
     )
     state.place_entity("hero_xargatha", Hex(q=0, r=0, s=0))
@@ -353,9 +346,7 @@ class TestDevotedFollowers:
         assert "card_b" in req["valid_options"]
 
         # Select card_a
-        retrieve_state.execution_stack[-1].pending_input = {
-            "selection": "card_a"
-        }
+        retrieve_state.execution_stack[-1].pending_input = {"selection": "card_a"}
         process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
@@ -371,9 +362,7 @@ class TestDevotedFollowers:
         assert req is not None
         assert req["type"] == "SELECT_CARD"
 
-        retrieve_state.execution_stack[-1].pending_input = {
-            "selection": "card_b"
-        }
+        retrieve_state.execution_stack[-1].pending_input = {"selection": "card_b"}
         process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
@@ -402,9 +391,7 @@ class TestDevotedFollowers:
         assert req is not None
 
         # Submit SKIP
-        retrieve_state.execution_stack[-1].pending_input = {
-            "selection": "SKIP"
-        }
+        retrieve_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
         process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
@@ -433,9 +420,7 @@ class TestFreshConverts:
         assert req is not None
         assert req["type"] == "SELECT_CARD"
 
-        retrieve_state.execution_stack[-1].pending_input = {
-            "selection": "card_a"
-        }
+        retrieve_state.execution_stack[-1].pending_input = {"selection": "card_a"}
         process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
@@ -469,9 +454,7 @@ class TestFreshConverts:
         req = self._run_fresh_converts(retrieve_state)
         assert req is not None
 
-        retrieve_state.execution_stack[-1].pending_input = {
-            "selection": "SKIP"
-        }
+        retrieve_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
         process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")

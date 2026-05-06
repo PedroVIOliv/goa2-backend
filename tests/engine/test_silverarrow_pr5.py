@@ -6,7 +6,7 @@ checking the card effect's step shape.
 
 import pytest
 
-import goa2.data.heroes.silverarrow  # noqa: F401 - registers hero
+import goa2.data.heroes.silverarrow
 import goa2.scripts.silverarrow_effects  # noqa: F401 - registers effects
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
@@ -82,9 +82,7 @@ def _expand_move(state: GameState, unit_id: str):
     select, move = result.new_steps
     assert isinstance(select, SelectStep)
     assert isinstance(move, MoveUnitStep)
-    movement_filters = [
-        f for f in select.filters if isinstance(f, MovementPathFilter)
-    ]
+    movement_filters = [f for f in select.filters if isinstance(f, MovementPathFilter)]
     assert len(movement_filters) == 1
     return movement_filters[0], move
 
@@ -114,6 +112,4 @@ def test_trailblazer_does_not_help_enemy_movement(trailblazer_state):
     assert path_filter.apply(destination, trailblazer_state, {}) is False
 
     move.resolve(trailblazer_state, {"target_hex": destination})
-    assert trailblazer_state.entity_locations[BoardEntityID("enemy_hero")] == Hex(
-        q=0, r=0, s=0
-    )
+    assert trailblazer_state.entity_locations[BoardEntityID("enemy_hero")] == Hex(q=0, r=0, s=0)

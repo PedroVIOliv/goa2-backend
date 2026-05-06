@@ -12,7 +12,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class GameLogger:
@@ -41,16 +41,14 @@ class GameLogger:
 
         fh = logging.FileHandler(self.log_file, mode="a")
         fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s")
-        )
+        fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"))
         self.logger.addHandler(fh)
 
         # Structured events for JSON export — load existing if restoring
         if not is_new and self.json_file.exists():
             try:
                 with open(self.json_file) as f:
-                    self.events: List[Dict[str, Any]] = json.load(f)
+                    self.events: list[dict[str, Any]] = json.load(f)
             except (json.JSONDecodeError, OSError):
                 self.events = []
         else:
@@ -74,13 +72,11 @@ class GameLogger:
 
     def log_game_created(
         self,
-        red_heroes: List[str],
-        blue_heroes: List[str],
+        red_heroes: list[str],
+        blue_heroes: list[str],
         map_name: str,
     ) -> None:
-        self.logger.info(
-            "Game created: RED=%s, BLUE=%s, map=%s", red_heroes, blue_heroes, map_name
-        )
+        self.logger.info("Game created: RED=%s, BLUE=%s, map=%s", red_heroes, blue_heroes, map_name)
         self._add_event(
             "GAME_CREATED",
             {
@@ -97,9 +93,7 @@ class GameLogger:
         self._round = round_num
         self._turn = turn
         self.logger.info("Phase: %s (Round %d, Turn %d)", phase, round_num, turn)
-        self._add_event(
-            "PHASE_CHANGE", {"phase": phase, "round": round_num, "turn": turn}
-        )
+        self._add_event("PHASE_CHANGE", {"phase": phase, "round": round_num, "turn": turn})
 
     def log_card_commit(self, hero_id: str, card_id: str) -> None:
         self.logger.info("COMMIT: %s -> %s", hero_id, card_id)
@@ -109,7 +103,7 @@ class GameLogger:
         self.logger.info("PASS: %s", hero_id)
         self._add_event("PASS_TURN", {"hero_id": hero_id})
 
-    def log_input_request(self, request: Dict[str, Any]) -> None:
+    def log_input_request(self, request: dict[str, Any]) -> None:
         req_type = request.get("type", "UNKNOWN")
         player_id = request.get("player_id", "?")
         prompt = request.get("prompt", "")
@@ -140,7 +134,7 @@ class GameLogger:
             {"hero_id": hero_id, "selection": safe},
         )
 
-    def log_events(self, events: List[Dict[str, Any]]) -> None:
+    def log_events(self, events: list[dict[str, Any]]) -> None:
         """Log game events emitted by the engine (movement, combat, etc.)."""
         for ev in events:
             event_type = ev.get("event_type", "UNKNOWN")
@@ -163,31 +157,27 @@ class GameLogger:
     def log_advance(self, result_type: str, phase: str) -> None:
         self.logger.debug("ADVANCE: result=%s, phase=%s", result_type, phase)
 
-    def log_error(self, error: str, hero_id: Optional[str] = None) -> None:
+    def log_error(self, error: str, hero_id: str | None = None) -> None:
         ctx = f" (player={hero_id})" if hero_id else ""
         self.logger.error("ERROR%s: %s", ctx, error)
         self._add_event("ERROR", {"message": error, "hero_id": hero_id})
 
-    def log_game_over(self, winner: Optional[str]) -> None:
+    def log_game_over(self, winner: str | None) -> None:
         self.logger.info("=" * 60)
         self.logger.info("GAME OVER - Winner: %s", winner or "None")
         self.logger.info("=" * 60)
         self._add_event("GAME_OVER", {"winner": winner})
         self._save_json()
 
-    def log_ws_connect(self, hero_id: Optional[str], is_spectator: bool) -> None:
+    def log_ws_connect(self, hero_id: str | None, is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_CONNECT: %s", who)
-        self._add_event(
-            "WS_CONNECT", {"hero_id": hero_id, "is_spectator": is_spectator}
-        )
+        self._add_event("WS_CONNECT", {"hero_id": hero_id, "is_spectator": is_spectator})
 
-    def log_ws_disconnect(self, hero_id: Optional[str], is_spectator: bool) -> None:
+    def log_ws_disconnect(self, hero_id: str | None, is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_DISCONNECT: %s", who)
-        self._add_event(
-            "WS_DISCONNECT", {"hero_id": hero_id, "is_spectator": is_spectator}
-        )
+        self._add_event("WS_DISCONNECT", {"hero_id": hero_id, "is_spectator": is_spectator})
 
     # ------------------------------------------------------------------
     # Convenience: log a full SessionResult
@@ -197,9 +187,9 @@ class GameLogger:
         self,
         result_type: str,
         phase: str,
-        events: List[Dict[str, Any]],
-        input_request: Optional[Dict[str, Any]],
-        winner: Optional[str],
+        events: list[dict[str, Any]],
+        input_request: dict[str, Any] | None,
+        winner: str | None,
     ) -> None:
         """Log a complete SessionResult in one call."""
         self.log_phase_change(phase, self._round, self._turn)
@@ -219,7 +209,7 @@ class GameLogger:
     # Internals
     # ------------------------------------------------------------------
 
-    def _add_event(self, event_type: str, data: Dict[str, Any]) -> None:
+    def _add_event(self, event_type: str, data: dict[str, Any]) -> None:
         self.events.append(
             {
                 "timestamp": datetime.now().isoformat(),
@@ -246,7 +236,7 @@ class GameLogger:
             self.logger.removeHandler(handler)
 
 
-def create_game_logger(game_id: str, log_dir: Optional[str] = None) -> GameLogger:
+def create_game_logger(game_id: str, log_dir: str | None = None) -> GameLogger:
     """Create a GameLogger, using GOA2_LOG_DIR env var or default."""
     directory = log_dir or os.environ.get("GOA2_LOG_DIR", "logs/games")
     return GameLogger(game_id, log_dir=directory)

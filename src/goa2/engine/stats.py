@@ -1,20 +1,23 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
 
-from goa2.domain.state import GameState
-from goa2.domain.models import MinionType, Minion, Hero, StatType, ActionType
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from goa2.domain.hex import Hex
+from goa2.domain.models import ActionType, Hero, Minion, MinionType, StatType
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    Shape,
     AffectsFilter,
     DurationType,
+    EffectType,
+    Shape,
 )
-from goa2.domain.types import UnitID, BoardEntityID
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.topology import (
     get_connected_ring,
+)
+from goa2.engine.topology import (
     hex_in_scope as topology_hex_in_scope,
 )
 
@@ -39,10 +42,7 @@ def _is_effect_active(effect: ActiveEffect, state: GameState) -> bool:
 
     # Check temporal duration
     if effect.duration == DurationType.THIS_TURN:
-        return (
-            state.turn == effect.created_at_turn
-            and state.round == effect.created_at_round
-        )
+        return state.turn == effect.created_at_turn and state.round == effect.created_at_round
 
     if effect.duration == DurationType.NEXT_TURN:
         if state.round == effect.created_at_round:
@@ -55,7 +55,7 @@ def _is_effect_active(effect: ActiveEffect, state: GameState) -> bool:
     return False
 
 
-def _get_origin_hex(effect: ActiveEffect, state: GameState) -> Optional[Hex]:
+def _get_origin_hex(effect: ActiveEffect, state: GameState) -> Hex | None:
     """Resolve origin point for spatial effects."""
     if effect.scope.origin_hex:
         return effect.scope.origin_hex
@@ -82,9 +82,7 @@ def _hex_in_scope(effect: ActiveEffect, hex: Hex, state: GameState) -> bool:
     )
 
 
-def _matches_affects_filter(
-    effect: ActiveEffect, target_id: str, state: GameState
-) -> bool:
+def _matches_affects_filter(effect: ActiveEffect, target_id: str, state: GameState) -> bool:
     """Check if target matches the relational filter."""
     affects = effect.scope.affects
 
@@ -126,9 +124,7 @@ def _matches_affects_filter(
     return False
 
 
-def is_unit_in_effect_scope(
-    effect: ActiveEffect, unit_id: str, state: GameState
-) -> bool:
+def is_unit_in_effect_scope(effect: ActiveEffect, unit_id: str, state: GameState) -> bool:
     """Check if a unit is within an effect's scope (spatial + relational)."""
     unit_hex = state.entity_locations.get(BoardEntityID(unit_id))
     if not unit_hex:
@@ -195,7 +191,10 @@ def get_computed_stat(
                         continue
                     if aura.basic_only and not card.is_basic:
                         continue
-                    if aura.action_type_only is not None and card.primary_action != aura.action_type_only:
+                    if (
+                        aura.action_type_only is not None
+                        and card.primary_action != aura.action_type_only
+                    ):
                         continue
                 # Apply flat bonus or count-based bonus
                 if aura.flat_bonus is not None:
@@ -222,7 +221,7 @@ def get_computed_stat(
     return total
 
 
-def _count_matching_units(state: GameState, aura: "StatAura") -> int:
+def _count_matching_units(state: GameState, aura: StatAura) -> int:
     """Count all units on the board that match all aura filters.
     Range is handled by RangeFilter within count_filters."""
     count = 0
@@ -297,7 +296,7 @@ class CardStats:
 
     primary_value: int = 0
     range: int = 1
-    radius: Optional[int] = None
+    radius: int | None = None
 
 
 def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardStats:
@@ -326,34 +325,24 @@ def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardSta
     base_value = card.current_primary_action_value or 0
 
     if card.current_primary_action == ActionType.ATTACK:
-        result.primary_value = get_computed_stat(
-            state, hero_id, StatType.ATTACK, base_value
-        )
+        result.primary_value = get_computed_stat(state, hero_id, StatType.ATTACK, base_value)
     elif card.current_primary_action == ActionType.MOVEMENT:
-        result.primary_value = get_computed_stat(
-            state, hero_id, StatType.MOVEMENT, base_value
-        )
+        result.primary_value = get_computed_stat(state, hero_id, StatType.MOVEMENT, base_value)
     elif card.current_primary_action in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL):
-        result.primary_value = get_computed_stat(
-            state, hero_id, StatType.DEFENSE, base_value
-        )
+        result.primary_value = get_computed_stat(state, hero_id, StatType.DEFENSE, base_value)
     else:
         # SKILL or other action types have no numeric primary value
         result.primary_value = 0
 
     # 2. Compute range (only if card is ranged, otherwise fixed at 1)
     if card.is_ranged and card.range_value:
-        result.range = get_computed_stat(
-            state, hero_id, StatType.RANGE, card.range_value
-        )
+        result.range = get_computed_stat(state, hero_id, StatType.RANGE, card.range_value)
     else:
         result.range = 1  # Adjacent, not buffable
 
     # 3. Compute radius (only if card has radius_value)
     if card.radius_value:
-        result.radius = get_computed_stat(
-            state, hero_id, StatType.RADIUS, card.radius_value
-        )
+        result.radius = get_computed_stat(state, hero_id, StatType.RADIUS, card.radius_value)
     else:
         result.radius = None
 

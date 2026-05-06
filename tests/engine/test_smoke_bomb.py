@@ -1,17 +1,18 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    DurationType,
+    EffectScope,
+    EffectType,
+    Hero,
+    Shape,
     Team,
     TeamColor,
-    Hero,
-    EffectType,
-    EffectScope,
-    Shape,
-    DurationType,
 )
-from goa2.domain.types import HeroID, UnitID, BoardEntityID
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.effect_manager import EffectManager
 
 
@@ -33,9 +34,7 @@ def test_smoke_bomb_los_blocks_enemy(empty_state: GameState):
     target_id = "hero_target"
     min_id = "hero_min"
 
-    attacker = Hero(
-        id=HeroID(attacker_id), name="Attacker", deck=[], team=TeamColor.RED
-    )
+    attacker = Hero(id=HeroID(attacker_id), name="Attacker", deck=[], team=TeamColor.RED)
     target = Hero(id=HeroID(target_id), name="Target", deck=[], team=TeamColor.BLUE)
     min_hero = Hero(id=HeroID(min_id), name="Min", deck=[], team=TeamColor.BLUE)
 
@@ -123,9 +122,7 @@ def test_smoke_bomb_moving(empty_state: GameState):
     token_id = "token_smoke_bomb"
     min_id = "hero_min"
 
-    attacker = Hero(
-        id=HeroID(attacker_id), name="Attacker", deck=[], team=TeamColor.RED
-    )
+    attacker = Hero(id=HeroID(attacker_id), name="Attacker", deck=[], team=TeamColor.RED)
     target = Hero(id=HeroID(target_id), name="Target", deck=[], team=TeamColor.BLUE)
     min_hero = Hero(id=HeroID(min_id), name="Min", deck=[], team=TeamColor.BLUE)
     state.teams[TeamColor.RED].heroes.append(attacker)

@@ -1,21 +1,22 @@
 """Tests for War Drummer / Master Skald effects, GainCoinsStep, and CheckHeroDefeatedThisRoundStep."""
 
 import pytest
+
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.domain.events import GameEventType
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     CheckHeroDefeatedThisRoundStep,
     DefeatUnitStep,
@@ -23,7 +24,6 @@ from goa2.engine.steps import (
     ResolveCardStep,
     RoundResetStep,
 )
-from goa2.engine.handler import process_stack, push_steps
 
 
 def _make_card(card_id, name, effect_id, **overrides):
@@ -283,7 +283,9 @@ class TestMasterSkaldIntegration:
         ally = state.get_hero(HeroID("ally"))
 
         card = _make_card(
-            "master_skald", "Master Skald", "master_skald",
+            "master_skald",
+            "Master Skald",
+            "master_skald",
             tier=CardTier.III,
         )
         brogan = state.get_hero(HeroID("brogan"))
@@ -302,7 +304,9 @@ class TestMasterSkaldIntegration:
         ally = state.get_hero(HeroID("ally"))
 
         card = _make_card(
-            "master_skald", "Master Skald", "master_skald",
+            "master_skald",
+            "Master Skald",
+            "master_skald",
             tier=CardTier.III,
         )
         brogan = state.get_hero(HeroID("brogan"))

@@ -1,21 +1,16 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
-from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckContextConditionStep,
-    CheckDistanceStep,
-    CreateEffectStep,
-    DefeatUnitStep,
-    ForceDiscardStep,
-    GameStep,
-    MoveUnitStep,
-    PlaceUnitStep,
-    RecordHexStep,
-    RetrieveCardStep,
-    SelectStep,
-    SwapUnitsStep,
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    DurationType,
+    EffectType,
+    StatType,
+    TargetType,
 )
+from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
+from goa2.domain.models.enums import CardContainerType
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import CountMatchFilter
 from goa2.engine.filters_geometry import (
     BetweenHexesFilter,
@@ -33,18 +28,25 @@ from goa2.engine.filters_units import (
     TeamFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models import (
-    EffectType,
-    DurationType,
-    StatType,
-    TargetType,
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    CheckDistanceStep,
+    CreateEffectStep,
+    DefeatUnitStep,
+    ForceDiscardStep,
+    GameStep,
+    MoveUnitStep,
+    PlaceUnitStep,
+    RecordHexStep,
+    RetrieveCardStep,
+    SelectStep,
+    SwapUnitsStep,
 )
-from goa2.domain.models.effect import EffectScope, AffectsFilter, Shape
-from goa2.domain.models.enums import CardContainerType
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -52,7 +54,9 @@ def _has_ultimate(hero: Hero) -> bool:
     return hero.ultimate_card is not None and hero.level >= 8
 
 
-def _ultimate_post_placement_steps(prefix: str = "ult", active_if_key: str = None) -> List[GameStep]:
+def _ultimate_post_placement_steps(
+    prefix: str = "ult", active_if_key: str = None
+) -> list[GameStep]:
     return [
         SelectStep(
             target_type=TargetType.UNIT,
@@ -86,8 +90,8 @@ class _RedMeleeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        steps: List[GameStep] = [
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
@@ -152,7 +156,7 @@ class PowerShotEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -195,7 +199,7 @@ class ThunderShotEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -233,7 +237,7 @@ class ThunderShotEffect(CardEffect):
 # =============================================================================
 
 
-def _blue_move_steps(hero: Hero, max_range: int) -> List[GameStep]:
+def _blue_move_steps(hero: Hero, max_range: int) -> list[GameStep]:
     return [
         RecordHexStep(unit_id=hero.id, output_key="move_origin"),
         SelectStep(
@@ -271,11 +275,10 @@ class _BlueDiscardEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         steps = _blue_move_steps(hero, self.max_range)
         steps.extend(
             [
-
                 SelectStep(
                     target_type=TargetType.UNIT,
                     prompt="Select an enemy you moved through",
@@ -327,11 +330,10 @@ class _BluePlaceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         steps = _blue_move_steps(hero, self.max_range)
         steps.extend(
             [
-                
                 SelectStep(
                     target_type=TargetType.UNIT,
                     prompt="Select an enemy you moved through",
@@ -406,7 +408,7 @@ class LivingTornadoEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         r = stats.radius
         return [
             SelectStep(
@@ -438,7 +440,7 @@ class StormSpiritEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         r = stats.radius
         return [
             SelectStep(
@@ -478,7 +480,7 @@ class _GreenPreActionMoveEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.PRE_ACTION_MOVEMENT,
@@ -535,8 +537,8 @@ class SwoopInEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        steps: List[GameStep] = [
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
             SelectStep(
                 target_type=TargetType.HEX,
                 prompt="Place yourself adjacent to 2+ enemy units",
@@ -592,10 +594,10 @@ class WatchHowISoarEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         has_ult = _has_ultimate(hero)
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             SelectStep(
                 target_type=TargetType.NUMBER,
                 prompt="Choose one",
@@ -659,7 +661,9 @@ class WatchHowISoarEffect(CardEffect):
             # If chose place (1), also offer defeat
             steps.extend(
                 [
-                    *_ultimate_post_placement_steps(prefix="soar_ult_a", active_if_key="chose_place"),
+                    *_ultimate_post_placement_steps(
+                        prefix="soar_ult_a", active_if_key="chose_place"
+                    ),
                     SelectStep(
                         target_type=TargetType.UNIT,
                         prompt="Power Overwhelming: Also defeat an adjacent minion?",
@@ -697,16 +701,19 @@ class WatchHowISoarEffect(CardEffect):
                         destination_key="soar_ult_dest",
                         active_if_key="soar_ult_dest",
                     ),
-                    *_ultimate_post_placement_steps(prefix="soar_ult_b", active_if_key="soar_ult_dest")
+                    *_ultimate_post_placement_steps(
+                        prefix="soar_ult_b", active_if_key="soar_ult_dest"
+                    ),
                 ]
             )
 
         return steps
+
 
 @register_effect("power_overwhelming")
 class PowerOverwhelmingEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return []

@@ -1,43 +1,68 @@
 """Tests for Action Resolution Rollback & Confirmation."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import (
-    Team, TeamColor, Card, CardTier, CardColor, ActionType, GamePhase,
-)
-from goa2.domain.models.unit import Hero
-from goa2.domain.types import HeroID
 from goa2.domain.input import InputResponse
-from goa2.engine.handler import (
-    process_stack, submit_input, push_steps,
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Team,
+    TeamColor,
 )
-from goa2.engine.steps import (
-    ConfirmResolutionStep, ResolveCardStep, FinalizeHeroTurnStep,
-    ReactionWindowStep, SelectStep, AskConfirmationStep,
-)
+from goa2.domain.models.enums import StepType, TargetType
+from goa2.domain.models.unit import Hero
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 from goa2.engine.filters import TeamFilter
-from goa2.engine.session import GameSession, SessionResultType
+from goa2.engine.handler import (
+    process_stack,
+    push_steps,
+)
 from goa2.engine.phases import start_resolution_phase
-from goa2.domain.models.enums import TargetType, StepType
+from goa2.engine.session import GameSession, SessionResultType
+from goa2.engine.steps import (
+    AskConfirmationStep,
+    ConfirmResolutionStep,
+    FinalizeHeroTurnStep,
+    SelectStep,
+)
 
 
 def _make_card(card_id, initiative, action=ActionType.SKILL):
     return Card(
-        id=card_id, name=f"Card {card_id}", tier=CardTier.I, color=CardColor.RED,
-        initiative=initiative, primary_action=action, primary_action_value=None,
+        id=card_id,
+        name=f"Card {card_id}",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=initiative,
+        primary_action=action,
+        primary_action_value=None,
         secondary_actions={ActionType.HOLD: 0},
-        effect_id="e", effect_text="t", is_facedown=False,
+        effect_id="e",
+        effect_text="t",
+        is_facedown=False,
     )
 
 
 def _filler_cards():
-    return [Card(
-        id=f"filler_{i}", name=f"Filler {i}", tier=CardTier.I, color=CardColor.RED,
-        initiative=1, primary_action=ActionType.SKILL, primary_action_value=None,
-        effect_id="e", effect_text="t",
-    ) for i in range(3)]
+    return [
+        Card(
+            id=f"filler_{i}",
+            name=f"Filler {i}",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=1,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            effect_id="e",
+            effect_text="t",
+        )
+        for i in range(3)
+    ]
 
 
 def _make_state():
@@ -252,11 +277,14 @@ class TestAbortThenRollback:
                 {"type": "range_filter", "max_range": 0},
             ],
         )
-        push_steps(state, [
-            mandatory_select,
-            ConfirmResolutionStep(hero_id="hero_a"),
-            FinalizeHeroTurnStep(hero_id="hero_a"),
-        ])
+        push_steps(
+            state,
+            [
+                mandatory_select,
+                ConfirmResolutionStep(hero_id="hero_a"),
+                FinalizeHeroTurnStep(hero_id="hero_a"),
+            ],
+        )
 
         # Process: mandatory select fails (no valid targets), aborts to ConfirmResolutionStep
         stack_result = process_stack(state)

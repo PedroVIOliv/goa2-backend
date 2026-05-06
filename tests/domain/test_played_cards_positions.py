@@ -3,14 +3,14 @@ Test fixed-position played_cards feature.
 """
 
 import pytest
+
 from goa2.domain.models import (
-    Card,
-    Hero,
-    TeamColor,
-    CardTier,
-    CardColor,
     ActionType,
+    Card,
+    CardColor,
     CardState,
+    CardTier,
+    Hero,
 )
 from goa2.domain.types import HeroID
 

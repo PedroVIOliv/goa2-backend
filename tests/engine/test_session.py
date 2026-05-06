@@ -5,15 +5,16 @@ Tests for submit_input(), process_stack(), GameSession, and SessionResult.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, GamePhase
-from goa2.domain.models.unit import Hero
-from goa2.domain.input import InputResponse, InputRequest
-from goa2.engine.handler import submit_input, process_stack, push_steps
-from goa2.engine.steps import SelectStep, LogMessageStep
+from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.models import GamePhase, Team, TeamColor
 from goa2.domain.models.enums import TargetType
+from goa2.domain.models.unit import Hero
+from goa2.domain.state import GameState
+from goa2.engine.handler import process_stack, push_steps, submit_input
+from goa2.engine.steps import LogMessageStep, SelectStep
 
 
 @pytest.fixture
@@ -49,9 +50,7 @@ class TestSubmitInput:
         resp = InputResponse(selection="hero_a")
         submit_input(empty_state, resp)
         assert empty_state.execution_stack[-1].pending_input is not None
-        assert (
-            empty_state.execution_stack[-1].pending_input.get("selection") == "hero_a"
-        )
+        assert empty_state.execution_stack[-1].pending_input.get("selection") == "hero_a"
 
     def test_empty_stack_raises(self, empty_state):
         """submit_input with no pending step raises ValueError."""
@@ -62,9 +61,7 @@ class TestSubmitInput:
 class TestProcessStack:
     def test_returns_input_request(self, empty_state):
         """process_stack returns StackResult with typed InputRequest."""
-        step = SelectStep(
-            target_type=TargetType.UNIT, prompt="Pick a unit", skip_self_filter=True
-        )
+        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick a unit", skip_self_filter=True)
         push_steps(empty_state, [step])
         stack_result = process_stack(empty_state)
         assert isinstance(stack_result.input_request, InputRequest)
@@ -87,8 +84,8 @@ class TestProcessStack:
 # Task 2: SessionResult and GameSession
 # =============================================================================
 
-from goa2.engine.session import GameSession, SessionResult, SessionResultType
 from goa2.domain.input import InputRequestType
+from goa2.engine.session import GameSession, SessionResult, SessionResultType
 
 
 class TestSessionResult:
@@ -145,9 +142,7 @@ class TestGameSessionInit:
         """advance() with no pending input processes the stack."""
         empty_state.phase = GamePhase.RESOLUTION
         session = GameSession(empty_state)
-        step = SelectStep(
-            target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True
-        )
+        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True)
         push_steps(empty_state, [step])
         result = session.advance()
         assert result.result_type == SessionResultType.INPUT_NEEDED
@@ -156,9 +151,7 @@ class TestGameSessionInit:
         """advance(response) applies input then processes stack."""
         empty_state.phase = GamePhase.RESOLUTION
         session = GameSession(empty_state)
-        step = SelectStep(
-            target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True
-        )
+        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick", skip_self_filter=True)
         push_steps(empty_state, [step])
         # First advance to get input request
         result = session.advance()
@@ -177,10 +170,10 @@ class TestGameSessionInit:
 # Task 3: GameSession planning + advance integration tests
 # =============================================================================
 
-import goa2.scripts.arien_effects  # noqa: F401
+import goa2.scripts.arien_effects
 import goa2.scripts.wasp_effects  # noqa: F401
-from goa2.engine.setup import GameSetup
 from goa2.domain.types import HeroID
+from goa2.engine.setup import GameSetup
 
 
 @pytest.fixture

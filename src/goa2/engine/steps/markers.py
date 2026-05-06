@@ -2,27 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import logging
+from typing import Any
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID
+from goa2.domain.events import GameEvent, GameEventType, _hex_dict
+from goa2.domain.hex import Hex
 from goa2.domain.models import StepType, TargetType, Token, TokenType
 from goa2.domain.models.marker import MarkerType
-from goa2.domain.hex import Hex
-from goa2.domain.events import GameEvent, GameEventType, _hex_dict
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine import rules
-from goa2.engine.stats import get_computed_stat
 from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
-
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
 
-def _remove_token_from_board(
-    state: GameState, token_id: str
-) -> tuple[Optional[Hex], int]:
+def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Hex | None, int]:
     from_hex = state.entity_locations.get(BoardEntityID(token_id))
     if not from_hex:
         return None, 0
@@ -31,26 +27,22 @@ def _remove_token_from_board(
 
     initial_count = len(state.active_effects)
     state.active_effects = [
-        e
-        for e in state.active_effects
-        if e.source_id != token_id and e.scope.origin_id != token_id
+        e for e in state.active_effects if e.source_id != token_id and e.scope.origin_id != token_id
     ]
     removed_effects = initial_count - len(state.active_effects)
 
     if removed_effects > 0:
-        logger.debug(
-            f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}"
-        )
+        logger.debug(f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}")
 
     return from_hex, removed_effects
 
 
 class RemoveTokenStep(GameStep):
     type: StepType = StepType.REMOVE_TOKEN
-    token_id: Optional[str] = None
-    token_key: Optional[str] = None
+    token_id: str | None = None
+    token_key: str | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         target_id = self.token_id
         if self.token_key:
             target_id = context.get(self.token_key)
@@ -70,9 +62,7 @@ class RemoveTokenStep(GameStep):
             events=[
                 GameEvent(
                     event_type=GameEventType.TOKEN_REMOVED,
-                    actor_id=str(state.current_actor_id)
-                    if state.current_actor_id
-                    else None,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
                     target_id=target_id,
                     from_hex=_hex_dict(from_hex),
                     metadata={"effects_removed": removed_effects},
@@ -85,12 +75,13 @@ class PlaceTokenStep(GameStep):
     type: StepType = StepType.PLACE_TOKEN
     token_type: TokenType
     hex_key: str = "target_hex"
-    owner_id_key: Optional[str] = None
-    output_key: Optional[str] = None
+    owner_id_key: str | None = None
+    output_key: str | None = None
     overflow_selection_key: str = "overflow_token_to_remove"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
+
         dest_val = context.get(self.hex_key)
         if not dest_val:
             return StepResult(is_finished=True)
@@ -113,12 +104,10 @@ class PlaceTokenStep(GameStep):
             None,
         )
 
-        events: List[GameEvent] = []
+        events: list[GameEvent] = []
 
         if available is None:
-            placed = [
-                t for t in pool if BoardEntityID(str(t.id)) in state.entity_locations
-            ]
+            placed = [t for t in pool if BoardEntityID(str(t.id)) in state.entity_locations]
             if not placed:
                 return StepResult(is_finished=True)
             return StepResult(
@@ -173,7 +162,7 @@ class MoveTokenStep(GameStep):
     destination_key: str = "target_hex"
     range_val: int = 1
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         token_id = context.get(self.token_key)
         dest_val = context.get(self.destination_key)
         if not token_id or not dest_val:
@@ -200,14 +189,10 @@ class MoveTokenStep(GameStep):
                 end=dest_hex,
                 max_steps=self.range_val,
                 state=state,
-                actor_id=str(state.current_actor_id)
-                if state.current_actor_id
-                else None,
+                actor_id=str(state.current_actor_id) if state.current_actor_id else None,
             )
             if not is_valid:
-                logger.debug(
-                    f"   [TOKEN] Invalid token move {token_id}: blocked or out of range."
-                )
+                logger.debug(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")
                 return StepResult(is_finished=True)
         else:
             return StepResult(is_finished=True)
@@ -218,9 +203,7 @@ class MoveTokenStep(GameStep):
             events=[
                 GameEvent(
                     event_type=GameEventType.TOKEN_MOVED,
-                    actor_id=str(state.current_actor_id)
-                    if state.current_actor_id
-                    else None,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
                     target_id=str(token_id),
                     from_hex=_hex_dict(from_hex),
                     to_hex=_hex_dict(dest_hex),
@@ -248,12 +231,13 @@ class PlaceMarkerStep(GameStep):
 
     type: StepType = StepType.PLACE_MARKER
     marker_type: MarkerType
-    target_id: Optional[str] = None  # Direct target ID
-    target_key: Optional[str] = None  # Context key for target ID
+    target_id: str | None = None  # Direct target ID
+    target_key: str | None = None  # Context key for target ID
     value: int = 0  # Effect magnitude (e.g., -1 or -2 for Venom)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -286,7 +270,7 @@ class PlaceMarkerStep(GameStep):
         from goa2.domain.models.enums import PassiveTrigger
 
         context["marker_target_id"] = target
-        post_steps: List[GameStep] = [
+        post_steps: list[GameStep] = [
             CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PLACE_MARKER.value)
         ]
 
@@ -318,7 +302,7 @@ class RemoveMarkerStep(GameStep):
     type: StepType = StepType.REMOVE_MARKER
     marker_type: MarkerType
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -339,4 +323,3 @@ class RemoveMarkerStep(GameStep):
             logger.debug(f"   [MARKER] {self.marker_type.value} not in play")
 
         return StepResult(is_finished=True)
-

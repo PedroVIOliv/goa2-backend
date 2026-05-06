@@ -1,14 +1,14 @@
-from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models.effect import (
-    DurationType,
     ActiveEffect,
-    EffectType,
+    DurationType,
     EffectScope,
+    EffectType,
     Shape,
 )
-from goa2.engine.phases import end_turn
+from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.phases import end_turn
 
 
 def test_active_effect_expiry():

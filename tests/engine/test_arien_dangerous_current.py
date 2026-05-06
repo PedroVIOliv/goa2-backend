@@ -1,21 +1,22 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -60,9 +61,7 @@ def dangerous_current_state():
         id="enemy_minion", name="Minion", type=MinionType.MELEE, team=TeamColor.BLUE
     )
 
-    enemy_victim = Hero(
-        id="enemy_victim", name="Victim", team=TeamColor.BLUE, deck=[], level=1
-    )
+    enemy_victim = Hero(id="enemy_victim", name="Victim", team=TeamColor.BLUE, deck=[], level=1)
     # Give victim a card to discard
     discard_fodder = Card(
         id="fodder",
@@ -118,26 +117,20 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
     req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy_minion" in req["valid_options"]
-    dangerous_current_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_minion"
-    }
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
     # 3. Select Backstab Victim (Optional) -> enemy_victim
     # Note: Filter should allow enemy_victim at (2,0,-2) because it's behind (1,0,-1) from (0,0,0)
     req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_UNIT"
     assert "enemy_victim" in req["valid_options"]
-    dangerous_current_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_victim"
-    }
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_victim"}
 
     # 4. Force Discard -> Victim Selection
     # The system should now ask 'enemy_victim' to select a card.
     req = process_stack(dangerous_current_state).input_request
     assert req["type"] == "SELECT_CARD"
-    assert (
-        req["player_id"] == "enemy_victim"
-    )  # Crucial check: override_player_id_key working?
+    assert req["player_id"] == "enemy_victim"  # Crucial check: override_player_id_key working?
     assert "fodder" in req["valid_options"]
 
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "fodder"}
@@ -182,15 +175,11 @@ def test_dangerous_current_defeat_flow(dangerous_current_state):
 
     # 2. Select Target -> Minion
     process_stack(dangerous_current_state).input_request
-    dangerous_current_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_minion"
-    }
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
     # 3. Select Victim -> Victim
     process_stack(dangerous_current_state).input_request
-    dangerous_current_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_victim"
-    }
+    dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_victim"}
 
     # 4. Logic detects empty hand -> DefeatUnitStep -> RemoveUnitStep
     process_stack(dangerous_current_state).input_request

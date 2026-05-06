@@ -9,7 +9,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
 
 from fastapi import WebSocket
 
@@ -24,30 +23,30 @@ logger = logging.getLogger(__name__)
 class ManagedGame:
     game_id: str
     session: GameSession
-    player_tokens: Dict[str, str]  # token -> hero_id
+    player_tokens: dict[str, str]  # token -> hero_id
     spectator_token: str
-    hero_to_token: Dict[str, str]  # hero_id -> token (reverse)
+    hero_to_token: dict[str, str]  # hero_id -> token (reverse)
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    last_result: Optional[SessionResult] = None
-    ws_connections: Dict[str, WebSocket] = field(default_factory=dict)
-    game_logger: Optional[GameLogger] = None
+    last_result: SessionResult | None = None
+    ws_connections: dict[str, WebSocket] = field(default_factory=dict)
+    game_logger: GameLogger | None = None
 
 
 class GameRegistry:
     """Thread-safe in-memory store for active games with optional file persistence."""
 
-    def __init__(self, save_dir: Optional[str] = None) -> None:
-        self._games: Dict[str, ManagedGame] = {}
+    def __init__(self, save_dir: str | None = None) -> None:
+        self._games: dict[str, ManagedGame] = {}
         self._save_dir = save_dir
 
     def create_game(
-        self, session: GameSession, hero_ids: list[str], game_id: Optional[str] = None
+        self, session: GameSession, hero_ids: list[str], game_id: str | None = None
     ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
         game_id = game_id or uuid.uuid4().hex[:12]
-        player_tokens: Dict[str, str] = {}
-        hero_to_token: Dict[str, str] = {}
+        player_tokens: dict[str, str] = {}
+        hero_to_token: dict[str, str] = {}
         for hero_id in hero_ids:
             token = uuid.uuid4().hex
             player_tokens[token] = hero_id
@@ -77,7 +76,7 @@ class GameRegistry:
             raise GameNotFoundError(game_id)
         return game
 
-    def resolve_token(self, token: str) -> Optional[tuple[str, str, bool]]:
+    def resolve_token(self, token: str) -> tuple[str, str, bool] | None:
         """Resolve a bearer token to (game_id, hero_id, is_spectator).
 
         Returns None if the token is unknown.

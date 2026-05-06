@@ -1,14 +1,15 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
+from goa2.domain.models import GamePhase, Hero, Team, TeamColor
+from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, GamePhase
 from goa2.domain.types import HeroID
 from goa2.engine.steps import (
     AttackSequenceStep,
-    MoveUnitStep,
     DefeatUnitStep,
+    MoveUnitStep,
     RemoveUnitStep,
     TriggerGameOverStep,
 )
@@ -29,9 +30,7 @@ def game_state():
     state = GameState(
         board=board,
         teams={
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[], minions=[], life_counters=5
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[], life_counters=5),
             TeamColor.RED: Team(
                 color=TeamColor.RED, heroes=[], minions=[], life_counters=1
             ),  # Last life counter
@@ -45,7 +44,7 @@ def game_state():
     state.place_entity(hero_a.id, h1)
 
     # Mock a card for Hero Blue so AttackSequenceStep doesn't fail on card lookups if any
-    from goa2.domain.models import Card, ActionType, CardTier, CardColor
+    from goa2.domain.models import ActionType, Card, CardColor, CardTier
 
     mock_card = Card(
         id="mock_attack",
@@ -80,14 +79,14 @@ def test_game_over_purges_remaining_action_steps(game_state):
     4. Verify that the "Move 2" step is NEVER executed because the stack was purged.
     """
     from goa2.engine.steps import (
-        SelectStep,
-        ReactionWindowStep,
         CheckPassiveAbilitiesStep,
+        ReactionWindowStep,
         ResolveCombatStep,
         ResolveDefenseTextStep,
         ResolveOnBlockEffectStep,
         ResolvePreActionMovementStep,
         RestoreActionTypeStep,
+        SelectStep,
         SetActorStep,
     )
 

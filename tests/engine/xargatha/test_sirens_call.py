@@ -6,26 +6,24 @@ if able, move the target up to 3 spaces to a space adjacent to you."
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Minion,
-    MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.effects import CardEffectRegistry
 
 # Register xargatha effects
 import goa2.scripts.xargatha_effects  # noqa: F401
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 def make_sirens_call_card():
@@ -66,9 +64,7 @@ def _make_sirens_call_state() -> GameState:
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    xargatha = Hero(
-        id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-    )
+    xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
     xargatha.current_turn_card = make_sirens_call_card()
 
     distant_enemy = Hero(
@@ -79,9 +75,7 @@ def _make_sirens_call_state() -> GameState:
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]),
         },
     )
 
@@ -136,9 +130,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         target_step = steps[0]
 
-        range_filter = [
-            f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"
-        ][0]
+        range_filter = [f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"][0]
         assert range_filter.min_range == 2
 
     def test_target_selection_in_range(self, sirens_call_state):
@@ -149,9 +141,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         target_step = steps[0]
 
-        range_filter = [
-            f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"
-        ][0]
+        range_filter = [f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"][0]
         assert range_filter.max_range is not None
 
     def test_destination_filters(self, sirens_call_state):
@@ -176,9 +166,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         dest_step = steps[1]
 
-        range_filter = [
-            f for f in dest_step.filters if f.__class__.__name__ == "RangeFilter"
-        ][0]
+        range_filter = [f for f in dest_step.filters if f.__class__.__name__ == "RangeFilter"][0]
         assert range_filter.max_range == 1
 
     def test_destination_reachable(self, sirens_call_state):
@@ -220,9 +208,7 @@ class TestSirensCallEffect:
         # 2. SELECT_UNIT -> target distant enemy
         req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_UNIT"
-        sirens_call_state.execution_stack[-1].pending_input = {
-            "selection": "distant_enemy"
-        }
+        sirens_call_state.execution_stack[-1].pending_input = {"selection": "distant_enemy"}
 
         # 3. SELECT_HEX -> select destination adjacent to Xargatha
         req = process_stack(sirens_call_state).input_request
@@ -236,9 +222,7 @@ class TestSirensCallEffect:
         assert req is None
 
         # Verify unit moved
-        assert sirens_call_state.entity_locations["distant_enemy"] == Hex(
-            q=1, r=0, s=-1
-        )
+        assert sirens_call_state.entity_locations["distant_enemy"] == Hex(q=1, r=0, s=-1)
 
     def test_full_flow_skip_destination(self, sirens_call_state):
         step = ResolveCardStep(hero_id="xargatha")
@@ -251,9 +235,7 @@ class TestSirensCallEffect:
         # 2. SELECT_UNIT -> target distant enemy
         req = process_stack(sirens_call_state).input_request
         assert req["type"] == "SELECT_UNIT"
-        sirens_call_state.execution_stack[-1].pending_input = {
-            "selection": "distant_enemy"
-        }
+        sirens_call_state.execution_stack[-1].pending_input = {"selection": "distant_enemy"}
 
         # 3. SELECT_HEX -> SKIP (if unable)
         req = process_stack(sirens_call_state).input_request
@@ -265,9 +247,7 @@ class TestSirensCallEffect:
         assert req is None
 
         # Verify unit did not move
-        assert sirens_call_state.entity_locations["distant_enemy"] == Hex(
-            q=0, r=2, s=-2
-        )
+        assert sirens_call_state.entity_locations["distant_enemy"] == Hex(q=0, r=2, s=-2)
 
     def test_full_flow_no_valid_destination(self):
         board = Board()
@@ -279,9 +259,7 @@ class TestSirensCallEffect:
         board.zones = {"z1": z1}
         board.populate_tiles_from_zones()
 
-        xargatha = Hero(
-            id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-        )
+        xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
         xargatha.current_turn_card = make_sirens_call_card()
 
         distant_enemy = Hero(
@@ -296,9 +274,7 @@ class TestSirensCallEffect:
             board=board,
             teams={
                 TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[]),
-                TeamColor.BLUE: Team(
-                    color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]
-                ),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]),
             },
         )
 
@@ -332,9 +308,7 @@ class TestSirensCallEffect:
         board.zones = {"z1": z1}
         board.populate_tiles_from_zones()
 
-        xargatha = Hero(
-            id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-        )
+        xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
         xargatha.current_turn_card = make_sirens_call_card()
 
         distant_enemy = Hero(
@@ -349,9 +323,7 @@ class TestSirensCallEffect:
             board=board,
             teams={
                 TeamColor.RED: Team(color=TeamColor.RED, heroes=[xargatha], minions=[]),
-                TeamColor.BLUE: Team(
-                    color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]
-                ),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[distant_enemy], minions=[]),
             },
         )
 
@@ -374,9 +346,7 @@ class TestSirensCallEffect:
         # 3. SELECT_HEX -> select adjacent hex (distance 2 from target, within range 3)
         req = process_stack(state).input_request
         assert req["type"] == "SELECT_HEX"
-        state.execution_stack[-1].pending_input = {
-            "selection": {"q": 0, "r": 1, "s": -1}
-        }
+        state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 1, "s": -1}}
 
         # 4. Done
         req = process_stack(state).input_request

@@ -1,32 +1,33 @@
 """Tests for Brogan's Shield/Bolster/Fortify minion protection effects."""
 
 import pytest
+
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
-from goa2.domain.state import GameState
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import (
-    DefeatUnitStep,
-)
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.effect_manager import EffectManager
 from goa2.domain.models.effect import (
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effect_manager import EffectManager
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import (
+    DefeatUnitStep,
 )
 
 
@@ -118,11 +119,15 @@ def protection_state():
         board=board,
         teams={
             TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[brogan], minions=[minion],
+                color=TeamColor.RED,
+                heroes=[brogan],
+                minions=[minion],
                 life_counters=10,
             ),
             TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy], minions=[],
+                color=TeamColor.BLUE,
+                heroes=[enemy],
+                minions=[],
                 life_counters=10,
             ),
         },
@@ -234,9 +239,7 @@ def test_no_qualifying_cards_auto_skips(protection_state):
     state = protection_state
     brogan = state.get_hero("brogan")
     # Replace hand with non-silver cards
-    brogan.hand = [
-        _make_card("red_card", "Red Card", "filler", color=CardColor.RED)
-    ]
+    brogan.hand = [_make_card("red_card", "Red Card", "filler", color=CardColor.RED)]
 
     _create_protection_effect(state)
 
@@ -255,6 +258,7 @@ def test_out_of_radius_no_protection(protection_state):
 
     # Move minion far away (radius=2, move to distance 3)
     from goa2.domain.types import UnitID
+
     state.move_unit(UnitID("minion_red_1"), Hex(q=3, r=0, s=-3))
 
     _create_protection_effect(state)
@@ -296,7 +300,9 @@ def test_multiple_defeats_protection_triggers_multiple_times(protection_state):
 
     # Add a second minion
     minion2 = Minion(
-        id="minion_red_2", name="Red Minion 2", team=TeamColor.RED,
+        id="minion_red_2",
+        name="Red Minion 2",
+        team=TeamColor.RED,
         type=MinionType.MELEE,
     )
     state.teams[TeamColor.RED].minions.append(minion2)

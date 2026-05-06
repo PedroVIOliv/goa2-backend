@@ -1,8 +1,9 @@
 """Marker model for singleton tokens placed on heroes."""
 
 from __future__ import annotations
+
 from enum import Enum
-from typing import Optional, List
+
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import StatType
@@ -26,7 +27,7 @@ class MarkerStatEffect(BaseModel):
 
 
 # Registry of what effects each marker type applies
-MARKER_EFFECTS: dict[MarkerType, List[MarkerStatEffect]] = {
+MARKER_EFFECTS: dict[MarkerType, list[MarkerStatEffect]] = {
     MarkerType.VENOM: [
         MarkerStatEffect(stat_type=StatType.ATTACK, use_marker_value=True),
         MarkerStatEffect(stat_type=StatType.DEFENSE, use_marker_value=True),
@@ -60,9 +61,9 @@ class Marker(BaseModel):
     """
 
     type: MarkerType
-    target_id: Optional[str] = None  # Hero ID if placed, None if in supply
+    target_id: str | None = None  # Hero ID if placed, None if in supply
     value: int = 0  # Effect magnitude (can be negative for debuffs)
-    source_id: Optional[str] = None  # Hero who placed this marker
+    source_id: str | None = None  # Hero who placed this marker
 
     @property
     def is_placed(self) -> bool:
@@ -81,7 +82,7 @@ class Marker(BaseModel):
         self.value = 0
         self.source_id = None
 
-    def get_stat_effects(self) -> List[tuple[StatType, int]]:
+    def get_stat_effects(self) -> list[tuple[StatType, int]]:
         """
         Get the stat effects this marker applies based on its type and value.
 

@@ -1,20 +1,21 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -107,9 +108,7 @@ def test_noble_blade_flow(noble_state):
     # Neighbors: 1,1,-2 (Empty), 0,0,0 (Arien), 1,0,-1 (E1)
     # Only 1,1,-2 is valid (OccupiedFilter)
     assert Hex(q=1, r=1, s=-2).model_dump() in req["valid_options"]
-    noble_state.execution_stack[-1].pending_input = {
-        "selection": {"q": 1, "r": 1, "s": -2}
-    }
+    noble_state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": 1, "s": -2}}
 
     # 5. Reaction Window (E1)
     req = process_stack(noble_state).input_request

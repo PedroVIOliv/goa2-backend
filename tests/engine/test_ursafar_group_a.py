@@ -10,8 +10,8 @@ Cards tested:
 """
 
 import pytest
-import goa2.scripts.ursafar_effects  # noqa: F401 — registers effects
 
+import goa2.scripts.ursafar_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
@@ -24,12 +24,10 @@ from goa2.domain.models import (
     Team,
     TeamColor,
 )
-from goa2.domain.models.enums import TargetType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
-
 
 # =============================================================================
 # Card Factories
@@ -38,67 +36,118 @@ from goa2.engine.steps import ResolveCardStep
 
 def _make_filler_card(card_id="filler", color=CardColor.GOLD):
     return Card(
-        id=card_id, name="Filler", tier=CardTier.UNTIERED, color=color,
-        initiative=1, primary_action=ActionType.ATTACK, secondary_actions={},
-        is_ranged=False, range_value=0, primary_action_value=1,
-        effect_id="filler", effect_text="", is_facedown=False,
+        id=card_id,
+        name="Filler",
+        tier=CardTier.UNTIERED,
+        color=color,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=0,
+        primary_action_value=1,
+        effect_id="filler",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_cold_ire():
     return Card(
-        id="cold_ire", name="Cold Ire", tier=CardTier.II, color=CardColor.BLUE,
-        initiative=10, primary_action=ActionType.MOVEMENT, primary_action_value=1,
+        id="cold_ire",
+        name="Cold Ire",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=1,
         secondary_actions={ActionType.DEFENSE: 6},
-        effect_id="cold_ire", effect_text="", is_facedown=False,
+        effect_id="cold_ire",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_eyes_of_flame():
     return Card(
-        id="eyes_of_flame", name="Eyes of Flame", tier=CardTier.III, color=CardColor.BLUE,
-        initiative=10, primary_action=ActionType.MOVEMENT, primary_action_value=1,
+        id="eyes_of_flame",
+        name="Eyes of Flame",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=1,
         secondary_actions={ActionType.DEFENSE: 6},
-        effect_id="eyes_of_flame", effect_text="", is_facedown=False,
+        effect_id="eyes_of_flame",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_rip():
     return Card(
-        id="rip", name="Rip", tier=CardTier.II, color=CardColor.RED,
-        initiative=9, primary_action=ActionType.ATTACK, primary_action_value=5,
+        id="rip",
+        name="Rip",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
         secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 3},
-        effect_id="rip", effect_text="", is_facedown=False,
+        effect_id="rip",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_sniff_out():
     return Card(
-        id="sniff_out", name="Sniff Out", tier=CardTier.I, color=CardColor.GREEN,
-        initiative=4, primary_action=ActionType.SKILL,
+        id="sniff_out",
+        name="Sniff Out",
+        tier=CardTier.I,
+        color=CardColor.GREEN,
+        initiative=4,
+        primary_action=ActionType.SKILL,
         secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 2},
-        is_ranged=True, range_value=2,
-        effect_id="sniff_out", effect_text="", is_facedown=False,
+        is_ranged=True,
+        range_value=2,
+        effect_id="sniff_out",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_eyes_on_the_prey():
     return Card(
-        id="eyes_on_the_prey", name="Eyes on the Prey", tier=CardTier.II, color=CardColor.GREEN,
-        initiative=3, primary_action=ActionType.SKILL,
+        id="eyes_on_the_prey",
+        name="Eyes on the Prey",
+        tier=CardTier.II,
+        color=CardColor.GREEN,
+        initiative=3,
+        primary_action=ActionType.SKILL,
         secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
-        is_ranged=True, range_value=3,
-        effect_id="eyes_on_the_prey", effect_text="", is_facedown=False,
+        is_ranged=True,
+        range_value=3,
+        effect_id="eyes_on_the_prey",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_apex_predator():
     return Card(
-        id="apex_predator", name="Apex Predator", tier=CardTier.III, color=CardColor.GREEN,
-        initiative=3, primary_action=ActionType.SKILL,
+        id="apex_predator",
+        name="Apex Predator",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=3,
+        primary_action=ActionType.SKILL,
         secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
-        is_ranged=True, range_value=3,
-        effect_id="apex_predator", effect_text="", is_facedown=False,
+        is_ranged=True,
+        range_value=3,
+        effect_id="apex_predator",
+        effect_text="",
+        is_facedown=False,
     )
 
 
@@ -641,9 +690,15 @@ class TestIsEnraged:
 
         hero = base_state.get_hero(HeroID("hero_ursafar"))
         ultimate = Card(
-            id="unbound_fury", name="Unbound Fury", tier=CardTier.IV,
-            color=CardColor.PURPLE, initiative=0, primary_action=ActionType.SKILL,
-            secondary_actions={}, effect_id="unbound_fury", effect_text="",
+            id="unbound_fury",
+            name="Unbound Fury",
+            tier=CardTier.IV,
+            color=CardColor.PURPLE,
+            initiative=0,
+            primary_action=ActionType.SKILL,
+            secondary_actions={},
+            effect_id="unbound_fury",
+            effect_text="",
         )
         ultimate.state = CardState.PASSIVE
         hero.ultimate_card = ultimate

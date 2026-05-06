@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, List, Optional
 import logging
+from typing import Any, ClassVar
+
 from pydantic import Field
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import HeroID, UnitID
-from goa2.domain.models import ActionType, Card, CardContainerType, StepType, TargetType, TeamColor
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.events import GameEvent, GameEventType
+from goa2.domain.models import ActionType, CardContainerType, StepType, TargetType, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID, UnitID
 from goa2.engine.filters_base import FilterCondition
-from goa2.engine.filters_hex import RangeFilter
-
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,41 +36,29 @@ class SelectStep(GameStep):
     target_type: TargetType  # "UNIT", "HEX", "CARD", "NUMBER"
     prompt: str
     output_key: str = "selection"
-    filters: List[FilterCondition] = Field(default_factory=list)
+    filters: list[FilterCondition] = Field(default_factory=list)
     auto_select_if_one: bool = False
-    context_hero_id_key: Optional[str] = (
-        None  # Key in context to find hero (for CARD/HAND selection)
-    )
+    context_hero_id_key: str | None = None  # Key in context to find hero (for CARD/HAND selection)
     card_container: CardContainerType = (
         CardContainerType.HAND
     )  # "HAND", "PLAYED", "DISCARD", "DECK"
-    card_containers: Optional[List[CardContainerType]] = (
+    card_containers: list[CardContainerType] | None = (
         None  # When set, merges candidates from multiple containers
     )
-    number_options: List[int] = Field(default_factory=list)  # For NUMBER target type
-    number_labels: Dict[int, str] = Field(
-        default_factory=dict
-    )  # Display text per number option
+    number_options: list[int] = Field(default_factory=list)  # For NUMBER target type
+    number_labels: dict[int, str] = Field(default_factory=dict)  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
     skip_self_filter: bool = False  # Set True to allow selecting self (e.g. "yourself")
-    override_player_id_key: Optional[str] = (
-        None  # Key in context to find player ID who provides input
-    )
+    override_player_id_key: str | None = None  # Key in context to find player ID who provides input
     # Card property filters (applied before candidate extraction for CARD selections)
-    card_action_types: Optional[List[ActionType]] = (
+    card_action_types: list[ActionType] | None = (
         None  # Only include cards with primary_action in this list
     )
-    card_is_basic: Optional[bool] = (
-        None  # Only include basic (True) or non-basic (False)
-    )
-    card_is_active: Optional[bool] = (
-        None  # Only include active (True) or inactive (False) cards
-    )
-    allowed_card_ids: Optional[List[str]] = (
-        None  # Whitelist: only include cards with these IDs
-    )
+    card_is_basic: bool | None = None  # Only include basic (True) or non-basic (False)
+    card_is_active: bool | None = None  # Only include active (True) or inactive (False) cards
+    allowed_card_ids: list[str] | None = None  # Whitelist: only include cards with these IDs
 
-    def _get_effective_filters(self) -> List[FilterCondition]:
+    def _get_effective_filters(self) -> list[FilterCondition]:
         """
         Returns the effective filter list, auto-adding filters for UNIT selections:
         - ExcludeIdentityFilter (self-exclusion) unless skip_self_filter is True
@@ -85,8 +72,7 @@ class SelectStep(GameStep):
             # Auto-add ExcludeIdentityFilter for self-exclusion
             if not self.skip_self_filter:
                 has_self_exclusion = any(
-                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self
-                    for f in effective
+                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self for f in effective
                 )
                 if not has_self_exclusion:
                     effective.append(ExcludeIdentityFilter(exclude_self=True))
@@ -99,7 +85,7 @@ class SelectStep(GameStep):
 
         return effective
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             logger.debug(
                 f"   [SKIP] Conditional Step '{self.prompt}' skipped (Key '{self.active_if_key}' missing)."
@@ -112,13 +98,11 @@ class SelectStep(GameStep):
             if found:
                 actor_id = HeroID(str(found))
 
-        candidates: List[Any] = []
+        candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
             # Filter entity_locations for things that are actually Units
             all_entities = list(state.entity_locations.keys())
-            candidates = [
-                eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
-            ]
+            candidates = [eid for eid in all_entities if state.get_unit(UnitID(str(eid)))]
         elif self.target_type == TargetType.UNIT_OR_TOKEN:
             # Use helper method that filters for Units and Tokens only
             # (excludes future entity types like Structures, Hazards, etc.)
@@ -144,9 +128,7 @@ class SelectStep(GameStep):
                     if container == CardContainerType.HAND:
                         source_list.extend(hero.hand)
                     elif container == CardContainerType.PLAYED:
-                        source_list.extend(
-                            c for c in hero.played_cards if c is not None
-                        )
+                        source_list.extend(c for c in hero.played_cards if c is not None)
                     elif container == CardContainerType.DISCARD:
                         source_list.extend(hero.discard_pile)
                     elif container == CardContainerType.DECK:
@@ -155,22 +137,14 @@ class SelectStep(GameStep):
                 # Apply card property filters before extracting IDs
                 if self.card_action_types is not None:
                     source_list = [
-                        c
-                        for c in source_list
-                        if c.primary_action in self.card_action_types
+                        c for c in source_list if c.primary_action in self.card_action_types
                     ]
                 if self.card_is_basic is not None:
-                    source_list = [
-                        c for c in source_list if c.is_basic == self.card_is_basic
-                    ]
+                    source_list = [c for c in source_list if c.is_basic == self.card_is_basic]
                 if self.card_is_active is not None:
-                    source_list = [
-                        c for c in source_list if c.is_active == self.card_is_active
-                    ]
+                    source_list = [c for c in source_list if c.is_active == self.card_is_active]
                 if self.allowed_card_ids is not None:
-                    source_list = [
-                        c for c in source_list if c.id in self.allowed_card_ids
-                    ]
+                    source_list = [c for c in source_list if c.id in self.allowed_card_ids]
 
                 candidates = [c.id for c in source_list]
 
@@ -180,17 +154,13 @@ class SelectStep(GameStep):
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
             # For UNIT_OR_TOKEN, only validate if the candidate is actually a unit
             if self.target_type == TargetType.UNIT and actor_id:
-                val_res = state.validator.can_be_targeted(
-                    state, str(actor_id), str(c), context
-                )
+                val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
                 if not val_res.allowed:
                     continue
             elif self.target_type == TargetType.UNIT_OR_TOKEN and actor_id:
                 # Only apply targeting validation to units, not tokens
                 if state.get_unit(UnitID(str(c))):
-                    val_res = state.validator.can_be_targeted(
-                        state, str(actor_id), str(c), context
-                    )
+                    val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
                     if not val_res.allowed:
                         continue
 
@@ -296,14 +266,14 @@ class MultiSelectStep(GameStep):
     output_key: str  # Context key for result list
     max_selections: int
     min_selections: int = 0  # 0 = fully optional
-    filters: List[FilterCondition] = Field(default_factory=list)
+    filters: list[FilterCondition] = Field(default_factory=list)
     skip_immunity_filter: bool = False
     skip_self_filter: bool = False  # Set True to allow selecting self
 
     # Internal state (preserved when pushed back to stack)
-    selections: List[str] = Field(default_factory=list)
+    selections: list[str] = Field(default_factory=list)
 
-    def _get_effective_filters(self) -> List[FilterCondition]:
+    def _get_effective_filters(self) -> list[FilterCondition]:
         """Returns filters, auto-adding ExcludeIdentityFilter and ImmunityFilter for UNIT selections."""
         from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter
 
@@ -311,8 +281,7 @@ class MultiSelectStep(GameStep):
         if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
             if not self.skip_self_filter:
                 has_self_exclusion = any(
-                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self
-                    for f in effective
+                    isinstance(f, ExcludeIdentityFilter) and f.exclude_self for f in effective
                 )
                 if not has_self_exclusion:
                     effective.append(ExcludeIdentityFilter(exclude_self=True))
@@ -323,17 +292,15 @@ class MultiSelectStep(GameStep):
                     effective.append(ImmunityFilter())
         return effective
 
-    def _get_candidates(self, state: GameState, context: Dict[str, Any]) -> List[str]:
+    def _get_candidates(self, state: GameState, context: dict[str, Any]) -> list[str]:
         """Get valid candidates, excluding already-selected items."""
         actor_id = state.current_actor_id
 
         # Build initial candidate list based on target type
-        candidates: List[Any] = []
+        candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
             all_entities = list(state.entity_locations.keys())
-            candidates = [
-                eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
-            ]
+            candidates = [eid for eid in all_entities if state.get_unit(UnitID(str(eid)))]
         elif self.target_type == TargetType.UNIT_OR_TOKEN:
             candidates = state.get_units_and_tokens()
         elif self.target_type == TargetType.HEX:
@@ -349,16 +316,12 @@ class MultiSelectStep(GameStep):
 
             # Targeting validation for units
             if self.target_type == TargetType.UNIT and actor_id:
-                val_res = state.validator.can_be_targeted(
-                    state, str(actor_id), str(c), context
-                )
+                val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
                 if not val_res.allowed:
                     continue
             elif self.target_type == TargetType.UNIT_OR_TOKEN and actor_id:
                 if state.get_unit(UnitID(str(c))):
-                    val_res = state.validator.can_be_targeted(
-                        state, str(actor_id), str(c), context
-                    )
+                    val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
                     if not val_res.allowed:
                         continue
 
@@ -373,7 +336,7 @@ class MultiSelectStep(GameStep):
 
         return valid
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             context[self.output_key] = []
             return StepResult(is_finished=True)
@@ -472,8 +435,9 @@ class ChooseMinionRemovalStep(GameStep):
             return non_heavy
         return minions
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import RemoveUnitStep
+
         if self.remaining_to_remove <= 0:
             return StepResult(is_finished=True)
 
@@ -487,7 +451,7 @@ class ChooseMinionRemovalStep(GameStep):
         if self.remaining_to_remove >= n - 1:
             # Auto-remove all, sorted non-heavy first
             minions.sort(key=lambda m: m.is_heavy)
-            removal_steps: List[GameStep] = []
+            removal_steps: list[GameStep] = []
             for m in minions[: self.remaining_to_remove]:
                 removal_steps.append(RemoveUnitStep(unit_id=str(m.id)))
             return StepResult(is_finished=True, new_steps=removal_steps)
@@ -497,7 +461,7 @@ class ChooseMinionRemovalStep(GameStep):
             chosen_id = self.pending_input.get("selection")
             if chosen_id:
                 logger.debug(f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}.")
-                new_steps: List[GameStep] = [
+                new_steps: list[GameStep] = [
                     RemoveUnitStep(unit_id=str(chosen_id)),
                     ChooseMinionRemovalStep(
                         losing_team=self.losing_team,
@@ -528,9 +492,9 @@ class AskConfirmationStep(GameStep):
     type: StepType = StepType.ASK_CONFIRMATION
     prompt: str
     output_key: str = "confirmation"
-    player_id: Optional[str] = None
+    player_id: str | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         actor_id = self.player_id or state.current_actor_id
         if not actor_id:
             return StepResult(is_finished=True)
@@ -565,17 +529,18 @@ class ResolveTieBreakerStep(GameStep):
     """
 
     type: StepType = StepType.RESOLVE_TIE_BREAKER
-    tied_hero_ids: List[HeroID]
+    tied_hero_ids: list[HeroID]
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.cards import ResolveCardStep
         from goa2.engine.steps.combat import RespawnHeroStep
         from goa2.engine.steps.phases import FinalizeHeroTurnStep
         from goa2.engine.steps.reactions import ConfirmResolutionStep
+
         if not self.tied_hero_ids:
             return StepResult(is_finished=True)
 
-        teams_represented: Dict[TeamColor, List[str]] = {}
+        teams_represented: dict[TeamColor, list[str]] = {}
         for h_id in self.tied_hero_ids:
             hero = state.get_hero(HeroID(h_id))
             if hero and hero.team:
@@ -602,9 +567,7 @@ class ResolveTieBreakerStep(GameStep):
             else:
                 winner_id = candidates[0]
                 state.tie_breaker_team = (
-                    TeamColor.BLUE
-                    if state.tie_breaker_team == TeamColor.RED
-                    else TeamColor.RED
+                    TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
                 )
                 logger.debug(
                     f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. Coin flipped."
@@ -622,14 +585,10 @@ class ResolveTieBreakerStep(GameStep):
         if needs_input:
             if self.pending_input:
                 winner_id = self.pending_input.get("selection")
-                logger.debug(
-                    f"   [TIE] Team {target_team.name} chose {winner_id} to act first."
-                )
+                logger.debug(f"   [TIE] Team {target_team.name} chose {winner_id} to act first.")
                 if len(teams_represented) > 1:
                     state.tie_breaker_team = (
-                        TeamColor.BLUE
-                        if state.tie_breaker_team == TeamColor.RED
-                        else TeamColor.RED
+                        TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
                     )
             else:
                 return StepResult(
@@ -655,7 +614,7 @@ class ResolveTieBreakerStep(GameStep):
 
         state.current_actor_id = HeroID(winner_id)
 
-        new_steps: List[GameStep] = []
+        new_steps: list[GameStep] = []
         if winner_id not in state.entity_locations:
             new_steps.append(RespawnHeroStep(hero_id=winner_id))
         new_steps.append(ResolveCardStep(hero_id=winner_id))
@@ -672,12 +631,12 @@ class GuessCardColorStep(GameStep):
     The actor picks one via SELECT_OPTION.
     """
 
-    VALID_COLORS: ClassVar[List[str]] = ["BLUE", "GOLD", "GREEN", "RED", "SILVER"]
+    VALID_COLORS: ClassVar[list[str]] = ["BLUE", "GOLD", "GREEN", "RED", "SILVER"]
 
     type: StepType = StepType.GUESS_CARD_COLOR
     output_key: str  # where to store the guessed color string
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -715,7 +674,7 @@ class RevealAndResolveGuessStep(GameStep):
     correct_output_key: str
     wrong_output_key: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -741,9 +700,7 @@ class RevealAndResolveGuessStep(GameStep):
         if is_correct:
             context[self.correct_output_key] = True
             context[self.wrong_output_key] = None
-            logger.debug(
-                f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}"
-            )
+            logger.debug(f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}")
         else:
             context[self.correct_output_key] = None
             context[self.wrong_output_key] = True
@@ -765,4 +722,3 @@ class RevealAndResolveGuessStep(GameStep):
                 )
             ],
         )
-

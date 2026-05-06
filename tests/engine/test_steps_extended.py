@@ -1,27 +1,28 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    ActionType,
-    Card,
-    CardTier,
-    CardColor,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
+from goa2.domain.state import GameState
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
-    ReactionWindowStep,
     FastTravelSequenceStep,
     PlaceUnitStep,
-    SwapUnitsStep,
     PushUnitStep,
+    ReactionWindowStep,
+    SwapUnitsStep,
 )
-from goa2.engine.handler import push_steps, process_stack
 
 
 @pytest.fixture
@@ -207,9 +208,7 @@ def test_respawn_hero_variations(steps_state):
     # Pass respawn
     rh = RespawnHeroStep(hero_id="h1")
     # Add a spawn point back
-    sp = SpawnPoint(
-        location=Hex(q=0, r=0, s=0), team=TeamColor.RED, type=SpawnType.HERO
-    )
+    sp = SpawnPoint(location=Hex(q=0, r=0, s=0), team=TeamColor.RED, type=SpawnType.HERO)
     steps_state.board.tiles[Hex(q=0, r=0, s=0)].spawn_point = sp
     rh.pending_input = {"selection": "PASS"}
     ctx = {}
@@ -294,9 +293,7 @@ def test_push_unit_variations(steps_state):
     assert push_same.resolve(steps_state, {}).is_finished is True
 
     # Not straight line error
-    steps_state.place_entity(
-        "h2", Hex(q=1, r=1, s=-2)
-    )  # Not in straight line from (0,0,0)
+    steps_state.place_entity("h2", Hex(q=1, r=1, s=-2))  # Not in straight line from (0,0,0)
     push_diag = PushUnitStep(target_id="h2")
     assert push_diag.resolve(steps_state, {}).is_finished is True
 

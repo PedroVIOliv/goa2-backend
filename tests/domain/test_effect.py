@@ -1,14 +1,14 @@
 """Tests for ActiveEffect model and related enums."""
 
-from goa2.domain.models.effect import (
-    EffectType,
-    AffectsFilter,
-    Shape,
-    EffectScope,
-    ActiveEffect,
-    DurationType,
-)
 from goa2.domain.hex import Hex
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 
 
 class TestDurationType:

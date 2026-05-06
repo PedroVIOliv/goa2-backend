@@ -1,12 +1,12 @@
 import json
 import logging
 from collections import deque
-from typing import Dict, List, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor
+from goa2.domain.tile import Tile
 
 if TYPE_CHECKING:
     pass
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
+def _add_terrain_padding_and_holes(board: Board, map_hexes: set[Hex]) -> None:
     """
     Add terrain tiles for holes inside the map and 2-layer padding outside.
 
@@ -37,10 +37,7 @@ def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
     expanded_max_r = max_r + padding
 
     def in_expanded_bounds(h: Hex) -> bool:
-        return (
-            expanded_min_q <= h.q <= expanded_max_q
-            and expanded_min_r <= h.r <= expanded_max_r
-        )
+        return expanded_min_q <= h.q <= expanded_max_q and expanded_min_r <= h.r <= expanded_max_r
 
     def is_on_map(h: Hex) -> bool:
         return h in map_hexes
@@ -50,7 +47,7 @@ def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
         Returns True if the flood fill escapes the expanded bounds.
         This means the starting hex is 'outside' (padding), not a hole.
         """
-        visited: Set[Hex] = set()
+        visited: set[Hex] = set()
         queue = deque([start])
 
         while queue:
@@ -68,8 +65,8 @@ def _add_terrain_padding_and_holes(board: Board, map_hexes: Set[Hex]) -> None:
 
         return False
 
-    holes: Set[Hex] = set()
-    padding_hexes: Set[Hex] = set()
+    holes: set[Hex] = set()
+    padding_hexes: set[Hex] = set()
 
     q = expanded_min_q
     while q <= expanded_max_q:
@@ -101,10 +98,10 @@ def load_map(file_path: str) -> Board:
         "hex_map": [ {"q": 1, "r": 2, "s": -3, "zone_id": "...", "tags": []} ]
     }
     """
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         data = json.load(f)
 
-    zones: Dict[str, Zone] = {}
+    zones: dict[str, Zone] = {}
 
     for z_def in data.get("zone_definitions", []):
         z_id = z_def["id"]
@@ -127,11 +124,11 @@ def load_map(file_path: str) -> Board:
 
         tags = h_def.get("tags", [])
 
-    from goa2.domain.models.spawn import SpawnPoint, SpawnType
     from goa2.domain.models.enums import MinionType
+    from goa2.domain.models.spawn import SpawnPoint, SpawnType
 
-    obstacles: Set[Hex] = set()
-    spawn_points: List[SpawnPoint] = []
+    obstacles: set[Hex] = set()
+    spawn_points: list[SpawnPoint] = []
 
     for h_def in data.get("hex_map", []):
         q = h_def["q"]
@@ -173,9 +170,7 @@ def load_map(file_path: str) -> Board:
 
                 if team:
                     spawn_points.append(
-                        SpawnPoint(
-                            location=h, team=team, type=spawn_type, minion_type=m_type
-                        )
+                        SpawnPoint(location=h, team=team, type=spawn_type, minion_type=m_type)
                     )
 
     # Distribute spawn points to their respective zones

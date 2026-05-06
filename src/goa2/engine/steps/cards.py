@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, cast
 import logging
+from typing import Any, cast
 
-from goa2.engine.steps.base import GameStep, StepResult
+from goa2.domain.events import GameEvent, GameEventType
+from goa2.domain.input import InputRequestType, create_input_request
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardContainerType,
+    CardState,
+    CardTier,
+    GamePhase,
+    StepType,
+    TargetType,
+    TeamColor,
+)
+from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
-from goa2.domain.models import ActionType, Card, CardColor, CardContainerType, CardState, CardTier, GamePhase, Hero, StepType, TargetType, TeamColor
-from goa2.domain.models.enums import StatType
-from goa2.domain.input import InputRequestType, create_input_request
-from goa2.domain.events import GameEvent, GameEventType
-from goa2.engine import rules
-from goa2.engine.stats import get_computed_stat
 from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.filters_units import UnitTypeFilter
-
+from goa2.engine.stats import get_computed_stat
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +36,15 @@ class DiscardCardStep(GameStep):
     """
 
     type: StepType = StepType.DISCARD_CARD
-    card_id: Optional[str] = None
-    card_key: Optional[str] = None
-    hero_id: Optional[str] = None
-    hero_key: Optional[str] = None
+    card_id: str | None = None
+    card_key: str | None = None
+    hero_id: str | None = None
+    hero_key: str | None = None
     source: CardContainerType = CardContainerType.HAND  # HAND or PLAYED
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -70,15 +80,11 @@ class DiscardCardStep(GameStep):
             return StepResult(is_finished=True)
 
         if not target_card:
-            logger.debug(
-                f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}."
-            )
+            logger.debug(f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}.")
             return StepResult(is_finished=True)
 
         logger.debug(f"   [DISCARD] {h_id} discards {target_card.name}")
-        hero.discard_card(
-            target_card, from_hand=(self.source == CardContainerType.HAND)
-        )
+        hero.discard_card(target_card, from_hand=(self.source == CardContainerType.HAND))
 
         # Fire AFTER_CARD_DISCARD passive trigger for every discard.
         # Passives that only care about specific sources (e.g. Battle Fury, which
@@ -109,8 +115,9 @@ class ForceDiscardStep(GameStep):
     type: StepType = StepType.FORCE_DISCARD
     victim_key: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
+
         victim_id = context.get(self.victim_key)
         if not victim_id:
             return StepResult(is_finished=True)
@@ -151,9 +158,10 @@ class ForceDiscardOrDefeatStep(GameStep):
     type: StepType = StepType.FORCE_DISCARD_OR_DEFEAT
     victim_key: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import DefeatUnitStep
         from goa2.engine.steps.selection import SelectStep
+
         victim_id = context.get(self.victim_key)
         if not victim_id:
             return StepResult(is_finished=True)
@@ -197,10 +205,11 @@ class ResolveCardTextStep(GameStep):
     card_id: str
     hero_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import AttackSequenceStep
         from goa2.engine.steps.movement import MoveSequenceStep
         from goa2.engine.steps.utility import LogMessageStep
+
         hero = state.get_hero(HeroID(self.hero_id))
         if not hero or not hero.current_turn_card:
             return StepResult(is_finished=True)
@@ -236,44 +245,32 @@ class ResolveCardTextStep(GameStep):
         )
 
         # Declared here for the first time in this scope path
-        steps_list: List[GameStep] = []
+        steps_list: list[GameStep] = []
 
         if card.current_primary_action == ActionType.MOVEMENT:
             # MOVEMENT: Compute Total
             base_val = card.get_base_stat_value(StatType.MOVEMENT)
-            total_val = get_computed_stat(
-                state, UnitID(self.hero_id), StatType.MOVEMENT, base_val
-            )
-            steps_list.append(
-                MoveSequenceStep(unit_id=self.hero_id, range_val=total_val)
-            )
+            total_val = get_computed_stat(state, UnitID(self.hero_id), StatType.MOVEMENT, base_val)
+            steps_list.append(MoveSequenceStep(unit_id=self.hero_id, range_val=total_val))
 
         elif card.current_primary_action == ActionType.ATTACK:
             # ATTACK: Compute Damage & Range
             base_dmg = card.get_base_stat_value(StatType.ATTACK)
-            total_dmg = get_computed_stat(
-                state, UnitID(self.hero_id), StatType.ATTACK, base_dmg
-            )
+            total_dmg = get_computed_stat(state, UnitID(self.hero_id), StatType.ATTACK, base_dmg)
 
             base_rng = card.get_base_stat_value(StatType.RANGE)
             # Default Range is 1 if not specified (and get_base_stat_value returns 0 if None)
             if base_rng == 0:
                 base_rng = 1
-            total_rng = get_computed_stat(
-                state, UnitID(self.hero_id), StatType.RANGE, base_rng
-            )
+            total_rng = get_computed_stat(state, UnitID(self.hero_id), StatType.RANGE, base_rng)
 
             steps_list.append(AttackSequenceStep(damage=total_dmg, range_val=total_rng))
 
         elif card.current_primary_action == ActionType.DEFENSE:
-            steps_list.append(
-                LogMessageStep(message=f"{self.hero_id} Defends (Primary).")
-            )
+            steps_list.append(LogMessageStep(message=f"{self.hero_id} Defends (Primary)."))
         elif card.current_primary_action == ActionType.SKILL:
             logger.debug(f"            > Skill '{card.name}' has no registered effect!")
-            steps_list.append(
-                LogMessageStep(message=f"Skill '{card.name}' did nothing.")
-            )
+            steps_list.append(LogMessageStep(message=f"Skill '{card.name}' did nothing."))
 
         return StepResult(is_finished=True, new_steps=steps_list)
 
@@ -287,13 +284,18 @@ class ResolveCardStep(GameStep):
     type: StepType = StepType.RESOLVE_CARD
     hero_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import AttackSequenceStep
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
         from goa2.engine.steps.markers import RemoveTokenStep
-        from goa2.engine.steps.movement import FastTravelSequenceStep, MoveSequenceStep, ResolvePreActionMovementStep
+        from goa2.engine.steps.movement import (
+            FastTravelSequenceStep,
+            MoveSequenceStep,
+            ResolvePreActionMovementStep,
+        )
         from goa2.engine.steps.selection import MultiSelectStep
         from goa2.engine.steps.utility import ForEachStep, LogMessageStep, SetContextFlagStep
+
         hero = state.get_hero(HeroID(self.hero_id))
         if not hero or not hero.current_turn_card:
             return StepResult(is_finished=True)
@@ -340,9 +342,7 @@ class ResolveCardStep(GameStep):
             return True
 
         # Helper to compute option values
-        def compute_option(
-            act_type: ActionType, base_val: Optional[int]
-        ) -> Tuple[int, str]:
+        def compute_option(act_type: ActionType, base_val: int | None) -> tuple[int, str]:
             # Default
             final_val = base_val or 0
             text_val = str(final_val) if base_val is not None else "-"
@@ -353,15 +353,11 @@ class ResolveCardStep(GameStep):
                 stat_type = StatType.MOVEMENT
             elif act_type == ActionType.ATTACK:
                 stat_type = StatType.ATTACK
-            elif act_type == ActionType.DEFENSE:
-                stat_type = StatType.DEFENSE
-            elif act_type == ActionType.DEFENSE_SKILL:
+            elif act_type == ActionType.DEFENSE or act_type == ActionType.DEFENSE_SKILL:
                 stat_type = StatType.DEFENSE
 
             if stat_type:
-                final_val = get_computed_stat(
-                    state, UnitID(self.hero_id), stat_type, base_val or 0
-                )
+                final_val = get_computed_stat(state, UnitID(self.hero_id), stat_type, base_val or 0)
                 text_val = str(final_val)
 
             return final_val, text_val
@@ -374,9 +370,7 @@ class ResolveCardStep(GameStep):
             ActionType.DEFENSE_SKILL,
         ):
             if is_action_available(primary_action):
-                c_val, c_text = compute_option(
-                    primary_action, card.current_primary_action_value
-                )
+                c_val, c_text = compute_option(primary_action, card.current_primary_action_value)
                 options.append(
                     {
                         "id": primary_action.name,
@@ -388,9 +382,7 @@ class ResolveCardStep(GameStep):
         # DEFENSE_SKILL is shown as SKILL option
         elif primary_action == ActionType.DEFENSE_SKILL:
             if is_action_available(ActionType.SKILL):
-                c_val, c_text = compute_option(
-                    ActionType.SKILL, card.current_primary_action_value
-                )
+                c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
                 options.append(
                     {
                         "id": ActionType.SKILL.name,
@@ -438,7 +430,7 @@ class ResolveCardStep(GameStep):
                 context["current_action_type"] = act_type
 
                 # NOTE: Renamed local variable to avoid shadowing re-declaration if any
-                steps_list: List[GameStep] = []
+                steps_list: list[GameStep] = []
 
                 # Check for BEFORE_* passive abilities based on action type.
                 # BEFORE_ACTION always fires — primary, secondary, or HOLD —
@@ -446,9 +438,7 @@ class ResolveCardStep(GameStep):
                 from goa2.domain.models.enums import PassiveTrigger
 
                 steps_list.append(
-                    CheckPassiveAbilitiesStep(
-                        trigger=PassiveTrigger.BEFORE_ACTION.value
-                    )
+                    CheckPassiveAbilitiesStep(trigger=PassiveTrigger.BEFORE_ACTION.value)
                 )
 
                 specific_trigger = None
@@ -460,23 +450,15 @@ class ResolveCardStep(GameStep):
                     specific_trigger = PassiveTrigger.BEFORE_SKILL
 
                 if specific_trigger:
-                    steps_list.append(
-                        CheckPassiveAbilitiesStep(trigger=specific_trigger.value)
-                    )
+                    steps_list.append(CheckPassiveAbilitiesStep(trigger=specific_trigger.value))
 
                 if is_primary:
-                    steps_list.append(
-                        ResolvePreActionMovementStep(hero_id=self.hero_id)
-                    )
-                    steps_list.append(
-                        ResolveCardTextStep(card_id=card.id, hero_id=self.hero_id)
-                    )
+                    steps_list.append(ResolvePreActionMovementStep(hero_id=self.hero_id))
+                    steps_list.append(ResolveCardTextStep(card_id=card.id, hero_id=self.hero_id))
                 else:
                     # Secondary: Standard Primitives
                     if act_type == ActionType.MOVEMENT:
-                        steps_list.append(
-                            MoveSequenceStep(unit_id=self.hero_id, range_val=val)
-                        )
+                        steps_list.append(MoveSequenceStep(unit_id=self.hero_id, range_val=val))
 
                     elif act_type == ActionType.FAST_TRAVEL:
                         steps_list.append(FastTravelSequenceStep(unit_id=self.hero_id))
@@ -491,14 +473,10 @@ class ResolveCardStep(GameStep):
                             state, UnitID(self.hero_id), StatType.RANGE, base_rng
                         )
 
-                        steps_list.append(
-                            AttackSequenceStep(damage=val, range_val=total_rng)
-                        )
+                        steps_list.append(AttackSequenceStep(damage=val, range_val=total_rng))
 
                     elif act_type == ActionType.CLEAR:
-                        hero_loc = state.entity_locations.get(
-                            BoardEntityID(self.hero_id)
-                        )
+                        hero_loc = state.entity_locations.get(BoardEntityID(self.hero_id))
                         if not hero_loc:
                             steps_list.append(
                                 LogMessageStep(
@@ -522,16 +500,12 @@ class ResolveCardStep(GameStep):
                                     ForEachStep(
                                         list_key="clear_targets",
                                         item_key="target_id",
-                                        steps_template=[
-                                            RemoveTokenStep(token_key="target_id")
-                                        ],
+                                        steps_template=[RemoveTokenStep(token_key="target_id")],
                                     ),
                                 ]
                             )
                     elif act_type == ActionType.HOLD:
-                        steps_list.append(
-                            LogMessageStep(message=f"{self.hero_id} Holds.")
-                        )
+                        steps_list.append(LogMessageStep(message=f"{self.hero_id} Holds."))
 
                     elif act_type == ActionType.DEFENSE:
                         # Should not happen as action, but valid in enum
@@ -549,13 +523,9 @@ class ResolveCardStep(GameStep):
                                 value=card.current_effect_id,
                             )
                         )
-                        steps_list.append(
-                            SetContextFlagStep(key="attack_card_id", value=card.id)
-                        )
+                        steps_list.append(SetContextFlagStep(key="attack_card_id", value=card.id))
                     steps_list.append(
-                        CheckPassiveAbilitiesStep(
-                            trigger=PassiveTrigger.AFTER_ATTACK.value
-                        )
+                        CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_ATTACK.value)
                     )
 
                 # Add AFTER_BASIC_SKILL passive check for Gold/Silver SKILL cards
@@ -564,9 +534,7 @@ class ResolveCardStep(GameStep):
                     CardColor.SILVER,
                 ):
                     steps_list.append(
-                        CheckPassiveAbilitiesStep(
-                            trigger=PassiveTrigger.AFTER_BASIC_SKILL.value
-                        )
+                        CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_SKILL.value)
                     )
 
                 # Add AFTER_BASIC_ACTION passive check for basic card actions
@@ -576,13 +544,9 @@ class ResolveCardStep(GameStep):
                     ActionType.SKILL,
                 ):
                     steps_list.append(
-                        SetContextFlagStep(
-                            key="basic_action_type", value=act_type.value
-                        )
+                        SetContextFlagStep(key="basic_action_type", value=act_type.value)
                     )
-                    steps_list.append(
-                        SetContextFlagStep(key="basic_action_value", value=val)
-                    )
+                    steps_list.append(SetContextFlagStep(key="basic_action_value", value=val))
                     # Store range for attack repeats
                     if act_type == ActionType.ATTACK:
                         base_rng_ba = card.get_base_stat_value(StatType.RANGE)
@@ -595,9 +559,7 @@ class ResolveCardStep(GameStep):
                             base_rng_ba,
                         )
                         steps_list.append(
-                            SetContextFlagStep(
-                                key="basic_action_range", value=total_rng_ba
-                            )
+                            SetContextFlagStep(key="basic_action_range", value=total_rng_ba)
                         )
                     # Store effect info for primary actions so passives can
                     # rebuild the full effect sequence (e.g. Blink Strike)
@@ -609,14 +571,10 @@ class ResolveCardStep(GameStep):
                             )
                         )
                         steps_list.append(
-                            SetContextFlagStep(
-                                key="basic_action_card_id", value=card.id
-                            )
+                            SetContextFlagStep(key="basic_action_card_id", value=card.id)
                         )
                     steps_list.append(
-                        CheckPassiveAbilitiesStep(
-                            trigger=PassiveTrigger.AFTER_BASIC_ACTION.value
-                        )
+                        CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_ACTION.value)
                     )
 
                 return StepResult(is_finished=True, new_steps=steps_list)
@@ -638,11 +596,11 @@ class SwapCardStep(GameStep):
     """
 
     type: StepType = StepType.SWAP_CARD
-    target_card_id: Optional[str] = None
-    target_card_key: Optional[str] = None  # Key in context to find ID
-    context_hero_id_key: Optional[str] = None  # Key in context to find Hero ID
+    target_card_id: str | None = None
+    target_card_key: str | None = None  # Key in context to find ID
+    context_hero_id_key: str | None = None  # Key in context to find Hero ID
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         hero_id = state.current_actor_id
 
         # Override hero if key provided
@@ -670,7 +628,7 @@ class SwapCardStep(GameStep):
         # Find the card object
         # We need to search Hand, Discard, Played
         # Simplest is to check all or use a helper, but Hero methods work on objects.
-        target_card: Optional[Card] = None
+        target_card: Card | None = None
         # Check Hand
         for c in hero.hand:
             if c.id == t_id:
@@ -714,9 +672,9 @@ class RetrieveCardStep(GameStep):
 
     type: StepType = StepType.RETRIEVE_CARD
     card_key: str
-    hero_key: Optional[str] = None
+    hero_key: str | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -772,12 +730,12 @@ class CountCardsStep(GameStep):
     """
 
     type: StepType = StepType.COUNT_CARDS
-    hero_id: Optional[str] = None
-    hero_key: Optional[str] = None
+    hero_id: str | None = None
+    hero_key: str | None = None
     card_container: CardContainerType = CardContainerType.DISCARD
     output_key: str = "card_count"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             context[self.output_key] = 0
             return StepResult(is_finished=True)
@@ -821,7 +779,7 @@ class GainCoinsStep(GameStep):
     amount: int = 0  # static amount
     amount_key: str = ""  # context key → dynamic amount (overrides static)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
         hero_id = context.get(self.hero_key)
@@ -830,11 +788,7 @@ class GainCoinsStep(GameStep):
         hero = state.get_hero(HeroID(str(hero_id)))
         if not hero:
             return StepResult(is_finished=True)
-        coins = (
-            context.get(self.amount_key, self.amount)
-            if self.amount_key
-            else self.amount
-        )
+        coins = context.get(self.amount_key, self.amount) if self.amount_key else self.amount
         hero.gold += coins
         logger.debug(f"   [COINS] {hero_id} gains {coins} gold")
         return StepResult(
@@ -857,7 +811,7 @@ class GainItemStep(GameStep):
     stat_type: StatType  # which stat to boost
     amount: int = 1
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
         hero_id = context.get(self.hero_key)
@@ -892,7 +846,7 @@ class StealCoinsStep(GameStep):
     amount_key: str = ""  # context key → dynamic amount (overrides static)
     output_key: str = ""  # if set, stores True in context when coins were stolen
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -910,9 +864,7 @@ class StealCoinsStep(GameStep):
             return StepResult(is_finished=True)
 
         coins_requested = (
-            context.get(self.amount_key, self.amount)
-            if self.amount_key
-            else self.amount
+            context.get(self.amount_key, self.amount) if self.amount_key else self.amount
         )
         actual_stolen = min(coins_requested, victim.gold)
 
@@ -947,9 +899,9 @@ class PerformPrimaryActionStep(GameStep):
 
     type: StepType = StepType.PERFORM_PRIMARY_ACTION
     card_key: str = "selected_card"
-    hero_id: Optional[str] = None
+    hero_id: str | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -957,9 +909,7 @@ class PerformPrimaryActionStep(GameStep):
         if not card_id:
             return StepResult(is_finished=True)
 
-        actor_id = self.hero_id or (
-            str(state.current_actor_id) if state.current_actor_id else None
-        )
+        actor_id = self.hero_id or (str(state.current_actor_id) if state.current_actor_id else None)
         if not actor_id:
             return StepResult(is_finished=True)
 
@@ -990,8 +940,7 @@ class PerformPrimaryActionStep(GameStep):
         steps = effect.build_steps(state, hero, card, stats)
 
         logger.debug(
-            f"   [PERFORM] Performing primary action of {card.name} "
-            f"({len(steps)} steps)"
+            f"   [PERFORM] Performing primary action of {card.name} " f"({len(steps)} steps)"
         )
         return StepResult(is_finished=True, new_steps=steps)
 
@@ -1007,7 +956,7 @@ class ConvertCardToItemStep(GameStep):
     card_key: str  # context key → card ID
     hero_id: str = ""  # explicit hero ID (if empty, uses current actor)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -1058,7 +1007,7 @@ class ResolveUpgradesStep(GameStep):
 
     type: StepType = StepType.RESOLVE_UPGRADES
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Process input if provided
         if self.pending_input:
             selection = self.pending_input.get("selection")
@@ -1111,9 +1060,7 @@ class ResolveUpgradesStep(GameStep):
         if min_tier_val == 3:
             return []
 
-        eligible_colors = [
-            c.color for c in hand_non_basics if tier_map.get(c.tier) == min_tier_val
-        ]
+        eligible_colors = [c.color for c in hand_non_basics if tier_map.get(c.tier) == min_tier_val]
         next_tier_map = {1: CardTier.II, 2: CardTier.III}
         target_tier = next_tier_map.get(min_tier_val)
         if not target_tier:
@@ -1124,9 +1071,7 @@ class ResolveUpgradesStep(GameStep):
             pair = [
                 c
                 for c in hero.deck
-                if c.color == color
-                and c.tier == target_tier
-                and c.state == CardState.DECK
+                if c.color == color and c.tier == target_tier and c.state == CardState.DECK
             ]
             if len(pair) == 2:
                 options.append(
@@ -1145,7 +1090,7 @@ class RoundResetStep(GameStep):
 
     type: StepType = StepType.ROUND_RESET
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         state.round += 1
         state.turn = 1
         state.phase = GamePhase.PLANNING
@@ -1198,9 +1143,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
         hero.hand.remove(prev_card)
         prev_card.state = CardState.RETIRED
 
-    logger.debug(
-        f"   [UPGRADE] Adding {chosen_card.id} (Tier {chosen_card.tier.name}) to hand."
-    )
+    logger.debug(f"   [UPGRADE] Adding {chosen_card.id} (Tier {chosen_card.tier.name}) to hand.")
     chosen_card.state = CardState.HAND
     chosen_card.is_facedown = False
     hero.hand.append(chosen_card)
@@ -1218,7 +1161,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
             del state.pending_upgrades[HeroID(hero_id)]
 
 
-def _one_man_army_bonus(state: GameState, zone) -> Dict[TeamColor, int]:
+def _one_man_army_bonus(state: GameState, zone) -> dict[TeamColor, int]:
     """Check for heroes with active one_man_army ultimate in the zone."""
     bonus = {TeamColor.RED: 0, TeamColor.BLUE: 0}
     for team in state.teams.values():
@@ -1230,8 +1173,5 @@ def _one_man_army_bonus(state: GameState, zone) -> Dict[TeamColor, int]:
             hero_loc = state.entity_locations.get(hero.id)
             if hero_loc and hero_loc in zone.hexes:
                 bonus[hero.team] += 1
-                logger.debug(
-                    f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)"
-                )
+                logger.debug(f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)")
     return bonus
-

@@ -10,37 +10,37 @@ Covers:
 """
 
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.scripts.misa_effects
+import goa2.scripts.tigerclaw_effects  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
-    EffectType,
-    EffectScope,
-    Shape,
+    ActiveEffect,
     AffectsFilter,
     DurationType,
-    ActiveEffect,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.state import GameState
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
-    ResolvePreActionMovementStep,
-    ResolveCardStep,
-    MoveUnitStep,
     AttackSequenceStep,
+    MoveUnitStep,
+    ResolveCardStep,
+    ResolvePreActionMovementStep,
     SelectStep,
 )
-from goa2.engine.handler import process_stack, push_steps
-
-import goa2.scripts.misa_effects  # noqa: F401
-import goa2.scripts.tigerclaw_effects  # noqa: F401
 
 
 def _make_board():
@@ -136,8 +136,7 @@ class TestResolvePreActionMovementStepDirect:
         step = ResolvePreActionMovementStep(hero_id="hero_misa")
         step.resolve(basic_state, {})
         assert any(
-            e.effect_type == EffectType.PRE_ACTION_MOVEMENT
-            for e in basic_state.active_effects
+            e.effect_type == EffectType.PRE_ACTION_MOVEMENT for e in basic_state.active_effects
         )
 
     def test_spawns_select_and_move(self, basic_state):
@@ -213,16 +212,13 @@ class TestPreActionMovementViaOffense:
         req = process_stack(basic_state).input_request
         assert req["type"] == "SELECT_HEX"
 
-        basic_state.execution_stack[-1].pending_input = {
-            "selection": {"q": 1, "r": -1, "s": 0}
-        }
+        basic_state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
 
         process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("hero_misa") == Hex(q=1, r=-1, s=0)
         assert any(
-            e.effect_type == EffectType.PRE_ACTION_MOVEMENT
-            for e in basic_state.active_effects
+            e.effect_type == EffectType.PRE_ACTION_MOVEMENT for e in basic_state.active_effects
         )
 
     def test_no_effect_skips_move(self, basic_state):
@@ -317,14 +313,11 @@ class TestPreActionMovementViaDefense:
         assert req is not None
         assert req["type"] == "SELECT_HEX"
 
-        basic_state.execution_stack[-1].pending_input = {
-            "selection": {"q": 2, "r": 0, "s": -2}
-        }
+        basic_state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
 
         process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("enemy") == Hex(q=2, r=0, s=-2)
         assert any(
-            e.effect_type == EffectType.PRE_ACTION_MOVEMENT
-            for e in basic_state.active_effects
+            e.effect_type == EffectType.PRE_ACTION_MOVEMENT for e in basic_state.active_effects
         )

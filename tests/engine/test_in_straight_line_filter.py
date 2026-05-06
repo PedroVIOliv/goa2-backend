@@ -3,11 +3,12 @@ Tests for InStraightLineFilter.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
-from goa2.domain.models import Team, TeamColor, Hero
 from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Team, TeamColor
 from goa2.domain.models.enums import FilterType
+from goa2.domain.state import GameState
 from goa2.engine.filters import InStraightLineFilter, NotInStraightLineFilter
 
 
@@ -78,18 +79,10 @@ def simple_state():
     )
 
     state.place_entity("wasp", Hex(q=0, r=0, s=0))
-    state.place_entity(
-        "enemy_adjacent", Hex(q=1, r=0, s=-1)
-    )  # Same q-axis, straight line
-    state.place_entity(
-        "enemy_straight", Hex(q=2, r=0, s=-2)
-    )  # Same q-axis, straight line
-    state.place_entity(
-        "enemy_diagonal", Hex(q=1, r=1, s=-2)
-    )  # Diagonal, NOT straight line
-    state.place_entity(
-        "enemy_adjacent2", Hex(q=0, r=1, s=-1)
-    )  # Same s-axis, straight line
+    state.place_entity("enemy_adjacent", Hex(q=1, r=0, s=-1))  # Same q-axis, straight line
+    state.place_entity("enemy_straight", Hex(q=2, r=0, s=-2))  # Same q-axis, straight line
+    state.place_entity("enemy_diagonal", Hex(q=1, r=1, s=-2))  # Diagonal, NOT straight line
+    state.place_entity("enemy_adjacent2", Hex(q=0, r=1, s=-1))  # Same s-axis, straight line
 
     state.current_actor_id = "wasp"
     return state
@@ -108,37 +101,32 @@ def test_in_straight_line_includes_straight_line(simple_state):
     f = InStraightLineFilter()
 
     # Should include units in straight line
-    assert f.apply("enemy_adjacent", simple_state, {}) is True, (
-        "Adjacent unit in straight line should be included"
-    )
-    assert f.apply("enemy_straight", simple_state, {}) is True, (
-        "Straight line unit should be included"
-    )
-    assert f.apply("enemy_adjacent2", simple_state, {}) is True, (
-        "Second adjacent unit in straight line should be included"
-    )
+    assert (
+        f.apply("enemy_adjacent", simple_state, {}) is True
+    ), "Adjacent unit in straight line should be included"
+    assert (
+        f.apply("enemy_straight", simple_state, {}) is True
+    ), "Straight line unit should be included"
+    assert (
+        f.apply("enemy_adjacent2", simple_state, {}) is True
+    ), "Second adjacent unit in straight line should be included"
 
     # Should NOT include diagonal unit
-    assert f.apply("enemy_diagonal", simple_state, {}) is False, (
-        "Diagonal unit should NOT be included"
-    )
+    assert (
+        f.apply("enemy_diagonal", simple_state, {}) is False
+    ), "Diagonal unit should NOT be included"
 
 
 def test_in_straight_line_with_hex_candidates(simple_state):
     """Test the filter works with Hex objects as candidates."""
     f = InStraightLineFilter()
-    from goa2.domain.types import BoardEntityID
 
     # Test with Hex objects
     straight_hex = Hex(q=2, r=0, s=-2)
     diagonal_hex = Hex(q=1, r=1, s=-2)
 
-    assert f.apply(straight_hex, simple_state, {}) is True, (
-        "Straight line hex should be included"
-    )
-    assert f.apply(diagonal_hex, simple_state, {}) is False, (
-        "Diagonal hex should NOT be included"
-    )
+    assert f.apply(straight_hex, simple_state, {}) is True, "Straight line hex should be included"
+    assert f.apply(diagonal_hex, simple_state, {}) is False, "Diagonal hex should NOT be included"
 
 
 def test_in_straight_line_filter_origin_id(simple_state):
@@ -152,18 +140,18 @@ def test_in_straight_line_filter_origin_id(simple_state):
     # enemy_straight at (2, 0, -2) - same s-axis (s=-2), straight line
     # enemy_adjacent2 at (0, 1, -1) - same r-axis (r=1), straight line
 
-    assert f.apply("wasp", simple_state, {}) is False, (
-        "Wasp not in straight line from enemy_diagonal"
-    )
-    assert f.apply("enemy_adjacent", simple_state, {}) is True, (
-        "enemy_adjacent in straight line (same q-axis)"
-    )
-    assert f.apply("enemy_straight", simple_state, {}) is True, (
-        "enemy_straight in straight line (same s-axis)"
-    )
-    assert f.apply("enemy_adjacent2", simple_state, {}) is True, (
-        "enemy_adjacent2 in straight line (same r-axis)"
-    )
+    assert (
+        f.apply("wasp", simple_state, {}) is False
+    ), "Wasp not in straight line from enemy_diagonal"
+    assert (
+        f.apply("enemy_adjacent", simple_state, {}) is True
+    ), "enemy_adjacent in straight line (same q-axis)"
+    assert (
+        f.apply("enemy_straight", simple_state, {}) is True
+    ), "enemy_straight in straight line (same s-axis)"
+    assert (
+        f.apply("enemy_adjacent2", simple_state, {}) is True
+    ), "enemy_adjacent2 in straight line (same r-axis)"
 
 
 def test_in_straight_line_filter_origin_key(simple_state):
@@ -193,9 +181,9 @@ def test_in_straight_line_vs_not_in_straight_line(simple_state):
         not_in_result = not_in_filter.apply(unit_id, simple_state, {})
 
         # They should be opposites
-        assert in_result is not not_in_result, (
-            f"InStraightLineFilter and NotInStraightLineFilter should return opposite results for {unit_id}"
-        )
+        assert (
+            in_result is not not_in_result
+        ), f"InStraightLineFilter and NotInStraightLineFilter should return opposite results for {unit_id}"
 
 
 def test_in_straight_line_respects_topology():
@@ -208,12 +196,11 @@ def test_in_straight_line_respects_topology():
     """
     from goa2.domain.models.effect import (
         ActiveEffect,
+        DurationType,
+        EffectScope,
         EffectType,
         Shape,
-        EffectScope,
-        DurationType,
     )
-    from goa2.domain.models.effect import ActiveEffect
 
     board = Board()
     hexes = {
@@ -297,16 +284,16 @@ def test_in_straight_line_respects_topology():
     # But topology-aware: only same reality counts
 
     # Wasp (q=1, POSITIVE) can see enemy_positive (q=2, POSITIVE) - connected
-    assert f.apply("enemy_positive", state, {}) is True, (
-        "Enemy in POSITIVE should be in straight line"
-    )
+    assert (
+        f.apply("enemy_positive", state, {}) is True
+    ), "Enemy in POSITIVE should be in straight line"
 
     # Wasp (q=1, POSITIVE) can see enemy_positive_far (q=3, POSITIVE) - connected
-    assert f.apply("enemy_positive_far", state, {}) is True, (
-        "Far enemy in POSITIVE should be in straight line"
-    )
+    assert (
+        f.apply("enemy_positive_far", state, {}) is True
+    ), "Far enemy in POSITIVE should be in straight line"
 
     # Wasp (q=1, POSITIVE) CANNOT see enemy_negative (q=-1, NEGATIVE) - blocked by topology
-    assert f.apply("enemy_negative", state, {}) is False, (
-        "Enemy in NEGATIVE should NOT be in straight line (different reality)"
-    )
+    assert (
+        f.apply("enemy_negative", state, {}) is False
+    ), "Enemy in NEGATIVE should NOT be in straight line (different reality)"

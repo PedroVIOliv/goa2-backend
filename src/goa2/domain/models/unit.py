@@ -1,9 +1,12 @@
 from __future__ import annotations
-from typing import List, Optional, TYPE_CHECKING, Dict
+
+from typing import TYPE_CHECKING
+
 from pydantic import Field
-from .enums import TeamColor, MinionType, StatType, CardTier, CardState
+
 from .base import BoardEntity
 from .card import Card
+from .enums import CardState, CardTier, MinionType, StatType, TeamColor
 from .marker import Marker
 
 if TYPE_CHECKING:
@@ -13,8 +16,8 @@ if TYPE_CHECKING:
 class Unit(BoardEntity):
     """Common base for Heroes and Minions."""
 
-    team: Optional[TeamColor] = None
-    markers: List[Marker] = Field(default_factory=list)
+    team: TeamColor | None = None
+    markers: list[Marker] = Field(default_factory=list)
 
 
 class Hero(Unit):
@@ -25,15 +28,15 @@ class Hero(Unit):
     """
 
     name: str
-    title: Optional[str] = None
+    title: str | None = None
 
-    deck: List[Card]
-    hand: List[Card] = Field(default_factory=list)
-    played_cards: List[Optional[Card]] = Field(
+    deck: list[Card]
+    hand: list[Card] = Field(default_factory=list)
+    played_cards: list[Card | None] = Field(
         default_factory=list,
         description="Resolved cards in fixed positions (turn N at index N-1, None if card was removed)",
     )
-    current_turn_card: Optional[Card] = Field(
+    current_turn_card: Card | None = Field(
         default=None, description="The card played for the current turn (Unresolved)"
     )
     resolved_turn_count: int = Field(
@@ -41,19 +44,15 @@ class Hero(Unit):
         description="Number of cards resolved this round (determines next played_cards position)",
     )
 
-    discard_pile: List[Card] = Field(default_factory=list)
+    discard_pile: list[Card] = Field(default_factory=list)
     level: int = 1
     gold: int = 0
-    items: Dict[StatType, int] = Field(
-        default_factory=dict
-    )  # Items (Passive Stat Bonuses)
-    ultimate_card: Optional[Card] = Field(
+    items: dict[StatType, int] = Field(default_factory=dict)  # Items (Passive Stat Bonuses)
+    ultimate_card: Card | None = Field(
         default=None,
         description="Ultimate (Purple/Tier IV) card. Active when level >= 8.",
     )
-    team_obj: Optional["Team"] = Field(
-        default=None, exclude=True
-    )  # Circular reference to parent Team
+    team_obj: Team | None = Field(default=None, exclude=True)  # Circular reference to parent Team
 
     def get_effective_initiative(self) -> int:
         """

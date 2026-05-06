@@ -1,22 +1,23 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.engine.filters import LineBehindTargetFilter
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     ForceDiscardStep,
 )
-from goa2.engine.filters import LineBehindTargetFilter
-from goa2.engine.handler import process_stack, push_steps
 
 
 @pytest.fixture

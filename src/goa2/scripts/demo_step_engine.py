@@ -1,8 +1,8 @@
-from goa2.domain.state import GameState
 from goa2.domain.board import Board
 from goa2.domain.models import Team, TeamColor
-from goa2.engine.steps import LogMessageStep, SelectStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import LogMessageStep, SelectStep
 
 
 def run_demo():

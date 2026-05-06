@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import copy
 import logging
+from typing import Any
+
 from pydantic import Field
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID, UnitID
-from goa2.domain.models import StepType, TargetType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.engine.topology import get_topology_service
+from goa2.domain.models import StepType, TargetType
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.filters_base import FilterCondition
-
+from goa2.engine.steps.base import GameStep, StepResult
+from goa2.engine.topology import get_topology_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class LogMessageStep(GameStep):
     type: StepType = StepType.LOG_MESSAGE
     message: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Interpolate context variables
         msg = self.message.format(**context)
         logger.debug(f"   [STEP] {msg}")
@@ -47,7 +47,7 @@ class SetContextFlagStep(GameStep):
     key: str
     value: Any = True
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
         context[self.key] = self.value
@@ -65,15 +65,13 @@ class SetActorStep(GameStep):
     """
 
     type: StepType = StepType.SET_ACTOR
-    actor_key: Optional[str] = None  # context key to read new actor from
-    actor_id: Optional[str] = None  # literal new actor ID
+    actor_key: str | None = None  # context key to read new actor from
+    actor_id: str | None = None  # literal new actor ID
     save_key: str = "saved_actor_id"  # context key to save previous actor
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Save current actor
-        context[self.save_key] = (
-            str(state.current_actor_id) if state.current_actor_id else None
-        )
+        context[self.save_key] = str(state.current_actor_id) if state.current_actor_id else None
         # Determine new actor
         new_id = self.actor_id
         if self.actor_key:
@@ -96,7 +94,7 @@ class RecordTargetStep(GameStep):
     input_key: str  # The key holding the current target ID
     output_list_key: str  # The key for the list of IDs
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         target_id = context.get(self.input_key)
         if target_id:
             if self.output_list_key not in context:
@@ -117,11 +115,11 @@ class RecordHexStep(GameStep):
     """
 
     type: StepType = StepType.RECORD_HEX
-    unit_id: Optional[str] = None  # Literal unit ID
-    unit_key: Optional[str] = None  # Or read from context
+    unit_id: str | None = None  # Literal unit ID
+    unit_key: str | None = None  # Or read from context
     output_key: str  # The key where hex dict will be stored
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         unit_id = self.unit_id
         if not unit_id and self.unit_key:
             unit_id = context.get(self.unit_key)
@@ -152,24 +150,20 @@ class CheckDistanceStep(GameStep):
     """
 
     type: StepType = StepType.CHECK_DISTANCE
-    unit_a_id: Optional[str] = None
-    unit_a_key: Optional[str] = None
-    unit_b_id: Optional[str] = None
-    unit_b_key: Optional[str] = None
+    unit_a_id: str | None = None
+    unit_a_key: str | None = None
+    unit_b_id: str | None = None
+    unit_b_key: str | None = None
     operator: str = "=="  # ">=", ">", "==", "<=", "<", "!="
     threshold: int = 1
     output_key: str = "distance_check"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        u_a = self.unit_a_id or (
-            context.get(self.unit_a_key) if self.unit_a_key else None
-        )
-        u_b = self.unit_b_id or (
-            context.get(self.unit_b_key) if self.unit_b_key else None
-        )
+        u_a = self.unit_a_id or (context.get(self.unit_a_key) if self.unit_a_key else None)
+        u_b = self.unit_b_id or (context.get(self.unit_b_key) if self.unit_b_key else None)
         if not u_a or not u_b:
             context[self.output_key] = None
             return StepResult(is_finished=True)
@@ -211,14 +205,14 @@ class ComputeDistanceStep(GameStep):
     """
 
     type: StepType = StepType.COMPUTE_DISTANCE
-    unit_id: Optional[str] = None
-    unit_key: Optional[str] = None
-    other_unit_id: Optional[str] = None
-    other_unit_key: Optional[str] = None
-    hex_key: Optional[str] = None  # Read a recorded hex dict from context
+    unit_id: str | None = None
+    unit_key: str | None = None
+    other_unit_id: str | None = None
+    other_unit_key: str | None = None
+    hex_key: str | None = None  # Read a recorded hex dict from context
     output_key: str = "distance"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -231,7 +225,7 @@ class ComputeDistanceStep(GameStep):
             context[self.output_key] = 0
             return StepResult(is_finished=True)
 
-        loc_b: Optional[Hex] = None
+        loc_b: Hex | None = None
         if self.hex_key:
             hex_data = context.get(self.hex_key)
             if isinstance(hex_data, dict):
@@ -264,14 +258,14 @@ class MayRepeatNTimesStep(GameStep):
     """
 
     type: StepType = StepType.MAY_REPEAT_ONCE
-    steps_template: List["GameStep"] = Field(default_factory=list)
+    steps_template: list[GameStep] = Field(default_factory=list)
     max_repeats: int = 1
     prompt: str = "Repeat action?"
 
     # Internal state, preserved when pushed back to stack
     repeats_done: int = 0
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Check if we've hit the limit
         if self.repeats_done >= self.max_repeats:
             return StepResult(is_finished=True)
@@ -341,11 +335,11 @@ class ValidateRepeatStep(GameStep):
     """
 
     type: StepType = StepType.VALIDATE_REPEAT
-    actor_id: Optional[str] = None
-    and_with_key: Optional[str] = None  # If set, combines with this boolean key
+    actor_id: str | None = None
+    and_with_key: str | None = None  # If set, combines with this boolean key
     output_key: str = "can_repeat"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         act_id = self.actor_id or state.current_actor_id
         if not act_id:
             context[self.output_key] = False
@@ -374,13 +368,13 @@ class CheckAdjacencyStep(GameStep):
     """
 
     type: StepType = StepType.CHECK_ADJACENCY
-    unit_a_id: Optional[str] = None
-    unit_b_id: Optional[str] = None
-    unit_a_key: Optional[str] = None
-    unit_b_key: Optional[str] = None
+    unit_a_id: str | None = None
+    unit_b_id: str | None = None
+    unit_a_key: str | None = None
+    unit_b_key: str | None = None
     output_key: str = "is_adjacent"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         u_a = self.unit_a_id
         if not u_a and self.unit_a_key:
             u_a = context.get(self.unit_a_key)
@@ -427,11 +421,9 @@ class CountAdjacentEnemiesStep(GameStep):
     type: StepType = StepType.COUNT_ADJACENT_ENEMIES
     output_key: str = "adjacent_enemy_bonus"
     multiplier: int = 1
-    subtract: int = (
-        0  # Subtract from count before multiplying (e.g. 1 for "other" enemies)
-    )
+    subtract: int = 0  # Subtract from count before multiplying (e.g. 1 for "other" enemies)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         actor_id = state.current_actor_id
         if not actor_id:
             context[self.output_key] = 0
@@ -469,12 +461,12 @@ class CheckUnitTypeStep(GameStep):
     """
 
     type: StepType = StepType.CHECK_UNIT_TYPE
-    unit_id: Optional[str] = None  # Direct unit ID
-    unit_key: Optional[str] = None  # Read from context
+    unit_id: str | None = None  # Direct unit ID
+    unit_key: str | None = None  # Read from context
     expected_type: str = "HERO"  # "HERO" or "MINION"
     output_key: str = "is_expected_type"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Resolve unit ID
         actual_id = self.unit_id
         if not actual_id and self.unit_key:
@@ -493,9 +485,7 @@ class CheckUnitTypeStep(GameStep):
         elif self.expected_type == "MINION":
             result = not is_hero
         else:
-            logger.debug(
-                f"   [CHECK-TYPE] Unknown type '{self.expected_type}'. Defaulting False."
-            )
+            logger.debug(f"   [CHECK-TYPE] Unknown type '{self.expected_type}'. Defaulting False.")
             result = False
 
         context[self.output_key] = result
@@ -519,7 +509,7 @@ class CombineBooleanContextStep(GameStep):
     output_key: str  # Where to store result
     operation: str = "AND"  # "AND" or "OR"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         val_a = bool(context.get(self.key_a, False))
         val_b = bool(context.get(self.key_b, False))
 
@@ -547,24 +537,22 @@ class CountStep(GameStep):
 
     type: StepType = StepType.COUNT
     target_type: TargetType = TargetType.UNIT
-    filters: List[FilterCondition] = Field(default_factory=list)
+    filters: list[FilterCondition] = Field(default_factory=list)
     output_key: str = "count_result"
     skip_immunity_filter: bool = True
     skip_self_filter: bool = False  # Set True to count self
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        from goa2.engine.steps.selection import SelectStep
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+
         if self.should_skip(context):
             context[self.output_key] = 0
             return StepResult(is_finished=True)
 
         # Gather candidates by target_type (same logic as SelectStep)
-        candidates: List[Any] = []
+        candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
             all_entities = list(state.entity_locations.keys())
-            candidates = [
-                eid for eid in all_entities if state.get_unit(UnitID(str(eid)))
-            ]
+            candidates = [eid for eid in all_entities if state.get_unit(UnitID(str(eid)))]
         elif self.target_type == TargetType.UNIT_OR_TOKEN:
             candidates = state.get_units_and_tokens()
         elif self.target_type == TargetType.HEX:
@@ -586,9 +574,7 @@ class CountStep(GameStep):
 
             # Auto-add ImmunityFilter
             if not self.skip_immunity_filter:
-                has_immunity = any(
-                    isinstance(f, ImmunityFilter) for f in effective_filters
-                )
+                has_immunity = any(isinstance(f, ImmunityFilter) for f in effective_filters)
                 if not has_immunity:
                     effective_filters.append(ImmunityFilter())
 
@@ -620,7 +606,7 @@ class CheckContextConditionStep(GameStep):
     threshold: int = 1
     output_key: str = "condition_met"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -652,7 +638,7 @@ class CheckHeroDefeatedThisRoundStep(GameStep):
     type: StepType = StepType.CHECK_HERO_DEFEATED_THIS_ROUND
     output_key: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if state.heroes_defeated_this_round:
             context[self.output_key] = True
         else:
@@ -671,12 +657,12 @@ class ComputeHexStep(GameStep):
     """
 
     type: StepType = StepType.COMPUTE_HEX
-    origin_key: Optional[str] = None  # context key for origin; None = current actor
+    origin_key: str | None = None  # context key for origin; None = current actor
     target_key: str = ""  # context key for reference unit
     scale: int = 1  # multiplier for direction vector
     output_key: str = "computed_hex"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -738,12 +724,12 @@ class ForEachStep(GameStep):
     type: StepType = StepType.FOR_EACH
     list_key: str  # Context key containing the list
     item_key: str  # Context key to store current item
-    steps_template: List["GameStep"] = Field(default_factory=list)
+    steps_template: list[GameStep] = Field(default_factory=list)
 
     # Internal state
     current_index: int = 0
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         items = context.get(self.list_key, [])
 
         # All items processed?
@@ -770,4 +756,3 @@ class ForEachStep(GameStep):
         else:
             # Last item - finish after these steps
             return StepResult(is_finished=True, new_steps=new_steps)
-

@@ -1,13 +1,14 @@
 from __future__ import annotations
-from typing import Optional, Any
 
+from typing import Any
+
+from goa2.domain.models import FilterType
 from goa2.domain.models.enums import (
     ActionType,
     CardColor,
     CardContainerType,
 )
 from goa2.domain.state import GameState
-from goa2.domain.models import FilterType
 
 # -----------------------------------------------------------------------------
 # Base Filter
@@ -24,8 +25,8 @@ class CardsInContainerFilter(FilterCondition):
 
     type: FilterType = FilterType.CARDS_IN_CONTAINER
     container: CardContainerType = CardContainerType.HAND
-    min_cards: Optional[int] = None
-    max_cards: Optional[int] = None
+    min_cards: int | None = None
+    max_cards: int | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
@@ -49,6 +50,7 @@ class CardsInContainerFilter(FilterCondition):
             return False
         return True
 
+
 class PlayedCardFilter(FilterCondition):
     """
     Checks if a candidate hero played a card matching criteria in the current turn.
@@ -58,8 +60,8 @@ class PlayedCardFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.PLAYED_CARD
-    action_type: Optional[ActionType] = None
-    card_color: Optional[CardColor] = None
+    action_type: ActionType | None = None
+    card_color: CardColor | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         hero = state.get_hero(str(candidate))

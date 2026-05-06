@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import logging
+from typing import Any
+
 from pydantic import Field
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID
-from goa2.domain.models import ActionType, Card, CardColor, CardState, StepType, TeamColor, Token
-from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType
-from goa2.domain.models.enums import DisplacementType, StatType
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.events import GameEvent, GameEventType
+from goa2.domain.models import ActionType, Card, CardColor, CardState, StepType, TeamColor
+from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType
+from goa2.domain.models.enums import DisplacementType, StatType
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.steps.base import GameStep, StepResult
 from goa2.engine.topology import get_topology_service
-
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +31,14 @@ class CreateEffectStep(GameStep):
     scope: EffectScope
     duration: DurationType = DurationType.THIS_TURN
 
-    restrictions: List[ActionType] = Field(default_factory=list)
-    displacement_blocks: List[DisplacementType] = Field(default_factory=list)
-    except_card_colors: List[CardColor] = Field(default_factory=list)
-    except_attacker_ids: List[str] = Field(
-        default_factory=list
-    )  # Direct list of attacker IDs
-    except_attacker_key: Optional[str] = None  # Context key to read attacker ID from
-    stat_type: Optional[StatType] = None
+    restrictions: list[ActionType] = Field(default_factory=list)
+    displacement_blocks: list[DisplacementType] = Field(default_factory=list)
+    except_card_colors: list[CardColor] = Field(default_factory=list)
+    except_attacker_ids: list[str] = Field(default_factory=list)  # Direct list of attacker IDs
+    except_attacker_key: str | None = None  # Context key to read attacker ID from
+    stat_type: StatType | None = None
     stat_value: int = 0
-    max_value: Optional[int] = None
+    max_value: int | None = None
     limit_actions_only: bool = False
 
     blocks_enemy_actors: bool = True
@@ -49,33 +47,33 @@ class CreateEffectStep(GameStep):
     is_active: bool = False  # Override default dormant state if True
 
     # Card linkage (for card-based effects)
-    source_card_id: Optional[str] = None  # Explicit card ID
+    source_card_id: str | None = None  # Explicit card ID
     use_context_card: bool = True  # If True, use "current_card_id" from context
 
     # Origin action type - tracks whether effect came from skill or attack
-    origin_action_type: Optional[ActionType] = None
+    origin_action_type: ActionType | None = None
 
     # Dynamic origin: read scope.origin_id from context at resolve time
-    origin_id_key: Optional[str] = None
+    origin_id_key: str | None = None
 
     # Token-bound effect: skip card binding so lifecycle is tied to token, not card
     is_token_effect: bool = False
 
     # Static Barrier parameters (Wasp)
     barrier_radius: int = 0  # The radius boundary for the barrier
-    barrier_origin_id: Optional[str] = None  # Entity ID for radius calculation
+    barrier_origin_id: str | None = None  # Entity ID for radius calculation
 
     # Allowed discard colors for MINION_PROTECTION effects (Brogan)
-    allowed_discard_colors: List[CardColor] = Field(default_factory=list)
+    allowed_discard_colors: list[CardColor] = Field(default_factory=list)
 
     # Steps to execute when this effect expires (for DELAYED_TRIGGER effects)
     # Patched to List[AnyStep] in step_types.py.
-    finishing_steps: List[GameStep] = Field(default_factory=list)
+    finishing_steps: list[GameStep] = Field(default_factory=list)
 
     # MOVEMENT_AURA_ZONE payload (Silverarrow - Trailblazer)
     grants_pass_through_obstacles: bool = False
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -95,13 +93,8 @@ class CreateEffectStep(GameStep):
         resolved_except_attackers = list(self.except_attacker_ids)
         if self.except_attacker_key:
             attacker_from_context = context.get(self.except_attacker_key)
-            if (
-                attacker_from_context
-                and attacker_from_context not in resolved_except_attackers
-            ):
+            if attacker_from_context and attacker_from_context not in resolved_except_attackers:
                 resolved_except_attackers.append(attacker_from_context)
-
-        from goa2.engine.effect_manager import EffectManager
 
         # Resolve dynamic origin_id from context if specified
         resolved_scope = self.scope
@@ -114,9 +107,7 @@ class CreateEffectStep(GameStep):
 
         EffectManager.create_effect(
             state=state,
-            source_id=(
-                str(state.current_actor_id) if state.current_actor_id else "system"
-            ),
+            source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
             source_card_id=card_id,
             effect_type=self.effect_type,
             scope=resolved_scope,
@@ -167,7 +158,7 @@ class FinishedExpiringEffectStep(GameStep):
 
     type: StepType = StepType.FINISHED_EXPIRING_EFFECT
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         logger.debug("   [EFFECT] Finished resolving expiring effect.")
         return StepResult(is_finished=True)
 
@@ -187,13 +178,13 @@ class CancelEffectsStep(GameStep):
 
     type: StepType = StepType.CANCEL_EFFECTS
 
-    effect_types: List[EffectType] = Field(default_factory=list)
-    origin_action_types: List[ActionType] = Field(default_factory=list)
-    source_team: Optional[TeamColor] = None
-    source_ids: List[str] = Field(default_factory=list)
-    scope: Optional[EffectScope] = None
+    effect_types: list[EffectType] = Field(default_factory=list)
+    origin_action_types: list[ActionType] = Field(default_factory=list)
+    source_team: TeamColor | None = None
+    source_ids: list[str] = Field(default_factory=list)
+    scope: EffectScope | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -229,9 +220,7 @@ class CancelEffectsStep(GameStep):
             return True
 
         initial_count = len(state.active_effects)
-        state.active_effects = [
-            e for e in state.active_effects if not effect_matches(e)
-        ]
+        state.active_effects = [e for e in state.active_effects if not effect_matches(e)]
         cancelled_count = initial_count - len(state.active_effects)
 
         if cancelled_count > 0:
@@ -239,15 +228,13 @@ class CancelEffectsStep(GameStep):
 
         return StepResult(is_finished=True)
 
-    def _get_effect_origin(
-        self, effect: ActiveEffect, state: GameState
-    ) -> Optional["Hex"]:
+    def _get_effect_origin(self, effect: ActiveEffect, state: GameState) -> Hex | None:
         if effect.scope.origin_hex:
             return effect.scope.origin_hex
         origin_id = effect.scope.origin_id or effect.source_id
         return state.entity_locations.get(BoardEntityID(origin_id))
 
-    def _get_scope_origin(self, state: GameState) -> Optional["Hex"]:
+    def _get_scope_origin(self, state: GameState) -> Hex | None:
         if not self.scope:
             return None
         if self.scope.origin_hex:
@@ -256,7 +243,7 @@ class CancelEffectsStep(GameStep):
             return state.entity_locations.get(BoardEntityID(self.scope.origin_id))
         return None
 
-    def _hex_in_scope(self, hex: "Hex", origin: "Hex", state: GameState) -> bool:
+    def _hex_in_scope(self, hex: Hex, origin: Hex, state: GameState) -> bool:
         if not origin:
             return False
         if self.scope is None:
@@ -273,7 +260,7 @@ class CancelEffectsStep(GameStep):
             self.scope.direction,
         )
 
-    def _get_zone_for_hex(self, hex: "Hex", state: GameState) -> Optional[str]:
+    def _get_zone_for_hex(self, hex: Hex, state: GameState) -> str | None:
         for zone_id, zone in state.board.zones.items():
             if hex in zone.hexes:
                 return zone_id
@@ -292,13 +279,11 @@ class CheckPassiveAbilitiesStep(GameStep):
 
     type: StepType = StepType.CHECK_PASSIVE_ABILITIES
     trigger: str  # PassiveTrigger value as string for serialization
-    hero_id: Optional[str] = (
-        None  # Override which hero is scanned (default: current actor)
-    )
+    hero_id: str | None = None  # Override which hero is scanned (default: current actor)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        from goa2.engine.effects import CardEffectRegistry
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         scan_id = self.hero_id or state.current_actor_id
         hero = state.get_hero(HeroID(str(scan_id))) if scan_id else None
@@ -306,7 +291,7 @@ class CheckPassiveAbilitiesStep(GameStep):
             return StepResult(is_finished=True)
 
         trigger_enum = PassiveTrigger(self.trigger)
-        offer_steps: List[GameStep] = []
+        offer_steps: list[GameStep] = []
 
         def check_card_for_passive(card: Card) -> None:
             """Helper to check a card for matching passive ability."""
@@ -330,9 +315,7 @@ class CheckPassiveAbilitiesStep(GameStep):
                     return
 
             # Runtime predicate (e.g. Battle Fury filters on discard_source)
-            if not effect.should_offer_passive(
-                state, hero, card, trigger_enum, context
-            ):
+            if not effect.should_offer_passive(state, hero, card, trigger_enum, context):
                 return
 
             # Spawn offer step for this passive
@@ -374,13 +357,11 @@ class OfferPassiveStep(GameStep):
     trigger: str  # PassiveTrigger value as string
     is_optional: bool = True
     prompt: str = ""
-    hero_id: Optional[str] = (
-        None  # Override: whose passive this is (default: current actor)
-    )
+    hero_id: str | None = None  # Override: whose passive this is (default: current actor)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        from goa2.engine.effects import CardEffectRegistry
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         owner_id = self.hero_id or state.current_actor_id
         hero = state.get_hero(HeroID(str(owner_id))) if owner_id else None
@@ -407,18 +388,13 @@ class OfferPassiveStep(GameStep):
 
         def execute_passive() -> StepResult:
             """Helper to spawn the passive steps and mark used."""
-            passive_steps = effect.get_passive_steps(
-                state, hero, card, trigger_enum, context
-            )
+            passive_steps = effect.get_passive_steps(state, hero, card, trigger_enum, context)
             if passive_steps:
-                logger.debug(
-                    f"   [PASSIVE] Activating {card.name}: {len(passive_steps)} step(s)"
-                )
+                logger.debug(f"   [PASSIVE] Activating {card.name}: {len(passive_steps)} step(s)")
                 # Add MarkPassiveUsedStep after the passive steps
                 return StepResult(
                     is_finished=True,
-                    new_steps=passive_steps
-                    + [MarkPassiveUsedStep(card_id=self.card_id)],
+                    new_steps=passive_steps + [MarkPassiveUsedStep(card_id=self.card_id)],
                 )
             return StepResult(is_finished=True)
 
@@ -458,7 +434,7 @@ class MarkPassiveUsedStep(GameStep):
     type: StepType = StepType.MARK_PASSIVE_USED
     card_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         hero = state.get_hero(HeroID(str(state.current_actor_id)))
         if not hero:
             return StepResult(is_finished=True)
@@ -475,4 +451,3 @@ class MarkPassiveUsedStep(GameStep):
             )
 
         return StepResult(is_finished=True)
-

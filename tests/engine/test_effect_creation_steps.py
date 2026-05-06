@@ -1,24 +1,25 @@
 """Tests for Effect Creation Steps (Phase 4)."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.models.effect import DurationType
-from goa2.engine.steps import CreateEffectStep, ResolveCardTextStep
 from goa2.domain.models.effect import (
-    EffectType,
+    DurationType,
     EffectScope,
+    EffectType,
     Shape,
 )
+from goa2.domain.state import GameState
+from goa2.engine.steps import CreateEffectStep, ResolveCardTextStep
 
 
 @pytest.fixture

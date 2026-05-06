@@ -3,12 +3,13 @@ Tests for ClearLineOfSightFilter.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
-from goa2.domain.models import Team, TeamColor, Hero, Minion
+from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Minion, Team, TeamColor
 from goa2.domain.models.enums import MinionType, TokenType
 from goa2.domain.models.token import Token
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.engine.filters import ClearLineOfSightFilter
 
 
@@ -34,17 +35,13 @@ def los_state():
 
     hero = Hero(id="hero_a", name="Hero A", team=TeamColor.RED, deck=[], level=1)
     enemy = Hero(id="enemy_b", name="Enemy B", team=TeamColor.BLUE, deck=[], level=1)
-    minion = Minion(
-        id="minion_1", name="Blocker", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    minion = Minion(id="minion_1", name="Blocker", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy], minions=[minion]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy], minions=[minion]),
         },
     )
 

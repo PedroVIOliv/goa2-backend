@@ -1,13 +1,14 @@
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, GamePhase
-from goa2.domain.types import HeroID
+
 from goa2.data.heroes.arien import create_arien
 from goa2.data.heroes.rogue import create_rogue
+from goa2.domain.hex import Hex
+from goa2.domain.models import GamePhase, Team, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack
-from goa2.engine.phases import commit_card
 from goa2.engine.map_loader import load_map
+from goa2.engine.phases import commit_card
 
 
 @pytest.fixture
@@ -18,12 +19,8 @@ def state():
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[], minions=[], life_counters=6
-            ),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[], minions=[], life_counters=6
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[], life_counters=6),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[], life_counters=6),
         },
         phase=GamePhase.SETUP,
         wave_counter=5,
@@ -115,7 +112,7 @@ def test_swap_after_revelation_prompts_correct_card(state):
         state.current_actor_id = arien.id
         # Clear stack and push ResolveCardStep for Arien
         state.execution_stack = []
-        from goa2.engine.steps import ResolveCardStep, FinalizeHeroTurnStep
+        from goa2.engine.steps import FinalizeHeroTurnStep, ResolveCardStep
 
         # Remember LIFO: Finalize (bottom) -> Resolve (top)
         state.execution_stack.append(FinalizeHeroTurnStep(hero_id=arien.id))

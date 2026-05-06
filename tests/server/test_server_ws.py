@@ -144,9 +144,7 @@ def test_ws_commit_card(client, game_data):
     token = _token_for(game_data, "hero_arien")
 
     # Get a card ID from REST
-    view = client.get(
-        f"/games/{game_id}", headers={"Authorization": f"Bearer {token}"}
-    ).json()
+    view = client.get(f"/games/{game_id}", headers={"Authorization": f"Bearer {token}"}).json()
     arien_hand = None
     for team_data in view["view"]["teams"].values():
         for hero in team_data["heroes"]:
@@ -287,9 +285,7 @@ def test_ws_cheats_gold_invalid_hero(client):
         ws.receive_json()  # initial state
 
         # Try to give gold to non-existent hero
-        ws.send_json(
-            {"type": "CHEATS_GOLD", "hero_id": "hero_does_not_exist", "amount": 5}
-        )
+        ws.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_does_not_exist", "amount": 5})
         msg = ws.receive_json()
         assert msg["type"] == "ERROR"
         assert "not found" in msg["detail"]
@@ -393,9 +389,7 @@ def test_ws_state_update_includes_winner_on_game_over(client):
     spectator_token = data["spectator_token"]
 
     # Connect spectator (non-acting player)
-    with client.websocket_connect(
-        f"/games/{game_id}/ws?token={spectator_token}"
-    ) as ws_s:
+    with client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as ws_s:
         ws_s.receive_json()  # initial state
 
         # Access the game and set up game over state
@@ -404,8 +398,8 @@ def test_ws_state_update_includes_winner_on_game_over(client):
         game = registry.get(game_id)
 
         # Simulate game over by setting last_result.winner and state phase
-        from goa2.engine.session import SessionResult, SessionResultType
         from goa2.domain.models import GamePhase
+        from goa2.engine.session import SessionResult, SessionResultType
 
         game.session.state.phase = GamePhase.GAME_OVER
         game.last_result = SessionResult(

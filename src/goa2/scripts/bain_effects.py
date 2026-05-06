@@ -1,6 +1,23 @@
 from __future__ import annotations
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+
+from typing import TYPE_CHECKING, Any
+
+from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+from goa2.domain.models.enums import CardContainerType, PassiveTrigger, TargetType
+from goa2.domain.models.marker import MarkerType
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
+from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_geometry import (
+    ClearLineOfSightFilter,
+    InStraightLineFilter,
+)
+from goa2.engine.filters_hex import RangeFilter
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
+    HasMarkerFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -20,25 +37,10 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
 )
-from goa2.engine.filters_cards import CardsInContainerFilter
-from goa2.engine.filters_geometry import (
-    ClearLineOfSightFilter,
-    InStraightLineFilter,
-)
-from goa2.engine.filters_hex import RangeFilter
-from goa2.engine.filters_units import (
-    ExcludeIdentityFilter,
-    HasMarkerFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models.marker import MarkerType
-from goa2.domain.models.enums import CardContainerType, PassiveTrigger, TargetType
-from goa2.domain.models.effect import DurationType, EffectType, EffectScope, Shape
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -47,7 +49,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-def _bounty_marker_in_play(state: "GameState") -> bool:
+def _bounty_marker_in_play(state: GameState) -> bool:
     """Check if any hero in play currently has the Bounty marker."""
     marker = state.markers.get(MarkerType.BOUNTY)
     return marker is not None and marker.is_placed
@@ -66,7 +68,7 @@ class _CrossbowEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -74,9 +76,7 @@ class _CrossbowEffect(CardEffect):
                 is_ranged=True,
                 target_filters=[
                     InStraightLineFilter(),
-                    ClearLineOfSightFilter(
-                        blocked_by_units=True, blocked_by_terrain=True
-                    ),
+                    ClearLineOfSightFilter(blocked_by_units=True, blocked_by_terrain=True),
                 ],
             ),
         ]
@@ -129,8 +129,8 @@ class PerfectGetawayEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if _bounty_marker_in_play(state):
             return [SetContextFlagStep(key="auto_block", value=True)]
         return [SetContextFlagStep(key="defense_invalid", value=True)]
@@ -149,8 +149,8 @@ class CloseCallEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if _bounty_marker_in_play(state):
             return [
                 SetContextFlagStep(key="auto_block", value=True),
@@ -176,8 +176,8 @@ class NarrowEscapeEffect(CardEffect):
         defender: Hero,
         card: Card,
         stats: CardStats,
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         if _bounty_marker_in_play(state):
             return [
                 SetContextFlagStep(key="auto_block", value=True),
@@ -201,14 +201,12 @@ class _IgnoreObstaclesMovementEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         movement_value = stats.primary_value
         if _bounty_marker_in_play(state):
             movement_value += self.bounty_bonus
         return [
-            MoveSequenceStep(
-                range_val=movement_value, pass_through_obstacles=True
-            ),
+            MoveSequenceStep(range_val=movement_value, pass_through_obstacles=True),
         ]
 
 
@@ -247,7 +245,7 @@ class DeadOrAliveEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -282,7 +280,7 @@ class HandCrossbowEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose mode
             SelectStep(
@@ -340,7 +338,7 @@ class HunterSeekerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose which attack to do first
             SelectStep(
@@ -438,7 +436,7 @@ class HunterSeekerEffect(CardEffect):
 # =============================================================================
 
 
-def _build_retrieve_steps(stats: "CardStats") -> List["GameStep"]:
+def _build_retrieve_steps(stats: CardStats) -> list[GameStep]:
     """Shared retrieve sequence for Drinking Buddies and Another One!.
 
     1. Optionally select a hero in radius with cards in discard.
@@ -503,8 +501,8 @@ class DrinkingBuddiesEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _build_retrieve_steps(stats)
 
 
@@ -517,8 +515,8 @@ class AnotherOneEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             *_build_retrieve_steps(stats),
             # Delayed trigger: repeat the retrieve sequence at end of turn
@@ -538,8 +536,8 @@ class AnotherOneEffect(CardEffect):
 
 
 def _build_guess_steps(
-    stats: "CardStats", consolation_coins: int, prefix: str = ""
-) -> List["GameStep"]:
+    stats: CardStats, consolation_coins: int, prefix: str = ""
+) -> list[GameStep]:
     """Shared guess-card-color sequence.
 
     1. Select enemy hero in radius with 2+ cards in hand.
@@ -566,9 +564,7 @@ def _build_guess_steps(
                 TeamFilter(relation="ENEMY"),
                 UnitTypeFilter(unit_type="HERO"),
                 RangeFilter(max_range=stats.radius),
-                CardsInContainerFilter(
-                    container=CardContainerType.HAND, min_cards=2
-                ),
+                CardsInContainerFilter(container=CardContainerType.HAND, min_cards=2),
             ],
         ),
         # 2. Enemy chooses a card from their hand
@@ -617,8 +613,8 @@ class AGameOfChanceEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         steps = _build_guess_steps(stats, consolation_coins=1)
         # Patch the actor placeholder with actual hero ID
         steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
@@ -634,8 +630,8 @@ class DeadMansHandEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         steps = _build_guess_steps(stats, consolation_coins=2)
         steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
         return steps
@@ -651,8 +647,8 @@ class WereNotDoneYetEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         # Build the base guess sequence (without the wrong-guess coin gain)
         steps = _build_guess_steps(stats, consolation_coins=0)
         steps[0] = SetContextFlagStep(key="guess_actor", value=str(hero.id))
@@ -660,40 +656,44 @@ class WereNotDoneYetEffect(CardEffect):
         steps.pop()
 
         # On wrong guess: choose repeat or coins
-        steps.extend([
-            SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose consolation",
-                output_key="wndy_choice",
-                number_options=[1, 2],
-                number_labels={1: "Repeat the Guess", 2: "Gain 2 Coins"},
-                is_mandatory=True,
-                active_if_key="guess_wrong",
-            ),
-            CheckContextConditionStep(
-                input_key="wndy_choice",
-                operator="==",
-                threshold=1,
-                output_key="chose_repeat",
-            ),
-            CheckContextConditionStep(
-                input_key="wndy_choice",
-                operator="==",
-                threshold=2,
-                output_key="chose_coins",
-            ),
-            # Path A: gain coins
-            GainCoinsStep(
-                hero_key="guess_actor",
-                amount=2,
-                active_if_key="chose_coins",
-            ),
-        ])
+        steps.extend(
+            [
+                SelectStep(
+                    target_type=TargetType.NUMBER,
+                    prompt="Choose consolation",
+                    output_key="wndy_choice",
+                    number_options=[1, 2],
+                    number_labels={1: "Repeat the Guess", 2: "Gain 2 Coins"},
+                    is_mandatory=True,
+                    active_if_key="guess_wrong",
+                ),
+                CheckContextConditionStep(
+                    input_key="wndy_choice",
+                    operator="==",
+                    threshold=1,
+                    output_key="chose_repeat",
+                ),
+                CheckContextConditionStep(
+                    input_key="wndy_choice",
+                    operator="==",
+                    threshold=2,
+                    output_key="chose_coins",
+                ),
+                # Path A: gain coins
+                GainCoinsStep(
+                    hero_key="guess_actor",
+                    amount=2,
+                    active_if_key="chose_coins",
+                ),
+            ]
+        )
 
         # Path B: repeat the full guess sequence (with prefixed keys)
         repeat_steps = _build_guess_steps(stats, consolation_coins=2, prefix="r")
         repeat_steps[0] = SetContextFlagStep(
-            key="r_guess_actor", value=str(hero.id), active_if_key="chose_repeat",
+            key="r_guess_actor",
+            value=str(hero.id),
+            active_if_key="chose_repeat",
         )
         # Gate all repeat steps on chose_repeat
         for step in repeat_steps:
@@ -718,8 +718,8 @@ class GetOverHereEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List["GameStep"]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             # Store actor ID in context for ComputeHexStep
             SetContextFlagStep(key="goh_actor", value=str(hero.id)),
@@ -774,7 +774,7 @@ class AComplicatedProfessionEffect(CardEffect):
     triggers AFTER_PLACE_MARKER.
     """
 
-    def get_passive_config(self) -> Optional[PassiveConfig]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_PLACE_MARKER,
             uses_per_turn=0,  # Unlimited
@@ -783,12 +783,12 @@ class AComplicatedProfessionEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
+        state: GameState,
+        hero: Hero,
+        card: Card,
         trigger: PassiveTrigger,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
+        context: dict[str, Any],
+    ) -> list[GameStep]:
         if trigger != PassiveTrigger.AFTER_PLACE_MARKER:
             return []
 
@@ -804,5 +804,3 @@ class AComplicatedProfessionEffect(CardEffect):
             return []
 
         return [ForceDiscardStep(victim_key="marker_target_id")]
-
-

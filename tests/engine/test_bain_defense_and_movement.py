@@ -4,24 +4,23 @@ movement cards (Vantage Point, High Ground).
 """
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.marker import MarkerType
-from goa2.engine.steps import MoveSequenceStep
+from goa2.domain.state import GameState
 from goa2.engine.stats import CardStats
-
+from goa2.engine.steps import MoveSequenceStep
 
 # =============================================================================
 # Card Factories
@@ -79,20 +78,14 @@ def game_state():
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1
-    )
-    enemy = Hero(
-        id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1
-    )
+    hero = Hero(id="hero_bain", name="Bain", team=TeamColor.RED, deck=[], level=1)
+    enemy = Hero(id="enemy_hero", name="Enemy", team=TeamColor.BLUE, deck=[], level=1)
 
     state = GameState(
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy], minions=[]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy], minions=[]),
         },
     )
     state.place_entity("hero_bain", Hex(q=0, r=0, s=0))
@@ -264,9 +257,7 @@ def test_high_ground_base_movement(game_state):
 
     effect = HighGroundEffect()
     hero = game_state.get_hero("hero_bain")
-    card = _make_movement_card(
-        "hg", "High Ground", "high_ground", tier=CardTier.III
-    )
+    card = _make_movement_card("hg", "High Ground", "high_ground", tier=CardTier.III)
     stats = CardStats(primary_value=2, range=0)
 
     steps = effect.build_steps(game_state, hero, card, stats)
@@ -286,9 +277,7 @@ def test_high_ground_bonus_with_bounty(game_state):
 
     effect = HighGroundEffect()
     hero = game_state.get_hero("hero_bain")
-    card = _make_movement_card(
-        "hg", "High Ground", "high_ground", tier=CardTier.III
-    )
+    card = _make_movement_card("hg", "High Ground", "high_ground", tier=CardTier.III)
     stats = CardStats(primary_value=2, range=0)
 
     steps = effect.build_steps(game_state, hero, card, stats)
@@ -303,9 +292,7 @@ def test_high_ground_no_bonus_without_bounty(game_state):
 
     effect = HighGroundEffect()
     hero = game_state.get_hero("hero_bain")
-    card = _make_movement_card(
-        "hg", "High Ground", "high_ground", tier=CardTier.III
-    )
+    card = _make_movement_card("hg", "High Ground", "high_ground", tier=CardTier.III)
     stats = CardStats(primary_value=2, range=0)
 
     steps = effect.build_steps(game_state, hero, card, stats)

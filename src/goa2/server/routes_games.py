@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
+from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.session import GameSession, SessionResult
-from goa2.domain.types import HeroID
 from goa2.engine.setup import GameSetup
 from goa2.server.auth import PlayerContext, get_current_player, get_registry
 from goa2.server.errors import (
@@ -27,11 +27,10 @@ from goa2.server.models import (
     CreateGameRequest,
     CreateGameResponse,
     GameViewResponse,
+    GiveGoldRequest,
     PlayerToken,
     SubmitInputRequest,
-    GiveGoldRequest,
 )
-from goa2.domain.events import GameEvent, GameEventType
 from goa2.server.registry import GameRegistry
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -103,7 +102,7 @@ async def create_game(
     )
     session = GameSession(state)
 
-    hero_ids: List[str] = []
+    hero_ids: list[str] = []
     for team in state.teams.values():
         for hero in team.heroes:
             hero_ids.append(hero.id)
@@ -111,15 +110,12 @@ async def create_game(
     game = registry.create_game(session, hero_ids, game_id=game_id)
 
     if game.game_logger:
-        game.game_logger.log_game_created(
-            body.red_heroes, body.blue_heroes, body.map_name
-        )
+        game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
 
     return CreateGameResponse(
         game_id=game.game_id,
         player_tokens=[
-            PlayerToken(hero_id=hid, token=tok)
-            for hid, tok in game.hero_to_token.items()
+            PlayerToken(hero_id=hid, token=tok) for hid, tok in game.hero_to_token.items()
         ],
         spectator_token=game.spectator_token,
     )
@@ -265,13 +261,9 @@ async def rollback_action(
     async with game.lock:
         session = game.session
         if session.state.current_actor_id is None:
-            raise HTTPException(
-                status_code=400, detail="No active resolution to rollback"
-            )
+            raise HTTPException(status_code=400, detail="No active resolution to rollback")
         if str(session.state.current_actor_id) != player.hero_id:
-            raise HTTPException(
-                status_code=403, detail="Only the current actor can rollback"
-            )
+            raise HTTPException(status_code=403, detail="Only the current actor can rollback")
         try:
             result = session.rollback()
         except ValueError as exc:
@@ -297,23 +289,17 @@ async def give_gold_cheat(
         session = game.session
 
         if not session.state.cheats_enabled:
-            raise HTTPException(
-                status_code=403, detail="Cheats are not enabled for this game"
-            )
+            raise HTTPException(status_code=403, detail="Cheats are not enabled for this game")
 
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
         hero = session.state.get_hero(HeroID(body.hero_id))
         if hero is None:
-            raise HTTPException(
-                status_code=404, detail=f"Hero '{body.hero_id}' not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Hero '{body.hero_id}' not found")
 
         if body.amount <= 0:
-            raise HTTPException(
-                status_code=400, detail="Amount must be a positive integer"
-            )
+            raise HTTPException(status_code=400, detail="Amount must be a positive integer")
 
         hero.gold += body.amount
 

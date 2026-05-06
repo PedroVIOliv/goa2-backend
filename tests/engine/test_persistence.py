@@ -7,7 +7,7 @@ import pytest
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Team, TeamColor, GamePhase
+from goa2.domain.models import GamePhase, Team, TeamColor
 from goa2.domain.models.enums import TargetType
 from goa2.domain.models.unit import Hero
 from goa2.domain.state import GameState
@@ -16,15 +16,15 @@ from goa2.engine.filters import (
     TeamFilter,
 )
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.persistence import save_game, load_game, load_all_games, delete_game_save
+from goa2.engine.persistence import delete_game_save, load_all_games, load_game, save_game
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
 from goa2.engine.steps import (
-    SelectStep,
-    MoveUnitStep,
-    LogMessageStep,
     ForEachStep,
+    LogMessageStep,
     MayRepeatNTimesStep,
+    MoveUnitStep,
+    SelectStep,
 )
 
 MAP_PATH = "src/goa2/data/maps/forgotten_island.json"
@@ -117,15 +117,18 @@ def test_round_trip_with_steps_on_stack():
     board.tiles[h] = board.get_tile(h)
     state.place_entity("hero_a", h)
 
-    push_steps(state, [
-        SelectStep(
-            target_type=TargetType.UNIT,
-            prompt="Pick target",
-            filters=[RangeFilter(max_range=2), TeamFilter(relation="ENEMY")],
-        ),
-        MoveUnitStep(unit_id="hero_a"),
-        LogMessageStep(message="done"),
-    ])
+    push_steps(
+        state,
+        [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Pick target",
+                filters=[RangeFilter(max_range=2), TeamFilter(relation="ENEMY")],
+            ),
+            MoveUnitStep(unit_id="hero_a"),
+            LogMessageStep(message="done"),
+        ],
+    )
 
     # Round-trip via model serialization (no process_stack)
     data = state.model_dump(mode="json")
@@ -212,8 +215,9 @@ def test_round_trip_may_repeat_step():
 
 def test_every_step_type_has_unique_discriminator():
     """Every concrete step class has a unique StepType (no GENERIC collisions)."""
-    import goa2.engine.steps as steps_mod
     import inspect
+
+    import goa2.engine.steps as steps_mod
 
     seen = {}
     for name, cls in inspect.getmembers(steps_mod, inspect.isclass):
@@ -224,19 +228,18 @@ def test_every_step_type_has_unique_discriminator():
             continue
         step_type = cls.model_fields["type"].default
         if step_type in seen:
-            pytest.fail(
-                f"{name} and {seen[step_type]} share StepType {step_type}"
-            )
+            pytest.fail(f"{name} and {seen[step_type]} share StepType {step_type}")
         seen[step_type] = name
 
 
 def test_step_registry_covers_concrete_step_classes():
     """Step serialization registry is derived from concrete subclasses."""
+    import inspect
+    from typing import get_args
+
     from goa2.domain.models.enums import StepType
     from goa2.engine import steps as steps_mod
     from goa2.engine.step_types import _registered_union
-    import inspect
-    from typing import get_args
 
     any_step = _registered_union(
         steps_mod.GameStep,
@@ -265,8 +268,9 @@ def test_step_registry_covers_concrete_step_classes():
 
 def test_all_filter_types_round_trip(save_dir):
     """Each filter subclass serializes and deserializes correctly."""
-    from goa2.engine import filters as f_mod
     import inspect
+
+    from goa2.engine import filters as f_mod
 
     board = Board()
     state = GameState(
@@ -317,17 +321,18 @@ def test_all_filter_types_round_trip(save_dir):
         data = state.model_dump(mode="json")
         restored = GameState.model_validate(data)
         restored_filter = restored.execution_stack[0].filters[0]
-        assert type(restored_filter).__name__ == type(instance).__name__, (
-            f"Filter {type(instance).__name__} did not round-trip correctly"
-        )
+        assert (
+            type(restored_filter).__name__ == type(instance).__name__
+        ), f"Filter {type(instance).__name__} did not round-trip correctly"
 
 
 def test_filter_registry_covers_concrete_filter_classes():
     """Filter serialization registry is derived from concrete subclasses."""
-    from goa2.engine import filters as f_mod
-    from goa2.engine.step_types import _registered_union
     import inspect
     from typing import get_args
+
+    from goa2.engine import filters as f_mod
+    from goa2.engine.step_types import _registered_union
 
     any_filter = _registered_union(f_mod.FilterCondition, field_name="type")
     union_members = get_args(any_filter)
@@ -366,14 +371,17 @@ def test_last_result_re_derived_on_load(save_dir):
     state.place_entity("hero_a", h0)
 
     # Push a NUMBER SelectStep — always finds candidates (no board filtering)
-    push_steps(state, [
-        SelectStep(
-            target_type=TargetType.NUMBER,
-            prompt="Pick a number",
-            output_key="chosen_number",
-            number_options=[1, 2, 3],
-        ),
-    ])
+    push_steps(
+        state,
+        [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Pick a number",
+                output_key="chosen_number",
+                number_options=[1, 2, 3],
+            ),
+        ],
+    )
 
     # Process stack — pauses at SelectStep waiting for input
     result = process_stack(state)

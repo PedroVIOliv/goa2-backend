@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from goa2.domain.input import InputRequest
 from goa2.domain.events import GameEvent
+from goa2.domain.input import InputRequest
 from goa2.domain.models.enums import StepType
 from goa2.domain.state import GameState
 
@@ -17,10 +18,10 @@ class StepResult(BaseModel):
 
     is_finished: bool = True
     requires_input: bool = False
-    input_request: Optional[InputRequest] = None
-    new_steps: Sequence["GameStep"] = Field(default_factory=list)
+    input_request: InputRequest | None = None
+    new_steps: Sequence[GameStep] = Field(default_factory=list)
     abort_action: bool = False
-    events: List[GameEvent] = Field(default_factory=list)
+    events: list[GameEvent] = Field(default_factory=list)
 
 
 class GameStep(BaseModel):
@@ -32,12 +33,12 @@ class GameStep(BaseModel):
     type: StepType = StepType.GENERIC
 
     step_id: str = Field(default_factory=lambda: str(id(object())))
-    pending_input: Optional[Any] = None
+    pending_input: Any | None = None
     is_mandatory: bool = True
-    active_if_key: Optional[str] = None
-    skip_if_key: Optional[str] = None
+    active_if_key: str | None = None
+    skip_if_key: str | None = None
 
-    def should_skip(self, context: Dict[str, Any]) -> bool:
+    def should_skip(self, context: dict[str, Any]) -> bool:
         """Checks if the step should be skipped based on active_if_key or skip_if_key."""
         if self.active_if_key:
             val = context.get(self.active_if_key)
@@ -49,7 +50,7 @@ class GameStep(BaseModel):
                 return True
         return False
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         """
         Executes the step.
         :param state: Global GameState.

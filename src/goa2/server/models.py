@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
-
 
 # -- Requests --
 
 
 class CreateGameRequest(BaseModel):
     map_name: str = "forgotten_island"
-    red_heroes: List[str]
-    blue_heroes: List[str]
+    red_heroes: list[str]
+    blue_heroes: list[str]
     cheats_enabled: bool = False
     game_type: str = "LONG"
 
@@ -47,24 +46,24 @@ class PlayerToken(BaseModel):
 
 class CreateGameResponse(BaseModel):
     game_id: str
-    player_tokens: List[PlayerToken]
+    player_tokens: list[PlayerToken]
     spectator_token: str
 
 
 class GameViewResponse(BaseModel):
     """Wraps the dict returned by build_view."""
 
-    view: Dict[str, Any]
-    input_request: Optional[Dict[str, Any]] = None
-    winner: Optional[str] = None
+    view: dict[str, Any]
+    input_request: dict[str, Any] | None = None
+    winner: str | None = None
 
 
 class ActionResultResponse(BaseModel):
     result_type: str
     current_phase: str
-    events: List[Dict[str, Any]] = []
-    input_request: Optional[Dict[str, Any]] = None
-    winner: Optional[str] = None
+    events: list[dict[str, Any]] = []
+    input_request: dict[str, Any] | None = None
+    winner: str | None = None
 
 
 class ErrorResponse(BaseModel):

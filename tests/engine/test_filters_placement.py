@@ -1,24 +1,25 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    ActiveEffect,
+    AffectsFilter,
+    Card,
+    CardColor,
+    CardTier,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Hero,
+    Shape,
     Team,
     TeamColor,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    Hero,
-    ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
-    AffectsFilter,
-    DurationType,
 )
 from goa2.domain.models.enums import DisplacementType
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.filters import CanBePlacedByActorFilter
 
 
@@ -52,9 +53,7 @@ def state_with_heroes():
     red_hero = Hero(id="red_hero", name="Red Hero", team=TeamColor.RED, deck=[red_card])
     red_hero.hand.append(red_card)
 
-    blue_hero = Hero(
-        id="blue_hero", name="Blue Hero", team=TeamColor.BLUE, deck=[blue_card]
-    )
+    blue_hero = Hero(id="blue_hero", name="Blue Hero", team=TeamColor.BLUE, deck=[blue_card])
     blue_hero.hand.append(blue_card)
 
     # Create board with tiles

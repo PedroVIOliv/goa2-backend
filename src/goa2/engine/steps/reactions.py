@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
 import logging
+from typing import Any
 
-from goa2.engine.steps.base import GameStep, StepResult
+from goa2.domain.input import InputOption, InputRequestType, create_input_request
+from goa2.domain.models import ActionType, StepType
+from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.domain.models import ActionType, Card, StepType
-from goa2.domain.models.enums import StatType
-from goa2.domain.input import InputOption, InputRequestType, create_input_request
 from goa2.engine.stats import get_computed_stat
-
+from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class ReactionWindowStep(GameStep):
     type: StepType = StepType.REACTION_WINDOW
     target_player_key: str = "target_id"  # The player being attacked
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         target_id = context.get(self.target_player_key)
         if not target_id:
             return StepResult(is_finished=True)  # Should not happen
@@ -95,9 +94,7 @@ class ReactionWindowStep(GameStep):
             # Case B: Selected Card
             if card_id:
                 def_val = 0
-                selected_card = next(
-                    (c for c in valid_defense_cards if c.id == card_id), None
-                )
+                selected_card = next((c for c in valid_defense_cards if c.id == card_id), None)
 
                 # Get Base Value
                 if selected_card:
@@ -106,19 +103,13 @@ class ReactionWindowStep(GameStep):
                     raise ValueError("Selected card is not a valid defense card.")
 
                 # Compute Total Defense (Base + Items + Modifiers)
-                total_def = get_computed_stat(
-                    state, target_id, StatType.DEFENSE, def_val
-                )
+                total_def = get_computed_stat(state, target_id, StatType.DEFENSE, def_val)
 
                 # Determine if primary defense (triggers effect text)
                 # block_primary_defense forces all cards to secondary-only
-                is_primary = (
-                    not block_primary
-                    and selected_card.current_primary_action
-                    in (
-                        ActionType.DEFENSE,
-                        ActionType.DEFENSE_SKILL,
-                    )
+                is_primary = not block_primary and selected_card.current_primary_action in (
+                    ActionType.DEFENSE,
+                    ActionType.DEFENSE_SKILL,
                 )
 
                 # Discard the defense card from hand
@@ -149,9 +140,7 @@ class ReactionWindowStep(GameStep):
 
         attack_value = context.get("attack_damage")
         minion_modifier = calculate_minion_defense_modifier(state, target_id)
-        defense_needed = (
-            (attack_value - minion_modifier) if attack_value is not None else None
-        )
+        defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
 
         prompt = f"Player {target_id}, select a Defense card."
         if attack_value is not None:
@@ -186,9 +175,9 @@ class ResolveDefenseTextStep(GameStep):
 
     type: StepType = StepType.RESOLVE_DEFENSE_TEXT
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        from goa2.engine.steps.cards import ResolveCardTextStep
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.utility import SetActorStep
+
         card_id = context.get("defense_card_id")
         defender_id = context.get("defender_id")
         is_primary = context.get("is_primary_defense", False)
@@ -214,9 +203,7 @@ class ResolveDefenseTextStep(GameStep):
             card = next((c for c in defender.discard_pile if c.id == card_id), None)
 
         if not card or not card.current_effect_id:
-            logger.debug(
-                f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense."
-            )
+            logger.debug(f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense.")
             return StepResult(is_finished=True)
 
         logger.debug(f"   [DEFENSE] Looking up effect_id={card.current_effect_id}")
@@ -241,17 +228,9 @@ class ResolveDefenseTextStep(GameStep):
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
-                    [
-                        SetActorStep(
-                            actor_key="defender_id", save_key="_pre_defense_actor"
-                        )
-                    ]
+                    [SetActorStep(actor_key="defender_id", save_key="_pre_defense_actor")]
                     + list(defense_steps)
-                    + [
-                        SetActorStep(
-                            actor_key="_pre_defense_actor", save_key="_discard"
-                        )
-                    ]
+                    + [SetActorStep(actor_key="_pre_defense_actor", save_key="_discard")]
                 )
                 return StepResult(is_finished=True, new_steps=wrapped)
             else:
@@ -277,8 +256,9 @@ class ResolveOnBlockEffectStep(GameStep):
 
     type: StepType = StepType.RESOLVE_ON_BLOCK_EFFECT
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.utility import SetActorStep
+
         if not context.get("block_succeeded"):
             logger.debug("   [ON_BLOCK] Block did not succeed - skipping on_block effects.")
             return StepResult(is_finished=True)
@@ -313,17 +293,9 @@ class ResolveOnBlockEffectStep(GameStep):
                 )
                 # Wrap steps so current_actor_id is the defender during execution
                 wrapped = (
-                    [
-                        SetActorStep(
-                            actor_key="defender_id", save_key="_pre_onblock_actor"
-                        )
-                    ]
+                    [SetActorStep(actor_key="defender_id", save_key="_pre_onblock_actor")]
                     + list(on_block_steps)
-                    + [
-                        SetActorStep(
-                            actor_key="_pre_onblock_actor", save_key="_discard"
-                        )
-                    ]
+                    + [SetActorStep(actor_key="_pre_onblock_actor", save_key="_discard")]
                 )
                 return StepResult(is_finished=True, new_steps=wrapped)
 
@@ -339,7 +311,7 @@ class ConfirmResolutionStep(GameStep):
     type: StepType = StepType.CONFIRM_RESOLUTION
     hero_id: str
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Auto-confirm when rollback is disabled
         if context.get("rollback_disabled"):
             return StepResult(is_finished=True)
@@ -362,4 +334,3 @@ class ConfirmResolutionStep(GameStep):
                 ],
             ),
         )
-

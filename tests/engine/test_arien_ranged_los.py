@@ -1,23 +1,24 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Hero,
+    Shape,
     Team,
     TeamColor,
-    Hero,
-    EffectType,
-    EffectScope,
-    Shape,
-    DurationType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, UnitID
-from goa2.domain.hex import Hex
 from goa2.engine.effect_manager import EffectManager
-from goa2.engine.steps import SelectStep, AttackSequenceStep
+from goa2.engine.steps import AttackSequenceStep, SelectStep
 from goa2.scripts.arien_effects import RogueWaveEffect
 
 

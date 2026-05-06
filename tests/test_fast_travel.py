@@ -1,10 +1,10 @@
-from goa2.engine.steps import FastTravelSequenceStep
-from goa2.domain.models import Hero, TeamColor, Minion, MinionType, Team, ActionType
-from goa2.domain.hex import Hex
 from goa2.domain.board import Board, Zone
-from goa2.domain.types import HeroID, UnitID
+from goa2.domain.hex import Hex
+from goa2.domain.models import ActionType, Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
+from goa2.domain.types import HeroID, UnitID
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import FastTravelSequenceStep
 
 
 def setup_base_state():
@@ -23,16 +23,12 @@ def test_fast_travel_success_same_zone():
     state = setup_base_state()
 
     # Zone 1: Safe
-    z1 = Zone(
-        id="z1", hexes={Hex(q=0, r=0, s=0), Hex(q=1, r=0, s=-1)}, neighbors=["z2"]
-    )
+    z1 = Zone(id="z1", hexes={Hex(q=0, r=0, s=0), Hex(q=1, r=0, s=-1)}, neighbors=["z2"])
     state.board.zones["z1"] = z1
     state.board.populate_tiles_from_zones()
 
     # Hero in Z1
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
     state.teams[TeamColor.RED].heroes.append(hero)
     state.current_actor_id = "hero1"
 
@@ -56,15 +52,11 @@ def test_fast_travel_success_adjacent_zone():
 
     # Z1 (Start) -> Z2 (Dest)
     z1 = Zone(id="z1", hexes={Hex(q=0, r=0, s=0)}, neighbors=["z2"])
-    z2 = Zone(
-        id="z2", hexes={Hex(q=0, r=1, s=-1), Hex(q=0, r=2, s=-2)}, neighbors=["z1"]
-    )
+    z2 = Zone(id="z2", hexes={Hex(q=0, r=1, s=-1), Hex(q=0, r=2, s=-2)}, neighbors=["z1"])
     state.board.zones = {"z1": z1, "z2": z2}
     state.board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
     state.teams[TeamColor.RED].heroes.append(hero)
 
     state.current_actor_id = "hero1"
@@ -86,12 +78,8 @@ def test_fast_travel_fail_enemy_in_start():
     state.board.zones = {"z1": z1}
     state.board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
-    enemy = Minion(
-        id=UnitID("e1"), name="Enemy", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
+    enemy = Minion(id=UnitID("e1"), name="Enemy", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state.teams[TeamColor.RED].heroes.append(hero)
     state.teams[TeamColor.BLUE].minions.append(enemy)
@@ -115,19 +103,13 @@ def test_fast_travel_exclude_unsafe_dest():
     state = setup_base_state()
     z1 = Zone(id="z1", hexes={Hex(q=0, r=0, s=0)}, neighbors=["z2", "z3"])
     z2 = Zone(id="z2", hexes={Hex(q=10, r=0, s=-10)}, neighbors=["z1"])  # Safe
-    z3 = Zone(
-        id="z3", hexes={Hex(q=20, r=0, s=-20)}, neighbors=["z1"]
-    )  # Unsafe (Enemy)
+    z3 = Zone(id="z3", hexes={Hex(q=20, r=0, s=-20)}, neighbors=["z1"])  # Unsafe (Enemy)
 
     state.board.zones = {"z1": z1, "z2": z2, "z3": z3}
     state.board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
-    enemy = Minion(
-        id=UnitID("e1"), name="Enemy", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
+    enemy = Minion(id=UnitID("e1"), name="Enemy", type=MinionType.MELEE, team=TeamColor.BLUE)
 
     state.teams[TeamColor.RED].heroes.append(hero)
     state.teams[TeamColor.BLUE].minions.append(enemy)
@@ -148,8 +130,8 @@ def test_fast_travel_exclude_unsafe_dest():
 
 
 def test_fast_travel_option_filtering():
+    from goa2.domain.models import Card, CardColor, CardTier
     from goa2.engine.steps import ResolveCardStep
-    from goa2.domain.models import Card, CardTier, CardColor
 
     state = setup_base_state()
 
@@ -157,9 +139,7 @@ def test_fast_travel_option_filtering():
     state.board.zones = {"z1": z1}
     state.board.populate_tiles_from_zones()
 
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
 
     card = Card(
         id="c1",
@@ -181,9 +161,7 @@ def test_fast_travel_option_filtering():
     state.place_entity("hero1", Hex(q=0, r=0, s=0))
 
     # Enemy makes zone unsafe
-    enemy = Minion(
-        id=UnitID("e1"), name="E1", type=MinionType.MELEE, team=TeamColor.BLUE
-    )
+    enemy = Minion(id=UnitID("e1"), name="E1", type=MinionType.MELEE, team=TeamColor.BLUE)
     state.teams[TeamColor.BLUE].minions.append(enemy)
     state.place_entity("e1", Hex(q=1, r=0, s=-1))
 
@@ -203,24 +181,20 @@ def test_fast_travel_option_filtering():
 
 def test_fast_travel_prevention_effect():
     """Test that ActiveEffect can prevent Fast Travel."""
-    from goa2.engine.steps import FastTravelSequenceStep
-    from goa2.engine.effect_manager import EffectManager
-    from goa2.domain.models.effect import EffectType, EffectScope, Shape, DurationType
     from goa2.domain.models import AffectsFilter
+    from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+    from goa2.engine.effect_manager import EffectManager
+    from goa2.engine.steps import FastTravelSequenceStep
 
     state = setup_base_state()
 
     # Zone 1: Safe
-    z1 = Zone(
-        id="z1", hexes={Hex(q=0, r=0, s=0), Hex(q=1, r=0, s=-1)}, neighbors=["z2"]
-    )
+    z1 = Zone(id="z1", hexes={Hex(q=0, r=0, s=0), Hex(q=1, r=0, s=-1)}, neighbors=["z2"])
     state.board.zones["z1"] = z1
     state.board.populate_tiles_from_zones()
 
     # Hero in Z1
-    hero = Hero(
-        id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={}
-    )
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
     state.teams[TeamColor.RED].heroes.append(hero)
     state.current_actor_id = "hero1"
 

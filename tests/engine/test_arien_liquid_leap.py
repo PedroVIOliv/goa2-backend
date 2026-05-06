@@ -1,19 +1,20 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -113,9 +114,7 @@ def test_liquid_leap_execution(leap_state):
 
     # 2. Select Hex
     process_stack(leap_state).input_request
-    leap_state.execution_stack[-1].pending_input = {
-        "selection": {"q": 2, "r": 0, "s": -2}
-    }
+    leap_state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
 
     # 3. Finalize
     res = process_stack(leap_state).input_request

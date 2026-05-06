@@ -26,9 +26,9 @@ class TokenType(str, Enum):
 
 class CardTier(str, Enum):
     I = "I"  # noqa: E741
-    II = "II"  # noqa: E741
-    III = "III"  # noqa: E741
-    IV = "IV"  # noqa: E741
+    II = "II"
+    III = "III"
+    IV = "IV"
     UNTIERED = "UNTIERED"
 
 
@@ -46,9 +46,7 @@ class ActionType(str, Enum):
     ATTACK = "ATTACK"
     SKILL = "SKILL"
     DEFENSE = "DEFENSE"
-    DEFENSE_SKILL = (
-        "DEFENSE_SKILL"  # Can be used as SKILL on turn or DEFENSE in reaction
-    )
+    DEFENSE_SKILL = "DEFENSE_SKILL"  # Can be used as SKILL on turn or DEFENSE in reaction
     HOLD = "HOLD"  # Secondary
     CLEAR = "CLEAR"  # Replaces Attack
     FAST_TRAVEL = "FAST_TRAVEL"  # Replaces Movement

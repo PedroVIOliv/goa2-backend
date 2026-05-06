@@ -1,25 +1,25 @@
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.scripts.arien_effects
+import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    GamePhase,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    GamePhase,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
 from goa2.engine.handler import process_stack
 from goa2.engine.phases import commit_card
-
-import goa2.scripts.wasp_effects  # noqa: F401 - Register magnetic_dagger effect
-import goa2.scripts.arien_effects  # noqa: F401 - Register liquid_leap effect
 
 
 @pytest.fixture

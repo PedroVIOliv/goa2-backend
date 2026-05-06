@@ -1,11 +1,12 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
+from goa2.engine.filters import ObstacleFilter, RangeFilter, TeamFilter, UnitTypeFilter
 from goa2.engine.steps import SelectStep
-from goa2.engine.filters import RangeFilter, TeamFilter, ObstacleFilter, UnitTypeFilter
 
 
 @pytest.fixture
@@ -61,9 +62,7 @@ def test_range_filter(filter_state):
 
 def test_team_filter(filter_state):
     # Select Enemy Units (H2, M1)
-    step = SelectStep(
-        target_type="UNIT", prompt="Test", filters=[TeamFilter(relation="ENEMY")]
-    )
+    step = SelectStep(target_type="UNIT", prompt="Test", filters=[TeamFilter(relation="ENEMY")])
     res = step.resolve(filter_state, {})
     valid = res.input_request["valid_options"]
 
@@ -86,7 +85,7 @@ def test_composite_filter(filter_state):
     res = step.resolve(filter_state, {})
     valid = res.input_request["valid_options"]
 
-    assert ["m1"] == valid
+    assert valid == ["m1"]
 
 
 def test_hex_filter_occupied(filter_state):

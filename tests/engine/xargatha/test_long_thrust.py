@@ -6,27 +6,26 @@ Tests for Xargatha's range-bonus attack cards:
 Both use CountAdjacentEnemiesStep -> AttackSequenceStep(range_bonus_key=...).
 """
 
-from goa2.domain.state import GameState
+# Register xargatha effects
+import goa2.scripts.xargatha_effects  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Minion,
     MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
     StatType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
-from goa2.engine.handler import process_stack, push_steps
+from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
-
-# Register xargatha effects
-import goa2.scripts.xargatha_effects  # noqa: F401
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import ResolveCardStep
 
 
 def make_long_thrust_card():
@@ -65,9 +64,7 @@ def make_rapid_thrusts_card():
     )
 
 
-def _make_range_state(
-    adjacent_enemy_count: int, distant_enemies: bool = False
-) -> GameState:
+def _make_range_state(adjacent_enemy_count: int, distant_enemies: bool = False) -> GameState:
     """
     Create a state with Xargatha at origin, N adjacent enemies,
     and optionally enemies at range 2 for targeting.
@@ -93,9 +90,7 @@ def _make_range_state(
     board.zones = {"z1": z1}
     board.populate_tiles_from_zones()
 
-    xargatha = Hero(
-        id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1
-    )
+    xargatha = Hero(id="xargatha", name="Xargatha", team=TeamColor.RED, deck=[], level=1)
 
     enemies_heroes = []
     enemies_minions = []
@@ -312,8 +307,7 @@ class TestRapidThrustsEffect:
         repeat_attack = steps[2].steps_template[1]
 
         has_exclude_filter = any(
-            f.__class__.__name__ == "ExcludeIdentityFilter"
-            for f in repeat_attack.target_filters
+            f.__class__.__name__ == "ExcludeIdentityFilter" for f in repeat_attack.target_filters
         )
         assert has_exclude_filter
 

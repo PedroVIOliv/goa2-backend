@@ -1,14 +1,15 @@
 """Tests for ReturnMinionToZoneStep - returning minions outside the active zone."""
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
+from goa2.domain.models import Card, Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Minion, MinionType, Hero, Card
 from goa2.domain.types import UnitID
-from goa2.engine.steps import ReturnMinionToZoneStep, FinalizeHeroTurnStep
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import FinalizeHeroTurnStep, ReturnMinionToZoneStep
 
 
 def create_minion(id_str, team, m_type=MinionType.MELEE):

@@ -8,32 +8,32 @@ Covers:
 - PassiveTrigger.BEFORE_ACTION enum value + CheckPassiveAbilitiesStep match.
 """
 
-import goa2.engine.step_types  # noqa: F401
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.engine.step_types  # noqa: F401
 from goa2.domain.board import Board
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero, Minion, MinionType
 from goa2.domain.hex import Hex
+from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.models.effect import (
     ActiveEffect,
-    EffectType,
-    EffectScope,
-    Shape,
     AffectsFilter,
     DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
 )
+from goa2.domain.models.enums import PassiveTrigger
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.filters import (
     CountMatchFilter,
     RangeFilter,
-    TeamFilter,
 )
 from goa2.engine.steps import (
     ComputeDistanceStep,
-    RecordHexStep,
     MoveSequenceStep,
+    RecordHexStep,
 )
-from goa2.domain.models.enums import PassiveTrigger
 
 
 @pytest.fixture
@@ -130,9 +130,9 @@ class TestComputeDistanceStep:
         RecordHexStep(unit_id="h1", output_key="start_hex").resolve(basic_state, ctx)
         # Move h1 to (2,0,-2)
         basic_state.place_entity("h1", Hex(q=2, r=0, s=-2))
-        ComputeDistanceStep(
-            unit_id="h1", hex_key="start_hex", output_key="moved"
-        ).resolve(basic_state, ctx)
+        ComputeDistanceStep(unit_id="h1", hex_key="start_hex", output_key="moved").resolve(
+            basic_state, ctx
+        )
         assert ctx["moved"] == 2
 
     def test_distance_unit_to_unit(self, basic_state):
@@ -188,9 +188,7 @@ class TestMovementAuraZoneDetection:
         # Look for MoveUnitStep in new_steps and verify pass_through is set
         from goa2.engine.steps import MoveUnitStep
 
-        move_steps = [
-            s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)
-        ]
+        move_steps = [s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)]
         assert move_steps, "Expected a MoveUnitStep in expansion"
         assert move_steps[0].pass_through_obstacles is True
 
@@ -199,9 +197,7 @@ class TestMovementAuraZoneDetection:
         result = step.resolve(basic_state, {})
         from goa2.engine.steps import MoveUnitStep
 
-        move_steps = [
-            s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)
-        ]
+        move_steps = [s for s in (result.new_steps or []) if isinstance(s, MoveUnitStep)]
         assert move_steps
         assert move_steps[0].pass_through_obstacles is False
 

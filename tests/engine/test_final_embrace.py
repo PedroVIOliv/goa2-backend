@@ -1,16 +1,18 @@
 """Tests for Final Embrace (Xargatha Tier III Green) — DELAYED_TRIGGER finishing steps."""
 
 import pytest
-from goa2.domain.state import GameState
+
+# Ensure step_types patching is applied (imports trigger it)
+import goa2.engine.step_types  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
-    Team,
-    TeamColor,
     Hero,
     Minion,
     MinionType,
+    Team,
+    TeamColor,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
     ActiveEffect,
     DurationType,
@@ -18,21 +20,17 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.models.enums import StepType, TargetType
+from goa2.domain.state import GameState
+from goa2.engine.filters import MinionTypesFilter, RangeFilter, TeamFilter
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
-    AdvanceTurnStep,
     CreateEffectStep,
     DefeatUnitStep,
     EndPhaseStep,
     MinionBattleStep,
     SelectStep,
-    SetActorStep,
 )
-from goa2.engine.filters import MinionTypesFilter, RangeFilter, TeamFilter
-from goa2.engine.handler import process_stack, push_steps
-from goa2.domain.models.enums import StepType, TargetType
-
-# Ensure step_types patching is applied (imports trigger it)
-import goa2.engine.step_types  # noqa: F401
 
 
 @pytest.fixture
@@ -64,7 +62,9 @@ def embrace_state():
     melee = Minion(id="melee_1", name="Melee", type=MinionType.MELEE, team=TeamColor.BLUE)
     ranged = Minion(id="ranged_1", name="Ranged", type=MinionType.RANGED, team=TeamColor.BLUE)
     heavy = Minion(id="heavy_1", name="Heavy", type=MinionType.HEAVY, team=TeamColor.BLUE)
-    ally_melee = Minion(id="ally_melee", name="AllyMelee", type=MinionType.MELEE, team=TeamColor.RED)
+    ally_melee = Minion(
+        id="ally_melee", name="AllyMelee", type=MinionType.MELEE, team=TeamColor.RED
+    )
 
     state = GameState(
         board=board,
@@ -210,10 +210,16 @@ class TestFinishingStepsOnEndPhase:
             process_stack(embrace_state).input_request
 
         # Effect should be gone
-        assert len([
-            e for e in embrace_state.active_effects
-            if e.effect_type == EffectType.DELAYED_TRIGGER
-        ]) == 0
+        assert (
+            len(
+                [
+                    e
+                    for e in embrace_state.active_effects
+                    if e.effect_type == EffectType.DELAYED_TRIGGER
+                ]
+            )
+            == 0
+        )
 
     def test_no_finishing_steps_normal_end_phase(self, embrace_state):
         """EndPhaseStep without any DELAYED_TRIGGER effects works normally."""
@@ -309,10 +315,14 @@ class TestMinionBattleAfterFinishingSteps:
         zone = embrace_state.board.zones["z1"]
         # Add extra hexes for more minions
         extra_hexes = [
-            Hex(q=2, r=-1, s=-1), Hex(q=2, r=0, s=-2),
-            Hex(q=-1, r=2, s=-1), Hex(q=0, r=2, s=-2),
-            Hex(q=-2, r=1, s=1), Hex(q=-2, r=2, s=0),
-            Hex(q=1, r=1, s=-2), Hex(q=-1, r=-1, s=2),
+            Hex(q=2, r=-1, s=-1),
+            Hex(q=2, r=0, s=-2),
+            Hex(q=-1, r=2, s=-1),
+            Hex(q=0, r=2, s=-2),
+            Hex(q=-2, r=1, s=1),
+            Hex(q=-2, r=2, s=0),
+            Hex(q=1, r=1, s=-2),
+            Hex(q=-1, r=-1, s=2),
         ]
         for h in extra_hexes:
             zone.hexes.add(h)
@@ -327,8 +337,10 @@ class TestMinionBattleAfterFinishingSteps:
         red_team = embrace_state.teams[TeamColor.RED]
         red_team.minions = []
         red_hexes = [
-            Hex(q=0, r=-1, s=1), Hex(q=1, r=-1, s=0),
-            Hex(q=2, r=-1, s=-1), Hex(q=2, r=0, s=-2),
+            Hex(q=0, r=-1, s=1),
+            Hex(q=1, r=-1, s=0),
+            Hex(q=2, r=-1, s=-1),
+            Hex(q=2, r=0, s=-2),
             Hex(q=-1, r=-1, s=2),
         ]
         for i, h in enumerate(red_hexes):
@@ -340,9 +352,12 @@ class TestMinionBattleAfterFinishingSteps:
         blue_team = embrace_state.teams[TeamColor.BLUE]
         blue_team.minions = []
         blue_hexes = [
-            Hex(q=1, r=0, s=-1), Hex(q=0, r=1, s=-1),
-            Hex(q=-1, r=1, s=0), Hex(q=-1, r=2, s=-1),
-            Hex(q=0, r=2, s=-2), Hex(q=1, r=1, s=-2),
+            Hex(q=1, r=0, s=-1),
+            Hex(q=0, r=1, s=-1),
+            Hex(q=-1, r=1, s=0),
+            Hex(q=-1, r=2, s=-1),
+            Hex(q=0, r=2, s=-2),
+            Hex(q=1, r=1, s=-2),
         ]
         for i, h in enumerate(blue_hexes):
             mt = MinionType.MELEE if i > 0 else MinionType.RANGED

@@ -1,14 +1,15 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
-from goa2.domain.models import Team, TeamColor, Hero
 from goa2.domain.hex import Hex
-from goa2.engine.steps import (
-    MoveSequenceStep,
-    FastTravelSequenceStep,
-)
+from goa2.domain.models import Hero, Team, TeamColor
+from goa2.domain.state import GameState
+from goa2.domain.tile import Tile
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import (
+    FastTravelSequenceStep,
+    MoveSequenceStep,
+)
 
 
 @pytest.fixture

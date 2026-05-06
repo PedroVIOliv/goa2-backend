@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional
+
+from typing import TYPE_CHECKING
+
 from goa2.domain.models import Minion, MinionType, TeamColor, Token, TokenType
 from goa2.domain.types import BoardEntityID
 
@@ -31,7 +33,7 @@ class EntityFactory:
         state: GameState,
         token_type: TokenType,
         name: str,
-        owner_id: Optional[str] = None,
+        owner_id: str | None = None,
     ) -> Token:
         """
         Creates a new Token/Obstacle with a unique ID.

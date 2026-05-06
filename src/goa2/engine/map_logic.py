@@ -1,14 +1,12 @@
-from typing import List, Optional, Tuple
 from collections import deque
-from goa2.domain.state import GameState
-from goa2.domain.models import TeamColor
+
 from goa2.domain.hex import Hex
+from goa2.domain.models import TeamColor
+from goa2.domain.state import GameState
 from goa2.engine.topology import get_connected_neighbors
 
 
-def check_lane_push_trigger(
-    state: GameState, active_zone_id: str
-) -> Optional[TeamColor]:
+def check_lane_push_trigger(state: GameState, active_zone_id: str) -> TeamColor | None:
     """
     Checks if a Lane Push should occur in the active zone.
     Condition: Minion Count for a Team in BattleZone == 0.
@@ -47,9 +45,7 @@ def check_lane_push_trigger(
     return None
 
 
-def get_push_target_zone_id(
-    state: GameState, losing_team: TeamColor
-) -> Tuple[Optional[str], bool]:
+def get_push_target_zone_id(state: GameState, losing_team: TeamColor) -> tuple[str | None, bool]:
     """
     Calculates the next zone ID based on the losing team.
     Returns (next_zone_id, is_game_over).
@@ -106,9 +102,7 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
     return count
 
 
-def find_nearest_empty_hexes(
-    state: GameState, start_hex: Hex, zone_id: str
-) -> List[Hex]:
+def find_nearest_empty_hexes(state: GameState, start_hex: Hex, zone_id: str) -> list[Hex]:
     """
     Finds the nearest empty hex(es) to start_hex within the specified zone.
     Used for displacement/collision resolution.

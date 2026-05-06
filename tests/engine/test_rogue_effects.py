@@ -1,22 +1,23 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    EffectType,
+    Hero,
+    StatType,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    StatType,
-    EffectType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import get_computed_stat
-from goa2.engine.effect_manager import EffectManager
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -220,10 +221,7 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     process_stack(rogue_state).input_request
 
     # 7. Verify effect is active
-    assert any(
-        e.effect_type == EffectType.PLACEMENT_PREVENTION
-        for e in rogue_state.active_effects
-    )
+    assert any(e.effect_type == EffectType.PLACEMENT_PREVENTION for e in rogue_state.active_effects)
 
     # 7b. Finalize the hero's turn to move card to RESOLVED state
     # This is required because active effects only become active when the source card is RESOLVED

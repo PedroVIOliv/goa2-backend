@@ -1,26 +1,27 @@
 from __future__ import annotations
+
 import logging
-from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.models import (
+    Card,
+    GamePhase,
+    Hero,
+    ResolutionStep,
     Team,
     TeamColor,
-    Card,
-    Hero,
-    Unit,
     Token,
     TokenType,
-    GamePhase,
-    ResolutionStep,
+    Unit,
 )
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import Marker, MarkerType
-from goa2.domain.types import HeroID, UnitID, BoardEntityID
-from goa2.domain.input import InputRequest, InputRequestType
-
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,9 @@ class GameState(BaseModel):
     """
 
     board: Board
-    teams: Dict[TeamColor, Team]
+    teams: dict[TeamColor, Team]
 
-    active_zone_id: Optional[str] = None  # The ID of the current Battle Zone
+    active_zone_id: str | None = None  # The ID of the current Battle Zone
 
     phase: GamePhase = GamePhase.SETUP
 
@@ -43,20 +44,18 @@ class GameState(BaseModel):
     turn: int = 1
     wave_counter: int = 5
     cheats_enabled: bool = False
-    rng_seed: Optional[int] = None
+    rng_seed: int | None = None
 
-    current_actor_id: Optional[HeroID] = (
-        None  # ID of the Hero currently acting (Resolution Phase)
-    )
+    current_actor_id: HeroID | None = None  # ID of the Hero currently acting (Resolution Phase)
 
     # The team that currently wins ties (Red or Blue)
     # Flips every time a different-team tie is resolved.
     tie_breaker_team: TeamColor = TeamColor.RED
 
-    winner: Optional[TeamColor] = None
-    victory_condition: Optional[str] = None
+    winner: TeamColor | None = None
+    victory_condition: str | None = None
 
-    input_stack: List[InputRequest] = Field(
+    input_stack: list[InputRequest] = Field(
         default_factory=list
     )  # The top of the stack is the active request waiting for input.
     # Logic:
@@ -64,24 +63,24 @@ class GameState(BaseModel):
     # 2. State pauses.
     # 3. Client responds to Request[0].
     # 4. Engine pops Request.
-    execution_stack: List[Any] = Field(
+    execution_stack: list[Any] = Field(
         default_factory=list
     )  # Stores instances of GameStep (from goa2.engine.steps)
     # Typed as List[Any] to avoid circular imports with steps.py
 
-    execution_context: Dict[str, Any] = Field(
+    execution_context: dict[str, Any] = Field(
         default_factory=dict
     )  # Stores transient data like "selected_target_id" between steps
 
-    pending_inputs: Dict[HeroID, Optional[Card]] = Field(
+    pending_inputs: dict[HeroID, Card | None] = Field(
         default_factory=dict
     )  # Planning Phase Buffer: HeroID -> Card
 
-    pending_upgrades: Dict[HeroID, int] = Field(
+    pending_upgrades: dict[HeroID, int] = Field(
         default_factory=dict
     )  # Level Up Phase Buffer: HeroID -> Number of upgrades pending
 
-    unresolved_hero_ids: List[HeroID] = Field(
+    unresolved_hero_ids: list[HeroID] = Field(
         default_factory=list
     )  # Resolution Phase Tracker: Set of HeroIDs who have not yet acted this turn.
     # We dynamically re-sort this set every step to determine the next actor.
@@ -89,24 +88,24 @@ class GameState(BaseModel):
 
     # Registry for active non-Unit entities (Tokens, Traps, etc.)
     # Units are stored in self.teams, everything else goes here.
-    misc_entities: Dict[BoardEntityID, Any] = Field(default_factory=dict)
-    token_pool: Dict[TokenType, List[Token]] = Field(default_factory=dict)
+    misc_entities: dict[BoardEntityID, Any] = Field(default_factory=dict)
+    token_pool: dict[TokenType, list[Token]] = Field(default_factory=dict)
 
     # Master Record of positions for ALL entities (Units + Tokens)
-    entity_locations: Dict[BoardEntityID, Hex] = Field(default_factory=dict)
+    entity_locations: dict[BoardEntityID, Hex] = Field(default_factory=dict)
 
     next_entity_id: int = 1
 
-    active_effects: List[ActiveEffect] = Field(default_factory=list)
+    active_effects: list[ActiveEffect] = Field(default_factory=list)
 
     # Singleton markers - each MarkerType has exactly one Marker instance
-    markers: Dict[MarkerType, Marker] = Field(default_factory=dict)
+    markers: dict[MarkerType, Marker] = Field(default_factory=dict)
 
     # Track heroes defeated in the current round (for coin-granting effects)
-    heroes_defeated_this_round: List[HeroID] = Field(default_factory=list)
+    heroes_defeated_this_round: list[HeroID] = Field(default_factory=list)
 
     # Private field for cached validator (not serialized)
-    _validator: Optional[Any] = None
+    _validator: Any | None = None
 
     def add_effect(self, effect: ActiveEffect):
         """Adds a spatial/behavioral effect to the active list."""
@@ -132,7 +131,7 @@ class GameState(BaseModel):
         marker.place(target_id=target_id, value=value, source_id=source_id)
         return marker
 
-    def remove_marker(self, marker_type: MarkerType) -> Optional[Marker]:
+    def remove_marker(self, marker_type: MarkerType) -> Marker | None:
         """
         Return a marker to supply (remove from its current target).
         Returns the marker if it existed, None otherwise.
@@ -143,7 +142,7 @@ class GameState(BaseModel):
             return marker
         return None
 
-    def get_markers_on_hero(self, hero_id: str) -> List[Marker]:
+    def get_markers_on_hero(self, hero_id: str) -> list[Marker]:
         """Get all markers currently placed on a specific hero."""
         return [m for m in self.markers.values() if m.target_id == hero_id]
 
@@ -152,7 +151,7 @@ class GameState(BaseModel):
         for marker in self.markers.values():
             marker.remove()
 
-    def return_markers_from_hero(self, hero_id: str) -> List[Marker]:
+    def return_markers_from_hero(self, hero_id: str) -> list[Marker]:
         """
         Return all markers from a specific hero (e.g., on defeat).
         Returns list of markers that were removed.
@@ -164,7 +163,7 @@ class GameState(BaseModel):
                 removed.append(marker)
         return removed
 
-    def return_markers_by_source(self, source_id: str) -> List[Marker]:
+    def return_markers_by_source(self, source_id: str) -> list[Marker]:
         """
         Return all markers placed by a specific source (e.g., on source defeat).
         Returns list of markers that were removed.
@@ -200,29 +199,23 @@ class GameState(BaseModel):
         Enforces Global Uniqueness check.
         """
         if self.get_entity(entity.id) is not None:
-            raise ValueError(
-                f"ID Collision: Entity with ID {entity.id} already exists!"
-            )
+            raise ValueError(f"ID Collision: Entity with ID {entity.id} already exists!")
 
         if collection_type == "token":
             self.misc_entities[entity.id] = entity
         elif collection_type == "minion":
             if not hasattr(entity, "team") or entity.team not in self.teams:
-                raise ValueError(
-                    f"Cannot register minion {entity.id}: Invalid or missing team."
-                )
+                raise ValueError(f"Cannot register minion {entity.id}: Invalid or missing team.")
             self.teams[entity.team].minions.append(entity)
             logger.debug("Registered minion %s to team %s", entity.id, entity.team)
         elif collection_type == "hero":
             if not hasattr(entity, "team") or entity.team not in self.teams:
-                raise ValueError(
-                    f"Cannot register hero {entity.id}: Invalid or missing team."
-                )
+                raise ValueError(f"Cannot register hero {entity.id}: Invalid or missing team.")
             self.teams[entity.team].heroes.append(entity)
             logger.debug("Registered hero %s to team %s", entity.id, entity.team)
 
     @model_validator(mode="after")
-    def rebuild_occupancy_cache(self) -> "GameState":
+    def rebuild_occupancy_cache(self) -> GameState:
         """
         Synchronizes board.tiles.occupant_id based on entity_locations.
         This ensures that entity_locations is the Single Source of Truth for persistence.
@@ -246,7 +239,7 @@ class GameState(BaseModel):
         return self.phase == GamePhase.GAME_OVER
 
     @property
-    def unit_locations(self) -> Dict[UnitID, Hex]:
+    def unit_locations(self) -> dict[UnitID, Hex]:
         """Legacy accessor for backwards compatibility during refactor."""
         # Convert keys to UnitID
         return {UnitID(str(k)): v for k, v in self.entity_locations.items()}
@@ -261,7 +254,7 @@ class GameState(BaseModel):
             return InputRequestType.NONE
         return self.input_stack[-1].request_type
 
-    def get_hero(self, hero_id: HeroID) -> Optional[Hero]:
+    def get_hero(self, hero_id: HeroID) -> Hero | None:
         """Finds a Hero by ID."""
         for team in self.teams.values():
             for hero in team.heroes:
@@ -269,7 +262,7 @@ class GameState(BaseModel):
                     return hero
         return None
 
-    def get_entity(self, entity_id: BoardEntityID) -> Optional[Any]:
+    def get_entity(self, entity_id: BoardEntityID) -> Any | None:
         """
         Unified lookup for ANY entity on the board (Unit or Token).
         """
@@ -280,7 +273,7 @@ class GameState(BaseModel):
         # 2. Check Units
         return self.get_unit(UnitID(str(entity_id)))
 
-    def get_unit(self, unit_id: UnitID) -> Optional[Unit]:
+    def get_unit(self, unit_id: UnitID) -> Unit | None:
         """
         Finds a Unit (Hero or Minion) by ID.
         O(N) search across all teams.
@@ -294,7 +287,7 @@ class GameState(BaseModel):
                     return minion
         return None
 
-    def get_card_by_id(self, card_id: str) -> Optional[Card]:
+    def get_card_by_id(self, card_id: str) -> Card | None:
         """
         Finds a Card by ID across all heroes.
         Searches current_turn_card, played_cards, hand, deck, discard_pile, and ultimate_card.
@@ -319,7 +312,7 @@ class GameState(BaseModel):
                     return hero.ultimate_card
         return None
 
-    def get_units_and_tokens(self) -> List[BoardEntityID]:
+    def get_units_and_tokens(self) -> list[BoardEntityID]:
         """
         Returns IDs of all Units and Tokens currently on the board.
 
@@ -328,7 +321,7 @@ class GameState(BaseModel):
 
         Used by SelectStep for UNIT_OR_TOKEN target type.
         """
-        from goa2.domain.models import Unit, Token
+        from goa2.domain.models import Token, Unit
 
         result = []
         for eid in self.entity_locations.keys():
@@ -347,11 +340,7 @@ class GameState(BaseModel):
         old_hex = self.entity_locations.get(entity_id)
         if old_hex:
             old_tile = self.board.get_tile(old_hex)
-            if (
-                old_tile
-                and old_tile.occupant_id
-                and str(old_tile.occupant_id) == str(entity_id)
-            ):
+            if old_tile and old_tile.occupant_id and str(old_tile.occupant_id) == str(entity_id):
                 old_tile.occupant_id = None
 
         # 2. Update Record

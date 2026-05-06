@@ -8,19 +8,16 @@ not team affiliation (allies see enemies' faceup cards too).
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, List
+from typing import Any
 
-from goa2.domain.state import GameState
-from goa2.domain.types import HeroID
 from goa2.domain.models.card import Card
-from goa2.domain.models.unit import Hero, Minion
 from goa2.domain.models.enums import GamePhase, StatType
-from goa2.domain.types import BoardEntityID
+from goa2.domain.models.unit import Hero, Minion
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID
 
 
-def build_view(
-    state: GameState, for_hero_id: Optional[HeroID] = None
-) -> Dict[str, Any]:
+def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
 
@@ -39,7 +36,7 @@ def build_view(
         Serializable dict representation of the game state with filtered cards
     """
     # Build teams view
-    teams_view: Dict[str, Any] = {}
+    teams_view: dict[str, Any] = {}
     for team_color, team in state.teams.items():
         teams_view[team_color.value] = _build_team_view(team, for_hero_id)
 
@@ -77,8 +74,8 @@ def build_view(
 
 
 def _build_unresolved_cards_view(
-    state: GameState, for_hero_id: Optional[HeroID] = None
-) -> List[Dict[str, Any]]:
+    state: GameState, for_hero_id: HeroID | None = None
+) -> list[dict[str, Any]]:
     """
     Build an ordered list of unresolved cards for frontend visualization.
 
@@ -127,7 +124,7 @@ def _build_unresolved_cards_view(
     return entries
 
 
-def _build_team_view(team, for_hero_id: Optional[HeroID]) -> Dict[str, Any]:
+def _build_team_view(team, for_hero_id: HeroID | None) -> dict[str, Any]:
     """Build a view for a single team."""
     return {
         "color": team.color.value,
@@ -137,7 +134,7 @@ def _build_team_view(team, for_hero_id: Optional[HeroID]) -> Dict[str, Any]:
     }
 
 
-def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any]:
+def _build_hero_view(hero: Hero, for_hero_id: HeroID | None) -> dict[str, Any]:
     """
     Build a view for a single hero.
 
@@ -158,9 +155,7 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
         "items": hero.items,
         # Hand: Own hero sees all, others see empty array
         "hand": (
-            [_build_card_view(card, is_own_hero=True) for card in hero.hand]
-            if is_own_hero
-            else []
+            [_build_card_view(card, is_own_hero=True) for card in hero.hand] if is_own_hero else []
         ),
         # Deck: Own hero sees full deck, others see count only
         "deck": (
@@ -170,8 +165,7 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
         ),
         # Played cards: Own hero sees all, others see faceup only
         "played_cards": [
-            _build_card_view(card, is_own_hero=is_own_hero)
-            for card in hero.played_cards
+            _build_card_view(card, is_own_hero=is_own_hero) for card in hero.played_cards
         ],
         # Current turn card: Own hero sees all, others see faceup only
         "current_turn_card": (
@@ -180,9 +174,7 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
             else None
         ),
         # Discard pile: Always visible (public info) - use is_own_hero=True so all cards show full info
-        "discard_pile": [
-            _build_card_view(card, is_own_hero=True) for card in hero.discard_pile
-        ],
+        "discard_pile": [_build_card_view(card, is_own_hero=True) for card in hero.discard_pile],
         # Ultimate card: Own hero sees it, others see faceup only
         "ultimate_card": (
             _build_card_view(hero.ultimate_card, is_own_hero=is_own_hero)
@@ -192,7 +184,7 @@ def _build_hero_view(hero: Hero, for_hero_id: Optional[HeroID]) -> Dict[str, Any
     }
 
 
-def _build_minion_view(minion: Minion) -> Dict[str, Any]:
+def _build_minion_view(minion: Minion) -> dict[str, Any]:
     """Build a view for a minion (public info only)."""
     return {
         "id": minion.id,
@@ -203,9 +195,7 @@ def _build_minion_view(minion: Minion) -> Dict[str, Any]:
     }
 
 
-def _build_card_view(
-    card: Optional[Card], is_own_hero: bool = True
-) -> Optional[Dict[str, Any]]:
+def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, Any] | None:
     """
     Build a view for a single card.
 
@@ -227,13 +217,9 @@ def _build_card_view(
             "name": card.name,
             "tier": card.tier.value,
             "color": card.color.value if card.color else None,
-            "primary_action": (
-                card.primary_action.value if card.primary_action else None
-            ),
+            "primary_action": (card.primary_action.value if card.primary_action else None),
             "primary_action_value": card.primary_action_value,
-            "secondary_actions": {
-                k.value: v for k, v in card.secondary_actions.items()
-            },
+            "secondary_actions": {k.value: v for k, v in card.secondary_actions.items()},
             "effect_id": card.effect_id,
             "effect_text": card.effect_text,
             "initiative": card.initiative,
@@ -251,14 +237,10 @@ def _build_card_view(
             "tier": card.current_tier.value,
             "color": card.current_color.value if card.current_color else None,
             "primary_action": (
-                card.current_primary_action.value
-                if card.current_primary_action
-                else None
+                card.current_primary_action.value if card.current_primary_action else None
             ),
             "primary_action_value": card.current_primary_action_value,
-            "secondary_actions": {
-                k.value: v for k, v in card.current_secondary_actions.items()
-            },
+            "secondary_actions": {k.value: v for k, v in card.current_secondary_actions.items()},
             "effect_id": card.current_effect_id,
             "effect_text": card.current_effect_text,
             "initiative": card.current_initiative,
@@ -269,7 +251,7 @@ def _build_card_view(
         }
 
 
-def _build_board_view(state: GameState) -> Dict[str, Any]:
+def _build_board_view(state: GameState) -> dict[str, Any]:
     """Build a view of the board (public info)."""
     # Get all tiles with occupant info
     tiles_view = {}
@@ -290,9 +272,7 @@ def _build_board_view(state: GameState) -> Dict[str, Any]:
                     "team": tile.spawn_point.team.value,
                     "type": tile.spawn_point.type.value,
                     "minion_type": (
-                        tile.spawn_point.minion_type.value
-                        if tile.spawn_point.minion_type
-                        else None
+                        tile.spawn_point.minion_type.value if tile.spawn_point.minion_type else None
                     ),
                 }
                 if tile.spawn_point
@@ -324,8 +304,7 @@ def _build_board_view(state: GameState) -> Dict[str, Any]:
 
     # Get entity locations
     entity_locations = {
-        entity_id: {"q": h.q, "r": h.r, "s": h.s}
-        for entity_id, h in state.entity_locations.items()
+        entity_id: {"q": h.q, "r": h.r, "s": h.s} for entity_id, h in state.entity_locations.items()
     }
 
     return {
@@ -335,7 +314,7 @@ def _build_board_view(state: GameState) -> Dict[str, Any]:
     }
 
 
-def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
+def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
     """Build a view of active effects (public info)."""
     effects_view = []
 
@@ -366,9 +345,7 @@ def _build_effects_view(state: GameState) -> List[Dict[str, Any]]:
     return effects_view
 
 
-def _build_tokens_view(
-    state: GameState, for_hero_id: Optional[HeroID] = None
-) -> List[Dict[str, Any]]:
+def _build_tokens_view(state: GameState, for_hero_id: HeroID | None = None) -> list[dict[str, Any]]:
     """Build a view of tokens on the board with facedown hiding."""
     viewer_team = None
     if for_hero_id:
@@ -406,7 +383,7 @@ def _build_tokens_view(
     return tokens_view
 
 
-def _build_markers_view(state: GameState) -> Dict[str, Any]:
+def _build_markers_view(state: GameState) -> dict[str, Any]:
     """Build a view of placed markers (public info)."""
     markers_view = {}
 

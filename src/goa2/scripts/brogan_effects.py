@@ -1,6 +1,39 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING, Optional
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    ActionType,
+    CardColor,
+    TargetType,
+)
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.models.enums import (
+    CardContainerType,
+    DisplacementType,
+)
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_cards import PlayedCardFilter
+from goa2.engine.filters_composite import OrFilter
+from goa2.engine.filters_geometry import (
+    InStraightLineFilter,
+    StraightLinePathFilter,
+)
+from goa2.engine.filters_hex import (
+    ObstacleFilter,
+    RangeFilter,
+)
+from goa2.engine.filters_units import (
+    AdjacencyFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -18,41 +51,10 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
 )
-from goa2.engine.filters_cards import PlayedCardFilter
-from goa2.engine.filters_composite import OrFilter
-from goa2.engine.filters_geometry import (
-    InStraightLineFilter,
-    StraightLinePathFilter,
-)
-from goa2.engine.filters_hex import (
-    ObstacleFilter,
-    RangeFilter,
-)
-from goa2.engine.filters_units import (
-    AdjacencyFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.domain.models import (
-    TargetType,
-    ActionType,
-    CardColor,
-)
-from goa2.domain.models.enums import (
-    CardContainerType,
-)
-from goa2.domain.models.effect import (
-    AffectsFilter,
-    DurationType,
-    EffectScope,
-    EffectType,
-    Shape,
-)
-from goa2.domain.models.enums import DisplacementType
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.effects import PassiveConfig
     from goa2.engine.stats import CardStats
 
@@ -71,7 +73,7 @@ class BrutalJabEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Optional move 1 space
             SelectStep(
@@ -133,7 +135,7 @@ class MightyPunchEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -193,7 +195,7 @@ class SavageKickEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # Move up to 2
             SelectStep(
@@ -255,7 +257,7 @@ class OnslaughtEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select adjacent target
             SelectStep(
@@ -271,9 +273,7 @@ class OnslaughtEffect(CardEffect):
             # 2. Record victim's hex position before attack
             RecordHexStep(unit_key="victim_id", output_key="victim_hex"),
             # 3. Attack using pre-selected target
-            AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id", range_val=1
-            ),
+            AttackSequenceStep(damage=stats.primary_value, target_id_key="victim_id", range_val=1),
             # 4. Move into target's former space (optional, "if able")
             MoveUnitStep(
                 unit_id=hero.id,
@@ -298,7 +298,7 @@ class ShieldBashEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select adjacent enemy hero (who played attack this turn)
             SelectStep(
@@ -334,7 +334,7 @@ class CounterattackEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -367,7 +367,7 @@ class MadDashEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -404,7 +404,7 @@ class BullrushEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -441,7 +441,7 @@ class FuriousChargeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -482,7 +482,7 @@ class ThrowingAxeEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose mode
             SelectStep(
@@ -567,7 +567,7 @@ class ThrowingSpearEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Choose mode
             SelectStep(
@@ -662,7 +662,7 @@ class ShieldEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MINION_PROTECTION,
@@ -713,7 +713,7 @@ class FortifyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MINION_PROTECTION,
@@ -744,7 +744,7 @@ class WarDrummerEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -778,7 +778,7 @@ class MasterSkaldEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -816,7 +816,7 @@ class BulwarkEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Optionally retrieve a discarded card
             SelectStep(
@@ -895,10 +895,10 @@ class OneManArmyEffect(CardEffect):
     triggers (Brogan isn't removed, but his team loses the zone).
     """
 
-    def get_passive_config(self) -> Optional["PassiveConfig"]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return None
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return []

@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Literal, Optional
+
+from typing import Literal
+
 from goa2.domain.models.base import BoardEntity
 from goa2.domain.models.enums import TokenType
 from goa2.domain.types import HeroID
-
 
 TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.SMOKE_BOMB: 1,
@@ -21,6 +22,6 @@ class Token(BoardEntity):
 
     entity_kind: Literal["token"] = "token"
     token_type: TokenType
-    owner_id: Optional[HeroID] = None
+    owner_id: HeroID | None = None
     is_passable: bool = False
     is_facedown: bool = False

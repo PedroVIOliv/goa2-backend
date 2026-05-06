@@ -1,23 +1,17 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
 
-from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckContextConditionStep,
-    CheckUnitTypeStep,
-    ComputeDistanceStep,
-    CreateEffectStep,
-    FastTravelSequenceStep,
-    ForceDiscardOrDefeatStep,
-    ForceDiscardStep,
-    GainCoinsStep,
-    GameStep,
-    MoveUnitStep,
-    RecordHexStep,
-    RetrieveCardStep,
-    SelectStep,
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    ActionType,
+    CardContainerType,
+    DurationType,
+    EffectType,
+    PassiveTrigger,
+    TargetType,
 )
+from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_composite import (
     CountMatchFilter,
     OrFilter,
@@ -36,19 +30,26 @@ from goa2.engine.filters_units import (
     TeamFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models import (
-    ActionType,
-    CardContainerType,
-    DurationType,
-    EffectType,
-    PassiveTrigger,
-    TargetType,
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    CheckUnitTypeStep,
+    ComputeDistanceStep,
+    CreateEffectStep,
+    FastTravelSequenceStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
+    GainCoinsStep,
+    GameStep,
+    MoveUnitStep,
+    RecordHexStep,
+    RetrieveCardStep,
+    SelectStep,
 )
-from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -69,8 +70,8 @@ class _IsolatedSnipeEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -127,8 +128,8 @@ class LongShotEffect(CardEffect):
     """Card text: Target a unit at maximum range."""
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         r = stats.range or 0
         return [
             AttackSequenceStep(
@@ -150,8 +151,8 @@ class RainOfArrowsEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         r = stats.range or 0
         dmg = stats.primary_value
         return [
@@ -207,9 +208,7 @@ class RainOfArrowsEffect(CardEffect):
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(min_range=r, max_range=r),
-                    ExcludeIdentityFilter(
-                        exclude_keys=["rain_victim_1", "rain_victim_2"]
-                    ),
+                    ExcludeIdentityFilter(exclude_keys=["rain_victim_1", "rain_victim_2"]),
                 ],
             ),
             AttackSequenceStep(
@@ -236,8 +235,8 @@ class _RootZoneEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             CreateEffectStep(
                 effect_type=EffectType.MOVEMENT_ZONE,
@@ -275,9 +274,7 @@ class GraspingRootsEffect(_RootZoneEffect):
 # =============================================================================
 
 
-def _sentinel_finishing_steps(
-    hero_id: str, radius: int, defeat_on_fail: bool
-) -> List[GameStep]:
+def _sentinel_finishing_steps(hero_id: str, radius: int, defeat_on_fail: bool) -> list[GameStep]:
     discard_step: GameStep = (
         ForceDiscardOrDefeatStep(victim_key="sentinel_victim")
         if defeat_on_fail
@@ -306,8 +303,8 @@ class TreetopSentinelEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         radius = stats.radius or 0
         return [
             CreateEffectStep(
@@ -329,8 +326,8 @@ class WarningShotEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         radius = stats.radius or 0
         return [
             CreateEffectStep(
@@ -350,9 +347,7 @@ class WarningShotEffect(CardEffect):
 # =============================================================================
 
 
-def _drag_and_dance_steps(
-    hero_id: str, max_drag_distance: int
-) -> List[GameStep]:
+def _drag_and_dance_steps(hero_id: str, max_drag_distance: int) -> list[GameStep]:
     """
     Move an enemy unit adjacent to you up to N spaces; if you do,
     move up to that number of spaces in a straight line.
@@ -396,7 +391,7 @@ def _drag_and_dance_steps(
                     origin_key="drag_target",
                 ),
                 ObstacleFilter(is_obstacle=False),
-                MovementPathFilter(range_val=max_drag_distance, unit_key="drag_target")
+                MovementPathFilter(range_val=max_drag_distance, unit_key="drag_target"),
             ],
         ),
         # 4. Move the target (forced movement, not a movement action)
@@ -450,8 +445,8 @@ class LeadAstrayEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _drag_and_dance_steps(str(hero.id), max_drag_distance=3)
 
 
@@ -463,8 +458,8 @@ class DivertAttentionEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _drag_and_dance_steps(str(hero.id), max_drag_distance=2)
 
 
@@ -478,8 +473,8 @@ class DisorientEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             # 1. Select adjacent enemy
             SelectStep(
@@ -552,8 +547,8 @@ class _GiftRetrieveEffect(CardEffect):
         cls.coins = coins
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             # 1. Select a friendly hero in radius
             SelectStep(
@@ -595,12 +590,14 @@ class _GiftRetrieveEffect(CardEffect):
 @register_effect("natures_blessing")
 class NaturesBlessingEffect(_GiftRetrieveEffect, coins=2):
     """A hero in radius may retrieve a discarded card; if they do, that hero gains 2 coins."""
+
     pass
 
 
 @register_effect("fae_healing")
 class FaeHealingEffect(_GiftRetrieveEffect, coins=1):
     """A hero in radius may retrieve a discarded card; if they do, that hero gains 1 coin."""
+
     pass
 
 
@@ -617,8 +614,8 @@ class ShootAndScootEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         r = stats.range or 0
         return [
             AttackSequenceStep(
@@ -645,8 +642,8 @@ class TrailblazerEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: "GameState", hero: "Hero", card: "Card", stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return [
             FastTravelSequenceStep(unit_id=str(hero.id)),
             CreateEffectStep(
@@ -688,12 +685,12 @@ class WildHuntEffect(CardEffect):
 
     def get_passive_steps(
         self,
-        state: "GameState",
-        hero: "Hero",
-        card: "Card",
+        state: GameState,
+        hero: Hero,
+        card: Card,
         trigger: PassiveTrigger,
         context: dict,
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         if trigger != PassiveTrigger.BEFORE_ACTION:
             return []
 

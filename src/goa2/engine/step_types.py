@@ -7,7 +7,7 @@ Must be imported AFTER all step/filter subclasses are defined.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, TypeVar, Union
+from typing import Annotated, Any, TypeVar, Union
 
 from pydantic import BaseModel, Discriminator, Tag
 
@@ -16,6 +16,9 @@ from goa2.engine import filters_cards as _filters_cards  # noqa: F401
 from goa2.engine import filters_geometry as _filters_geometry  # noqa: F401
 from goa2.engine import filters_hex as _filters_hex  # noqa: F401
 from goa2.engine import filters_units as _filters_units  # noqa: F401
+from goa2.engine import steps as steps_mod
+from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.steps import cards as _steps_cards  # noqa: F401
 from goa2.engine.steps import combat as _steps_combat  # noqa: F401
 from goa2.engine.steps import effects as _steps_effects  # noqa: F401
@@ -25,11 +28,7 @@ from goa2.engine.steps import phases as _steps_phases  # noqa: F401
 from goa2.engine.steps import reactions as _steps_reactions  # noqa: F401
 from goa2.engine.steps import selection as _steps_selection  # noqa: F401
 from goa2.engine.steps import utility as _steps_utility  # noqa: F401
-from goa2.engine import steps as steps_mod
-from goa2.engine.filters_base import FilterCondition
-from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.steps.base import GameStep
-
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -53,7 +52,7 @@ def _registered_union(
     field_name: str,
     ignored_tags: set[str] | None = None,
     ignored_classes: set[type[ModelT]] | None = None,
-    aliases: Dict[str, type[ModelT]] | None = None,
+    aliases: dict[str, type[ModelT]] | None = None,
 ) -> Any:
     """
     Build a Pydantic tagged union from concrete subclasses of a registered base.
@@ -89,8 +88,7 @@ def _registered_union(
         raise ValueError(f"No registered subclasses found for {base_cls.__name__}")
 
     members = tuple(
-        Annotated[model_cls, Tag(tag)]
-        for tag, model_cls in sorted(classes_by_tag.items())
+        Annotated[model_cls, Tag(tag)] for tag, model_cls in sorted(classes_by_tag.items())
     )
     return Union[members]  # type: ignore[valid-type]
 
@@ -140,10 +138,7 @@ def _misc_entity_discriminator(v: Any) -> str:
 
 
 AnyMiscEntity = Annotated[
-    Union[
-        Annotated[Token, Tag("token")],
-        Annotated[Placeholder, Tag("placeholder")],
-    ],
+    Annotated[Token, Tag("token")] | Annotated[Placeholder, Tag("placeholder")],
     Discriminator(_misc_entity_discriminator),
 ]
 
@@ -159,30 +154,22 @@ def rebuild_serialization_models() -> None:
     from goa2.domain.state import GameState
     from goa2.engine.effects import StatAura
 
-    GameState.model_fields["execution_stack"].annotation = List[AnyStep]
-    GameState.model_fields["misc_entities"].annotation = Dict[str, AnyMiscEntity]
+    GameState.model_fields["execution_stack"].annotation = list[AnyStep]
+    GameState.model_fields["misc_entities"].annotation = dict[str, AnyMiscEntity]
 
-    steps_mod.SelectStep.model_fields["filters"].annotation = List[AnyFilter]
-    steps_mod.MultiSelectStep.model_fields["filters"].annotation = List[AnyFilter]
-    steps_mod.AttackSequenceStep.model_fields["target_filters"].annotation = List[
-        AnyFilter
-    ]
-    steps_mod.CountStep.model_fields["filters"].annotation = List[AnyFilter]
-    steps_mod.MayRepeatNTimesStep.model_fields["steps_template"].annotation = List[
-        AnyStep
-    ]
-    steps_mod.ForEachStep.model_fields["steps_template"].annotation = List[AnyStep]
-    steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = List[
-        AnyStep
-    ]
-    steps_mod.RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = List[
-        AnyFilter
-    ]
-    ActiveEffect.model_fields["finishing_steps"].annotation = List[AnyStep]
-    StatAura.model_fields["count_filters"].annotation = List[AnyFilter]
-    OrFilter.model_fields["filters"].annotation = List[AnyFilter]
-    AndFilter.model_fields["filters"].annotation = List[AnyFilter]
-    CountMatchFilter.model_fields["sub_filters"].annotation = List[AnyFilter]
+    steps_mod.SelectStep.model_fields["filters"].annotation = list[AnyFilter]
+    steps_mod.MultiSelectStep.model_fields["filters"].annotation = list[AnyFilter]
+    steps_mod.AttackSequenceStep.model_fields["target_filters"].annotation = list[AnyFilter]
+    steps_mod.CountStep.model_fields["filters"].annotation = list[AnyFilter]
+    steps_mod.MayRepeatNTimesStep.model_fields["steps_template"].annotation = list[AnyStep]
+    steps_mod.ForEachStep.model_fields["steps_template"].annotation = list[AnyStep]
+    steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = list[AnyStep]
+    steps_mod.RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = list[AnyFilter]
+    ActiveEffect.model_fields["finishing_steps"].annotation = list[AnyStep]
+    StatAura.model_fields["count_filters"].annotation = list[AnyFilter]
+    OrFilter.model_fields["filters"].annotation = list[AnyFilter]
+    AndFilter.model_fields["filters"].annotation = list[AnyFilter]
+    CountMatchFilter.model_fields["sub_filters"].annotation = list[AnyFilter]
 
     for model_cls in (
         steps_mod.RespawnMinionAtHexStep,

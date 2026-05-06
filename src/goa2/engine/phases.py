@@ -1,15 +1,14 @@
 import logging
-from typing import List, Tuple
+
+from goa2.domain.models import Card, GamePhase
 from goa2.domain.state import GameState
-from goa2.domain.models import GamePhase, Card
 from goa2.domain.types import HeroID
 from goa2.engine.handler import push_steps
 from goa2.engine.steps import (
     FinishedExpiringEffectStep,
-    ResolveTieBreakerStep,
     GameStep,
+    ResolveTieBreakerStep,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +136,10 @@ def resolve_next_action(state: GameState):
         return
 
     # 1. Calculate current initiatives for all candidates
-    from goa2.engine.stats import get_computed_stat
     from goa2.domain.models import StatType
+    from goa2.engine.stats import get_computed_stat
 
-    candidates: List[Tuple[HeroID, int]] = []
+    candidates: list[tuple[HeroID, int]] = []
     for h_id in state.unresolved_hero_ids:
         hero = state.get_hero(h_id)
         if hero and hero.current_turn_card:
@@ -186,7 +185,7 @@ def resolve_next_action(state: GameState):
             RespawnHeroStep,
         )
 
-        steps: List[GameStep] = []
+        steps: list[GameStep] = []
         if hero_id not in state.entity_locations:
             steps.append(RespawnHeroStep(hero_id=hero_id))
         steps.extend(
@@ -224,7 +223,7 @@ def end_turn(state: GameState):
     finishing = EffectManager.expire_active_turn_effects(state)
 
     if finishing:
-        from goa2.engine.steps import SetActorStep, AdvanceTurnStep
+        from goa2.engine.steps import AdvanceTurnStep, SetActorStep
 
         finish_steps: list[GameStep] = []
         for source_id, steps in finishing:

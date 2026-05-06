@@ -31,8 +31,9 @@ Usage:
 """
 
 from __future__ import annotations
+
 import math
-from typing import List, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from goa2.domain.hex import Hex
 from goa2.domain.models.effect import ActiveEffect, EffectType, Shape
@@ -56,9 +57,7 @@ class TopologyService:
     # Primary API - Use these methods in game logic
     # -------------------------------------------------------------------------
 
-    def distance(
-        self, origin: Hex, target: Hex, state: "GameState"
-    ) -> Union[int, float]:
+    def distance(self, origin: Hex, target: Hex, state: GameState) -> int | float:
         """
         Returns topology-aware distance between two hexes.
 
@@ -75,7 +74,7 @@ class TopologyService:
             return math.inf
         return origin.distance(target)
 
-    def are_connected(self, origin: Hex, target: Hex, state: "GameState") -> bool:
+    def are_connected(self, origin: Hex, target: Hex, state: GameState) -> bool:
         """
         Check if two hexes can interact given active topology constraints.
 
@@ -96,7 +95,7 @@ class TopologyService:
                     return False
         return True
 
-    def are_adjacent(self, a: Hex, b: Hex, state: "GameState") -> bool:
+    def are_adjacent(self, a: Hex, b: Hex, state: GameState) -> bool:
         """
         Game-aware adjacency check: geometric adjacency + connectivity.
 
@@ -111,7 +110,7 @@ class TopologyService:
             return False
         return self.are_connected(a, b, state)
 
-    def get_connected_neighbors(self, hex: Hex, state: "GameState") -> List[Hex]:
+    def get_connected_neighbors(self, hex: Hex, state: GameState) -> list[Hex]:
         """
         Returns geometric neighbors that are connected (not split off).
 
@@ -123,9 +122,7 @@ class TopologyService:
         """
         return [n for n in hex.neighbors() if self.are_connected(hex, n, state)]
 
-    def get_connected_ring(
-        self, center: Hex, radius: int, state: "GameState"
-    ) -> List[Hex]:
+    def get_connected_ring(self, center: Hex, radius: int, state: GameState) -> list[Hex]:
         """
         Returns hexes at exactly `radius` distance that are connected.
 
@@ -146,11 +143,11 @@ class TopologyService:
     def get_traversable_neighbors(
         self,
         hex: Hex,
-        state: "GameState",
-        end_hex: Optional[Hex] = None,
-        actor_id: Optional[str] = None,
+        state: GameState,
+        end_hex: Hex | None = None,
+        actor_id: str | None = None,
         pass_through_obstacles: bool = False,
-    ) -> List[Hex]:
+    ) -> list[Hex]:
         """
         Returns neighbors that can be traversed during movement.
 
@@ -204,7 +201,7 @@ class TopologyService:
             result.append(n)
         return result
 
-    def is_straight_line(self, origin: Hex, target: Hex, state: "GameState") -> bool:
+    def is_straight_line(self, origin: Hex, target: Hex, state: GameState) -> bool:
         """
         Check if two hexes form a straight line and are in the same reality.
 
@@ -230,8 +227,8 @@ class TopologyService:
         target: Hex,
         scope_shape: Shape,
         scope_range: int,
-        state: "GameState",
-        direction: Optional[int] = None,
+        state: GameState,
+        direction: int | None = None,
     ) -> bool:
         """
         Consolidated scope check for effects/auras.
@@ -368,7 +365,7 @@ class TopologyService:
 # Singleton and Module-Level Convenience Functions
 # -----------------------------------------------------------------------------
 
-_topology_service: Optional[TopologyService] = None
+_topology_service: TopologyService | None = None
 
 
 def get_topology_service() -> TopologyService:
@@ -387,41 +384,37 @@ def get_topology_service() -> TopologyService:
 # These allow `from goa2.engine.topology import topology_distance` usage
 
 
-def topology_distance(
-    origin: Hex, target: Hex, state: "GameState"
-) -> Union[int, float]:
+def topology_distance(origin: Hex, target: Hex, state: GameState) -> int | float:
     """Module-level convenience for TopologyService.distance()."""
     return get_topology_service().distance(origin, target, state)
 
 
-def are_connected(origin: Hex, target: Hex, state: "GameState") -> bool:
+def are_connected(origin: Hex, target: Hex, state: GameState) -> bool:
     """Module-level convenience for TopologyService.are_connected()."""
     return get_topology_service().are_connected(origin, target, state)
 
 
-def are_adjacent(a: Hex, b: Hex, state: "GameState") -> bool:
+def are_adjacent(a: Hex, b: Hex, state: GameState) -> bool:
     """Module-level convenience for TopologyService.are_adjacent()."""
     return get_topology_service().are_adjacent(a, b, state)
 
 
-def get_connected_neighbors(hex: Hex, state: "GameState") -> List[Hex]:
+def get_connected_neighbors(hex: Hex, state: GameState) -> list[Hex]:
     """Module-level convenience for TopologyService.get_connected_neighbors()."""
     return get_topology_service().get_connected_neighbors(hex, state)
 
 
-def get_traversable_neighbors(
-    hex: Hex, state: "GameState", end_hex: Optional[Hex] = None
-) -> List[Hex]:
+def get_traversable_neighbors(hex: Hex, state: GameState, end_hex: Hex | None = None) -> list[Hex]:
     """Module-level convenience for TopologyService.get_traversable_neighbors()."""
     return get_topology_service().get_traversable_neighbors(hex, state, end_hex)
 
 
-def get_connected_ring(center: Hex, radius: int, state: "GameState") -> List[Hex]:
+def get_connected_ring(center: Hex, radius: int, state: GameState) -> list[Hex]:
     """Module-level convenience for TopologyService.get_connected_ring()."""
     return get_topology_service().get_connected_ring(center, radius, state)
 
 
-def is_straight_line(origin: Hex, target: Hex, state: "GameState") -> bool:
+def is_straight_line(origin: Hex, target: Hex, state: GameState) -> bool:
     """Module-level convenience for TopologyService.is_straight_line()."""
     return get_topology_service().is_straight_line(origin, target, state)
 
@@ -431,8 +424,8 @@ def hex_in_scope(
     target: Hex,
     scope_shape: Shape,
     scope_range: int,
-    state: "GameState",
-    direction: Optional[int] = None,
+    state: GameState,
+    direction: int | None = None,
 ) -> bool:
     """Module-level convenience for TopologyService.hex_in_scope()."""
     return get_topology_service().hex_in_scope(

@@ -1,11 +1,12 @@
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor, MinionType
-from goa2.engine.steps import SelectStep
 from goa2.domain.factory import EntityFactory
-from goa2.engine.filters import UnitTypeFilter
 from goa2.domain.hex import Hex
+from goa2.domain.models import MinionType, Team, TeamColor
+from goa2.domain.state import GameState
+from goa2.engine.filters import UnitTypeFilter
+from goa2.engine.steps import SelectStep
 
 
 @pytest.fixture

@@ -13,30 +13,30 @@ Key behaviors:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board
-from goa2.domain.models import (
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
-    TeamColor,
-    Team,
-    PassiveTrigger,
-)
-from goa2.domain.hex import Hex
-from goa2.domain.types import HeroID, UnitID
-from goa2.engine.steps import (
-    CheckPassiveAbilitiesStep,
-    OfferPassiveStep,
-    MarkPassiveUsedStep,
-    MoveSequenceStep,
-)
 
 # Import to register the effect
 import goa2.scripts.arien_effects  # noqa: F401
+from goa2.domain.board import Board
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
+    PassiveTrigger,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID, UnitID
+from goa2.engine.steps import (
+    CheckPassiveAbilitiesStep,
+    MarkPassiveUsedStep,
+    MoveSequenceStep,
+    OfferPassiveStep,
+)
 
 
 @pytest.fixture

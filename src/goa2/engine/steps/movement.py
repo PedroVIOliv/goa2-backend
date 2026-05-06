@@ -2,23 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
 import logging
+from typing import Any
+
 from pydantic import Field
 
-from goa2.engine.steps.base import GameStep, StepResult
-from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID, UnitID
-from goa2.domain.models import ActionType, Card, Hero, StepType, TargetType, TeamColor, Token, TokenType
-from goa2.domain.models.effect import EffectType
+from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType, create_input_request
-from goa2.domain.events import GameEvent, GameEventType, _hex_dict
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    Hero,
+    StepType,
+    TargetType,
+    TeamColor,
+    Token,
+    TokenType,
+)
+from goa2.domain.models.effect import EffectType
+from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine import rules
-from goa2.engine.topology import are_connected
 from goa2.engine.filters_base import FilterCondition
-from goa2.engine.filters_hex import RangeFilter
-
+from goa2.engine.steps.base import GameStep, StepResult
+from goa2.engine.topology import are_connected
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +42,17 @@ class MoveUnitStep(GameStep):
 
     type: StepType = StepType.MOVE_UNIT
 
-    unit_id: Optional[str] = None
-    unit_key: Optional[str] = None
+    unit_id: str | None = None
+    unit_key: str | None = None
 
     destination_key: str = "target_hex"
-    target_hex_arg: Optional[Hex] = None
+    target_hex_arg: Hex | None = None
 
     range_val: int = 1
     is_movement_action: bool = False
     pass_through_obstacles: bool = False
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -119,9 +127,7 @@ class MoveUnitStep(GameStep):
                 end=dest_hex,
                 max_steps=self.range_val,
                 state=state,
-                actor_id=(
-                    str(state.current_actor_id) if state.current_actor_id else None
-                ),
+                actor_id=(str(state.current_actor_id) if state.current_actor_id else None),
                 pass_through_obstacles=self.pass_through_obstacles,
             )
 
@@ -134,11 +140,7 @@ class MoveUnitStep(GameStep):
         # Mine detection: only enemy heroes trigger mines
         moving_entity = state.get_entity(BoardEntityID(target_unit_id))
         moving_team = moving_entity.team if isinstance(moving_entity, Hero) else None
-        if (
-            moving_team
-            and "triggered_mine_ids" not in context
-            and start_hex != dest_hex
-        ):
+        if moving_team and "triggered_mine_ids" not in context and start_hex != dest_hex:
             has_enemy_mines = any(
                 token.is_passable
                 and token.owner_id
@@ -150,9 +152,7 @@ class MoveUnitStep(GameStep):
             if has_enemy_mines:
                 from goa2.engine.rules import find_reachable_with_mines
 
-                current_actor = (
-                    str(state.current_actor_id) if state.current_actor_id else None
-                )
+                current_actor = str(state.current_actor_id) if state.current_actor_id else None
                 reachable = find_reachable_with_mines(
                     board=state.board,
                     start=start_hex,
@@ -161,7 +161,6 @@ class MoveUnitStep(GameStep):
                     actor_id=current_actor,
                     moving_team=moving_team,
                 )
-                from goa2.engine.rules import MinePathOption
 
                 mine_options = reachable.get(dest_hex, [])
                 if len(mine_options) > 1:
@@ -188,7 +187,7 @@ class MoveUnitStep(GameStep):
         to_hex_dict = _hex_dict(dest_hex)
         state.move_unit(UnitID(target_unit_id), dest_hex)
 
-        new_steps: List[GameStep] = []
+        new_steps: list[GameStep] = []
         triggered_mines = context.get("triggered_mine_ids", [])
         if triggered_mines:
             context["mine_victim_id"] = target_unit_id
@@ -218,7 +217,7 @@ class MoveSequenceStep(GameStep):
     """
 
     type: StepType = StepType.MOVE_SEQUENCE
-    unit_id: Optional[str] = None
+    unit_id: str | None = None
     range_val: int = 1
     destination_key: str = "target_hex"
     is_mandatory: bool = True
@@ -249,15 +248,14 @@ class MoveSequenceStep(GameStep):
 
         return max_range
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
+
         actor_id = self.unit_id or state.current_actor_id
 
         # Calculate effective range (capped by MOVEMENT_ZONE effects)
         effective_range = (
-            self._get_effective_range(state, str(actor_id))
-            if actor_id
-            else self.range_val
+            self._get_effective_range(state, str(actor_id)) if actor_id else self.range_val
         )
 
         # Auto-detect pass_through_obstacles from hero's active movement auras
@@ -289,9 +287,7 @@ class MoveSequenceStep(GameStep):
                         continue
                     if not state.validator._is_effect_active(effect, state):
                         continue
-                    if not state.validator._is_in_scope(
-                        effect, str(actor_id), actor_loc, state
-                    ):
+                    if not state.validator._is_in_scope(effect, str(actor_id), actor_loc, state):
                         continue
                     pass_through = True
                     break
@@ -318,7 +314,7 @@ class MoveSequenceStep(GameStep):
         # MovementPathFilter now always allows the current hex.
         # We add OccupiedFilter(is_occupied=False, exclude_id=actor_id)
         # to ensure other units block movement but the moving unit doesn't block itself.
-        filters: List[FilterCondition] = [
+        filters: list[FilterCondition] = [
             ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
             MovementPathFilter(
                 range_val=effective_range,
@@ -338,9 +334,7 @@ class MoveSequenceStep(GameStep):
         if self.force_full_distance:
             from goa2.engine.filters_hex import RangeFilter
 
-            filters.append(
-                RangeFilter(min_range=effective_range, max_range=effective_range)
-            )
+            filters.append(RangeFilter(min_range=effective_range, max_range=effective_range))
 
         # If range is 0, MovementPathFilter will only allow current hex.
         # OccupiedFilter will also allow it because of exclude_id.
@@ -376,10 +370,10 @@ class FastTravelStep(GameStep):
     """
 
     type: StepType = StepType.FAST_TRAVEL
-    unit_id: Optional[str] = None
+    unit_id: str | None = None
     destination_key: str = "target_hex"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         logger.debug("   [WARNING] FastTravelStep is deprecated. Use FastTravelSequenceStep.")
         actor_id = self.unit_id or state.current_actor_id
         dest = context.get(self.destination_key)
@@ -400,11 +394,12 @@ class FastTravelSequenceStep(GameStep):
     """
 
     type: StepType = StepType.FAST_TRAVEL_SEQUENCE
-    unit_id: Optional[str] = None
+    unit_id: str | None = None
     destination_key: str = "target_hex"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
+
         actor_id = self.unit_id or state.current_actor_id
 
         if context.get(self.destination_key):
@@ -456,12 +451,10 @@ class MinePathChoiceStep(GameStep):
     destination_key: str = "target_hex"
     range_val: int = 1
     output_key: str = "triggered_mine_ids"
-    unit_id: Optional[str] = None
-    unit_key: Optional[str] = None
+    unit_id: str | None = None
+    unit_key: str | None = None
 
-    def _get_moving_unit_id(
-        self, state: GameState, context: Dict[str, Any]
-    ) -> Optional[str]:
+    def _get_moving_unit_id(self, state: GameState, context: dict[str, Any]) -> str | None:
         if self.unit_id:
             return self.unit_id
         if self.unit_key:
@@ -470,7 +463,7 @@ class MinePathChoiceStep(GameStep):
                 return str(val)
         return str(state.current_actor_id) if state.current_actor_id else None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         dest_val = context.get(self.destination_key)
         if not dest_val:
             context[self.output_key] = []
@@ -509,9 +502,7 @@ class MinePathChoiceStep(GameStep):
 
         mine_options = reachable.get(dest_hex, [])
         if len(mine_options) <= 1:
-            context[self.output_key] = (
-                list(mine_options[0].mine_ids) if mine_options else []
-            )
+            context[self.output_key] = list(mine_options[0].mine_ids) if mine_options else []
             return StepResult(is_finished=True)
 
         if self.pending_input:
@@ -565,40 +556,32 @@ class TriggerMineStep(GameStep):
     mine_ids_key: str = "triggered_mine_ids"
     victim_key: str = "mine_victim_id"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.cards import ForceDiscardStep
         from goa2.engine.steps.markers import _remove_token_from_board
+
         mine_ids = context.get(self.mine_ids_key, [])
         if not mine_ids:
             return StepResult(is_finished=True)
 
-        events: List[GameEvent] = []
+        events: list[GameEvent] = []
         blast_count = 0
         for mine_id in mine_ids:
             token = state.get_entity(BoardEntityID(mine_id))
             from_hex, _ = _remove_token_from_board(state, mine_id)
-            is_blast = (
-                hasattr(token, "token_type")
-                and token.token_type == TokenType.MINE_BLAST
-            )
+            is_blast = hasattr(token, "token_type") and token.token_type == TokenType.MINE_BLAST
             if is_blast:
                 blast_count += 1
             if from_hex and token:
                 events.append(
                     GameEvent(
                         event_type=GameEventType.MINE_TRIGGERED,
-                        actor_id=(
-                            str(state.current_actor_id)
-                            if state.current_actor_id
-                            else None
-                        ),
+                        actor_id=(str(state.current_actor_id) if state.current_actor_id else None),
                         target_id=mine_id,
                         from_hex=_hex_dict(from_hex),
                         metadata={
                             "token_type": (
-                                token.token_type.value
-                                if hasattr(token, "token_type")
-                                else None
+                                token.token_type.value if hasattr(token, "token_type") else None
                             ),
                             "is_blast": is_blast,
                         },
@@ -609,7 +592,7 @@ class TriggerMineStep(GameStep):
         context["rollback_disabled"] = True
 
         # Each blast mine forces the moved hero to discard a card (if able)
-        new_steps: List[GameStep] = []
+        new_steps: list[GameStep] = []
         for _ in range(blast_count):
             new_steps.append(ForceDiscardStep(victim_key=self.victim_key))
 
@@ -625,11 +608,12 @@ class ResolvePreActionMovementStep(GameStep):
     """
 
     type: StepType = StepType.RESOLVE_PRE_ACTION_MOVEMENT
-    hero_id: Optional[str] = None
-    hero_key: Optional[str] = None
+    hero_id: str | None = None
+    hero_key: str | None = None
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
+
         hero_id = self.hero_id
         if not hero_id and self.hero_key:
             hero_id = context.get(self.hero_key)
@@ -653,9 +637,7 @@ class ResolvePreActionMovementStep(GameStep):
 
         from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter
 
-        logger.debug(
-            f"   [PRE-ACTION MOVE] Granting {hero_id} optional move up to {move_range}"
-        )
+        logger.debug(f"   [PRE-ACTION MOVE] Granting {hero_id} optional move up to {move_range}")
 
         return StepResult(
             is_finished=True,
@@ -688,12 +670,12 @@ class PlaceUnitStep(GameStep):
     """
 
     type: StepType = StepType.PLACE_UNIT
-    unit_id: Optional[str] = None  # If None, checks unit_key, then current_actor
-    unit_key: Optional[str] = None  # Look up unit_id in context
+    unit_id: str | None = None  # If None, checks unit_key, then current_actor
+    unit_key: str | None = None  # Look up unit_id in context
     destination_key: str = "target_hex"  # Where to look in context
-    target_hex_arg: Optional[Hex] = None  # Explicit argument
+    target_hex_arg: Hex | None = None  # Explicit argument
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -778,12 +760,12 @@ class SwapUnitsStep(GameStep):
     """
 
     type: StepType = StepType.SWAP_UNITS
-    unit_a_id: Optional[str] = None
-    unit_b_id: Optional[str] = None
-    unit_a_key: Optional[str] = None  # Read unit_a from context
-    unit_b_key: Optional[str] = None  # Read unit_b from context
+    unit_a_id: str | None = None
+    unit_b_id: str | None = None
+    unit_a_key: str | None = None  # Read unit_a from context
+    unit_b_key: str | None = None  # Read unit_b from context
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -830,9 +812,7 @@ class SwapUnitsStep(GameStep):
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
-        logger.debug(
-            f"   [LOGIC] Swapping {actual_unit_a} ({loc_a}) <-> {actual_unit_b} ({loc_b})"
-        )
+        logger.debug(f"   [LOGIC] Swapping {actual_unit_a} ({loc_a}) <-> {actual_unit_b} ({loc_b})")
 
         # Use Primitive operations to ensure cache consistency
         # 1. Remove both
@@ -871,18 +851,17 @@ class PushUnitStep(GameStep):
     """
 
     type: StepType = StepType.PUSH_UNIT
-    target_id: Optional[str] = None  # Direct target ID
-    target_key: Optional[str] = None  # Read target from context
-    source_hex: Optional[Hex] = None  # If None, uses current actor's location
+    target_id: str | None = None  # Direct target ID
+    target_key: str | None = None  # Read target from context
+    source_hex: Hex | None = None  # If None, uses current actor's location
     distance: int = 1  # Default/fallback distance
-    distance_key: Optional[str] = None  # Read distance from context
-    collision_output_key: Optional[str] = None  # If set, stores True on collision
-    ignore_obstacles: bool = (
-        False  # Path passes through obstacles; land on last legal hex
-    )
+    distance_key: str | None = None  # Read distance from context
+    collision_output_key: str | None = None  # If set, stores True on collision
+    ignore_obstacles: bool = False  # Path passes through obstacles; land on last legal hex
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -909,9 +888,7 @@ class PushUnitStep(GameStep):
         src_hex = self.source_hex
         if not src_hex:
             if state.current_actor_id:
-                src_hex = state.entity_locations.get(
-                    BoardEntityID(state.current_actor_id)
-                )
+                src_hex = state.entity_locations.get(BoardEntityID(state.current_actor_id))
 
         if not src_hex:
             logger.debug("   [ERROR] No source for push.")
@@ -939,7 +916,7 @@ class PushUnitStep(GameStep):
             )
             return StepResult(is_finished=True)
 
-        path: List[Hex] = [target_loc]
+        path: list[Hex] = [target_loc]
         was_stopped_by_obstacle = False
         for _ in range(actual_distance):
             prev = path[-1]
@@ -961,11 +938,7 @@ class PushUnitStep(GameStep):
             is_obs = state.validator.is_obstacle_for_actor(
                 state,
                 next_hex,
-                (
-                    str(state.current_actor_id)
-                    if state.current_actor_id
-                    else actual_target_id
-                ),
+                (str(state.current_actor_id) if state.current_actor_id else actual_target_id),
             )
             if is_obs:
                 if state.validator.is_passable_token(state, next_hex):
@@ -994,11 +967,7 @@ class PushUnitStep(GameStep):
             while len(path) > 1 and state.validator.is_obstacle_for_actor(
                 state,
                 path[-1],
-                (
-                    str(state.current_actor_id)
-                    if state.current_actor_id
-                    else actual_target_id
-                ),
+                (str(state.current_actor_id) if state.current_actor_id else actual_target_id),
             ):
                 path.pop()
                 trimmed_obs += 1
@@ -1025,23 +994,19 @@ class PushUnitStep(GameStep):
         from goa2.domain.models.enums import PassiveTrigger
 
         context["push_victim_id"] = actual_target_id
-        post_push_steps: List[GameStep] = []
+        post_push_steps: list[GameStep] = []
 
         # Collect enemy mine IDs from the path (hexes between start and landing, exclusive)
         if pushed_dist > 0:
             pushed_entity = state.get_entity(BoardEntityID(actual_target_id))
-            pushed_team = (
-                pushed_entity.team if isinstance(pushed_entity, Hero) else None
-            )
+            pushed_team = pushed_entity.team if isinstance(pushed_entity, Hero) else None
             if pushed_team:
-                enemy_mine_ids: List[str] = []
+                enemy_mine_ids: list[str] = []
                 for hx in path[1:-1]:
                     if state.validator.is_passable_token(state, hx):
                         tile = state.board.get_tile(hx)
                         if tile and tile.occupant_id:
-                            tok_entity = state.get_entity(
-                                BoardEntityID(str(tile.occupant_id))
-                            )
+                            tok_entity = state.get_entity(BoardEntityID(str(tile.occupant_id)))
                             if isinstance(tok_entity, Token) and tok_entity.owner_id:
                                 owner_hero = state.get_hero(tok_entity.owner_id)
                                 if owner_hero and owner_hero.team != pushed_team:
@@ -1064,9 +1029,7 @@ class PushUnitStep(GameStep):
             events=[
                 GameEvent(
                     event_type=(
-                        GameEventType.TOKEN_PUSHED
-                        if is_token_target
-                        else GameEventType.UNIT_PUSHED
+                        GameEventType.TOKEN_PUSHED if is_token_target else GameEventType.UNIT_PUSHED
                     ),
                     actor_id=str(actor_id) if actor_id else None,
                     target_id=actual_target_id,
@@ -1089,9 +1052,9 @@ class ResolveDisplacementStep(GameStep):
 
     type: StepType = StepType.RESOLVE_DISPLACEMENT
     # List of (UnitID, OriginalHex)
-    displacements: List[Tuple[str, Hex]] = Field(default_factory=list)
+    displacements: list[tuple[str, Hex]] = Field(default_factory=list)
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if not self.displacements:
             return StepResult(is_finished=True)
 
@@ -1159,9 +1122,7 @@ class ResolveDisplacementStep(GameStep):
             )
 
         uid, origin = active_group[0]
-        remaining = active_group[1:] + (
-            second_group if active_group is first_group else []
-        )
+        remaining = active_group[1:] + (second_group if active_group is first_group else [])
 
         from goa2.engine.map_logic import find_nearest_empty_hexes
 
@@ -1240,8 +1201,9 @@ class ForceDefenseCardMovementStep(GameStep):
     type: StepType = StepType.FORCE_DEFENSE_CARD_MOVEMENT
     defender_key: str = "victim_id"
 
-    def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.utility import SetActorStep
+
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -1268,8 +1230,6 @@ class ForceDefenseCardMovementStep(GameStep):
         if not card:
             return StepResult(is_finished=True)
 
-        from goa2.domain.models import ActionType
-
         has_secondary_movement = ActionType.MOVEMENT in card.secondary_actions
         has_primary_movement = card.primary_action == ActionType.MOVEMENT
 
@@ -1294,7 +1254,7 @@ class ForceDefenseCardMovementStep(GameStep):
             return StepResult(is_finished=True)
 
         # Wrap in actor switch: set defender as actor, push movement, restore
-        new_steps: List[GameStep] = [
+        new_steps: list[GameStep] = [
             SetActorStep(
                 actor_id=str(defender_id),
                 save_key="sj_saved_actor",
@@ -1312,8 +1272,8 @@ class ForceDefenseCardMovementStep(GameStep):
         self,
         state: GameState,
         hero: Hero,
-        card: "Card",
-    ) -> List[GameStep]:
+        card: Card,
+    ) -> list[GameStep]:
         """Build steps from the card's primary effect, injecting straight-line constraints."""
         from goa2.engine.effects import CardEffectRegistry
         from goa2.engine.stats import compute_card_stats
@@ -1333,4 +1293,3 @@ class ForceDefenseCardMovementStep(GameStep):
                 step.force_full_distance = True
 
         return steps
-

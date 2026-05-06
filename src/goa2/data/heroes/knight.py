@@ -1,5 +1,6 @@
-from goa2.domain.models import Hero, Card, CardTier, CardColor, ActionType, StatType
-from goa2.domain.types import HeroID, CardID
+from goa2.domain.models import ActionType, Card, CardColor, CardTier, Hero, StatType
+from goa2.domain.types import CardID, HeroID
+
 from .registry import HeroRegistry
 
 

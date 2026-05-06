@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
-from typing import List, Optional, Union
+from dataclasses import dataclass, field
 
-from goa2.domain.state import GameState
-from goa2.domain.models import GamePhase
-from goa2.domain.input import InputRequest, InputResponse
-from goa2.domain.events import GameEvent
-from goa2.engine.steps import FinishedExpiringEffectStep, GameStep, StepResult
 import goa2.engine.step_types as _step_types  # noqa: F401 — patches model annotations
-
+from goa2.domain.events import GameEvent
+from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.models import GamePhase
+from goa2.domain.state import GameState
+from goa2.engine.steps import FinishedExpiringEffectStep, GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +17,11 @@ logger = logging.getLogger(__name__)
 class StackResult:
     """Bundles the result of processing the execution stack."""
 
-    input_request: Optional[InputRequest] = None
-    events: List[GameEvent] = field(default_factory=list)
+    input_request: InputRequest | None = None
+    events: list[GameEvent] = field(default_factory=list)
 
 
-def submit_input(state: GameState, response: Union[InputResponse, dict]) -> None:
+def submit_input(state: GameState, response: InputResponse | dict) -> None:
     """Validate and apply player input to the pending step on the stack."""
     if not state.execution_stack:
         raise ValueError("No pending step to receive input")
@@ -40,7 +38,7 @@ def process_stack(state: GameState) -> StackResult:
     """Process the execution stack, returning StackResult with events."""
     safety_counter = 0
     MAX_STEPS = 1000
-    collected_events: List[GameEvent] = []
+    collected_events: list[GameEvent] = []
 
     if state.phase == GamePhase.GAME_OVER:
         return StackResult()
@@ -74,9 +72,7 @@ def process_stack(state: GameState) -> StackResult:
                 and result.input_request.player_id != str(state.current_actor_id)
             ):
                 state.execution_context["rollback_disabled"] = True
-            return StackResult(
-                input_request=result.input_request, events=collected_events
-            )
+            return StackResult(input_request=result.input_request, events=collected_events)
 
         if not result.is_finished:
             state.execution_stack.append(current_step)
@@ -92,11 +88,13 @@ def _clear_to_finalize(state: GameState):
     Clears all steps from the stack until ConfirmResolutionStep or FinalizeHeroTurnStep is found.
     Stops at ConfirmResolutionStep so the player can review the abort and optionally rollback.
     """
-    from goa2.engine.steps import FinalizeHeroTurnStep, ConfirmResolutionStep
+    from goa2.engine.steps import ConfirmResolutionStep, FinalizeHeroTurnStep
 
     while state.execution_stack:
         step = state.execution_stack[-1]
-        if isinstance(step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)):
+        if isinstance(
+            step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+        ):
             break
         state.execution_stack.pop()
         logger.debug("Skipped step: %s", step.type)

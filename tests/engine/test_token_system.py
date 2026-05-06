@@ -1,24 +1,20 @@
-import pytest
-
 from goa2.domain.board import Board, Zone
-from goa2.domain.tile import Tile
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    TOKEN_SUPPLY,
     ActionType,
     Card,
     CardColor,
     CardTier,
-    Team,
-    TeamColor,
     Hero,
     Minion,
     MinionType,
+    Team,
+    TeamColor,
     Token,
     TokenType,
-    TOKEN_SUPPLY,
 )
-from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.models.effect import (
     ActiveEffect,
     DurationType,
@@ -26,9 +22,11 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.state import GameState
-from goa2.engine.setup import GameSetup
+from goa2.domain.tile import Tile
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.setup import GameSetup
 from goa2.engine.steps import (
     EndPhaseCleanupStep,
     LanePushStep,
@@ -65,9 +63,7 @@ def _make_state() -> GameState:
 
 
 def test_game_setup_initializes_token_pool():
-    state = GameSetup.create_game(
-        "src/goa2/data/maps/forgotten_island.json", ["Arien"], ["Wasp"]
-    )
+    state = GameSetup.create_game("src/goa2/data/maps/forgotten_island.json", ["Arien"], ["Wasp"])
     assert set(state.token_pool.keys()) == set(TokenType)
     for token_type, expected_count in TOKEN_SUPPLY.items():
         assert len(state.token_pool[token_type]) == expected_count

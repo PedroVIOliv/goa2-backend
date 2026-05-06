@@ -3,32 +3,28 @@
 import pytest
 
 import goa2.scripts.min_effects  # noqa: F401
-
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     Card,
     Hero,
-    Unit,
     Team,
 )
-from goa2.domain.models.enums import (
-    CardState,
-    StatType,
-    TokenType,
-    CardColor,
-    CardTier,
-    ActionType,
-    TeamColor,
-)
 from goa2.domain.models.effect import EffectType
+from goa2.domain.models.enums import (
+    ActionType,
+    CardColor,
+    CardState,
+    CardTier,
+    StatType,
+    StepType,
+    TeamColor,
+    TokenType,
+)
 from goa2.domain.models.token import Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import ResolveCardStep
-from goa2.domain.models.enums import StepType
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -245,9 +241,7 @@ class TestSmokeBombDefenseInvalid:
         }
 
         steps = effect.build_defense_steps(defense_state, hero, card, stats, context)
-        assert (
-            len(steps) == 8
-        )  # CountStep + 2x CheckContextCondition + 5 conditional steps
+        assert len(steps) == 8  # CountStep + 2x CheckContextCondition + 5 conditional steps
         assert steps[0].type == StepType.COUNT
 
     def test_poof_defense_valid_with_smoke_bomb_in_range(self, defense_state):
@@ -388,20 +382,16 @@ class TestInnerStrength:
 
     def test_double_items_effect_doubles_item_bonuses(self, inner_strength_state):
         """DOUBLE_ITEMS effect should double item bonuses in stat computation."""
+        from goa2.domain.models.effect import DurationType, EffectScope, Shape
         from goa2.engine.effect_manager import EffectManager
-        from goa2.domain.models.effect import EffectScope, Shape, DurationType
         from goa2.engine.stats import get_computed_stat
 
         state = inner_strength_state
         hero = state.get_hero(HeroID("hero_min"))
 
         # Before effect: items give +2 attack, +1 defense
-        assert (
-            get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 5
-        )  # 3 base + 2 item
-        assert (
-            get_computed_stat(state, hero.id, StatType.DEFENSE, 2) == 3
-        )  # 2 base + 1 item
+        assert get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 5  # 3 base + 2 item
+        assert get_computed_stat(state, hero.id, StatType.DEFENSE, 2) == 3  # 2 base + 1 item
 
         # Create DOUBLE_ITEMS effect
         EffectManager.create_effect(
@@ -414,17 +404,13 @@ class TestInnerStrength:
         )
 
         # After effect: items doubled
-        assert (
-            get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 7
-        )  # 3 base + 4 item
-        assert (
-            get_computed_stat(state, hero.id, StatType.DEFENSE, 2) == 4
-        )  # 2 base + 2 item
+        assert get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 7  # 3 base + 4 item
+        assert get_computed_stat(state, hero.id, StatType.DEFENSE, 2) == 4  # 2 base + 2 item
 
     def test_double_items_does_not_affect_enemy(self, inner_strength_state):
         """DOUBLE_ITEMS only affects the source hero, not enemies."""
+        from goa2.domain.models.effect import DurationType, EffectScope, Shape
         from goa2.engine.effect_manager import EffectManager
-        from goa2.domain.models.effect import EffectScope, Shape, DurationType
         from goa2.engine.stats import get_computed_stat
 
         state = inner_strength_state
@@ -441,14 +427,12 @@ class TestInnerStrength:
         )
 
         # Enemy's items should NOT be doubled
-        assert (
-            get_computed_stat(state, enemy.id, StatType.ATTACK, 3) == 4
-        )  # 3 + 1 (not doubled)
+        assert get_computed_stat(state, enemy.id, StatType.ATTACK, 3) == 4  # 3 + 1 (not doubled)
 
     def test_double_items_no_effect_when_no_items(self, inner_strength_state):
         """DOUBLE_ITEMS has no effect when hero has 0 items for that stat."""
+        from goa2.domain.models.effect import DurationType, EffectScope, Shape
         from goa2.engine.effect_manager import EffectManager
-        from goa2.domain.models.effect import EffectScope, Shape, DurationType
         from goa2.engine.stats import get_computed_stat
 
         state = inner_strength_state
@@ -464,9 +448,7 @@ class TestInnerStrength:
             is_active=True,
         )
 
-        assert (
-            get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 3
-        )  # No items to double
+        assert get_computed_stat(state, hero.id, StatType.ATTACK, 3) == 3  # No items to double
 
 
 # ===========================================================================
@@ -645,9 +627,7 @@ def flurry_state():
         board=board,
         teams={
             TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero], minions=[]),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[enemy1, enemy2], minions=[]
-            ),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[enemy1, enemy2], minions=[]),
         },
     )
     state.place_entity("hero_min", Hex(q=0, r=0, s=0))
@@ -660,8 +640,8 @@ def flurry_state():
 class TestFlurryOfBlows:
     def test_passive_config(self):
         """Flurry of Blows should have AFTER_ATTACK passive trigger."""
-        from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         effect = CardEffectRegistry.get("flurry_of_blows")
         config = effect.get_passive_config()
@@ -672,8 +652,8 @@ class TestFlurryOfBlows:
 
     def test_passive_steps_include_attack(self, flurry_state):
         """Passive steps should rebuild the attack with target exclusion."""
-        from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         hero = flurry_state.get_hero(HeroID("hero_min"))
         effect = CardEffectRegistry.get("flurry_of_blows")
@@ -706,8 +686,8 @@ class TestFlurryOfBlows:
 
     def test_passive_skips_when_flurry_repeat(self, flurry_state):
         """Passive should not trigger when is_flurry_repeat is set (prevents recursion)."""
-        from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         hero = flurry_state.get_hero(HeroID("hero_min"))
         effect = CardEffectRegistry.get("flurry_of_blows")
@@ -730,8 +710,8 @@ class TestFlurryOfBlows:
 
     def test_passive_skips_without_attack_info(self, flurry_state):
         """Passive returns no steps if attack_effect_id/attack_card_id not in context."""
-        from goa2.engine.effects import CardEffectRegistry
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.effects import CardEffectRegistry
 
         hero = flurry_state.get_hero(HeroID("hero_min"))
         effect = CardEffectRegistry.get("flurry_of_blows")
@@ -747,10 +727,10 @@ class TestFlurryOfBlows:
 
     def test_attack_steps_have_exclude_filter(self, flurry_state):
         """Rebuilt attack steps should exclude the last target."""
+        from goa2.domain.models.enums import PassiveTrigger
         from goa2.engine.effects import CardEffectRegistry
         from goa2.engine.filters import ExcludeIdentityFilter
         from goa2.engine.steps import AttackSequenceStep
-        from goa2.domain.models.enums import PassiveTrigger
 
         hero = flurry_state.get_hero(HeroID("hero_min"))
         effect = CardEffectRegistry.get("flurry_of_blows")
@@ -785,9 +765,8 @@ class TestFlurryOfBlows:
     def test_flurry_no_target_aborts_turn(self, flurry_state):
         """If the flurry repeat finds no valid different target, the turn should abort (mandatory)."""
         from goa2.engine.steps import (
-            SetContextFlagStep,
             CheckPassiveAbilitiesStep,
-            FinalizeHeroTurnStep,
+            SetContextFlagStep,
         )
 
         state = flurry_state

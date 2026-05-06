@@ -1,25 +1,24 @@
 """Tests for Bain's Drinking Buddies and Another One! card effects."""
 
 import pytest
-import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 
-from goa2.domain.state import GameState
+import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-    CardState,
 )
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
-from goa2.engine.steps import ResolveCardStep, RetrieveCardStep
 from goa2.engine.handler import process_stack, push_steps
-
+from goa2.engine.steps import ResolveCardStep, RetrieveCardStep
 
 # ---------------------------------------------------------------------------
 # Card factories
@@ -134,9 +133,12 @@ class TestRetrieveCardStepHeroKey:
         context["target_retrieve_card"] = "ally_discard"
         context["retrieve_target"] = "hero_ally"
 
-        push_steps(state, [
-            RetrieveCardStep(card_key="target_retrieve_card", hero_key="retrieve_target"),
-        ])
+        push_steps(
+            state,
+            [
+                RetrieveCardStep(card_key="target_retrieve_card", hero_key="retrieve_target"),
+            ],
+        )
         process_stack(state).input_request
 
         # Ally should have the card back in hand
@@ -177,9 +179,12 @@ class TestRetrieveCardStepHeroKey:
         state.execution_context["my_card"] = "some_card"
         state.execution_context["target_hero"] = None
 
-        push_steps(state, [
-            RetrieveCardStep(card_key="my_card", hero_key="target_hero"),
-        ])
+        push_steps(
+            state,
+            [
+                RetrieveCardStep(card_key="my_card", hero_key="target_hero"),
+            ],
+        )
         result = process_stack(state).input_request
         assert result is None  # Stack finished, no crash
 
@@ -393,7 +398,7 @@ class TestAnotherOne:
 
     def test_creates_delayed_trigger_effect(self, board):
         """After resolving, a THIS_TURN DELAYED_TRIGGER effect should exist."""
-        from goa2.domain.models.effect import EffectType, DurationType
+        from goa2.domain.models.effect import DurationType, EffectType
 
         ally = Hero(id=HeroID("hero_ally"), name="Ally", deck=[], hand=[])
         ally_discard = _make_filler_card("ally_discard_1")
@@ -401,8 +406,11 @@ class TestAnotherOne:
         ally.discard_pile = [ally_discard]
 
         card = _make_skill_card(
-            "another_one", "Another One!", "another_one",
-            tier=CardTier.III, radius=3,
+            "another_one",
+            "Another One!",
+            "another_one",
+            tier=CardTier.III,
+            radius=3,
         )
         state = _build_state(board, card, ally=ally)
 
@@ -428,16 +436,15 @@ class TestAnotherOne:
 
         # A delayed trigger effect should have been created
         delayed = [
-            e for e in state.active_effects
-            if e.effect_type == EffectType.DELAYED_TRIGGER
-            and e.duration == DurationType.THIS_TURN
+            e
+            for e in state.active_effects
+            if e.effect_type == EffectType.DELAYED_TRIGGER and e.duration == DurationType.THIS_TURN
         ]
         assert len(delayed) == 1
         assert len(delayed[0].finishing_steps) > 0
 
     def test_delayed_trigger_fires_at_end_of_turn(self, board):
         """When end_turn() is called, the finishing steps should execute."""
-        from goa2.domain.models.effect import EffectType, DurationType
         from goa2.engine.phases import end_turn
 
         ally = Hero(id=HeroID("hero_ally"), name="Ally", deck=[], hand=[])
@@ -448,8 +455,11 @@ class TestAnotherOne:
         ally.discard_pile = [ally_d1, ally_d2]
 
         card = _make_skill_card(
-            "another_one", "Another One!", "another_one",
-            tier=CardTier.III, radius=3,
+            "another_one",
+            "Another One!",
+            "another_one",
+            tier=CardTier.III,
+            radius=3,
         )
         state = _build_state(board, card, ally=ally)
 

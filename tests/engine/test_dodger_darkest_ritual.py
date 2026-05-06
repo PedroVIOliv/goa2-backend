@@ -1,9 +1,6 @@
 """Tests for Dodger's Darkest Ritual card effect (GainItemStep)."""
 
-import pytest
-
 import goa2.scripts.dodger_effects  # noqa: F401 — registers effects
-
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (

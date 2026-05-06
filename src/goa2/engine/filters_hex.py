@@ -1,24 +1,23 @@
 from __future__ import annotations
-from typing import Optional, Any, Literal
 
-from goa2.domain.state import GameState
-from goa2.domain.models import FilterType
+from typing import Any, Literal
+
 from goa2.domain.hex import Hex
+from goa2.domain.models import FilterType
+from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
-from goa2.engine.topology import get_topology_service
 
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
 from goa2.engine.filters_base import FilterCondition
+from goa2.engine.topology import get_topology_service
 
 
 class ObstacleFilter(FilterCondition):
     type: FilterType = FilterType.OCCUPIED
     is_obstacle: bool = False  # False = Must be empty, True = Must be occupied
-    exclude_id: Optional[str] = (
-        None  # If set, ignore this entity when checking occupancy
-    )
+    exclude_id: str | None = None  # If set, ignore this entity when checking occupancy
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if isinstance(candidate, Hex):
@@ -28,9 +27,7 @@ class ObstacleFilter(FilterCondition):
             actor_id = str(state.current_actor_id) if state.current_actor_id else None
 
             # Use validation service for context-aware obstacle check
-            is_obs = state.validator.is_obstacle_for_actor(
-                state, candidate, actor_id, context
-            )
+            is_obs = state.validator.is_obstacle_for_actor(state, candidate, actor_id, context)
 
             # Handle exclude_id (for "ignore self" scenarios)
             if self.exclude_id and tile.occupant_id == self.exclude_id:
@@ -38,6 +35,7 @@ class ObstacleFilter(FilterCondition):
 
             return is_obs == self.is_obstacle
         return self.is_obstacle
+
 
 class TerrainFilter(FilterCondition):
     type: FilterType = FilterType.TERRAIN
@@ -56,6 +54,7 @@ class TerrainFilter(FilterCondition):
             return is_t == self.is_terrain
         return self.is_terrain
 
+
 class RangeFilter(FilterCondition):
     """
     Checks distance from an origin.
@@ -65,11 +64,11 @@ class RangeFilter(FilterCondition):
     type: FilterType = FilterType.RANGE
     max_range: int
     min_range: int = 0
-    origin_id: Optional[str] = None  # Literal ID
-    origin_key: Optional[str] = None  # Key in context to find ID
-    origin_hex_key: Optional[str] = None  # Key in context holding a Hex (or dict)
-    max_range_key: Optional[str] = None  # Read upper bound from context[int]
-    min_range_key: Optional[str] = None  # Read lower bound from context[int]
+    origin_id: str | None = None  # Literal ID
+    origin_key: str | None = None  # Key in context to find ID
+    origin_hex_key: str | None = None  # Key in context holding a Hex (or dict)
+    max_range_key: str | None = None  # Read upper bound from context[int]
+    min_range_key: str | None = None  # Read lower bound from context[int]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve runtime bounds from context if keys are provided, otherwise
@@ -85,7 +84,7 @@ class RangeFilter(FilterCondition):
             if isinstance(raw_min, int):
                 min_r = raw_min
 
-        origin_hex: Optional[Hex] = None
+        origin_hex: Hex | None = None
 
         # Priority: origin_hex_key (direct hex) > origin_id > origin_key > actor
         if self.origin_hex_key:
@@ -126,6 +125,7 @@ class RangeFilter(FilterCondition):
         dist = topology.distance(origin_hex, target_hex, state)
         return min_r <= dist <= max_r
 
+
 class SpawnPointFilter(FilterCondition):
     """
     Filters hexes based on whether they have a spawn point.
@@ -142,6 +142,7 @@ class SpawnPointFilter(FilterCondition):
             return (tile.spawn_point is not None) == self.has_spawn_point
         return False
 
+
 class AdjacentSpawnPointFilter(FilterCondition):
     """
     Filters hexes based on proximity to spawn points.
@@ -149,9 +150,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
 
     type: FilterType = FilterType.ADJACENT_SPAWN_POINT
     is_empty: bool = True
-    must_not_have: bool = (
-        True  # True means "not adjacent to", False means "must be adjacent to"
-    )
+    must_not_have: bool = True  # True means "not adjacent to", False means "must be adjacent to"
     battle_zone_only: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
@@ -195,6 +194,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
             return not has_adj
         return has_adj
 
+
 class BattleZoneFilter(FilterCondition):
     """
     Filters hexes to the active battle zone only.
@@ -217,6 +217,7 @@ class BattleZoneFilter(FilterCondition):
                 return False
             return tile.zone_id == active_zone_id
         return False
+
 
 class SpawnPointTeamFilter(FilterCondition):
     """
@@ -269,6 +270,7 @@ class SpawnPointTeamFilter(FilterCondition):
             return is_same_team
         return not is_same_team
 
+
 class HasEmptyNeighborFilter(FilterCondition):
     """
     Ensures the candidate unit has at least one valid empty neighbor to move to.
@@ -299,6 +301,7 @@ class HasEmptyNeighborFilter(FilterCondition):
                 return True
         return False
 
+
 class MovementPathFilter(FilterCondition):
     """
     Filters hexes to only those reachable via valid movement path.
@@ -307,8 +310,8 @@ class MovementPathFilter(FilterCondition):
 
     type: FilterType = FilterType.MOVEMENT_PATH
     range_val: int
-    unit_id: Optional[str] = None
-    unit_key: Optional[str] = None
+    unit_id: str | None = None
+    unit_key: str | None = None
     pass_through_obstacles: bool = False
 
     def _get_reachable(self, state: GameState, context: dict) -> set:
@@ -349,6 +352,7 @@ class MovementPathFilter(FilterCondition):
 
         return candidate in self._get_reachable(state, context)
 
+
 class FastTravelDestinationFilter(FilterCondition):
     """
     Filters hexes to only valid Fast Travel destinations.
@@ -359,7 +363,7 @@ class FastTravelDestinationFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.FAST_TRAVEL_DESTINATION
-    unit_id: Optional[str] = None
+    unit_id: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):

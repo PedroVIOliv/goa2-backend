@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Any
+
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -22,24 +24,6 @@ from goa2.engine.effects import (
     PassiveConfig,
     register_effect,
 )
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckContextConditionStep,
-    ConvertCardToItemStep,
-    CountStep,
-    CreateEffectStep,
-    ForEachStep,
-    ForceDiscardOrDefeatStep,
-    GameStep,
-    MoveUnitStep,
-    MultiSelectStep,
-    PlaceTokenStep,
-    PushUnitStep,
-    RemoveTokenStep,
-    SelectStep,
-    SetContextFlagStep,
-    SwapUnitsStep,
-)
 from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
@@ -52,20 +36,36 @@ from goa2.engine.filters_units import (
     TokenTypeFilter,
     UnitTypeFilter,
 )
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    ConvertCardToItemStep,
+    CountStep,
+    CreateEffectStep,
+    ForceDiscardOrDefeatStep,
+    ForEachStep,
+    GameStep,
+    MoveUnitStep,
+    MultiSelectStep,
+    PlaceTokenStep,
+    PushUnitStep,
+    RemoveTokenStep,
+    SelectStep,
+    SetContextFlagStep,
+    SwapUnitsStep,
+)
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
-def _mine_placement_steps(
-    stats: "CardStats", blast_count: int, dud_count: int
-) -> List["GameStep"]:
+def _mine_placement_steps(stats: CardStats, blast_count: int, dud_count: int) -> list[GameStep]:
     """Build steps to select all mine hexes first, then place them all."""
-    steps: List["GameStep"] = []
-    hex_keys: List[tuple[str, TokenType]] = []
-    prior_keys: List[str] = []
+    steps: list[GameStep] = []
+    hex_keys: list[tuple[str, TokenType]] = []
+    prior_keys: list[str] = []
 
     # Select blast hexes
     for i in range(blast_count):
@@ -76,9 +76,7 @@ def _mine_placement_steps(
             ObstacleFilter(is_obstacle=False),
         ]
         if prior_keys:
-            filters.append(
-                ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys))
-            )
+            filters.append(ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys)))
         steps.append(
             SelectStep(
                 target_type=TargetType.HEX,
@@ -100,9 +98,7 @@ def _mine_placement_steps(
             ObstacleFilter(is_obstacle=False),
         ]
         if prior_keys:
-            filters.append(
-                ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys))
-            )
+            filters.append(ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys)))
         steps.append(
             SelectStep(
                 target_type=TargetType.HEX,
@@ -133,7 +129,7 @@ class TripMineEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _mine_placement_steps(stats, blast_count=1, dud_count=1)
 
 
@@ -143,7 +139,7 @@ class ClusterMineEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _mine_placement_steps(stats, blast_count=1, dud_count=2)
 
 
@@ -153,7 +149,7 @@ class MinefieldEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return _mine_placement_steps(stats, blast_count=2, dud_count=1)
 
 
@@ -167,7 +163,7 @@ class SmokeBombEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -208,7 +204,7 @@ class CraneStanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # After attack: optional push adjacent enemy up to 3
@@ -249,7 +245,7 @@ class TigerStanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # After attack: optional move 1 to hex adjacent to target
@@ -307,7 +303,7 @@ class DragonStanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # After attack: optional move 1-2 to hex adjacent to target
@@ -364,7 +360,7 @@ class ViperStanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # After attack: optional swap with smoke bomb in radius
@@ -398,7 +394,7 @@ class CobraStanceEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
             # After attack: optional swap with smoke bomb in radius
@@ -445,7 +441,7 @@ class CobraStanceEffect(CardEffect):
 # =============================================================================
 
 
-def _find_red_card(hero: Hero) -> "Card | None":
+def _find_red_card(hero: Hero) -> Card | None:
     """Find the hero's resolved or discarded red card for this round."""
     # Check resolved (played_cards)
     for c in hero.played_cards:
@@ -468,8 +464,8 @@ class FastAsLightningEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        steps: List[GameStep] = [
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
             AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
         ]
 
@@ -488,7 +484,7 @@ class FastAsLightningEffect(CardEffect):
         red_steps = effect.build_steps(state, hero, red_card, red_stats)
 
         # Strip everything up to and including AttackSequenceStep
-        after_attack_steps: List[GameStep] = []
+        after_attack_steps: list[GameStep] = []
         found_attack = False
         for step in red_steps:
             if found_attack:
@@ -506,18 +502,18 @@ class FastAsLightningEffect(CardEffect):
 
 
 def _smoke_bomb_swap_defense_steps(
-    state: "GameState",
-    defender: "Hero",
-    stats: "CardStats",
+    state: GameState,
+    defender: Hero,
+    stats: CardStats,
     allow_replacement: bool = False,
-) -> List[GameStep]:
+) -> list[GameStep]:
     from goa2.domain.types import BoardEntityID
 
     defender_hex = state.entity_locations.get(BoardEntityID(str(defender.id)))
     if not defender_hex:
         return [SetContextFlagStep(key="defense_invalid", value=True)]
 
-    steps: List[GameStep] = [
+    steps: list[GameStep] = [
         CountStep(
             target_type=TargetType.UNIT_OR_TOKEN,
             filters=[
@@ -541,7 +537,7 @@ def _smoke_bomb_swap_defense_steps(
         ),
     ]
 
-    conditional_steps: List[GameStep] = [
+    conditional_steps: list[GameStep] = [
         SelectStep(
             target_type=TargetType.UNIT_OR_TOKEN,
             prompt="Select a Smoke Bomb token to swap with",
@@ -601,9 +597,9 @@ class PoofEffect(CardEffect):
         state: GameState,
         defender: Hero,
         card: Card,
-        stats: "CardStats",
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        stats: CardStats,
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         return _smoke_bomb_swap_defense_steps(state, defender, stats)
 
 
@@ -618,9 +614,9 @@ class VanishEffect(CardEffect):
         state: GameState,
         defender: Hero,
         card: Card,
-        stats: "CardStats",
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
+        stats: CardStats,
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
         return _smoke_bomb_swap_defense_steps(state, defender, stats)
 
 
@@ -636,12 +632,10 @@ class RuseEffect(CardEffect):
         state: GameState,
         defender: Hero,
         card: Card,
-        stats: "CardStats",
-        context: Dict[str, Any],
-    ) -> Optional[List[GameStep]]:
-        return _smoke_bomb_swap_defense_steps(
-            state, defender, stats, allow_replacement=True
-        )
+        stats: CardStats,
+        context: dict[str, Any],
+    ) -> list[GameStep] | None:
+        return _smoke_bomb_swap_defense_steps(state, defender, stats, allow_replacement=True)
 
 
 # =============================================================================
@@ -649,7 +643,7 @@ class RuseEffect(CardEffect):
 # =============================================================================
 
 
-def _grenade_steps(hero: Hero, stats: "CardStats", max_targets: int) -> List[GameStep]:
+def _grenade_steps(hero: Hero, stats: CardStats, max_targets: int) -> list[GameStep]:
     return [
         SelectStep(
             target_type=TargetType.HEX,
@@ -718,8 +712,8 @@ class DeathGrenadeEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _grenade_steps(hero, stats, max_targets=1)
 
 
@@ -732,8 +726,8 @@ class HolyDeathGrenadeEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _grenade_steps(hero, stats, max_targets=2)
 
 
@@ -742,7 +736,7 @@ class HolyDeathGrenadeEffect(CardEffect):
 # =============================================================================
 
 
-def _double_items_steps(hero: "Hero") -> List[GameStep]:
+def _double_items_steps(hero: Hero) -> list[GameStep]:
     """Create a DOUBLE_ITEMS effect for this round."""
     return [
         CreateEffectStep(
@@ -761,8 +755,8 @@ class InnerStrengthEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         return _double_items_steps(hero)
 
 
@@ -776,13 +770,11 @@ class PerfectSelfEffect(CardEffect):
     """
 
     def build_steps(
-        self, state: GameState, hero: Hero, card: Card, stats: "CardStats"
-    ) -> List[GameStep]:
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
         # Pre-filter for retired Tier II cards in deck
         retired_tier2_ids = [
-            c.id
-            for c in hero.deck
-            if c.tier == CardTier.II and c.state == CardState.RETIRED
+            c.id for c in hero.deck if c.tier == CardTier.II and c.state == CardState.RETIRED
         ]
         has_retired_tier2 = len(retired_tier2_ids) > 0
 
@@ -798,7 +790,7 @@ class PerfectSelfEffect(CardEffect):
             # No retired Tier II cards — only option A is available
             return _double_items_steps(hero)
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             SelectStep(
                 target_type=TargetType.NUMBER,
                 prompt="Choose one, or both",
@@ -870,7 +862,7 @@ class FlurryOfBlowsEffect(CardEffect):
     you may repeat it once on a different target."
     """
 
-    def get_passive_config(self) -> Optional[PassiveConfig]:
+    def get_passive_config(self) -> PassiveConfig | None:
         return PassiveConfig(
             trigger=PassiveTrigger.AFTER_ATTACK,
             uses_per_turn=0,  # unlimited
@@ -884,17 +876,16 @@ class FlurryOfBlowsEffect(CardEffect):
         hero: Hero,
         card: Card,
         trigger: PassiveTrigger,
-        context: Dict[str, Any],
-    ) -> List[GameStep]:
-        
+        context: dict[str, Any],
+    ) -> list[GameStep]:
 
         if trigger != PassiveTrigger.AFTER_ATTACK:
-            
+
             return []
 
         # Prevent recursion — repeated attack should not trigger flurry again
         if context.get("is_flurry_repeat"):
-            
+
             return []
 
         # Get the card that was just played
@@ -909,28 +900,25 @@ class FlurryOfBlowsEffect(CardEffect):
         if hero.current_turn_card and hero.current_turn_card.id == card_id:
             source_card = hero.current_turn_card
         if not source_card:
-            source_card = next(
-                (c for c in hero.played_cards if c and c.id == card_id), None
-            )
+            source_card = next((c for c in hero.played_cards if c and c.id == card_id), None)
         if not source_card:
             source_card = next((c for c in hero.discard_pile if c.id == card_id), None)
         if not source_card:
-            
+
             return []
 
         effect = CardEffectRegistry.get(effect_id)
         if not effect:
-            
+
             return []
 
         from goa2.engine.stats import compute_card_stats
 
         card_stats = compute_card_stats(state, hero.id, source_card)
         new_steps = effect.build_steps(state, hero, source_card, card_stats)
-        
+
         # Find the last attacked target from context
         last_target = context.get("defender_id") or context.get("victim_id")
-        
 
         # Walk the steps and modify AttackSequenceSteps:
         # - Exclude the last target
@@ -941,23 +929,19 @@ class FlurryOfBlowsEffect(CardEffect):
                     step.target_filters = list(step.target_filters) + [
                         ExcludeIdentityFilter(exclude_keys=["last_flurry_target"])
                     ]
-                    step.is_mandatory = True 
+                    step.is_mandatory = True
 
         total_steps = (
             [
                 SetContextFlagStep(key="last_flurry_target", value=last_target),
                 SetContextFlagStep(key="is_flurry_repeat", value=True),
-                SetContextFlagStep(
-                    key="victim_id", value=None
-                ),  # Clear previous target
-                SetContextFlagStep(
-                    key="defender_id", value=None
-                ),  # Clear previous target
+                SetContextFlagStep(key="victim_id", value=None),  # Clear previous target
+                SetContextFlagStep(key="defender_id", value=None),  # Clear previous target
             ]
             + new_steps
             + [
                 SetContextFlagStep(key="is_flurry_repeat", value=None),
             ]
         )
-        
+
         return total_steps

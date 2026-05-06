@@ -6,21 +6,22 @@ Card Text: "Target a unit in range and not in a straight line.
 """
 
 import pytest
-from goa2.domain.state import GameState
+
+import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
-from goa2.engine.steps import ResolveCardStep
+from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
-import goa2.scripts.wasp_effects  # noqa: F401 - Register wasp effects
+from goa2.engine.steps import ResolveCardStep
 
 
 @pytest.fixture
@@ -106,12 +107,8 @@ def wasp_boomerang_state():
     state.place_entity("wasp", Hex(q=0, r=0, s=0))
     state.place_entity("enemy_adjacent", Hex(q=1, r=0, s=-1))  # Adjacent, straight line
     state.place_entity("enemy_straight", Hex(q=2, r=0, s=-2))  # Range 2, straight line
-    state.place_entity(
-        "enemy_diagonal", Hex(q=1, r=1, s=-2)
-    )  # Range 2, NOT straight line
-    state.place_entity(
-        "enemy_diagonal2", Hex(q=2, r=-1, s=-1)
-    )  # Range 2, NOT straight line
+    state.place_entity("enemy_diagonal", Hex(q=1, r=1, s=-2))  # Range 2, NOT straight line
+    state.place_entity("enemy_diagonal2", Hex(q=2, r=-1, s=-1))  # Range 2, NOT straight line
 
     state.current_actor_id = "wasp"
     return state
@@ -163,14 +160,12 @@ def test_charged_boomerang_valid_targets(wasp_boomerang_state):
     assert "enemy_diagonal2" in valid_options, "Second diagonal target should be valid"
 
     # Should NOT include: enemy_adjacent (adjacent = in straight line)
-    assert "enemy_adjacent" not in valid_options, (
-        "Adjacent targets should be excluded (in straight line)"
-    )
+    assert (
+        "enemy_adjacent" not in valid_options
+    ), "Adjacent targets should be excluded (in straight line)"
 
     # Should NOT include: enemy_straight (same q-axis = in straight line)
-    assert "enemy_straight" not in valid_options, (
-        "Straight line targets should be excluded"
-    )
+    assert "enemy_straight" not in valid_options, "Straight line targets should be excluded"
 
 
 def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
@@ -187,16 +182,12 @@ def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
     # Select diagonal target
     req = process_stack(wasp_boomerang_state).input_request
     assert "enemy_diagonal" in req["valid_options"]
-    wasp_boomerang_state.execution_stack[-1].pending_input = {
-        "selection": "enemy_diagonal"
-    }
+    wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "enemy_diagonal"}
 
     # Reaction window - pass
     req = process_stack(wasp_boomerang_state).input_request
     assert req["type"] == "SELECT_CARD_OR_PASS"
-    wasp_boomerang_state.execution_stack[-1].pending_input = {
-        "selection": "PASS"
-    }
+    wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # Finish resolution
     process_stack(wasp_boomerang_state).input_request

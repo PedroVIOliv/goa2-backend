@@ -12,20 +12,22 @@ Tests cover:
 """
 
 import pytest
-from goa2.domain.state import GameState
+
+# Register effects
+import goa2.scripts.dodger_effects
+import goa2.scripts.tigerclaw_effects  # noqa: F401
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
     Team,
     TeamColor,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
 )
-from goa2.domain.hex import Hex
 from goa2.domain.models.effect import (
-    ActiveEffect,
     AffectsFilter,
     DurationType,
     EffectScope,
@@ -33,17 +35,12 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import StatType
+from goa2.domain.state import GameState
 from goa2.domain.types import UnitID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import LogMessageStep, MayRepeatOnceStep
 from goa2.engine.stats import compute_card_stats, get_computed_stat
-
-# Register effects
-import goa2.scripts.dodger_effects  # noqa: F401
-import goa2.scripts.tigerclaw_effects  # noqa: F401
-
+from goa2.engine.steps import LogMessageStep, MayRepeatOnceStep
 
 # =============================================================================
 # Card Factories
@@ -52,19 +49,33 @@ import goa2.scripts.tigerclaw_effects  # noqa: F401
 
 def _make_filler_card(card_id="filler", color=CardColor.GOLD):
     return Card(
-        id=card_id, name="Filler", tier=CardTier.UNTIERED, color=color,
-        initiative=1, primary_action=ActionType.ATTACK, secondary_actions={},
-        is_ranged=False, range_value=0, primary_action_value=1,
-        effect_id="filler", effect_text="", is_facedown=False,
+        id=card_id,
+        name="Filler",
+        tier=CardTier.UNTIERED,
+        color=color,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=0,
+        primary_action_value=1,
+        effect_id="filler",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def _make_enfeeblement_card():
     return Card(
-        id="enfeeblement", name="Enfeeblement", tier=CardTier.III,
-        color=CardColor.BLUE, initiative=5,
-        primary_action=ActionType.SKILL, secondary_actions={},
-        is_ranged=False, radius_value=2,
+        id="enfeeblement",
+        name="Enfeeblement",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=5,
+        primary_action=ActionType.SKILL,
+        secondary_actions={},
+        is_ranged=False,
+        radius_value=2,
         effect_id="enfeeblement",
         effect_text="This turn: Enemy heroes in radius have -6 Attack and cannot repeat actions.",
         is_facedown=False,
@@ -73,10 +84,19 @@ def _make_enfeeblement_card():
 
 def _make_attack_card(card_id="basic_attack"):
     return Card(
-        id=card_id, name="Basic Attack", tier=CardTier.I, color=CardColor.RED,
-        initiative=5, primary_action=ActionType.ATTACK, secondary_actions={},
-        is_ranged=False, range_value=0, primary_action_value=4,
-        effect_id="hit_and_run", effect_text="", is_facedown=False,
+        id=card_id,
+        name="Basic Attack",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=5,
+        primary_action=ActionType.ATTACK,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=0,
+        primary_action_value=4,
+        effect_id="hit_and_run",
+        effect_text="",
+        is_facedown=False,
     )
 
 
@@ -143,6 +163,7 @@ def test_enfeeblement_creates_two_effects(game_state):
     assert len(steps) == 2
 
     from goa2.engine.steps import CreateEffectStep
+
     assert isinstance(steps[0], CreateEffectStep)
     assert steps[0].effect_type == EffectType.AREA_STAT_MODIFIER
     assert steps[0].stat_value == -6

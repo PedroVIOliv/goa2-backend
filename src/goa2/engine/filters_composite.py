@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import ClassVar, Optional, List, Any
 
-from goa2.domain.state import GameState
-from goa2.domain.models import FilterType
+from typing import Any, ClassVar
+
 from goa2.domain.hex import Hex
+from goa2.domain.models import FilterType
+from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 
 # -----------------------------------------------------------------------------
@@ -16,19 +17,21 @@ class OrFilter(FilterCondition):
     """Passes if ANY child filter passes (logical OR)."""
 
     type: FilterType = FilterType.OR_FILTER
-    filters: List["FilterCondition"] = []
+    filters: list[FilterCondition] = []
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return any(f.apply(candidate, state, context) for f in self.filters)
+
 
 class AndFilter(FilterCondition):
     """Passes if ALL child filters pass (logical AND)."""
 
     type: FilterType = FilterType.AND_FILTER
-    filters: List["FilterCondition"] = []
+    filters: list[FilterCondition] = []
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return all(f.apply(candidate, state, context) for f in self.filters)
+
 
 class CountMatchFilter(FilterCondition):
     """
@@ -45,9 +48,9 @@ class CountMatchFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.COUNT_MATCH
-    sub_filters: List[FilterCondition] = []
+    sub_filters: list[FilterCondition] = []
     min_count: int = 1
-    max_count: Optional[int] = None
+    max_count: int | None = None
 
     ORIGIN_HEX_KEY: ClassVar[str] = "_cmf_origin_hex"
 

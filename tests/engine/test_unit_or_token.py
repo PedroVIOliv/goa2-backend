@@ -8,22 +8,22 @@ Covers:
 """
 
 import pytest
-from goa2.domain.state import GameState
+
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
+    Hero,
+    TargetType,
     Team,
     TeamColor,
-    Hero,
     Token,
-    TargetType,
 )
 from goa2.domain.models.enums import TokenType
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID
-from goa2.engine.steps import SelectStep
-from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.filters import RangeFilter
-
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import SelectStep
 
 # =============================================================================
 # Fixtures
@@ -100,9 +100,7 @@ class TestGetUnitsAndTokens:
             name="Unplaced",
             token_type=TokenType.SMOKE_BOMB,
         )
-        state_with_units_and_tokens.misc_entities[BoardEntityID("unplaced")] = (
-            unplaced_token
-        )
+        state_with_units_and_tokens.misc_entities[BoardEntityID("unplaced")] = unplaced_token
 
         result = state_with_units_and_tokens.get_units_and_tokens()
 
@@ -231,9 +229,9 @@ class TestTelekinesisWithToken:
 
     def test_telekinesis_can_select_token(self, state_with_units_and_tokens):
         """Test that Telekinesis can target a token."""
-        from goa2.engine.effects import CardEffectRegistry
-        from goa2.domain.models import Card, CardTier, CardColor, ActionType
         import goa2.scripts.wasp_effects  # noqa: F401
+        from goa2.domain.models import ActionType, Card, CardColor, CardTier
+        from goa2.engine.effects import CardEffectRegistry
 
         effect = CardEffectRegistry.get("telekinesis")
         assert effect is not None
@@ -289,9 +287,7 @@ class TestValidationServiceTokenSupport:
         assert result.allowed is False
         assert "not found" in result.reason.lower()
 
-    def test_can_be_placed_with_destination_validation(
-        self, state_with_units_and_tokens
-    ):
+    def test_can_be_placed_with_destination_validation(self, state_with_units_and_tokens):
         """Test that destination validation works for tokens."""
         # Try to place token at occupied hex
         result = state_with_units_and_tokens.validator.can_be_placed(

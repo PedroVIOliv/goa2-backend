@@ -1,26 +1,26 @@
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    GamePhase,
-    CardState,
-    ActionType,
-    Hero,
-    Card,
-    CardTier,
-    CardColor,
-)
-from goa2.domain.types import HeroID
-from goa2.domain.hex import Hex
+
+import goa2.scripts.arien_effects
+import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue_skill_gold effect
 from goa2.data.heroes.arien import create_arien
 from goa2.data.heroes.rogue import create_rogue
-from goa2.engine.phases import commit_card
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    GamePhase,
+    Hero,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack
-
-import goa2.scripts.rogue_effects  # noqa: F401 - Register rogue_skill_gold effect
-import goa2.scripts.arien_effects  # noqa: F401 - Register arien effects
+from goa2.engine.phases import commit_card
 
 
 @pytest.fixture
@@ -38,12 +38,8 @@ def sabotage_state():
     state = GameState(
         board=board,
         teams={
-            TeamColor.RED: Team(
-                color=TeamColor.RED, heroes=[], minions=[], life_counters=6
-            ),
-            TeamColor.BLUE: Team(
-                color=TeamColor.BLUE, heroes=[], minions=[], life_counters=6
-            ),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[], life_counters=6),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[], life_counters=6),
         },
         phase=GamePhase.PLANNING,
         turn=2,  # Simulating Turn 2
@@ -288,9 +284,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
             # Try to provide dummy input to break loop if stuck?
             # For SELECT_HEX, pick something valid
             if "valid_options" in req:
-                state.execution_stack[-1].pending_input = {
-                    "selection": req["valid_options"][0]
-                }
+                state.execution_stack[-1].pending_input = {"selection": req["valid_options"][0]}
 
     # --- CHECK NEXT ACTOR ---
     # Hero3 Done.

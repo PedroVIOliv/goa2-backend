@@ -22,26 +22,25 @@ Cards covered:
 """
 
 import pytest
-from goa2.domain.state import GameState
-from goa2.domain.board import Board, Zone
-from goa2.domain.models import (
-    Team,
-    TeamColor,
-    Hero,
-    Minion,
-    MinionType,
-    Card,
-    CardTier,
-    CardColor,
-    ActionType,
-)
-from goa2.domain.hex import Hex
-from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.handler import process_stack, push_steps
 
 # Register tigerclaw effects
 import goa2.scripts.tigerclaw_effects  # noqa: F401
-
+from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Minion,
+    MinionType,
+    Team,
+    TeamColor,
+)
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
 
 # =============================================================================
 # Card Factories
@@ -50,28 +49,48 @@ import goa2.scripts.tigerclaw_effects  # noqa: F401
 
 def _make_filler_card(card_id="filler", color=CardColor.GOLD):
     return Card(
-        id=card_id, name="Filler", tier=CardTier.UNTIERED, color=color,
-        initiative=1, primary_action=ActionType.ATTACK, secondary_actions={},
-        is_ranged=False, range_value=0, primary_action_value=1,
-        effect_id="filler", effect_text="", is_facedown=False,
+        id=card_id,
+        name="Filler",
+        tier=CardTier.UNTIERED,
+        color=color,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=0,
+        primary_action_value=1,
+        effect_id="filler",
+        effect_text="",
+        is_facedown=False,
     )
 
 
 def make_dodge_card():
     return Card(
-        id="dodge", name="Dodge", tier=CardTier.I, color=CardColor.BLUE,
-        initiative=10, primary_action=ActionType.DEFENSE,
-        primary_action_value=None, secondary_actions={ActionType.MOVEMENT: 3},
-        effect_id="dodge", effect_text="Block a ranged attack.",
+        id="dodge",
+        name="Dodge",
+        tier=CardTier.I,
+        color=CardColor.BLUE,
+        initiative=10,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=None,
+        secondary_actions={ActionType.MOVEMENT: 3},
+        effect_id="dodge",
+        effect_text="Block a ranged attack.",
         is_facedown=False,
     )
 
 
 def make_hit_and_run_card():
     return Card(
-        id="hit_and_run", name="Hit and Run", tier=CardTier.I,
-        color=CardColor.RED, initiative=9, primary_action=ActionType.ATTACK,
-        primary_action_value=3, secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 4},
+        id="hit_and_run",
+        name="Hit and Run",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=3,
+        secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 4},
         effect_id="hit_and_run",
         effect_text="Target a unit adjacent to you. After the attack: You may move 1 space.",
         is_facedown=False,
@@ -80,9 +99,14 @@ def make_hit_and_run_card():
 
 def make_sidestep_card():
     return Card(
-        id="sidestep", name="Sidestep", tier=CardTier.II, color=CardColor.BLUE,
-        initiative=11, primary_action=ActionType.DEFENSE,
-        primary_action_value=None, secondary_actions={ActionType.MOVEMENT: 3},
+        id="sidestep",
+        name="Sidestep",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=11,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=None,
+        secondary_actions={ActionType.MOVEMENT: 3},
         effect_id="sidestep",
         effect_text="Block a ranged attack. You may move 1 space.",
         is_facedown=False,
@@ -91,9 +115,14 @@ def make_sidestep_card():
 
 def make_parry_card():
     return Card(
-        id="parry", name="Parry", tier=CardTier.II, color=CardColor.BLUE,
-        initiative=11, primary_action=ActionType.DEFENSE,
-        primary_action_value=None, secondary_actions={ActionType.MOVEMENT: 3},
+        id="parry",
+        name="Parry",
+        tier=CardTier.II,
+        color=CardColor.BLUE,
+        initiative=11,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=None,
+        secondary_actions={ActionType.MOVEMENT: 3},
         effect_id="parry",
         effect_text="Block a non-ranged attack. The attacker discards a card, if able.",
         is_facedown=False,
@@ -102,9 +131,14 @@ def make_parry_card():
 
 def make_riposte_card():
     return Card(
-        id="riposte", name="Riposte", tier=CardTier.III, color=CardColor.BLUE,
-        initiative=11, primary_action=ActionType.DEFENSE,
-        primary_action_value=None, secondary_actions={ActionType.MOVEMENT: 3},
+        id="riposte",
+        name="Riposte",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=11,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=None,
+        secondary_actions={ActionType.MOVEMENT: 3},
         effect_id="riposte",
         effect_text="Block a non-ranged attack. The attacker discards a card, or is defeated.",
         is_facedown=False,
@@ -113,9 +147,14 @@ def make_riposte_card():
 
 def make_leaping_strike_card():
     return Card(
-        id="leaping_strike", name="Leaping Strike", tier=CardTier.III,
-        color=CardColor.RED, initiative=10, primary_action=ActionType.ATTACK,
-        primary_action_value=4, secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 4},
+        id="leaping_strike",
+        name="Leaping Strike",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=10,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 4},
         effect_id="leaping_strike",
         effect_text="Before the attack: You may move 1 space. Target a unit adjacent to you. After the attack: You may move 1 space.",
         is_facedown=False,
@@ -124,33 +163,48 @@ def make_leaping_strike_card():
 
 def make_backstab_card():
     return Card(
-        id="backstab", name="Backstab", tier=CardTier.II,
-        color=CardColor.RED, initiative=9, primary_action=ActionType.ATTACK,
-        primary_action_value=5, secondary_actions={ActionType.DEFENSE: 5, ActionType.MOVEMENT: 5},
+        id="backstab",
+        name="Backstab",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
+        secondary_actions={ActionType.DEFENSE: 5, ActionType.MOVEMENT: 5},
         effect_id="backstab",
-        effect_text='Target a unit adjacent to you; if a friendly unit is adjacent to the target, +2 Attack.',
+        effect_text="Target a unit adjacent to you; if a friendly unit is adjacent to the target, +2 Attack.",
         is_facedown=False,
     )
 
 
 def make_backstab_with_a_ballista_card():
     return Card(
-        id="backstab_with_a_ballista", name="Backstab with a Ballista",
-        tier=CardTier.III, color=CardColor.RED, initiative=10,
-        primary_action=ActionType.ATTACK, primary_action_value=5,
+        id="backstab_with_a_ballista",
+        name="Backstab with a Ballista",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=10,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=5,
         secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 5},
-        is_ranged=True, range_value=1,
+        is_ranged=True,
+        range_value=1,
         effect_id="backstab_with_a_ballista",
-        effect_text='Target a unit in range; if a friendly unit is adjacent to the target +2 Attack, and the target cannot perform a primary action to defend.',
+        effect_text="Target a unit in range; if a friendly unit is adjacent to the target +2 Attack, and the target cannot perform a primary action to defend.",
         is_facedown=False,
     )
 
 
 def make_combat_reflexes_card():
     return Card(
-        id="combat_reflexes", name="Combat Reflexes", tier=CardTier.II,
-        color=CardColor.RED, initiative=9, primary_action=ActionType.ATTACK,
-        primary_action_value=4, secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 4},
+        id="combat_reflexes",
+        name="Combat Reflexes",
+        tier=CardTier.II,
+        color=CardColor.RED,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 4},
         effect_id="combat_reflexes",
         effect_text="Before the attack: You may move 1 space. Target a unit adjacent to you. After the attack: If you did not move before the attack, you may move 1 space.",
         is_facedown=False,
@@ -159,9 +213,14 @@ def make_combat_reflexes_card():
 
 def make_evade_card():
     return Card(
-        id="evade", name="Evade", tier=CardTier.III, color=CardColor.BLUE,
-        initiative=11, primary_action=ActionType.DEFENSE,
-        primary_action_value=None, secondary_actions={ActionType.MOVEMENT: 3},
+        id="evade",
+        name="Evade",
+        tier=CardTier.III,
+        color=CardColor.BLUE,
+        initiative=11,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=None,
+        secondary_actions={ActionType.MOVEMENT: 3},
         effect_id="evade",
         effect_text="Block a ranged attack. You may move 1 space. You may retrieve your resolved or discarded basic skill card.",
         is_facedown=False,
@@ -170,10 +229,14 @@ def make_evade_card():
 
 def make_blend_into_shadows_card():
     return Card(
-        id="blend_into_shadows", name="Blend Into Shadows",
-        tier=CardTier.UNTIERED, color=CardColor.SILVER,
-        initiative=8, primary_action=ActionType.SKILL,
-        primary_action_value=None, secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
+        id="blend_into_shadows",
+        name="Blend Into Shadows",
+        tier=CardTier.UNTIERED,
+        color=CardColor.SILVER,
+        initiative=8,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
         effect_id="blend_into_shadows",
         effect_text="If you are adjacent to a terrain hex, you may be placed on an empty space within 2 spaces. If you do, you are immune to attacks next turn.",
         is_facedown=False,
@@ -183,10 +246,14 @@ def make_blend_into_shadows_card():
 
 def make_blink_strike_card():
     return Card(
-        id="blink_strike", name="Blink Strike",
-        tier=CardTier.UNTIERED, color=CardColor.GOLD,
-        initiative=9, primary_action=ActionType.ATTACK,
-        primary_action_value=4, secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
+        id="blink_strike",
+        name="Blink Strike",
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=9,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
         effect_id="blink_strike",
         effect_text="Target a unit adjacent to you in a straight line; move to the space directly behind it, then attack it.",
         is_facedown=False,
@@ -291,8 +358,8 @@ class TestHitAndRunEffect:
 
         assert len(steps) == 3
         assert steps[0].__class__.__name__ == "AttackSequenceStep"
-        assert steps[1].__class__.__name__ == "SelectStep"      # post-move hex select
-        assert steps[2].__class__.__name__ == "MoveUnitStep"    # post-move
+        assert steps[1].__class__.__name__ == "SelectStep"  # post-move hex select
+        assert steps[2].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_hit_and_run_attack_is_adjacent(self, tigerclaw_state):
         effect = CardEffectRegistry.get("hit_and_run")
@@ -479,11 +546,11 @@ class TestLeapingStrikeEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert len(steps) == 5
-        assert steps[0].__class__.__name__ == "SelectStep"       # pre-move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # pre-move
+        assert steps[0].__class__.__name__ == "SelectStep"  # pre-move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # pre-move
         assert steps[2].__class__.__name__ == "AttackSequenceStep"
-        assert steps[3].__class__.__name__ == "SelectStep"       # post-move hex
-        assert steps[4].__class__.__name__ == "MoveUnitStep"     # post-move
+        assert steps[3].__class__.__name__ == "SelectStep"  # post-move hex
+        assert steps[4].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_leaping_strike_moves_are_optional(self, tigerclaw_state):
         effect = CardEffectRegistry.get("leaping_strike")
@@ -493,9 +560,9 @@ class TestLeapingStrikeEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert steps[0].is_mandatory is False  # pre-move select
-        assert steps[1].range_val == 1         # pre-move unit
+        assert steps[1].range_val == 1  # pre-move unit
         assert steps[3].is_mandatory is False  # post-move select
-        assert steps[4].range_val == 1         # post-move unit
+        assert steps[4].range_val == 1  # post-move unit
 
     def test_leaping_strike_attack_is_adjacent(self, tigerclaw_state):
         effect = CardEffectRegistry.get("leaping_strike")
@@ -544,12 +611,10 @@ class TestBackstabEffect:
 
         # Must be adjacent + enemy
         has_range_1 = any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 1
-            for f in select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 1 for f in select.filters
         )
         has_enemy = any(
-            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"
-            for f in select.filters
+            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY" for f in select.filters
         )
         assert has_range_1
         assert has_enemy
@@ -564,8 +629,7 @@ class TestBackstabEffect:
 
         # Should count friendly units adjacent to victim_id, excluding self
         has_adjacency = any(
-            f.__class__.__name__ == "AdjacencyToContextFilter"
-            and f.target_key == "victim_id"
+            f.__class__.__name__ == "AdjacencyToContextFilter" and f.target_key == "victim_id"
             for f in count_step.filters
         )
         has_friendly = any(
@@ -573,8 +637,7 @@ class TestBackstabEffect:
             for f in count_step.filters
         )
         has_exclude_self = any(
-            f.__class__.__name__ == "ExcludeIdentityFilter"
-            and f.exclude_self is True
+            f.__class__.__name__ == "ExcludeIdentityFilter" and f.exclude_self is True
             for f in count_step.filters
         )
         assert has_adjacency
@@ -610,8 +673,10 @@ class TestBackstabEffect:
         """Integration test: bonus is set when a friendly minion is adjacent to target."""
         # Place a friendly minion adjacent to the enemy
         minion = Minion(
-            id="friendly_minion", name="Ally Minion",
-            team=TeamColor.RED, type=MinionType.MELEE,
+            id="friendly_minion",
+            name="Ally Minion",
+            team=TeamColor.RED,
+            type=MinionType.MELEE,
         )
         tigerclaw_state.teams[TeamColor.RED].minions.append(minion)
         tigerclaw_state.place_entity("friendly_minion", Hex(q=2, r=0, s=-2))
@@ -686,8 +751,7 @@ class TestBackstabWithABallistaEffect:
         # Select uses card range
         select = steps[0]
         has_range = any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 1
-            for f in select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 1 for f in select.filters
         )
         assert has_range
 
@@ -727,11 +791,11 @@ class TestCombatReflexesEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert len(steps) == 5
-        assert steps[0].__class__.__name__ == "SelectStep"       # pre-move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # pre-move
+        assert steps[0].__class__.__name__ == "SelectStep"  # pre-move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # pre-move
         assert steps[2].__class__.__name__ == "AttackSequenceStep"
-        assert steps[3].__class__.__name__ == "SelectStep"       # post-move hex
-        assert steps[4].__class__.__name__ == "MoveUnitStep"     # post-move
+        assert steps[3].__class__.__name__ == "SelectStep"  # post-move hex
+        assert steps[4].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_combat_reflexes_pre_move_optional(self, tigerclaw_state):
         effect = CardEffectRegistry.get("combat_reflexes")
@@ -823,9 +887,9 @@ class TestEvadeEffect:
         steps = effect.get_on_block_steps(tigerclaw_state, tc, card, context)
 
         assert len(steps) == 4
-        assert steps[0].__class__.__name__ == "SelectStep"       # move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # move
-        assert steps[2].__class__.__name__ == "SelectStep"       # card select
+        assert steps[0].__class__.__name__ == "SelectStep"  # move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # move
+        assert steps[2].__class__.__name__ == "SelectStep"  # card select
         assert steps[3].__class__.__name__ == "RetrieveCardStep"
 
     def test_evade_on_block_move_is_optional(self, tigerclaw_state):
@@ -865,8 +929,12 @@ class TestEvadeEffect:
 
 def make_light_fingered_card():
     return Card(
-        id="light_fingered", name="Light-Fingered", tier=CardTier.I,
-        color=CardColor.GREEN, initiative=2, primary_action=ActionType.SKILL,
+        id="light_fingered",
+        name="Light-Fingered",
+        tier=CardTier.I,
+        color=CardColor.GREEN,
+        initiative=2,
+        primary_action=ActionType.SKILL,
         primary_action_value=None,
         secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 3},
         effect_id="light_fingered",
@@ -877,8 +945,12 @@ def make_light_fingered_card():
 
 def make_pick_pocket_card():
     return Card(
-        id="pick_pocket", name="Pick Pocket", tier=CardTier.II,
-        color=CardColor.GREEN, initiative=2, primary_action=ActionType.SKILL,
+        id="pick_pocket",
+        name="Pick Pocket",
+        tier=CardTier.II,
+        color=CardColor.GREEN,
+        initiative=2,
+        primary_action=ActionType.SKILL,
         primary_action_value=None,
         secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 3},
         effect_id="pick_pocket",
@@ -889,8 +961,12 @@ def make_pick_pocket_card():
 
 def make_master_thief_card():
     return Card(
-        id="master_thief", name="Master Thief", tier=CardTier.III,
-        color=CardColor.GREEN, initiative=1, primary_action=ActionType.SKILL,
+        id="master_thief",
+        name="Master Thief",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=1,
+        primary_action=ActionType.SKILL,
         primary_action_value=None,
         secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 3},
         effect_id="master_thief",
@@ -918,12 +994,12 @@ class TestLightFingeredEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert len(steps) == 6
-        assert steps[0].__class__.__name__ == "SelectStep"       # pre-move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # pre-move
-        assert steps[2].__class__.__name__ == "SelectStep"       # select victim
-        assert steps[3].__class__.__name__ == "StealCoinsStep"   # steal
-        assert steps[4].__class__.__name__ == "SelectStep"       # post-move hex
-        assert steps[5].__class__.__name__ == "MoveUnitStep"     # post-move
+        assert steps[0].__class__.__name__ == "SelectStep"  # pre-move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # pre-move
+        assert steps[2].__class__.__name__ == "SelectStep"  # select victim
+        assert steps[3].__class__.__name__ == "StealCoinsStep"  # steal
+        assert steps[4].__class__.__name__ == "SelectStep"  # post-move hex
+        assert steps[5].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_light_fingered_pre_move_optional_range_1(self, tigerclaw_state):
         effect = CardEffectRegistry.get("light_fingered")
@@ -948,12 +1024,10 @@ class TestLightFingeredEffect:
             for f in select.filters
         )
         has_enemy = any(
-            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"
-            for f in select.filters
+            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY" for f in select.filters
         )
         has_range_1 = any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 1
-            for f in select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 1 for f in select.filters
         )
         assert has_hero
         assert has_enemy
@@ -995,9 +1069,7 @@ class TestLightFingeredEffect:
         tc = tigerclaw_state.get_hero("tigerclaw")
         tc.gold = 0
 
-        step = StealCoinsStep(
-            victim_key="steal_victim", amount=1, output_key="stole_coins"
-        )
+        step = StealCoinsStep(victim_key="steal_victim", amount=1, output_key="stole_coins")
         context = {"steal_victim": "enemy", "current_actor_id": "tigerclaw"}
         result = step.resolve(tigerclaw_state, context)
 
@@ -1018,9 +1090,7 @@ class TestLightFingeredEffect:
         tc = tigerclaw_state.get_hero("tigerclaw")
         tc.gold = 0
 
-        step = StealCoinsStep(
-            victim_key="steal_victim", amount=3, output_key="stole_coins"
-        )
+        step = StealCoinsStep(victim_key="steal_victim", amount=3, output_key="stole_coins")
         context = {"steal_victim": "enemy", "current_actor_id": "tigerclaw"}
         result = step.resolve(tigerclaw_state, context)
 
@@ -1035,9 +1105,7 @@ class TestLightFingeredEffect:
         enemy = tigerclaw_state.get_hero("enemy")
         enemy.gold = 0
 
-        step = StealCoinsStep(
-            victim_key="steal_victim", amount=1, output_key="stole_coins"
-        )
+        step = StealCoinsStep(victim_key="steal_victim", amount=1, output_key="stole_coins")
         context = {"steal_victim": "enemy", "current_actor_id": "tigerclaw"}
         result = step.resolve(tigerclaw_state, context)
 
@@ -1064,12 +1132,12 @@ class TestPickPocketEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert len(steps) == 6
-        assert steps[0].__class__.__name__ == "SelectStep"       # pre-move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # pre-move
-        assert steps[2].__class__.__name__ == "SelectStep"       # select victim
+        assert steps[0].__class__.__name__ == "SelectStep"  # pre-move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # pre-move
+        assert steps[2].__class__.__name__ == "SelectStep"  # select victim
         assert steps[3].__class__.__name__ == "StealCoinsStep"
-        assert steps[4].__class__.__name__ == "SelectStep"       # post-move hex
-        assert steps[5].__class__.__name__ == "MoveUnitStep"     # post-move
+        assert steps[4].__class__.__name__ == "SelectStep"  # post-move hex
+        assert steps[5].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_pick_pocket_pre_move_range_2(self, tigerclaw_state):
         effect = CardEffectRegistry.get("pick_pocket")
@@ -1121,13 +1189,13 @@ class TestMasterThiefEffect:
         steps = effect.get_steps(tigerclaw_state, tc, card)
 
         assert len(steps) == 7
-        assert steps[0].__class__.__name__ == "SelectStep"       # pre-move hex
-        assert steps[1].__class__.__name__ == "MoveUnitStep"     # pre-move
-        assert steps[2].__class__.__name__ == "SelectStep"       # select victim
-        assert steps[3].__class__.__name__ == "SelectStep"       # choose amount
-        assert steps[4].__class__.__name__ == "StealCoinsStep"   # steal
-        assert steps[5].__class__.__name__ == "SelectStep"       # post-move hex
-        assert steps[6].__class__.__name__ == "MoveUnitStep"     # post-move
+        assert steps[0].__class__.__name__ == "SelectStep"  # pre-move hex
+        assert steps[1].__class__.__name__ == "MoveUnitStep"  # pre-move
+        assert steps[2].__class__.__name__ == "SelectStep"  # select victim
+        assert steps[3].__class__.__name__ == "SelectStep"  # choose amount
+        assert steps[4].__class__.__name__ == "StealCoinsStep"  # steal
+        assert steps[5].__class__.__name__ == "SelectStep"  # post-move hex
+        assert steps[6].__class__.__name__ == "MoveUnitStep"  # post-move
 
     def test_master_thief_pre_move_range_2(self, tigerclaw_state):
         effect = CardEffectRegistry.get("master_thief")
@@ -1146,6 +1214,7 @@ class TestMasterThiefEffect:
         amount_select = steps[3]
 
         from goa2.domain.models import TargetType
+
         assert amount_select.target_type == TargetType.NUMBER
         assert amount_select.number_options == [1, 2]
         assert amount_select.output_key == "steal_amount"
@@ -1184,7 +1253,8 @@ class TestMasterThiefEffect:
         tc.gold = 0
 
         step = StealCoinsStep(
-            victim_key="steal_victim", amount_key="steal_amount",
+            victim_key="steal_victim",
+            amount_key="steal_amount",
             output_key="stole_coins",
         )
         context = {
@@ -1227,9 +1297,6 @@ class TestBlendIntoShadowsEffect:
 
     def test_blend_happy_path(self):
         """Hero adjacent to terrain → select hex → place → get immunity."""
-        from goa2.engine.steps import (
-            CountStep, CheckContextConditionStep, PlaceUnitStep, CreateEffectStep,
-        )
 
         board = Board()
         hexes = set()
@@ -1282,11 +1349,12 @@ class TestBlendIntoShadowsEffect:
         assert state.entity_locations["tigerclaw"] == dest
 
         # Has ATTACK_IMMUNITY effect
-        from goa2.domain.models.effect import EffectType, DurationType
+        from goa2.domain.models.effect import DurationType, EffectType
+
         immunity_effects = [
-            e for e in state.active_effects
-            if e.effect_type == EffectType.ATTACK_IMMUNITY
-            and e.duration == DurationType.NEXT_TURN
+            e
+            for e in state.active_effects
+            if e.effect_type == EffectType.ATTACK_IMMUNITY and e.duration == DurationType.NEXT_TURN
         ]
         assert len(immunity_effects) == 1
 
@@ -1329,9 +1397,9 @@ class TestBlendIntoShadowsEffect:
 
         # No immunity effects
         from goa2.domain.models.effect import EffectType
+
         immunity_effects = [
-            e for e in state.active_effects
-            if e.effect_type == EffectType.ATTACK_IMMUNITY
+            e for e in state.active_effects if e.effect_type == EffectType.ATTACK_IMMUNITY
         ]
         assert len(immunity_effects) == 0
 
@@ -1340,7 +1408,7 @@ class TestBlendIntoShadowsEffect:
         board = Board()
         # Minimal board: just hero hex and terrain hex and a couple destinations
         hexes_list = [
-            Hex(q=0, r=0, s=0),   # hero
+            Hex(q=0, r=0, s=0),  # hero
             Hex(q=1, r=0, s=-1),  # terrain
             Hex(q=-1, r=0, s=1),  # occupied
             Hex(q=0, r=-1, s=1),  # occupied
@@ -1358,8 +1426,11 @@ class TestBlendIntoShadowsEffect:
         blockers = []
         for i, h in enumerate(hexes_list[2:]):
             blocker = Hero(
-                id=f"blocker_{i}", name=f"Blocker{i}",
-                team=TeamColor.BLUE, deck=[], level=1,
+                id=f"blocker_{i}",
+                name=f"Blocker{i}",
+                team=TeamColor.BLUE,
+                deck=[],
+                level=1,
             )
             blockers.append(blocker)
 
@@ -1419,10 +1490,7 @@ class TestBlinkStrikeEffect:
 
         steps = effect.get_steps(tigerclaw_state, tc, card)
         select = steps[0]
-        has_sbf = any(
-            f.__class__.__name__ == "SpaceBehindEmptyFilter"
-            for f in select.filters
-        )
+        has_sbf = any(f.__class__.__name__ == "SpaceBehindEmptyFilter" for f in select.filters)
         assert has_sbf
 
     def test_blink_strike_happy_path(self):
@@ -1648,11 +1716,16 @@ class TestBlinkStrikeEffect:
 
 def make_poisoned_dagger_card():
     return Card(
-        id="poisoned_dagger", name="Poisoned Dagger", tier=CardTier.II,
-        color=CardColor.GREEN, initiative=2, primary_action=ActionType.SKILL,
+        id="poisoned_dagger",
+        name="Poisoned Dagger",
+        tier=CardTier.II,
+        color=CardColor.GREEN,
+        initiative=2,
+        primary_action=ActionType.SKILL,
         primary_action_value=None,
         secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 3},
-        is_ranged=True, range_value=3,
+        is_ranged=True,
+        range_value=3,
         effect_id="poisoned_dagger",
         effect_text="Give a hero in range a Poison marker. -1 Initiative, -1 Attack, -1 Defense.",
         is_facedown=False,
@@ -1661,11 +1734,16 @@ def make_poisoned_dagger_card():
 
 def make_poisoned_dart_card():
     return Card(
-        id="poisoned_dart", name="Poisoned Dart", tier=CardTier.III,
-        color=CardColor.GREEN, initiative=1, primary_action=ActionType.SKILL,
+        id="poisoned_dart",
+        name="Poisoned Dart",
+        tier=CardTier.III,
+        color=CardColor.GREEN,
+        initiative=1,
+        primary_action=ActionType.SKILL,
         primary_action_value=None,
         secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 3},
-        is_ranged=True, range_value=3,
+        is_ranged=True,
+        range_value=3,
         effect_id="poisoned_dart",
         effect_text="Give a hero in range a Poison marker. -2 Initiative, -2 Attack, -2 Defense.",
         is_facedown=False,
@@ -1709,12 +1787,10 @@ class TestPoisonedDaggerEffect:
             for f in select.filters
         )
         has_enemy = any(
-            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY"
-            for f in select.filters
+            f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY" for f in select.filters
         )
         has_range = any(
-            f.__class__.__name__ == "RangeFilter" and f.max_range == 3
-            for f in select.filters
+            f.__class__.__name__ == "RangeFilter" and f.max_range == 3 for f in select.filters
         )
         assert has_hero
         assert has_enemy
@@ -1729,6 +1805,7 @@ class TestPoisonedDaggerEffect:
         marker_step = steps[1]
 
         from goa2.domain.models.marker import MarkerType
+
         assert marker_step.marker_type == MarkerType.POISON
         assert marker_step.target_key == "poison_target"
         assert marker_step.value == -1
@@ -1754,6 +1831,7 @@ class TestPoisonedDaggerEffect:
         assert req is None
 
         from goa2.domain.models.marker import MarkerType
+
         marker = tigerclaw_state.get_marker(MarkerType.POISON)
         assert marker.target_id == "enemy"
         assert marker.value == -1
@@ -1761,13 +1839,11 @@ class TestPoisonedDaggerEffect:
 
     def test_poisoned_dagger_stat_debuffs(self, tigerclaw_state):
         """Poison marker with value -1 debuffs Attack, Defense, Initiative."""
-        from goa2.domain.models.marker import MarkerType
         from goa2.domain.models.enums import StatType
+        from goa2.domain.models.marker import MarkerType
         from goa2.engine.stats import get_computed_stat
 
-        tigerclaw_state.place_marker(
-            MarkerType.POISON, "enemy", -1, "tigerclaw"
-        )
+        tigerclaw_state.place_marker(MarkerType.POISON, "enemy", -1, "tigerclaw")
 
         atk = get_computed_stat(tigerclaw_state, "enemy", StatType.ATTACK, 5)
         defense = get_computed_stat(tigerclaw_state, "enemy", StatType.DEFENSE, 5)
@@ -1842,6 +1918,7 @@ class TestPoisonedDartEffect:
         marker_step = steps[1]
 
         from goa2.domain.models.marker import MarkerType
+
         assert marker_step.marker_type == MarkerType.POISON
         assert marker_step.value == -2
 
@@ -1864,6 +1941,7 @@ class TestPoisonedDartEffect:
         assert req is None
 
         from goa2.domain.models.marker import MarkerType
+
         marker = tigerclaw_state.get_marker(MarkerType.POISON)
         assert marker.target_id == "enemy"
         assert marker.value == -2
@@ -1871,13 +1949,11 @@ class TestPoisonedDartEffect:
 
     def test_poisoned_dart_stat_debuffs(self, tigerclaw_state):
         """Poison marker with value -2 debuffs Attack, Defense, Initiative by 2."""
-        from goa2.domain.models.marker import MarkerType
         from goa2.domain.models.enums import StatType
+        from goa2.domain.models.marker import MarkerType
         from goa2.engine.stats import get_computed_stat
 
-        tigerclaw_state.place_marker(
-            MarkerType.POISON, "enemy", -2, "tigerclaw"
-        )
+        tigerclaw_state.place_marker(MarkerType.POISON, "enemy", -2, "tigerclaw")
 
         atk = get_computed_stat(tigerclaw_state, "enemy", StatType.ATTACK, 5)
         defense = get_computed_stat(tigerclaw_state, "enemy", StatType.DEFENSE, 5)

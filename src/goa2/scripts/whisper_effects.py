@@ -1,25 +1,16 @@
 from __future__ import annotations
-from typing import List, TYPE_CHECKING
-from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    CheckContextConditionStep,
-    CountStep,
-    CreateEffectStep,
-    DefeatUnitStep,
-    ForEachStep,
-    ForceDefenseCardMovementStep,
-    ForceDiscardOrDefeatStep,
-    ForceDiscardStep,
-    GameStep,
-    MayRepeatOnceStep,
-    MoveUnitStep,
-    MultiSelectStep,
-    PlaceUnitStep,
-    RetrieveCardStep,
-    SelectStep,
-    SwapUnitsStep,
+
+from typing import TYPE_CHECKING
+
+from goa2.domain.models import (
+    AffectsFilter,
+    DurationType,
+    EffectType,
+    Shape,
 )
+from goa2.domain.models.effect import EffectScope
+from goa2.domain.models.enums import CardContainerType, TargetType
+from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_composite import (
     AndFilter,
@@ -39,18 +30,29 @@ from goa2.engine.filters_units import (
     UnitOnSpawnPointFilter,
     UnitTypeFilter,
 )
-from goa2.domain.models import (
-    EffectType,
-    DurationType,
-    Shape,
-    AffectsFilter,
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
+    CountStep,
+    CreateEffectStep,
+    DefeatUnitStep,
+    ForceDefenseCardMovementStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
+    ForEachStep,
+    GameStep,
+    MayRepeatOnceStep,
+    MoveUnitStep,
+    MultiSelectStep,
+    PlaceUnitStep,
+    RetrieveCardStep,
+    SelectStep,
+    SwapUnitsStep,
 )
-from goa2.domain.models.effect import EffectScope
-from goa2.domain.models.enums import TargetType, CardContainerType
 
 if TYPE_CHECKING:
+    from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
-    from goa2.domain.models import Hero, Card
     from goa2.engine.stats import CardStats
 
 
@@ -532,6 +534,7 @@ if TYPE_CHECKING:
 # "Place yourself into an empty minion spawn point in range in the battle zone."
 # =============================================================================
 
+
 @register_effect("shadow_step")
 @register_effect("shadow_walk")
 class _ShadowTeleportEffect(CardEffect):
@@ -543,7 +546,7 @@ class _ShadowTeleportEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -577,7 +580,7 @@ class CreepingShadowEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.HEX,
@@ -614,6 +617,7 @@ class CreepingShadowEffect(CardEffect):
 #  Move that unit N spaces."
 # =============================================================================
 
+
 @register_effect("seeds_of_fear")
 class SeedsOfFearEffect(CardEffect):
     """
@@ -625,7 +629,7 @@ class SeedsOfFearEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -643,9 +647,7 @@ class SeedsOfFearEffect(CardEffect):
                 prompt="Select destination for the target",
                 output_key="fear_dest",
                 filters=[
-                    MovementPathFilter(
-                        range_val=self.move_distance, unit_key="fear_target"
-                    ),
+                    MovementPathFilter(range_val=self.move_distance, unit_key="fear_target"),
                 ],
                 is_mandatory=True,
             ),
@@ -684,6 +686,7 @@ class BloomingNightmareEffect(SeedsOfFearEffect):
 #  in radius in the battle zone. Target adjacent unit."
 # =============================================================================
 
+
 @register_effect("crimson_trail")
 class CrimsonTrailEffect(CardEffect):
     """
@@ -702,27 +705,29 @@ class CrimsonTrailEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         move_dist = self._compute_move_distance(state, hero, stats.radius)
-        steps: List[GameStep] = []
+        steps: list[GameStep] = []
         if move_dist > 0:
-            steps.extend([
-                SelectStep(
-                    target_type=TargetType.HEX,
-                    prompt="Select destination to move to",
-                    output_key="crimson_dest",
-                    filters=[
-                        MovementPathFilter(range_val=move_dist, unit_id=hero.id),
-                    ],
-                    is_mandatory=False,
-                ),
-                MoveUnitStep(
-                    unit_id=hero.id,
-                    destination_key="crimson_dest",
-                    range_val=move_dist,
-                    is_movement_action=False,
-                ),
-            ])
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="Select destination to move to",
+                        output_key="crimson_dest",
+                        filters=[
+                            MovementPathFilter(range_val=move_dist, unit_id=hero.id),
+                        ],
+                        is_mandatory=False,
+                    ),
+                    MoveUnitStep(
+                        unit_id=hero.id,
+                        destination_key="crimson_dest",
+                        range_val=move_dist,
+                        is_movement_action=False,
+                    ),
+                ]
+            )
         steps.append(
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -760,6 +765,7 @@ class BloodPilgrimageEffect(CrimsonTrailEffect):
 #  Move up to N spaces."
 # =============================================================================
 
+
 @register_effect("cruel_twist")
 class CruelTwistEffect(CardEffect):
     """
@@ -771,7 +777,7 @@ class CruelTwistEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -833,6 +839,7 @@ class SealedFateEffect(CruelTwistEffect):
 #  may repeat once on different target."
 # =============================================================================
 
+
 @register_effect("blood_fury")
 class BloodFuryEffect(CardEffect):
     """
@@ -842,7 +849,7 @@ class BloodFuryEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -856,9 +863,7 @@ class BloodFuryEffect(CardEffect):
                     RangeFilter(max_range=stats.radius),
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, min_cards=1
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
                 output_key="bf_discard_count",
             ),
@@ -891,6 +896,7 @@ class BloodFuryEffect(CardEffect):
 #  repeat up to 5 times on different targets."
 # =============================================================================
 
+
 @register_effect("blood_frenzy")
 class BloodFrenzyEffect(CardEffect):
     """
@@ -904,8 +910,8 @@ class BloodFrenzyEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
-        steps: List[GameStep] = [
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
@@ -918,9 +924,7 @@ class BloodFrenzyEffect(CardEffect):
                     RangeFilter(max_range=stats.radius),
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, min_cards=1
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
                 output_key="bfr_discard_count",
             ),
@@ -962,6 +966,7 @@ class BloodFrenzyEffect(CardEffect):
 #  an adjacent minion."
 # =============================================================================
 
+
 @register_effect("lesser_evil")
 class LesserEvilEffect(CardEffect):
     """
@@ -973,7 +978,7 @@ class LesserEvilEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select enemy hero target
             SelectStep(
@@ -1043,6 +1048,7 @@ class LesserEvilEffect(CardEffect):
 #  up to 3 adjacent minions."
 # =============================================================================
 
+
 @register_effect("greater_good")
 class GreaterGoodEffect(CardEffect):
     """
@@ -1053,7 +1059,7 @@ class GreaterGoodEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return [
             # 1. Select enemy hero target
             SelectStep(
@@ -1128,6 +1134,7 @@ class GreaterGoodEffect(CardEffect):
 #  actions this turn, OR retrieve a discarded card."
 # =============================================================================
 
+
 @register_effect("death_seeker")
 class DeathSeekerEffect(CardEffect):
     """
@@ -1139,17 +1146,14 @@ class DeathSeekerEffect(CardEffect):
     """
 
     def _has_ultimate(self, hero: Hero) -> bool:
-        return (
-            hero.ultimate_card is not None
-            and hero.level >= 8
-        )
+        return hero.ultimate_card is not None and hero.level >= 8
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         has_ult = self._has_ultimate(hero)
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             # 1. Check condition: enemy hero in radius with card in discard
             CountStep(
                 target_type=TargetType.UNIT,
@@ -1157,9 +1161,7 @@ class DeathSeekerEffect(CardEffect):
                     RangeFilter(max_range=stats.radius),
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, min_cards=1
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
                 ],
                 output_key="ds_hero_count",
             ),
@@ -1224,49 +1226,52 @@ class DeathSeekerEffect(CardEffect):
         # 4. With ultimate: offer the unchosen option
         if has_ult:
             # If chose immunity (1), also offer retrieval
-            steps.extend([
-                SelectStep(
-                    target_type=TargetType.CARD,
-                    card_container=CardContainerType.DISCARD,
-                    prompt="Grim Reaper: Also retrieve a discarded card?",
-                    output_key="ds_ult_retrieved_card",
-                    is_mandatory=False,
-                    active_if_key="ds_chose_immunity",
-                ),
-                RetrieveCardStep(
-                    card_key="ds_ult_retrieved_card",
-                    active_if_key="ds_ult_retrieved_card",
-                ),
-            ])
-            # If chose retrieval (2), offer immunity as optional
-            steps.extend([
-                SelectStep(
-                    target_type=TargetType.NUMBER,
-                    prompt="Grim Reaper: Also become immune to enemy actions?",
-                    output_key="ds_ult_immunity_choice",
-                    number_options=[1, 2],
-                    number_labels={1: "Yes", 2: "No"},
-                    active_if_key="ds_chose_retrieval",
-                    is_mandatory=True,
-                ),
-                CheckContextConditionStep(
-                    input_key="ds_ult_immunity_choice",
-                    operator="==",
-                    threshold=1,
-                    output_key="ds_ult_wants_immunity",
-                ),
-                CreateEffectStep(
-                    effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
-                    scope=EffectScope(
-                        shape=Shape.POINT,
-                        origin_id=hero.id,
-                        affects=AffectsFilter.SELF,
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        card_container=CardContainerType.DISCARD,
+                        prompt="Grim Reaper: Also retrieve a discarded card?",
+                        output_key="ds_ult_retrieved_card",
+                        is_mandatory=False,
+                        active_if_key="ds_chose_immunity",
                     ),
-                    duration=DurationType.THIS_TURN,
-                    is_active=True,
-                    active_if_key="ds_ult_wants_immunity",
-                ),
-            ]
+                    RetrieveCardStep(
+                        card_key="ds_ult_retrieved_card",
+                        active_if_key="ds_ult_retrieved_card",
+                    ),
+                ]
+            )
+            # If chose retrieval (2), offer immunity as optional
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.NUMBER,
+                        prompt="Grim Reaper: Also become immune to enemy actions?",
+                        output_key="ds_ult_immunity_choice",
+                        number_options=[1, 2],
+                        number_labels={1: "Yes", 2: "No"},
+                        active_if_key="ds_chose_retrieval",
+                        is_mandatory=True,
+                    ),
+                    CheckContextConditionStep(
+                        input_key="ds_ult_immunity_choice",
+                        operator="==",
+                        threshold=1,
+                        output_key="ds_ult_wants_immunity",
+                    ),
+                    CreateEffectStep(
+                        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+                        scope=EffectScope(
+                            shape=Shape.POINT,
+                            origin_id=hero.id,
+                            affects=AffectsFilter.SELF,
+                        ),
+                        duration=DurationType.THIS_TURN,
+                        is_active=True,
+                        active_if_key="ds_ult_wants_immunity",
+                    ),
+                ]
             )
 
         return steps
@@ -1277,6 +1282,7 @@ class DeathSeekerEffect(CardEffect):
 # "Choose: target hero in range with empty discard (after attack: forced
 #  straight-line movement on defense card), OR target adjacent unit."
 # =============================================================================
+
 
 @register_effect("swift_justice")
 class SwiftJusticeEffect(CardEffect):
@@ -1291,17 +1297,14 @@ class SwiftJusticeEffect(CardEffect):
     """
 
     def _has_ultimate(self, hero: Hero) -> bool:
-        return (
-            hero.ultimate_card is not None
-            and hero.level >= 8
-        )
+        return hero.ultimate_card is not None and hero.level >= 8
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         has_ult = self._has_ultimate(hero)
 
-        steps: List[GameStep] = [
+        steps: list[GameStep] = [
             # 1. Choose mode
             SelectStep(
                 target_type=TargetType.NUMBER,
@@ -1328,9 +1331,7 @@ class SwiftJusticeEffect(CardEffect):
                 target_id_key="sj_victim_a",
                 target_filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    CardsInContainerFilter(
-                        container=CardContainerType.DISCARD, max_cards=0
-                    ),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, max_cards=0),
                 ],
                 active_if_key="sj_chose_ranged",
             ),
@@ -1364,29 +1365,31 @@ class SwiftJusticeEffect(CardEffect):
                     target_id_key="sj_ult_victim_b",
                     active_if_key="sj_chose_ranged",
                     is_ranged=True,
-                    is_mandatory=False
+                    is_mandatory=False,
                 ),
             )
             # If chose adjacent (2), also offer ranged attack + forced movement
-            steps.extend([
-                AttackSequenceStep(
-                    damage=stats.primary_value,
-                    range_val=stats.range,
-                    target_id_key="sj_ult_victim_a",
-                    target_filters=[
-                        UnitTypeFilter(unit_type="HERO"),
-                        CardsInContainerFilter(
-                            container=CardContainerType.DISCARD, max_cards=0
-                        ),
-                    ],
-                    is_mandatory=False,
-                    active_if_key="sj_chose_adjacent",
-                ),
-                ForceDefenseCardMovementStep(
-                    defender_key="sj_ult_victim_a",
-                    active_if_key="sj_ult_victim_a",
-                ),
-            ])
+            steps.extend(
+                [
+                    AttackSequenceStep(
+                        damage=stats.primary_value,
+                        range_val=stats.range,
+                        target_id_key="sj_ult_victim_a",
+                        target_filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            CardsInContainerFilter(
+                                container=CardContainerType.DISCARD, max_cards=0
+                            ),
+                        ],
+                        is_mandatory=False,
+                        active_if_key="sj_chose_adjacent",
+                    ),
+                    ForceDefenseCardMovementStep(
+                        defender_key="sj_ult_victim_a",
+                        active_if_key="sj_ult_victim_a",
+                    ),
+                ]
+            )
 
         return steps
 
@@ -1409,5 +1412,5 @@ class GrimReaperEffect(CardEffect):
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
-    ) -> List[GameStep]:
+    ) -> list[GameStep]:
         return []

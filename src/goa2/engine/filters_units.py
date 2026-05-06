@@ -1,23 +1,24 @@
 from __future__ import annotations
-from typing import List, Any, Literal
 
+from typing import Any, Literal
+
+from goa2.domain.hex import Hex
+from goa2.domain.models import FilterType, Hero, Minion, Unit
 from goa2.domain.models.enums import (
     ActionType,
     MinionType,
     TokenType,
 )
 from goa2.domain.models.marker import MarkerType
-from goa2.domain.state import GameState
-from goa2.domain.models import Minion, Hero, Unit, FilterType
 from goa2.domain.models.token import Token
-from goa2.domain.hex import Hex
+from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID
-from goa2.engine.topology import get_topology_service
 
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
 from goa2.engine.filters_base import FilterCondition
+from goa2.engine.topology import get_topology_service
 
 
 class TeamFilter(FilterCondition):
@@ -31,11 +32,7 @@ class TeamFilter(FilterCondition):
             return False
 
         actor = state.get_entity(BoardEntityID(actor_id))
-        target = (
-            state.get_entity(BoardEntityID(candidate))
-            if isinstance(candidate, str)
-            else None
-        )
+        target = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
 
         if not actor or not target:
             # Only warn if strict logic required. For now, fail silently (filter mismatch)
@@ -64,16 +61,13 @@ class TeamFilter(FilterCondition):
 
         return False
 
+
 class UnitTypeFilter(FilterCondition):
     type: FilterType = FilterType.UNIT_TYPE
     unit_type: Literal["HERO", "MINION", "TOKEN"]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        entity = (
-            state.get_entity(BoardEntityID(candidate))
-            if isinstance(candidate, str)
-            else None
-        )
+        entity = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
         if not entity:
             return False
 
@@ -85,32 +79,27 @@ class UnitTypeFilter(FilterCondition):
             return isinstance(entity, Token)
         return False
 
+
 class TokenTypeFilter(FilterCondition):
     type: FilterType = FilterType.TOKEN_TYPE
     token_type: TokenType
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        entity = (
-            state.get_entity(BoardEntityID(candidate))
-            if isinstance(candidate, str)
-            else None
-        )
+        entity = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
         return isinstance(entity, Token) and entity.token_type == self.token_type
+
 
 class MinionTypesFilter(FilterCondition):
     type: FilterType = FilterType.MINION_TYPES
-    minion_types: List[MinionType]
+    minion_types: list[MinionType]
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        entity = (
-            state.get_entity(BoardEntityID(candidate))
-            if isinstance(candidate, str)
-            else None
-        )
+        entity = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
         if not entity or not isinstance(entity, Minion):
             return False
 
         return entity.type in self.minion_types
+
 
 class AdjacencyFilter(FilterCondition):
     """
@@ -122,7 +111,7 @@ class AdjacencyFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.ADJACENCY
-    target_tags: List[
+    target_tags: list[
         Literal["FRIENDLY", "ENEMY", "HERO", "MINION"]
     ]  # Tags are checked in AND fashion (must match all)
     skip_immune: bool = False
@@ -163,16 +152,17 @@ class AdjacencyFilter(FilterCondition):
                     # Mypy safety checks
                     occ_team = getattr(occupant, "team", None)
                     act_team = getattr(actor, "team", None)
-                    if occ_team is None or act_team is None:
-                        matches = False
-                    elif occ_team != act_team or occupant.id == actor.id:
+                    if (
+                        occ_team is None
+                        or act_team is None
+                        or occ_team != act_team
+                        or occupant.id == actor.id
+                    ):
                         matches = False
                 elif tag == "ENEMY":
                     occ_team = getattr(occupant, "team", None)
                     act_team = getattr(actor, "team", None)
-                    if occ_team is None or act_team is None:
-                        matches = False
-                    elif occ_team == act_team:
+                    if occ_team is None or act_team is None or occ_team == act_team:
                         matches = False
                 elif tag == "HERO":
                     if not isinstance(occupant, Hero):
@@ -191,6 +181,7 @@ class AdjacencyFilter(FilterCondition):
 
         return False
 
+
 class ImmunityFilter(FilterCondition):
     """
     Filters out candidates that are Immune.
@@ -203,14 +194,10 @@ class ImmunityFilter(FilterCondition):
     type: FilterType = FilterType.IMMUNITY
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        from goa2.engine import rules  # Import inside to be safe
         from goa2.domain.models.effect import EffectType
+        from goa2.engine import rules  # Import inside to be safe
 
-        target = (
-            state.get_entity(BoardEntityID(candidate))
-            if isinstance(candidate, str)
-            else None
-        )
+        target = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
         if not target:
             return False
 
@@ -223,9 +210,7 @@ class ImmunityFilter(FilterCondition):
         # Only applies when current action is ATTACK
         current_action = context.get("current_action_type")
         if current_action == ActionType.ATTACK:
-            current_actor_id = (
-                str(state.current_actor_id) if state.current_actor_id else None
-            )
+            current_actor_id = str(state.current_actor_id) if state.current_actor_id else None
 
             # Look for ATTACK_IMMUNITY effects where target is the protected unit
             for effect in state.active_effects:
@@ -247,6 +232,7 @@ class ImmunityFilter(FilterCondition):
 
         return True  # Passes filter (not immune)
 
+
 class UnitOnSpawnPointFilter(FilterCondition):
     """
     Filters unit candidates to those occupying a hex with a spawn point.
@@ -264,6 +250,7 @@ class UnitOnSpawnPointFilter(FilterCondition):
                 return False
             return tile.spawn_point is not None
         return False
+
 
 class AdjacencyToContextFilter(FilterCondition):
     """
@@ -301,6 +288,7 @@ class AdjacencyToContextFilter(FilterCondition):
         topology = get_topology_service()
         return topology.are_adjacent(cand_hex, target_hex, state)
 
+
 class ExcludeIdentityFilter(FilterCondition):
     """
     Excludes specific unit IDs or hexes from selection.
@@ -310,7 +298,7 @@ class ExcludeIdentityFilter(FilterCondition):
 
     type: FilterType = FilterType.EXCLUDE_IDENTITY
     exclude_self: bool = True
-    exclude_keys: List[str] = []
+    exclude_keys: list[str] = []
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if self.exclude_self and isinstance(candidate, str):
@@ -326,6 +314,7 @@ class ExcludeIdentityFilter(FilterCondition):
             elif val == candidate:
                 return False
         return True
+
 
 class ForcedMovementByEnemyFilter(FilterCondition):
     """
@@ -349,6 +338,7 @@ class ForcedMovementByEnemyFilter(FilterCondition):
 
         return result.allowed
 
+
 class CanBePlacedByActorFilter(FilterCondition):
     """
     Filters out units that cannot be placed by the current actor.
@@ -370,6 +360,7 @@ class CanBePlacedByActorFilter(FilterCondition):
         )
 
         return result.allowed
+
 
 class HasMarkerFilter(FilterCondition):
     """

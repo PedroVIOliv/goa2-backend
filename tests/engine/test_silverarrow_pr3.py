@@ -8,32 +8,11 @@ Covered:
 
 import pytest
 
+import goa2.data.heroes.silverarrow
 import goa2.scripts.silverarrow_effects  # noqa: F401 — registers effects
-import goa2.data.heroes.silverarrow  # noqa: F401 — registers hero
-from goa2.engine.effects import CardEffectRegistry
-from goa2.engine.steps import (
-    AttackSequenceStep,
-    ComputeDistanceStep,
-    GainCoinsStep,
-    MoveUnitStep,
-    RecordHexStep,
-    ResolveCardStep,
-    RetrieveCardStep,
-    SelectStep,
-)
-from goa2.engine.filters import (
-    CountMatchFilter,
-    InStraightLineFilter,
-    ObstacleFilter,
-    OrFilter,
-    RangeFilter,
-    StraightLinePathFilter,
-    TeamFilter,
-    UnitTypeFilter,
-)
-from goa2.engine.handler import process_stack, push_steps
-from goa2.domain.state import GameState
+from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -45,9 +24,26 @@ from goa2.domain.models import (
     Team,
     TeamColor,
 )
-from goa2.domain.hex import Hex
-from goa2.data.heroes.registry import HeroRegistry
-from goa2.engine.stats import compute_card_stats
+from goa2.domain.state import GameState
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.filters import (
+    CountMatchFilter,
+    InStraightLineFilter,
+    OrFilter,
+    RangeFilter,
+    StraightLinePathFilter,
+    UnitTypeFilter,
+)
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    ComputeDistanceStep,
+    GainCoinsStep,
+    MoveUnitStep,
+    RecordHexStep,
+    RetrieveCardStep,
+    SelectStep,
+)
 
 
 def _card_by_id(card_id: str):
@@ -172,9 +168,7 @@ class TestClearShot:
         steps = effect.get_steps(silver_state, hero, card)
         or_filter = steps[0].target_filters[0]
         isolation_filter = or_filter.filters[0]
-        assert isolation_filter.apply(
-            "enemy_hero", silver_state, silver_state.execution_context
-        )
+        assert isolation_filter.apply("enemy_hero", silver_state, silver_state.execution_context)
 
     def test_isolation_filter_rejects_non_isolated_target(self, silver_state):
         """An enemy adjacent to another unit fails the isolation check."""
@@ -206,9 +200,7 @@ class TestClearShot:
         steps = effect.get_steps(silver_state, hero, card)
         or_filter = steps[0].target_filters[0]
         melee_filter = or_filter.filters[1]
-        assert melee_filter.apply(
-            "enemy_hero", silver_state, silver_state.execution_context
-        )
+        assert melee_filter.apply("enemy_hero", silver_state, silver_state.execution_context)
 
     def test_or_filter_passes_if_either_branch(self, silver_state):
         """OrFilter passes if either isolation OR melee applies."""
@@ -218,9 +210,7 @@ class TestClearShot:
         steps = effect.get_steps(silver_state, hero, card)
         or_filter = steps[0].target_filters[0]
         # enemy at (3,0,-3) is isolated — OrFilter passes via first branch
-        assert or_filter.apply(
-            "enemy_hero", silver_state, silver_state.execution_context
-        )
+        assert or_filter.apply("enemy_hero", silver_state, silver_state.execution_context)
 
     def test_non_isolated_non_adjacent_rejected(self, silver_state):
         """A target that is neither isolated nor adjacent fails."""
@@ -237,9 +227,7 @@ class TestClearShot:
         card = _card_by_id("clear_shot")
         steps = effect.get_steps(silver_state, hero, card)
         or_filter = steps[0].target_filters[0]
-        assert not or_filter.apply(
-            "enemy_hero", silver_state, silver_state.execution_context
-        )
+        assert not or_filter.apply("enemy_hero", silver_state, silver_state.execution_context)
 
     def test_all_three_share_structure(self, silver_state):
         """clear_shot, opportunity_shot, snap_shot all produce the same step pattern."""
@@ -285,9 +273,7 @@ class TestLeadAstray:
         steps = effect.get_steps(silver_state, hero, card)
         # The drag destination filter should allow up to 3 spaces from target
         drag_dest_select = steps[2]
-        range_filter = next(
-            f for f in drag_dest_select.filters if isinstance(f, RangeFilter)
-        )
+        range_filter = next(f for f in drag_dest_select.filters if isinstance(f, RangeFilter))
         assert range_filter.max_range == 3
 
     def test_self_move_has_straight_line_filters(self, silver_state):
@@ -307,9 +293,7 @@ class TestLeadAstray:
         card = _card_by_id("lead_astray")
         steps = effect.get_steps(silver_state, hero, card)
         self_move_select = steps[5]
-        range_filter = next(
-            f for f in self_move_select.filters if isinstance(f, RangeFilter)
-        )
+        range_filter = next(f for f in self_move_select.filters if isinstance(f, RangeFilter))
         assert range_filter.max_range_key == "drag_distance_moved"
 
 
@@ -323,9 +307,7 @@ class TestDivertAttention:
         card = _card_by_id("divert_attention")
         steps = effect.get_steps(silver_state, hero, card)
         drag_dest_select = steps[2]
-        range_filter = next(
-            f for f in drag_dest_select.filters if isinstance(f, RangeFilter)
-        )
+        range_filter = next(f for f in drag_dest_select.filters if isinstance(f, RangeFilter))
         assert range_filter.max_range == 2
 
 
@@ -397,9 +379,7 @@ class TestLeadAstrayIntegration:
         assert req is not None
         assert req["type"] == "SELECT_HEX"
         drag_dest = Hex(q=3, r=0, s=-3)
-        silver_state.execution_stack[-1].pending_input = {
-            "selection": drag_dest.model_dump()
-        }
+        silver_state.execution_stack[-1].pending_input = {"selection": drag_dest.model_dump()}
 
         # Step 3: Self-move in a straight line
         req = process_stack(silver_state).input_request
@@ -407,9 +387,7 @@ class TestLeadAstrayIntegration:
         assert req["type"] == "SELECT_HEX"
         # Silverarrow is at (0,0,0), move 2 in opposite direction
         dance_dest = Hex(q=-2, r=0, s=2)
-        silver_state.execution_stack[-1].pending_input = {
-            "selection": dance_dest.model_dump()
-        }
+        silver_state.execution_stack[-1].pending_input = {"selection": dance_dest.model_dump()}
 
         # Done
         req = process_stack(silver_state).input_request
@@ -441,9 +419,7 @@ class TestLeadAstrayIntegration:
         assert req is None
 
         # Positions unchanged
-        assert silver_state.entity_locations.get("hero_silverarrow") == Hex(
-            q=0, r=0, s=0
-        )
+        assert silver_state.entity_locations.get("hero_silverarrow") == Hex(q=0, r=0, s=0)
         assert silver_state.entity_locations.get("enemy_hero") == Hex(q=1, r=0, s=-1)
 
 
@@ -471,17 +447,13 @@ class TestDisorientIntegration:
         req = process_stack(silver_state).input_request
         assert req is not None
         enemy_dest = Hex(q=2, r=0, s=-2)
-        silver_state.execution_stack[-1].pending_input = {
-            "selection": enemy_dest.model_dump()
-        }
+        silver_state.execution_stack[-1].pending_input = {"selection": enemy_dest.model_dump()}
 
         # Self-move 1 space
         req = process_stack(silver_state).input_request
         assert req is not None
         self_dest = Hex(q=-1, r=0, s=1)
-        silver_state.execution_stack[-1].pending_input = {
-            "selection": self_dest.model_dump()
-        }
+        silver_state.execution_stack[-1].pending_input = {"selection": self_dest.model_dump()}
 
         req = process_stack(silver_state).input_request
         assert req is None

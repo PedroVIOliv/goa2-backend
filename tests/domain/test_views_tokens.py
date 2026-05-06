@@ -1,9 +1,9 @@
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.tile import Tile
+from goa2.domain.models import Hero, Team, TeamColor, Token, TokenType
 from goa2.domain.state import GameState
-from goa2.domain.models import Team, TeamColor, Hero, Token, TokenType
-from goa2.domain.types import HeroID, BoardEntityID
+from goa2.domain.tile import Tile
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.domain.views import build_view
 
 

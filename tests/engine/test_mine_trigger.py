@@ -1,12 +1,22 @@
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.tile import Tile
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
+    Team,
+    TeamColor,
+    Token,
+    TokenType,
+)
 from goa2.domain.state import GameState
-from goa2.domain.models import Team, TeamColor, Hero, Token, TokenType, Card, CardTier, CardColor, CardState, ActionType
-from goa2.domain.types import HeroID, BoardEntityID
+from goa2.domain.tile import Tile
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import MoveSequenceStep, MoveUnitStep, TriggerMineStep
-from goa2.domain.events import GameEventType
 
 
 def _make_state_with_mine():
@@ -119,10 +129,18 @@ def test_blast_mine_forces_discard():
     state = _make_state_with_mine()
     hero = state.get_hero(HeroID("hero_a"))
     card = Card(
-        id="card_1", name="Test Card", tier=CardTier.I, color=CardColor.RED,
-        primary_action=ActionType.ATTACK, primary_action_value=2,
-        secondary_actions={}, effect_id="e", effect_text="t",
-        initiative=5, state=CardState.HAND, is_facedown=False,
+        id="card_1",
+        name="Test Card",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=2,
+        secondary_actions={},
+        effect_id="e",
+        effect_text="t",
+        initiative=5,
+        state=CardState.HAND,
+        is_facedown=False,
     )
     hero.hand.append(card)
 
@@ -154,10 +172,18 @@ def test_dud_mine_no_discard():
     hero = Hero(id=HeroID("hero_a"), name="A", team=TeamColor.BLUE, deck=[])
     mine_owner = Hero(id=HeroID("hero_min"), name="Min", team=TeamColor.RED, deck=[])
     card = Card(
-        id="card_1", name="Test Card", tier=CardTier.I, color=CardColor.RED,
-        primary_action=ActionType.ATTACK, primary_action_value=2,
-        secondary_actions={}, effect_id="e", effect_text="t",
-        initiative=5, state=CardState.HAND, is_facedown=False,
+        id="card_1",
+        name="Test Card",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=2,
+        secondary_actions={},
+        effect_id="e",
+        effect_text="t",
+        initiative=5,
+        state=CardState.HAND,
+        is_facedown=False,
     )
     hero.hand.append(card)
 
@@ -172,8 +198,12 @@ def test_dud_mine_no_discard():
     state.place_entity(BoardEntityID("hero_a"), Hex(q=0, r=0, s=0))
 
     mine = Token(
-        id=BoardEntityID("mine_1"), name="Mine", token_type=TokenType.MINE_DUD,
-        owner_id=HeroID("hero_min"), is_passable=True, is_facedown=True,
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=HeroID("hero_min"),
+        is_passable=True,
+        is_facedown=True,
     )
     state.token_pool[TokenType.MINE_DUD] = [mine]
     state.misc_entities[BoardEntityID("mine_1")] = mine
