@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import ClassVar, Optional, Dict, Any, List, Tuple, Sequence, cast
 import copy
+import logging
 from pydantic import BaseModel, Field
 
 from goa2.domain.state import GameState
@@ -48,6 +49,9 @@ from goa2.domain.input import (
     create_input_request,
 )
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
+
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Base Classes
@@ -138,7 +142,7 @@ def _remove_token_from_board(
     removed_effects = initial_count - len(state.active_effects)
 
     if removed_effects > 0:
-        print(
+        logger.debug(
             f"   [TOKEN] Removed {removed_effects} linked effect(s) from token {token_id}"
         )
 
@@ -197,7 +201,7 @@ class PlaceTokenStep(GameStep):
         dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied:
-            print(
+            logger.debug(
                 f"   [TOKEN] Cannot place {self.token_type.value} at {dest_hex}: occupied."
             )
             return StepResult(is_finished=True)
@@ -289,7 +293,7 @@ class MoveTokenStep(GameStep):
 
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied and str(tile.occupant_id) != str(token_id):
-            print(f"   [TOKEN] Cannot move {token_id} to {dest_hex}: occupied.")
+            logger.debug(f"   [TOKEN] Cannot move {token_id} to {dest_hex}: occupied.")
             return StepResult(is_finished=True)
 
         if from_hex != dest_hex:
@@ -304,7 +308,7 @@ class MoveTokenStep(GameStep):
                 else None,
             )
             if not is_valid:
-                print(
+                logger.debug(
                     f"   [TOKEN] Invalid token move {token_id}: blocked or out of range."
                 )
                 return StepResult(is_finished=True)
@@ -449,7 +453,7 @@ class CreateEffectStep(GameStep):
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
-        print(f"   [EFFECT] Created {self.effect_type.value} from {source}")
+        logger.debug(f"   [EFFECT] Created {self.effect_type.value} from {source}")
 
         return StepResult(
             is_finished=True,
@@ -498,7 +502,7 @@ class PlaceMarkerStep(GameStep):
             target = context.get(self.target_key)
 
         if not target:
-            print(f"   [SKIP] No target for PlaceMarkerStep ({self.marker_type.value})")
+            logger.debug(f"   [SKIP] No target for PlaceMarkerStep ({self.marker_type.value})")
             return StepResult(is_finished=True)
 
         # Get source (current actor)
@@ -512,7 +516,7 @@ class PlaceMarkerStep(GameStep):
             source_id=source_id,
         )
 
-        print(
+        logger.debug(
             f"   [MARKER] Placed {self.marker_type.value} on {target} "
             f"(value={self.value}, source={source_id})"
         )
@@ -560,7 +564,7 @@ class RemoveMarkerStep(GameStep):
         marker = state.remove_marker(self.marker_type)
 
         if marker:
-            print(f"   [MARKER] Removed {self.marker_type.value} from play")
+            logger.debug(f"   [MARKER] Removed {self.marker_type.value} from play")
             return StepResult(
                 is_finished=True,
                 events=[
@@ -571,7 +575,7 @@ class RemoveMarkerStep(GameStep):
                 ],
             )
         else:
-            print(f"   [MARKER] {self.marker_type.value} not in play")
+            logger.debug(f"   [MARKER] {self.marker_type.value} not in play")
 
         return StepResult(is_finished=True)
 
@@ -585,7 +589,7 @@ class LogMessageStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         # Interpolate context variables
         msg = self.message.format(**context)
-        print(f"   [STEP] {msg}")
+        logger.debug(f"   [STEP] {msg}")
         return StepResult(is_finished=True)
 
 
@@ -607,7 +611,7 @@ class SetContextFlagStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
         context[self.key] = self.value
-        print(f"   [CONTEXT] Set {self.key} = {self.value}")
+        logger.debug(f"   [CONTEXT] Set {self.key} = {self.value}")
         return StepResult(is_finished=True)
 
 
@@ -636,7 +640,7 @@ class SetActorStep(GameStep):
             new_id = context.get(self.actor_key)
         if new_id:
             state.current_actor_id = HeroID(str(new_id))
-            print(
+            logger.debug(
                 f"   [SET_ACTOR] Set current_actor_id={new_id} (saved previous to {self.save_key})"
             )
         return StepResult(is_finished=True)
@@ -657,7 +661,7 @@ class RestoreActionTypeStep(GameStep):
         if stack:
             previous_type = stack.pop()
             context["current_action_type"] = previous_type
-            print(f"   [CONTEXT] Restored action type to {previous_type.name}")
+            logger.debug(f"   [CONTEXT] Restored action type to {previous_type.name}")
         return StepResult(is_finished=True)
 
 
@@ -710,7 +714,7 @@ class CheckPassiveAbilitiesStep(GameStep):
             # Check usage limit
             if config.uses_per_turn > 0:
                 if card.passive_uses_this_turn >= config.uses_per_turn:
-                    print(
+                    logger.debug(
                         f"   [PASSIVE] {card.name} already used {card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
                     )
                     return
@@ -742,7 +746,7 @@ class CheckPassiveAbilitiesStep(GameStep):
             check_card_for_passive(hero.ultimate_card)
 
         if offer_steps:
-            print(
+            logger.debug(
                 f"   [PASSIVE] Found {len(offer_steps)} passive(s) for trigger {trigger_enum.value}"
             )
 
@@ -779,7 +783,7 @@ class OfferPassiveStep(GameStep):
             card = hero.ultimate_card
 
         if not card:
-            print(f"   [PASSIVE] Card {self.card_id} not found")
+            logger.debug(f"   [PASSIVE] Card {self.card_id} not found")
             return StepResult(is_finished=True)
 
         if card.current_effect_id is None:
@@ -797,7 +801,7 @@ class OfferPassiveStep(GameStep):
                 state, hero, card, trigger_enum, context
             )
             if passive_steps:
-                print(
+                logger.debug(
                     f"   [PASSIVE] Activating {card.name}: {len(passive_steps)} step(s)"
                 )
                 # Add MarkPassiveUsedStep after the passive steps
@@ -818,7 +822,7 @@ class OfferPassiveStep(GameStep):
             if choice == "YES":
                 return execute_passive()
             else:  # "NO" or "SKIP"
-                print(f"   [PASSIVE] Player declined {card.name} passive")
+                logger.debug(f"   [PASSIVE] Player declined {card.name} passive")
                 return StepResult(is_finished=True)
 
         # Request input from player
@@ -856,7 +860,7 @@ class MarkPassiveUsedStep(GameStep):
 
         if card:
             card.passive_uses_this_turn += 1
-            print(
+            logger.debug(
                 f"   [PASSIVE] {card.name} used ({card.passive_uses_this_turn} time(s) this turn)"
             )
 
@@ -944,7 +948,7 @@ class SelectStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if self.should_skip(context):
-            print(
+            logger.debug(
                 f"   [SKIP] Conditional Step '{self.prompt}' skipped (Key '{self.active_if_key}' missing)."
             )
             return StepResult(is_finished=True)
@@ -1047,12 +1051,12 @@ class SelectStep(GameStep):
 
         if not valid_candidates:
             if self.is_mandatory:
-                print(
+                logger.debug(
                     f"   [ABORT] Mandatory selection '{self.prompt}' failed. No candidates."
                 )
                 return StepResult(is_finished=True, abort_action=True)
             else:
-                print(
+                logger.debug(
                     f"   [SKIP] Optional selection '{self.prompt}' skipped. No candidates."
                 )
                 return StepResult(is_finished=True)
@@ -1060,14 +1064,14 @@ class SelectStep(GameStep):
         if self.auto_select_if_one and len(valid_candidates) == 1 and self.is_mandatory:
             choice = valid_candidates[0]
             context[self.output_key] = choice
-            print(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
+            logger.debug(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
             return StepResult(is_finished=True)
 
         if self.pending_input:
             selection = self.pending_input.get("selection")
 
             if selection == "SKIP" and not self.is_mandatory:
-                print("   [SKIP] Player chose to skip optional selection.")
+                logger.debug("   [SKIP] Player chose to skip optional selection.")
                 return StepResult(is_finished=True)
 
             # Type Conversion for Hex
@@ -1080,7 +1084,7 @@ class SelectStep(GameStep):
 
             if selection in valid_candidates:
                 context[self.output_key] = selection
-                print(f"   [INPUT] Player {actor_id} selected {selection}")
+                logger.debug(f"   [INPUT] Player {actor_id} selected {selection}")
                 return StepResult(is_finished=True)
             else:
                 # Invalid choice, re-request
@@ -1169,16 +1173,16 @@ class DiscardCardStep(GameStep):
                 (c for c in hero.played_cards if c is not None and c.id == c_id), None
             )
         else:
-            print(f"   [DISCARD] Unsupported source container: {self.source}")
+            logger.debug(f"   [DISCARD] Unsupported source container: {self.source}")
             return StepResult(is_finished=True)
 
         if not target_card:
-            print(
+            logger.debug(
                 f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}."
             )
             return StepResult(is_finished=True)
 
-        print(f"   [DISCARD] {h_id} discards {target_card.name}")
+        logger.debug(f"   [DISCARD] {h_id} discards {target_card.name}")
         hero.discard_card(
             target_card, from_hand=(self.source == CardContainerType.HAND)
         )
@@ -1222,7 +1226,7 @@ class ForceDiscardStep(GameStep):
             return StepResult(is_finished=True)
 
         if not victim.hand:
-            print(f"   [EFFECT] {victim_id} has no cards to discard (Safe).")
+            logger.debug(f"   [EFFECT] {victim_id} has no cards to discard (Safe).")
             return StepResult(is_finished=True)
 
         # Has cards -> Force Discard
@@ -1263,7 +1267,7 @@ class ForceDiscardOrDefeatStep(GameStep):
             return StepResult(is_finished=True)
 
         if not victim.hand:
-            print(f"   [EFFECT] {victim_id} has no cards to discard! DEFEATED!")
+            logger.debug(f"   [EFFECT] {victim_id} has no cards to discard! DEFEATED!")
             return StepResult(
                 is_finished=True, new_steps=[DefeatUnitStep(victim_id=str(victim_id))]
             )
@@ -1322,11 +1326,11 @@ class MoveUnitStep(GameStep):
             dest_val = context.get(self.destination_key)
 
         if not target_unit_id:
-            print("   [ERROR] No unit for move.")
+            logger.debug("   [ERROR] No unit for move.")
             return StepResult(is_finished=True)
 
         if not dest_val:
-            print("   [ERROR] No destination for move.")
+            logger.debug("   [ERROR] No destination for move.")
             return StepResult(is_finished=True)
 
         if isinstance(dest_val, dict):
@@ -1338,7 +1342,7 @@ class MoveUnitStep(GameStep):
 
         start_hex = state.entity_locations.get(BoardEntityID(target_unit_id))
         if not start_hex:
-            print(f"   [ERROR] Unit {target_unit_id} has no location on board.")
+            logger.debug(f"   [ERROR] Unit {target_unit_id} has no location on board.")
             return StepResult(is_finished=True)
 
         displacement_validation = state.validator.can_be_moved(
@@ -1348,7 +1352,7 @@ class MoveUnitStep(GameStep):
             context=context,
         )
         if not displacement_validation.allowed:
-            print(f"   [BLOCKED] MoveUnitStep: {displacement_validation.reason}")
+            logger.debug(f"   [BLOCKED] MoveUnitStep: {displacement_validation.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
@@ -1368,7 +1372,7 @@ class MoveUnitStep(GameStep):
             is_movement_action=self.is_movement_action,
         )
         if not move_validation.allowed:
-            print(f"   [BLOCKED] MoveUnitStep: {move_validation.reason}")
+            logger.debug(f"   [BLOCKED] MoveUnitStep: {move_validation.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
@@ -1389,7 +1393,7 @@ class MoveUnitStep(GameStep):
             )
 
         if not is_valid:
-            print(
+            logger.debug(
                 f"   [ERROR] Invalid move for {target_unit_id} to {dest_hex}. Path blocked or out of range."
             )
             return StepResult(is_finished=True)
@@ -1444,7 +1448,7 @@ class MoveUnitStep(GameStep):
                     list(mine_options[0].mine_ids) if mine_options else []
                 )
 
-        print(
+        logger.debug(
             f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
         )
         from_hex_dict = _hex_dict(start_hex)
@@ -1682,7 +1686,7 @@ class ResolvePreActionMovementStep(GameStep):
 
         from goa2.engine.filters import ObstacleFilter, MovementPathFilter
 
-        print(
+        logger.debug(
             f"   [PRE-ACTION MOVE] Granting {hero_id} optional move up to {move_range}"
         )
 
@@ -1845,7 +1849,7 @@ class MoveSequenceStep(GameStep):
         # If range is 0, MovementPathFilter will only allow current hex.
         # OccupiedFilter will also allow it because of exclude_id.
 
-        print(f"   [MACRO] Expanding Move Sequence (Range: {effective_range})")
+        logger.debug(f"   [MACRO] Expanding Move Sequence (Range: {effective_range})")
 
         return StepResult(
             is_finished=True,
@@ -1880,7 +1884,7 @@ class FastTravelStep(GameStep):
     destination_key: str = "target_hex"
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print("   [WARNING] FastTravelStep is deprecated. Use FastTravelSequenceStep.")
+        logger.debug("   [WARNING] FastTravelStep is deprecated. Use FastTravelSequenceStep.")
         actor_id = self.unit_id or state.current_actor_id
         dest = context.get(self.destination_key)
 
@@ -1920,7 +1924,7 @@ class FastTravelSequenceStep(GameStep):
 
         from goa2.engine.filters import FastTravelDestinationFilter
 
-        print("   [MACRO] Expanding Fast Travel Sequence")
+        logger.debug("   [MACRO] Expanding Fast Travel Sequence")
 
         return StepResult(
             is_finished=True,
@@ -1964,7 +1968,7 @@ class ReactionWindowStep(GameStep):
 
         # Optimization: Minions/Non-Heroes cannot react.
         if not target_hero:
-            print(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
+            logger.debug(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
             context["defense_value"] = None
             context["defense_card_id"] = None
             context["defender_id"] = str(target_id)
@@ -2009,7 +2013,7 @@ class ReactionWindowStep(GameStep):
 
             # Case A: PASS
             if card_id == "PASS":
-                print(f"   [REACTION] Player {target_id} Passed (No Defense).")
+                logger.debug(f"   [REACTION] Player {target_id} Passed (No Defense).")
                 context["defense_value"] = None
                 context["defense_card_id"] = None
                 context["defender_id"] = str(target_id)
@@ -2048,7 +2052,7 @@ class ReactionWindowStep(GameStep):
                 # Discard the defense card from hand
                 target_hero.discard_card(selected_card, from_hand=True)
 
-                print(
+                logger.debug(
                     f"   [REACTION] Player {target_id} defends with {card_id} "
                     f"(Value: {total_def} [Base: {def_val}], Primary: {is_primary})"
                 )
@@ -2115,13 +2119,13 @@ class ResolveDefenseTextStep(GameStep):
         defender_id = context.get("defender_id")
         is_primary = context.get("is_primary_defense", False)
 
-        print(
+        logger.debug(
             f"   [DEFENSE TEXT] card_id={card_id}, defender_id={defender_id}, is_primary={is_primary}"
         )
 
         # Only trigger effects for primary DEFENSE
         if not card_id or not is_primary or not defender_id:
-            print("   [DEFENSE] No primary defense card - skipping effect resolution.")
+            logger.debug("   [DEFENSE] No primary defense card - skipping effect resolution.")
             return StepResult(is_finished=True)
 
         defender = state.get_hero(HeroID(str(defender_id)))
@@ -2136,12 +2140,12 @@ class ResolveDefenseTextStep(GameStep):
             card = next((c for c in defender.discard_pile if c.id == card_id), None)
 
         if not card or not card.current_effect_id:
-            print(
+            logger.debug(
                 f"   [DEFENSE] Card {card_id} has no effect_id - using standard defense."
             )
             return StepResult(is_finished=True)
 
-        print(f"   [DEFENSE] Looking up effect_id={card.current_effect_id}")
+        logger.debug(f"   [DEFENSE] Looking up effect_id={card.current_effect_id}")
 
         from goa2.engine.effects import CardEffectRegistry
 
@@ -2152,13 +2156,13 @@ class ResolveDefenseTextStep(GameStep):
 
             # If None, fall back to get_steps() (for DEFENSE_SKILL cards)
             if defense_steps is None:
-                print(
+                logger.debug(
                     f"   [DEFENSE] Using get_steps() fallback for {card.current_effect_id}"
                 )
                 defense_steps = effect.get_steps(state, defender, card)
 
             if defense_steps:
-                print(
+                logger.debug(
                     f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
@@ -2178,11 +2182,11 @@ class ResolveDefenseTextStep(GameStep):
                 return StepResult(is_finished=True, new_steps=wrapped)
             else:
                 if not defense_steps:
-                    print(
+                    logger.debug(
                         f"   [DEFENSE] defense_steps is None/empty for {card.current_effect_id}"
                     )
                 else:
-                    print(
+                    logger.debug(
                         f"   [DEFENSE] No defense_steps returned for {card.current_effect_id}"
                     )
 
@@ -2201,7 +2205,7 @@ class ResolveOnBlockEffectStep(GameStep):
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         if not context.get("block_succeeded"):
-            print("   [ON_BLOCK] Block did not succeed - skipping on_block effects.")
+            logger.debug("   [ON_BLOCK] Block did not succeed - skipping on_block effects.")
             return StepResult(is_finished=True)
 
         card_id = context.get("defense_card_id")
@@ -2229,7 +2233,7 @@ class ResolveOnBlockEffectStep(GameStep):
         if effect:
             on_block_steps = effect.get_on_block_steps(state, defender, card, context)
             if on_block_steps:
-                print(
+                logger.debug(
                     f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
@@ -2268,7 +2272,7 @@ class RemoveUnitStep(GameStep):
         if not target_id:
             return StepResult(is_finished=True)
 
-        print(f"   [LOGIC] Removing {target_id} from board.")
+        logger.debug(f"   [LOGIC] Removing {target_id} from board.")
         from_hex = state.entity_locations.get(BoardEntityID(target_id))
         state.remove_unit(UnitID(target_id))
         return StepResult(
@@ -2313,7 +2317,7 @@ class DefeatUnitStep(GameStep):
         if not actual_victim_id:
             return StepResult(is_finished=True)  # Nothing to defeat
 
-        print(f"   [DEATH] Processing Defeat of {actual_victim_id}...")
+        logger.debug(f"   [DEATH] Processing Defeat of {actual_victim_id}...")
 
         victim = state.get_unit(UnitID(actual_victim_id))
         if not victim:
@@ -2340,14 +2344,14 @@ class DefeatUnitStep(GameStep):
         # Return markers from the defeated hero
         markers_from = state.return_markers_from_hero(actual_victim_id)
         if markers_from:
-            print(
+            logger.debug(
                 f"   [DEATH] Returned {len(markers_from)} marker(s) from defeated {actual_victim_id}"
             )
 
         # Return markers placed by the defeated hero
         markers_by = state.return_markers_by_source(actual_victim_id)
         if markers_by:
-            print(
+            logger.debug(
                 f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {actual_victim_id}"
             )
 
@@ -2390,13 +2394,13 @@ class DefeatUnitStep(GameStep):
             # Bounty marker: defeated hero spends 1 additional life counter
             if has_bounty:
                 penalty_counters += 1
-                print(
+                logger.debug(
                     f"   [BOUNTY] {actual_victim_id} has Bounty marker — +1 Life Counter penalty."
                 )
 
             if killer and hasattr(killer, "gold"):
                 killer.gold += kill_gold
-                print(f"   [ECONOMY] Killer {killer.id} gains {kill_gold} Gold.")
+                logger.debug(f"   [ECONOMY] Killer {killer.id} gains {kill_gold} Gold.")
                 events.append(
                     GameEvent(
                         event_type=GameEventType.GOLD_GAINED,
@@ -2414,7 +2418,7 @@ class DefeatUnitStep(GameStep):
                             if ally.id != killer.id:
                                 actual_assist = assist_gold * self.assist_multiplier
                                 ally.gold += actual_assist
-                                print(
+                                logger.debug(
                                     f"   [ECONOMY] Assist: {ally.id} gains {actual_assist} Gold."
                                 )
                                 events.append(
@@ -2436,7 +2440,7 @@ class DefeatUnitStep(GameStep):
                         victim_team.life_counters = max(
                             0, victim_team.life_counters - penalty_counters
                         )
-                        print(
+                        logger.debug(
                             f"   [SCORE] Team {victim_team_color.name} loses {penalty_counters} Life Counter(s). Remaining: {victim_team.life_counters}"
                         )
                         events.append(
@@ -2451,7 +2455,7 @@ class DefeatUnitStep(GameStep):
                         )
 
                         if victim_team.life_counters == 0:
-                            print(
+                            logger.debug(
                                 f"   [GAME OVER] Team {victim_team_color.name} has 0 Life Counters! ANNIHILATION."
                             )
                             winning_team = (
@@ -2472,7 +2476,7 @@ class DefeatUnitStep(GameStep):
 
         elif hasattr(victim, "value"):  # Is Minion
             reward = victim.value
-            print(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
+            logger.debug(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
             if killer and hasattr(killer, "gold"):
                 killer.gold += reward
                 events.append(
@@ -2552,7 +2556,7 @@ class CheckMinionProtectionStep(GameStep):
         ]
 
         if not qualifying_cards:
-            print(
+            logger.debug(
                 f"   [PROTECT] {protector.id} has no qualifying cards for protection."
             )
             return self._try_next(protection.id)
@@ -2585,7 +2589,7 @@ class CheckMinionProtectionStep(GameStep):
             selection = selection.get("selected_card_id") or selection.get("selection")
 
         if selection == "SKIP" or selection is None:
-            print(f"   [PROTECT] {protector.id} declined to protect {self.minion_id}.")
+            logger.debug(f"   [PROTECT] {protector.id} declined to protect {self.minion_id}.")
             return self._try_next(protection.id)
 
         # Find and discard the selected card
@@ -2594,7 +2598,7 @@ class CheckMinionProtectionStep(GameStep):
             return self._try_next(protection.id)
 
         protector.discard_card(card_to_discard, from_hand=True)
-        print(
+        logger.debug(
             f"   [PROTECT] {protector.id} discards {card_to_discard.name} to protect {self.minion_id}!"
         )
 
@@ -2638,7 +2642,7 @@ class FindNextActorStep(GameStep):
         # Import internally to avoid circular dependency (steps <-> phases)
         from goa2.engine.phases import resolve_next_action
 
-        print("   [LOOP] Finding next actor...")
+        logger.debug("   [LOOP] Finding next actor...")
         resolve_next_action(state)
         return StepResult(is_finished=True)
 
@@ -2663,7 +2667,7 @@ class ResolveCombatStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         target_id = context.get(self.target_key)
         if not target_id:
-            print("[COMBAT] No target selected. Combat cancelled.")
+            logger.debug("[COMBAT] No target selected. Combat cancelled.")
             context["block_succeeded"] = False
             return StepResult(is_finished=True)
 
@@ -2690,13 +2694,13 @@ class ResolveCombatStep(GameStep):
                 },
             )
 
-        print(
+        logger.debug(
             f"   [COMBAT] Checking context flags: auto_block={context.get('auto_block')}, defense_invalid={context.get('defense_invalid')}"
         )
 
         # Check for defense_invalid (e.g., stop_projectiles vs melee attack)
         if context.get("defense_invalid"):
-            print(
+            logger.debug(
                 "   [COMBAT] Defense is invalid (conditions not met) - treating as no defense."
             )
             context["block_succeeded"] = False
@@ -2708,7 +2712,7 @@ class ResolveCombatStep(GameStep):
 
         # Check for auto_block (e.g., stop_projectiles vs ranged attack)
         if context.get("auto_block"):
-            print(f"   [COMBAT] Auto-block triggered! {target_id} is safe.")
+            logger.debug(f"   [COMBAT] Auto-block triggered! {target_id} is safe.")
             context["block_succeeded"] = True
             return StepResult(
                 is_finished=True,
@@ -2720,12 +2724,12 @@ class ResolveCombatStep(GameStep):
 
         if context.get("ignore_minion_defense"):
             mod_val = 0
-            print("   [COMBAT] Ignoring minion defense modifiers (effect active).")
+            logger.debug("   [COMBAT] Ignoring minion defense modifiers (effect active).")
         else:
             mod_val = calculate_minion_defense_modifier(state, target_id)
         if defense_card_val is None:
             # No defense played (minion or passed) - unit is defeated
-            print(f"   [RESULT] No defense! {target_id} is DEFEATED!")
+            logger.debug(f"   [RESULT] No defense! {target_id} is DEFEATED!")
             context["block_succeeded"] = False
             return StepResult(
                 is_finished=True,
@@ -2734,19 +2738,19 @@ class ResolveCombatStep(GameStep):
             )
         total_defense = defense_card_val + mod_val
 
-        print(
+        logger.debug(
             f"   [COMBAT] Attack ({attack_val}) vs Defense ({defense_card_val} Card + {mod_val} Mod = {total_defense})"
         )
 
         if total_defense >= attack_val:
-            print(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
+            logger.debug(f"   [RESULT] Attack BLOCKED! {target_id} is safe.")
             context["block_succeeded"] = True
             return StepResult(
                 is_finished=True,
                 events=[_combat_event("BLOCKED", defense_card_val, mod_val)],
             )
         else:
-            print(f"   [RESULT] Attack HITS! {target_id} is DEFEATED!")
+            logger.debug(f"   [RESULT] Attack HITS! {target_id} is DEFEATED!")
             context["block_succeeded"] = False
             return StepResult(
                 is_finished=True,
@@ -2802,7 +2806,7 @@ class FinalizeHeroTurnStep(GameStep):
         hero = state.get_hero(HeroID(self.hero_id))
         if hero and hero.current_turn_card:
             card_id = hero.current_turn_card.id
-            print(
+            logger.debug(
                 f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved."
             )
             hero.resolve_current_card()
@@ -2847,7 +2851,7 @@ class FinishedExpiringEffectStep(GameStep):
     type: StepType = StepType.FINISHED_EXPIRING_EFFECT
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print("   [EFFECT] Finished resolving expiring effect.")
+        logger.debug("   [EFFECT] Finished resolving expiring effect.")
         return StepResult(is_finished=True)
 
 
@@ -2881,11 +2885,11 @@ class PlaceUnitStep(GameStep):
             dest_val = context.get(self.destination_key)
 
         if not target_unit_id:
-            print("   [ERROR] No unit for place.")
+            logger.debug("   [ERROR] No unit for place.")
             return StepResult(is_finished=True)
 
         if not dest_val:
-            print("   [ERROR] No destination for place.")
+            logger.debug("   [ERROR] No destination for place.")
             return StepResult(is_finished=True)
 
         if isinstance(dest_val, dict):
@@ -2896,7 +2900,7 @@ class PlaceUnitStep(GameStep):
         # Validation: Check Occupancy (allow if occupied by self)
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied and str(tile.occupant_id) != target_unit_id:
-            print(
+            logger.debug(
                 f"   [ERROR] Cannot place {target_unit_id} at {dest_hex}. Tile is occupied."
             )
             return StepResult(is_finished=True)
@@ -2914,12 +2918,12 @@ class PlaceUnitStep(GameStep):
         )
 
         if not validation.allowed:
-            print(f"   [BLOCKED] PlaceUnitStep: {validation.reason}")
+            logger.debug(f"   [BLOCKED] PlaceUnitStep: {validation.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
-        print(f"   [LOGIC] Placing {target_unit_id} at {dest_hex}")
+        logger.debug(f"   [LOGIC] Placing {target_unit_id} at {dest_hex}")
         from_hex = state.entity_locations.get(BoardEntityID(str(target_unit_id)))
         from_hex_dict = _hex_dict(from_hex)
         to_hex_dict = _hex_dict(dest_hex)
@@ -2967,7 +2971,7 @@ class SwapUnitsStep(GameStep):
             actual_unit_b = context.get(self.unit_b_key)
 
         if not actual_unit_a or not actual_unit_b:
-            print("   [SKIP] SwapUnitsStep: Missing unit ID(s).")
+            logger.debug("   [SKIP] SwapUnitsStep: Missing unit ID(s).")
             return StepResult(is_finished=True)
 
         # Get current locations from Unified Dict
@@ -2975,7 +2979,7 @@ class SwapUnitsStep(GameStep):
         loc_b = state.entity_locations.get(BoardEntityID(actual_unit_b))
 
         if not loc_a or not loc_b:
-            print(
+            logger.debug(
                 f"   [ERROR] Cannot swap {actual_unit_a} and {actual_unit_b}. One is not on board."
             )
             return StepResult(is_finished=True)
@@ -2986,7 +2990,7 @@ class SwapUnitsStep(GameStep):
             state, actual_unit_a, str(actor_id) if actor_id else "system", context
         )
         if not res_a.allowed:
-            print(f"   [BLOCKED] Swap prevented for {actual_unit_a}: {res_a.reason}")
+            logger.debug(f"   [BLOCKED] Swap prevented for {actual_unit_a}: {res_a.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
@@ -2995,12 +2999,12 @@ class SwapUnitsStep(GameStep):
             state, actual_unit_b, str(actor_id) if actor_id else "system", context
         )
         if not res_b.allowed:
-            print(f"   [BLOCKED] Swap prevented for {actual_unit_b}: {res_b.reason}")
+            logger.debug(f"   [BLOCKED] Swap prevented for {actual_unit_b}: {res_b.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
-        print(
+        logger.debug(
             f"   [LOGIC] Swapping {actual_unit_a} ({loc_a}) <-> {actual_unit_b} ({loc_b})"
         )
 
@@ -3059,7 +3063,7 @@ class SwapCardStep(GameStep):
             t_id = context.get(self.target_card_key)
 
         if not t_id:
-            print("   [SWAP] No target card specified for swap.")
+            logger.debug("   [SWAP] No target card specified for swap.")
             return StepResult(is_finished=True)
 
         # Find the card object
@@ -3083,10 +3087,10 @@ class SwapCardStep(GameStep):
                     break
 
         if not target_card:
-            print(f"   [SWAP] Target card {t_id} not found in {hero_id}'s possession.")
+            logger.debug(f"   [SWAP] Target card {t_id} not found in {hero_id}'s possession.")
             return StepResult(is_finished=True)
 
-        print(
+        logger.debug(
             f"   [SWAP] Swapping {hero.id}'s current card {hero.current_turn_card.name} with {target_card.name}"
         )
         hero.swap_cards(hero.current_turn_card, target_card)
@@ -3133,7 +3137,7 @@ class PushUnitStep(GameStep):
             actual_target_id = context.get(self.target_key)
 
         if not actual_target_id:
-            print("   [SKIP] PushUnitStep: No target specified or found in context.")
+            logger.debug("   [SKIP] PushUnitStep: No target specified or found in context.")
             return StepResult(is_finished=True)
 
         # Resolve distance from context or use default
@@ -3155,11 +3159,11 @@ class PushUnitStep(GameStep):
                 )
 
         if not src_hex:
-            print("   [ERROR] No source for push.")
+            logger.debug("   [ERROR] No source for push.")
             return StepResult(is_finished=True)
 
         if src_hex == target_loc:
-            print("   [ERROR] Cannot push from same hex.")
+            logger.debug("   [ERROR] Cannot push from same hex.")
             return StepResult(is_finished=True)
 
         # Validation
@@ -3168,14 +3172,14 @@ class PushUnitStep(GameStep):
             state, actual_target_id, str(actor_id) if actor_id else "system", context
         )
         if not res.allowed:
-            print(f"   [BLOCKED] Push prevented for {actual_target_id}: {res.reason}")
+            logger.debug(f"   [BLOCKED] Push prevented for {actual_target_id}: {res.reason}")
             if self.is_mandatory:
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
 
         direction_idx = src_hex.direction_to(target_loc)
         if direction_idx is None:
-            print(
+            logger.debug(
                 f"   [ERROR] Push target {actual_target_id} is not in a straight line from source."
             )
             return StepResult(is_finished=True)
@@ -3187,12 +3191,12 @@ class PushUnitStep(GameStep):
             next_hex = prev.neighbor(direction_idx)
 
             if next_hex not in state.board.tiles:
-                print(f"   [PUSH] {actual_target_id} hit board edge at {prev}")
+                logger.debug(f"   [PUSH] {actual_target_id} hit board edge at {prev}")
                 was_stopped_by_obstacle = True
                 break
 
             if not are_connected(prev, next_hex, state):
-                print(
+                logger.debug(
                     f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
                 )
                 was_stopped_by_obstacle = True
@@ -3215,7 +3219,7 @@ class PushUnitStep(GameStep):
                 if self.ignore_obstacles:
                     path.append(next_hex)
                     continue
-                print(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
+                logger.debug(f"   [PUSH] {actual_target_id} hit obstacle at {next_hex}")
                 was_stopped_by_obstacle = True
                 break
 
@@ -3250,16 +3254,16 @@ class PushUnitStep(GameStep):
         pushed_dist = len(path) - 1
 
         if pushed_dist > 0:
-            print(
+            logger.debug(
                 f"   [LOGIC] Pushing {actual_target_id} from {target_loc} to {current_loc} ({pushed_dist} spaces)"
             )
             state.place_entity(BoardEntityID(actual_target_id), current_loc)
         else:
-            print(f"   [LOGIC] Push had no effect for {actual_target_id}")
+            logger.debug(f"   [LOGIC] Push had no effect for {actual_target_id}")
 
         if self.collision_output_key:
             context[self.collision_output_key] = was_stopped_by_obstacle
-            print(
+            logger.debug(
                 f"   [PUSH] Collision detected: {was_stopped_by_obstacle} -> {self.collision_output_key}"
             )
 
@@ -3343,14 +3347,14 @@ class RespawnHeroStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             if selection == "PASS":
-                print(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
+                logger.debug(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
                 context["skipped_respawn"] = True
                 return StepResult(is_finished=True)
 
             selected_hex_dict = selection if isinstance(selection, dict) else None
             if selected_hex_dict:
                 selected_hex = Hex(**selected_hex_dict)
-                print(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
+                logger.debug(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
                 state.move_unit(UnitID(self.hero_id), selected_hex)
                 return StepResult(is_finished=True)
 
@@ -3378,7 +3382,7 @@ class RespawnHeroStep(GameStep):
                         break
 
         if not valid_hexes:
-            print(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
+            logger.debug(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
             return StepResult(is_finished=True)
 
         # If user already chose RESPAWN but hasn't picked hex yet, show hexes
@@ -3439,7 +3443,7 @@ class RespawnMinionStep(GameStep):
         if not target_minion:
             # Safely handle team name if team exists, otherwise default
             team_name = self.team.name if self.team else "Unknown"
-            print(
+            logger.debug(
                 f"   [RESPAWN] No available {team_name} {self.minion_type} to respawn."
             )
             return StepResult(is_finished=True)
@@ -3450,13 +3454,13 @@ class RespawnMinionStep(GameStep):
                 selected_hex = Hex(**selected_hex_dict)
                 tile = state.board.get_tile(selected_hex)
                 if tile and tile.is_occupied:
-                    print(
+                    logger.debug(
                         f"   [ERROR] Cannot respawn {self.minion_type} at {selected_hex}. Occupied."
                     )
                     return StepResult(is_finished=True)
 
                 state.move_unit(UnitID(target_minion.id), selected_hex)
-                print(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
+                logger.debug(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
                 return StepResult(is_finished=True)
 
         valid_spaces = [
@@ -3498,7 +3502,7 @@ class RespawnMinionAtHexStep(GameStep):
         # Read minion ID from context
         minion_id = context.get(self.unit_key)
         if not minion_id:
-            print(f"   [RESPAWN] No minion ID in context['{self.unit_key}'].")
+            logger.debug(f"   [RESPAWN] No minion ID in context['{self.unit_key}'].")
             return StepResult(is_finished=True)
 
         # Verify minion exists and is in limbo
@@ -3513,7 +3517,7 @@ class RespawnMinionAtHexStep(GameStep):
                 break
 
         if not target_minion:
-            print(f"   [RESPAWN] Minion {minion_id} not found in limbo.")
+            logger.debug(f"   [RESPAWN] Minion {minion_id} not found in limbo.")
             return StepResult(is_finished=True)
 
         # Handle input
@@ -3523,13 +3527,13 @@ class RespawnMinionAtHexStep(GameStep):
                 selected_hex = Hex(**selected_hex_dict)
                 tile = state.board.get_tile(selected_hex)
                 if tile and tile.is_occupied:
-                    print(
+                    logger.debug(
                         f"   [ERROR] Cannot respawn {minion_id} at {selected_hex}. Occupied."
                     )
                     return StepResult(is_finished=True)
 
                 state.move_unit(UnitID(target_minion.id), selected_hex)
-                print(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
+                logger.debug(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
                 return StepResult(
                     is_finished=True,
                     events=[
@@ -3556,7 +3560,7 @@ class RespawnMinionAtHexStep(GameStep):
                 valid_hexes.append(h)
 
         if not valid_hexes:
-            print(f"   [RESPAWN] No valid hexes for respawn.")
+            logger.debug(f"   [RESPAWN] No valid hexes for respawn.")
             return StepResult(is_finished=True)
 
         return StepResult(
@@ -3593,7 +3597,7 @@ class ResolveCardTextStep(GameStep):
         # Set card ID in context for effect creation
         context["current_card_id"] = card.id
 
-        print(
+        logger.debug(
             f"   [SCRIPT] Executing logic for '{card.name}' (Effect: {card.current_effect_id})"
         )
 
@@ -3611,10 +3615,10 @@ class ResolveCardTextStep(GameStep):
 
         # Fallback to standard primary primitives if no specific script found
         if not card.current_primary_action:
-            print("            > No custom script found and no primary action.")
+            logger.debug("            > No custom script found and no primary action.")
             return StepResult(is_finished=True)
 
-        print(
+        logger.debug(
             f"            > No custom script found. Using standard {card.current_primary_action.name} logic."
         )
 
@@ -3653,7 +3657,7 @@ class ResolveCardTextStep(GameStep):
                 LogMessageStep(message=f"{self.hero_id} Defends (Primary).")
             )
         elif card.current_primary_action == ActionType.SKILL:
-            print(f"            > Skill '{card.name}' has no registered effect!")
+            logger.debug(f"            > Skill '{card.name}' has no registered effect!")
             steps_list.append(
                 LogMessageStep(message=f"Skill '{card.name}' did nothing.")
             )
@@ -3809,7 +3813,7 @@ class ResolveCardStep(GameStep):
                 ):
                     is_primary = True
 
-                print(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
+                logger.debug(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
 
                 # Track current action type for effect origin tracking
                 context["current_action_type"] = act_type
@@ -4100,7 +4104,7 @@ class ResolveDisplacementStep(GameStep):
         candidates = find_nearest_empty_hexes(state, origin, state.active_zone_id)
 
         if not candidates:
-            print(f"   [DISPLACE] No empty space found for {uid} in zone!")
+            logger.debug(f"   [DISPLACE] No empty space found for {uid} in zone!")
             return StepResult(
                 is_finished=True,
                 new_steps=[ResolveDisplacementStep(displacements=remaining)],
@@ -4111,7 +4115,7 @@ class ResolveDisplacementStep(GameStep):
             if selection:
                 target_hex = Hex(**selection)
                 if target_hex in candidates:
-                    print(f"   [DISPLACE] Team chose {target_hex} for {uid}")
+                    logger.debug(f"   [DISPLACE] Team chose {target_hex} for {uid}")
                     return StepResult(
                         is_finished=True,
                         new_steps=[
@@ -4122,7 +4126,7 @@ class ResolveDisplacementStep(GameStep):
 
         if len(candidates) == 1:
             target = candidates[0]
-            print(f"   [DISPLACE] Auto-placing {uid} at {target}")
+            logger.debug(f"   [DISPLACE] Auto-placing {uid} at {target}")
             return StepResult(
                 is_finished=True,
                 new_steps=[
@@ -4169,13 +4173,13 @@ class LanePushStep(GameStep):
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import get_push_target_zone_id
 
-        print(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
+        logger.debug(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
 
         state.wave_counter -= 1
-        print(f"   [PUSH] Wave Counter removed. Remaining: {state.wave_counter}")
+        logger.debug(f"   [PUSH] Wave Counter removed. Remaining: {state.wave_counter}")
 
         if state.wave_counter <= 0:
-            print("   [GAME OVER] Last Push Victory!")
+            logger.debug("   [GAME OVER] Last Push Victory!")
             winning_team = (
                 TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
             )
@@ -4189,7 +4193,7 @@ class LanePushStep(GameStep):
         next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
 
         if is_game_over:
-            print(
+            logger.debug(
                 f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached."
             )
             winning_team = (
@@ -4203,11 +4207,11 @@ class LanePushStep(GameStep):
             )
 
         if not next_zone_id:
-            print("   [ERROR] Could not determine next zone for push.")
+            logger.debug("   [ERROR] Could not determine next zone for push.")
             return StepResult(is_finished=True)
 
         if not state.active_zone_id:
-            print("   [ERROR] No active zone for push.")
+            logger.debug("   [ERROR] No active zone for push.")
             return StepResult(is_finished=True)
 
         current_zone = state.board.zones.get(state.active_zone_id)
@@ -4229,9 +4233,9 @@ class LanePushStep(GameStep):
 
         for uid in to_remove:
             state.remove_unit(uid)
-            print(f"   [PUSH] Wiped {uid} from old zone.")
+            logger.debug(f"   [PUSH] Wiped {uid} from old zone.")
 
-        print(f"   [PUSH] Battle Zone moved: {state.active_zone_id} -> {next_zone_id}")
+        logger.debug(f"   [PUSH] Battle Zone moved: {state.active_zone_id} -> {next_zone_id}")
         state.active_zone_id = next_zone_id
 
         next_zone = state.board.zones.get(next_zone_id)
@@ -4258,7 +4262,7 @@ class LanePushStep(GameStep):
                             tile = state.board.get_tile(sp.location)
                             if tile and not tile.is_occupied:
                                 state.move_unit(candidate.id, sp.location)
-                                print(
+                                logger.debug(
                                     f"   [PUSH] Spawning {candidate.id} at {sp.location}"
                                 )
                             else:
@@ -4273,11 +4277,11 @@ class LanePushStep(GameStep):
                                 if isinstance(occupant, Token) and occupant_id:
                                     _remove_token_from_board(state, occupant_id)
                                     state.move_unit(candidate.id, sp.location)
-                                    print(
+                                    logger.debug(
                                         f"   [PUSH] Removed token {occupant_id} and spawned {candidate.id} at {sp.location}"
                                     )
                                 else:
-                                    print(
+                                    logger.debug(
                                         f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)"
                                     )
                                     pending_displacements.append(
@@ -4320,7 +4324,7 @@ class AskConfirmationStep(GameStep):
             selection = self.pending_input.get("selection")
             # Logic: "YES" = True, "NO" = False
             context[self.output_key] = selection == "YES"
-            print(f"   [INPUT] {actor_id} chose {selection} for '{self.prompt}'")
+            logger.debug(f"   [INPUT] {actor_id} chose {selection} for '{self.prompt}'")
             return StepResult(is_finished=True)
 
         return StepResult(
@@ -4354,7 +4358,7 @@ class RecordTargetStep(GameStep):
                 context[self.output_list_key] = []
             if isinstance(context[self.output_list_key], list):
                 context[self.output_list_key].append(target_id)
-                print(f"   [LOGIC] Recorded {target_id} to {self.output_list_key}")
+                logger.debug(f"   [LOGIC] Recorded {target_id} to {self.output_list_key}")
         return StepResult(is_finished=True)
 
 
@@ -4377,16 +4381,16 @@ class RecordHexStep(GameStep):
         if not unit_id and self.unit_key:
             unit_id = context.get(self.unit_key)
         if not unit_id:
-            print("   [RECORD_HEX] No unit_id provided")
+            logger.debug("   [RECORD_HEX] No unit_id provided")
             return StepResult(is_finished=True)
 
         entity_hex = state.entity_locations.get(BoardEntityID(unit_id))
         if not entity_hex:
-            print(f"   [RECORD_HEX] Unit {unit_id} not on board")
+            logger.debug(f"   [RECORD_HEX] Unit {unit_id} not on board")
             return StepResult(is_finished=True)
 
         context[self.output_key] = entity_hex.model_dump()
-        print(f"   [RECORD_HEX] Recorded hex for {unit_id} at {entity_hex}")
+        logger.debug(f"   [RECORD_HEX] Recorded hex for {unit_id} at {entity_hex}")
         return StepResult(is_finished=True)
 
 
@@ -4444,7 +4448,7 @@ class CheckDistanceStep(GameStep):
         }
         result = ops.get(self.operator, False)
         context[self.output_key] = True if result else None
-        print(
+        logger.debug(
             f"   [CHECK_DISTANCE] {u_a}<->{u_b} dist={dist} {self.operator} {self.threshold} -> {result}"
         )
         return StepResult(is_finished=True)
@@ -4503,7 +4507,7 @@ class ComputeDistanceStep(GameStep):
         topology = get_topology_service()
         dist = topology.distance(loc_a, loc_b, state)
         context[self.output_key] = dist
-        print(f"   [COMPUTE_DISTANCE] {u_id} -> stored {dist} in {self.output_key}")
+        logger.debug(f"   [COMPUTE_DISTANCE] {u_id} -> stored {dist} in {self.output_key}")
         return StepResult(is_finished=True)
 
 
@@ -4537,7 +4541,7 @@ class MayRepeatNTimesStep(GameStep):
         # 1. Validation Check (Early exit if blocked)
         res = state.validator.can_repeat_action(state, str(actor_id), context)
         if not res.allowed:
-            print(f"   [REPEAT] Blocked by validation: {res.reason}")
+            logger.debug(f"   [REPEAT] Blocked by validation: {res.reason}")
             return StepResult(is_finished=True)
 
         # 2. Input Handling
@@ -4545,7 +4549,7 @@ class MayRepeatNTimesStep(GameStep):
             selection = self.pending_input.get("selection")
             if selection == "YES":
                 self.repeats_done += 1
-                print(
+                logger.debug(
                     f"   [REPEAT] Confirmed ({self.repeats_done}/{self.max_repeats}). Spawning steps."
                 )
                 # Deepcopy template steps
@@ -4558,7 +4562,7 @@ class MayRepeatNTimesStep(GameStep):
                 else:
                     return StepResult(is_finished=True, new_steps=new_steps)
             else:
-                print("   [REPEAT] Declined.")
+                logger.debug("   [REPEAT] Declined.")
                 return StepResult(is_finished=True)
 
         # 3. Request Input
@@ -4608,11 +4612,11 @@ class ValidateRepeatStep(GameStep):
         if self.and_with_key:
             prev_val = context.get(self.and_with_key, False)
             val = val and prev_val
-            print(
+            logger.debug(
                 f"   [CHECK] Repeat Validation: Validator={res.allowed}, Context({self.and_with_key})={prev_val} -> Result={val}"
             )
         else:
-            print(f"   [CHECK] Repeat Validation: Result={val}")
+            logger.debug(f"   [CHECK] Repeat Validation: Result={val}")
 
         context[self.output_key] = val
         return StepResult(is_finished=True)
@@ -4655,7 +4659,7 @@ class CheckAdjacencyStep(GameStep):
         topology = get_topology_service()
         is_adjacent = topology.are_adjacent(loc_a, loc_b, state)
         context[self.output_key] = is_adjacent
-        print(f"   [CHECK] Adjacency between {u_a} and {u_b}: {is_adjacent}")
+        logger.debug(f"   [CHECK] Adjacency between {u_a} and {u_b}: {is_adjacent}")
 
         return StepResult(is_finished=True)
 
@@ -4705,7 +4709,7 @@ class CountAdjacentEnemiesStep(GameStep):
 
         bonus = max(0, count - self.subtract) * self.multiplier
         context[self.output_key] = bonus
-        print(
+        logger.debug(
             f"   [COUNT] Adjacent enemies: {count}, subtract={self.subtract}, "
             f"multiplier={self.multiplier}, bonus={bonus}"
         )
@@ -4729,7 +4733,7 @@ class CheckLanePushStep(GameStep):
 
         losing_team = check_lane_push_trigger(state, state.active_zone_id)
         if losing_team:
-            print(f"   [CHECK] Lane Push Condition Met for {losing_team.name}")
+            logger.debug(f"   [CHECK] Lane Push Condition Met for {losing_team.name}")
             return StepResult(
                 is_finished=True, new_steps=[LanePushStep(losing_team=losing_team)]
             )
@@ -4746,7 +4750,7 @@ class EndPhaseCleanupStep(GameStep):
     type: StepType = StepType.END_PHASE_CLEANUP
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print("   [CLEANUP] Processing End Phase Cleanup...")
+        logger.debug("   [CLEANUP] Processing End Phase Cleanup...")
         from goa2.engine.effect_manager import EffectManager
 
         # Expire THIS_ROUND items
@@ -4754,7 +4758,7 @@ class EndPhaseCleanupStep(GameStep):
 
         # Return all markers to supply (per board game rules)
         state.return_all_markers()
-        print("   [CLEANUP] All markers returned to supply")
+        logger.debug("   [CLEANUP] All markers returned to supply")
 
         # Cleanup stale items (lazy expiration for cards leaving play)
         EffectManager.cleanup_stale_effects(state)
@@ -4764,7 +4768,7 @@ class EndPhaseCleanupStep(GameStep):
         self._level_up(state)
 
         if state.pending_upgrades:
-            print("   [PHASE] Level Up Phase started.")
+            logger.debug("   [PHASE] Level Up Phase started.")
             return StepResult(
                 is_finished=True, new_steps=[ResolveUpgradesStep()], events=token_events
             )
@@ -4772,7 +4776,7 @@ class EndPhaseCleanupStep(GameStep):
         state.round += 1
         state.turn = 1
         state.phase = GamePhase.PLANNING
-        print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
+        logger.debug(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
 
         return StepResult(is_finished=True, events=token_events)
 
@@ -4835,7 +4839,7 @@ class EndPhaseCleanupStep(GameStep):
                             # Level 8: Ultimate unlocks automatically (no upgrade choice)
                             unlocked_ultimate = True
                             if hero.ultimate_card:
-                                print(
+                                logger.debug(
                                     f"   [ULTIMATE UNLOCKED] {hero.id} reached Level 8! "
                                     f"'{hero.ultimate_card.name}' is now active!"
                                 )
@@ -4851,11 +4855,11 @@ class EndPhaseCleanupStep(GameStep):
                                     ):
                                         ult_effect.on_ultimate_unlocked(state, hero)
                             else:
-                                print(f"   [LEVEL] {hero.id} reached Level 8!")
+                                logger.debug(f"   [LEVEL] {hero.id} reached Level 8!")
                         else:
                             # Levels 2-7: Count as pending upgrade (requires card choice)
                             upgrades_this_round += 1
-                            print(f"   [LEVEL] {hero.id} reached Level {hero.level}!")
+                            logger.debug(f"   [LEVEL] {hero.id} reached Level {hero.level}!")
                     else:
                         break
 
@@ -4865,7 +4869,7 @@ class EndPhaseCleanupStep(GameStep):
                     # Pity Coin: Players who did not Level Up gain 1 Gold.
                     # (Don't give pity coin if they unlocked ultimate)
                     hero.gold += 1
-                    print(
+                    logger.debug(
                         f"   [ECONOMY] {hero.id} did not level up. Gains 1 Pity Gold. (Gold: {hero.gold})"
                     )
 
@@ -4883,7 +4887,7 @@ class EndPhaseStep(GameStep):
     type: StepType = StepType.END_PHASE
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print("   [ROUND END] Processing End Phase (Battle)...")
+        logger.debug("   [ROUND END] Processing End Phase (Battle)...")
 
         # Expire THIS_ROUND effects and collect finishing steps
         finishing = EffectManager.expire_effects(state, DurationType.THIS_ROUND)
@@ -4919,7 +4923,7 @@ def _one_man_army_bonus(state: GameState, zone) -> Dict[TeamColor, int]:
             hero_loc = state.entity_locations.get(hero.id)
             if hero_loc and hero_loc in zone.hexes:
                 bonus[hero.team] += 1
-                print(
+                logger.debug(
                     f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)"
                 )
     return bonus
@@ -4966,11 +4970,11 @@ class MinionBattleStep(GameStep):
         diff = abs(red_count - blue_count)
 
         if diff == 0:
-            print("   [BATTLE] Minion count tied. No removals.")
+            logger.debug("   [BATTLE] Minion count tied. No removals.")
             return []
 
         loser_team = TeamColor.RED if red_count < blue_count else TeamColor.BLUE
-        print(f"   [BATTLE] {loser_team.name} loses {diff} minion(s).")
+        logger.debug(f"   [BATTLE] {loser_team.name} loses {diff} minion(s).")
 
         return [
             ChooseMinionRemovalStep(
@@ -4996,13 +5000,13 @@ class AdvanceTurnStep(GameStep):
         if state.turn < 4:
             state.turn += 1
             state.phase = GamePhase.PLANNING
-            print(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
+            logger.debug(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
             auto_passed = False
             for team in state.teams.values():
                 for hero in team.heroes:
                     if len(hero.hand) == 0:
                         state.pending_inputs[hero.id] = None
-                        print(f"   [Planning] {hero.id} auto-passed (empty hand).")
+                        logger.debug(f"   [Planning] {hero.id} auto-passed (empty hand).")
                         auto_passed = True
             if auto_passed:
                 _check_phase_transition(state)
@@ -5069,7 +5073,7 @@ class ChooseMinionRemovalStep(GameStep):
         if self.pending_input:
             chosen_id = self.pending_input.get("selection")
             if chosen_id:
-                print(f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}.")
+                logger.debug(f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}.")
                 new_steps: List[GameStep] = [
                     RemoveUnitStep(unit_id=str(chosen_id)),
                     ChooseMinionRemovalStep(
@@ -5123,7 +5127,7 @@ class ReturnMinionToZoneStep(GameStep):
                 loc = state.unit_locations.get(minion.id)
                 if loc and loc not in zone.hexes:
                     if not minion.team:
-                        print(
+                        logger.debug(
                             f"   [WARNING] Minion {minion.id} has no team, skipping zone return"
                         )
                     else:
@@ -5168,7 +5172,7 @@ class ReturnMinionToZoneStep(GameStep):
         candidates = find_nearest_empty_hexes(state, loc, state.active_zone_id)
 
         if not candidates:
-            print(f"   [ZONE] No empty space in zone for {minion_id}!")
+            logger.debug(f"   [ZONE] No empty space in zone for {minion_id}!")
             # Skip this minion, process remaining
             if remaining:
                 return StepResult(
@@ -5187,7 +5191,7 @@ class ReturnMinionToZoneStep(GameStep):
                     target_hex = selection
 
                 if target_hex in candidates:
-                    print(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
+                    logger.debug(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
                     new_steps: List[GameStep] = [
                         PlaceUnitStep(unit_id=minion_id, target_hex_arg=target_hex),
                     ]
@@ -5198,7 +5202,7 @@ class ReturnMinionToZoneStep(GameStep):
         # Auto-move if only one candidate
         if len(candidates) == 1:
             target = candidates[0]
-            print(f"   [ZONE] Auto-returning {minion_id} to zone at {target}")
+            logger.debug(f"   [ZONE] Auto-returning {minion_id} to zone at {target}")
             new_steps = [
                 PlaceUnitStep(unit_id=minion_id, target_hex_arg=target),
             ]
@@ -5264,7 +5268,7 @@ class ResolveTieBreakerStep(GameStep):
                     if state.tie_breaker_team == TeamColor.RED
                     else TeamColor.RED
                 )
-                print(
+                logger.debug(
                     f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. Coin flipped."
                 )
 
@@ -5280,7 +5284,7 @@ class ResolveTieBreakerStep(GameStep):
         if needs_input:
             if self.pending_input:
                 winner_id = self.pending_input.get("selection")
-                print(
+                logger.debug(
                     f"   [TIE] Team {target_team.name} chose {winner_id} to act first."
                 )
                 if len(teams_represented) > 1:
@@ -5365,7 +5369,7 @@ class AttackSequenceStep(GameStep):
             else self.range_val
         )
 
-        print(
+        logger.debug(
             f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
         )
 
@@ -5379,7 +5383,7 @@ class AttackSequenceStep(GameStep):
             str(state.current_actor_id) if state.current_actor_id else None
         )
         context["attack_damage"] = effective_damage
-        print(
+        logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )
 
@@ -5437,7 +5441,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
 
     chosen_card = next((c for c in hero.deck if c.id == chosen_card_id), None)
     if not chosen_card:
-        print(f"   [!] Upgrade Error: Chosen card {chosen_card_id} not found in deck.")
+        logger.debug(f"   [!] Upgrade Error: Chosen card {chosen_card_id} not found in deck.")
         return
 
     prev_card = None
@@ -5461,13 +5465,13 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
         )
 
     if prev_card:
-        print(
+        logger.debug(
             f"   [UPGRADE] Removing {prev_card.id} (Tier {prev_card.tier.name}) from hand."
         )
         hero.hand.remove(prev_card)
         prev_card.state = CardState.RETIRED
 
-    print(
+    logger.debug(
         f"   [UPGRADE] Adding {chosen_card.id} (Tier {chosen_card.tier.name}) to hand."
     )
     chosen_card.state = CardState.HAND
@@ -5478,7 +5482,7 @@ def apply_hero_upgrade(state: GameState, hero_id: str, chosen_card_id: str):
         stat = pair_card.item
         if stat:
             hero.items[stat] = hero.items.get(stat, 0) + 1
-            print(f"   [UPGRADE] Tucking {pair_card.id} as Item (+1 {stat.name}).")
+            logger.debug(f"   [UPGRADE] Tucking {pair_card.id} as Item (+1 {stat.name}).")
         pair_card.state = CardState.ITEM
 
     if hero_id in state.pending_upgrades:
@@ -5497,7 +5501,7 @@ class RoundResetStep(GameStep):
         state.turn = 1
         state.phase = GamePhase.PLANNING
         state.heroes_defeated_this_round.clear()
-        print(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
+        logger.debug(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
         return StepResult(is_finished=True)
 
 
@@ -5521,7 +5525,7 @@ class ResolveUpgradesStep(GameStep):
             self.pending_input = None
 
         if not state.pending_upgrades:
-            print("   [PHASE] All upgrades complete.")
+            logger.debug("   [PHASE] All upgrades complete.")
             return StepResult(is_finished=True, new_steps=[RoundResetStep()])
 
         broadcast_data = {}
@@ -5604,7 +5608,7 @@ class TriggerGameOverStep(GameStep):
     condition: str
 
     def resolve(self, state: GameState, context: Dict[str, Any]) -> StepResult:
-        print(
+        logger.debug(
             f"   [GAME OVER] Victory for {self.winner.name}! Reason: {self.condition}"
         )
 
@@ -5693,7 +5697,7 @@ class CancelEffectsStep(GameStep):
         cancelled_count = initial_count - len(state.active_effects)
 
         if cancelled_count > 0:
-            print(f"   [EFFECT] Cancelled {cancelled_count} active effect(s)")
+            logger.debug(f"   [EFFECT] Cancelled {cancelled_count} active effect(s)")
 
         return StepResult(is_finished=True)
 
@@ -5849,7 +5853,7 @@ class MultiSelectStep(GameStep):
             selection = self.pending_input.get("selection")
 
             if selection in ("DONE", "SKIP"):
-                print(
+                logger.debug(
                     f"   [MULTI-SELECT] Player chose DONE with {len(self.selections)} selections."
                 )
                 context[self.output_key] = list(self.selections)
@@ -5858,14 +5862,14 @@ class MultiSelectStep(GameStep):
             # Add selection
             self.selections.append(str(selection))
             context[self.output_key] = list(self.selections)
-            print(
+            logger.debug(
                 f"   [MULTI-SELECT] Added {selection}. Total: {len(self.selections)}/{self.max_selections}"
             )
             self.pending_input = None
 
             # Hit max? Done
             if len(self.selections) >= self.max_selections:
-                print("   [MULTI-SELECT] Max reached. Finishing.")
+                logger.debug("   [MULTI-SELECT] Max reached. Finishing.")
                 return StepResult(is_finished=True)
 
         # Get remaining valid candidates
@@ -5873,11 +5877,11 @@ class MultiSelectStep(GameStep):
 
         # No more candidates? Finish
         if not candidates:
-            print("   [MULTI-SELECT] No more candidates. Finishing.")
+            logger.debug("   [MULTI-SELECT] No more candidates. Finishing.")
             context[self.output_key] = list(self.selections)
             # If mandatory and below min, abort
             if self.is_mandatory and len(self.selections) < self.min_selections:
-                print(
+                logger.debug(
                     f"   [ABORT] MultiSelectStep: Only {len(self.selections)} selected, need {self.min_selections}."
                 )
                 return StepResult(is_finished=True, abort_action=True)
@@ -5922,13 +5926,13 @@ class ForEachStep(GameStep):
 
         # All items processed?
         if self.current_index >= len(items):
-            print(f"   [FOR-EACH] All {len(items)} items processed.")
+            logger.debug(f"   [FOR-EACH] All {len(items)} items processed.")
             return StepResult(is_finished=True)
 
         # Set current item in context
         current_item = items[self.current_index]
         context[self.item_key] = current_item
-        print(
+        logger.debug(
             f"   [FOR-EACH] Processing item {self.current_index + 1}/{len(items)}: {current_item}"
         )
 
@@ -5965,7 +5969,7 @@ class CheckUnitTypeStep(GameStep):
             actual_id = context.get(self.unit_key)
 
         if not actual_id:
-            print(f"   [CHECK-TYPE] No unit specified. Setting {self.output_key}=False")
+            logger.debug(f"   [CHECK-TYPE] No unit specified. Setting {self.output_key}=False")
             context[self.output_key] = False
             return StepResult(is_finished=True)
 
@@ -5977,13 +5981,13 @@ class CheckUnitTypeStep(GameStep):
         elif self.expected_type == "MINION":
             result = not is_hero
         else:
-            print(
+            logger.debug(
                 f"   [CHECK-TYPE] Unknown type '{self.expected_type}'. Defaulting False."
             )
             result = False
 
         context[self.output_key] = result
-        print(
+        logger.debug(
             f"   [CHECK-TYPE] Unit {actual_id} is_hero={is_hero}, expected={self.expected_type} -> {result}"
         )
         return StepResult(is_finished=True)
@@ -6012,11 +6016,11 @@ class CombineBooleanContextStep(GameStep):
         elif self.operation == "OR":
             result = val_a or val_b
         else:
-            print(f"   [COMBINE] Unknown operation '{self.operation}'. Defaulting AND.")
+            logger.debug(f"   [COMBINE] Unknown operation '{self.operation}'. Defaulting AND.")
             result = val_a and val_b
 
         context[self.output_key] = result
-        print(
+        logger.debug(
             f"   [COMBINE] {self.key_a}={val_a} {self.operation} {self.key_b}={val_b} -> {result}"
         )
         return StepResult(is_finished=True)
@@ -6087,7 +6091,7 @@ class CountStep(GameStep):
                 count += 1
 
         context[self.output_key] = count
-        print(f"   [COUNT] {self.target_type.value} matching filters: {count}")
+        logger.debug(f"   [COUNT] {self.target_type.value} matching filters: {count}")
         return StepResult(is_finished=True)
 
 
@@ -6123,7 +6127,7 @@ class CheckContextConditionStep(GameStep):
         # Store True or None (not False) so active_if_key checks work correctly:
         # active_if_key skips when value is None, not when False.
         context[self.output_key] = True if result else None
-        print(
+        logger.debug(
             f"   [CHECK] {self.input_key}={value} {self.operator} {self.threshold} -> {result}"
         )
         return StepResult(is_finished=True)
@@ -6174,13 +6178,13 @@ class RetrieveCardStep(GameStep):
             target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
             source = "discard"
         if not target_card:
-            print(
+            logger.debug(
                 f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s played or discard."
             )
             return StepResult(is_finished=True)
 
         hero.return_card_to_hand(target_card)
-        print(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from {source}.")
+        logger.debug(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from {source}.")
 
         event = GameEvent(
             event_type=GameEventType.CARD_RETRIEVED,
@@ -6234,7 +6238,7 @@ class CountCardsStep(GameStep):
             count = 0
 
         context[self.output_key] = count
-        print(f"   [COUNT_CARDS] {h_id} {self.card_container.value}: {count}")
+        logger.debug(f"   [COUNT_CARDS] {h_id} {self.card_container.value}: {count}")
         return StepResult(is_finished=True)
 
 
@@ -6261,7 +6265,7 @@ class GainCoinsStep(GameStep):
             else self.amount
         )
         hero.gold += coins
-        print(f"   [COINS] {hero_id} gains {coins} gold")
+        logger.debug(f"   [COINS] {hero_id} gains {coins} gold")
         return StepResult(
             is_finished=True,
             events=[
@@ -6292,7 +6296,7 @@ class GainItemStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
         hero.items[self.stat_type] = hero.items.get(self.stat_type, 0) + self.amount
-        print(f"   [ITEM] {hero_id} gains +{self.amount} {self.stat_type.name} item")
+        logger.debug(f"   [ITEM] {hero_id} gains +{self.amount} {self.stat_type.name} item")
         return StepResult(
             is_finished=True,
             events=[
@@ -6362,7 +6366,7 @@ class StealCoinsStep(GameStep):
         actor.gold += actual_stolen
         if self.output_key:
             context[self.output_key] = True
-        print(f"   [STEAL] {actor_id} steals {actual_stolen} coin(s) from {victim_id}")
+        logger.debug(f"   [STEAL] {actor_id} steals {actual_stolen} coin(s) from {victim_id}")
         return StepResult(
             is_finished=True,
             events=[
@@ -6516,13 +6520,13 @@ class RevealAndResolveGuessStep(GameStep):
         if is_correct:
             context[self.correct_output_key] = True
             context[self.wrong_output_key] = None
-            print(
+            logger.debug(
                 f"   [GUESS] Correct! Card is {actual_color}, guessed {guessed_color}"
             )
         else:
             context[self.correct_output_key] = None
             context[self.wrong_output_key] = True
-            print(f"   [GUESS] Wrong! Card is {actual_color}, guessed {guessed_color}")
+            logger.debug(f"   [GUESS] Wrong! Card is {actual_color}, guessed {guessed_color}")
 
         return StepResult(
             is_finished=True,
@@ -6685,7 +6689,7 @@ class SpendAdditionalLifeCounterStep(GameStep):
 
         victim_team = state.teams[victim_team_color]
         victim_team.life_counters = max(0, victim_team.life_counters - self.amount)
-        print(
+        logger.debug(
             f"   [SCORE] Team {victim_team_color.name} loses {self.amount} additional Life Counter(s). "
             f"Remaining: {victim_team.life_counters}"
         )
@@ -6767,7 +6771,7 @@ class PerformPrimaryActionStep(GameStep):
                 break
 
         if not card or not card.current_effect_id:
-            print(f"   [PERFORM] Card {card_id} not found or has no effect.")
+            logger.debug(f"   [PERFORM] Card {card_id} not found or has no effect.")
             return StepResult(is_finished=True)
 
         from goa2.engine.effects import CardEffectRegistry
@@ -6775,13 +6779,13 @@ class PerformPrimaryActionStep(GameStep):
 
         effect = CardEffectRegistry.get(card.current_effect_id)
         if not effect:
-            print(f"   [PERFORM] No effect registered for {card.current_effect_id}.")
+            logger.debug(f"   [PERFORM] No effect registered for {card.current_effect_id}.")
             return StepResult(is_finished=True)
 
         stats = compute_card_stats(state, UnitID(str(actor_id)), card)
         steps = effect.build_steps(state, hero, card, stats)
 
-        print(
+        logger.debug(
             f"   [PERFORM] Performing primary action of {card.name} "
             f"({len(steps)} steps)"
         )
@@ -6814,17 +6818,17 @@ class ConvertCardToItemStep(GameStep):
 
         card = next((c for c in hero.deck if c.id == str(card_id)), None)
         if not card:
-            print(f"   [CONVERT] Card {card_id} not found in {actor_id} deck")
+            logger.debug(f"   [CONVERT] Card {card_id} not found in {actor_id} deck")
             return StepResult(is_finished=True)
 
         stat = card.item
         if not stat:
-            print(f"   [CONVERT] Card {card_id} has no item stat")
+            logger.debug(f"   [CONVERT] Card {card_id} has no item stat")
             return StepResult(is_finished=True)
 
         hero.items[stat] = hero.items.get(stat, 0) + 1
         card.state = CardState.ITEM
-        print(f"   [CONVERT] {card.name} → permanent item (+1 {stat.name})")
+        logger.debug(f"   [CONVERT] {card.name} → permanent item (+1 {stat.name})")
 
         return StepResult(
             is_finished=True,
