@@ -16,10 +16,19 @@ from goa2.engine import filters_cards as _filters_cards  # noqa: F401
 from goa2.engine import filters_geometry as _filters_geometry  # noqa: F401
 from goa2.engine import filters_hex as _filters_hex  # noqa: F401
 from goa2.engine import filters_units as _filters_units  # noqa: F401
+from goa2.engine.steps import cards as _steps_cards  # noqa: F401
+from goa2.engine.steps import combat as _steps_combat  # noqa: F401
+from goa2.engine.steps import effects as _steps_effects  # noqa: F401
+from goa2.engine.steps import markers as _steps_markers  # noqa: F401
+from goa2.engine.steps import movement as _steps_movement  # noqa: F401
+from goa2.engine.steps import phases as _steps_phases  # noqa: F401
+from goa2.engine.steps import reactions as _steps_reactions  # noqa: F401
+from goa2.engine.steps import selection as _steps_selection  # noqa: F401
+from goa2.engine.steps import utility as _steps_utility  # noqa: F401
 from goa2.engine import steps as steps_mod
 from goa2.engine.filters_base import FilterCondition
 from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
-from goa2.engine.steps import GameStep
+from goa2.engine.steps.base import GameStep
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
