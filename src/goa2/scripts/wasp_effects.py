@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import List, Dict, Any, TYPE_CHECKING, Optional
 from goa2.domain.models.effect import (
     AffectsFilter,
@@ -39,6 +40,8 @@ from goa2.engine.filters import (
     RelativeDistanceFilter,
 )
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.domain.models import Hero, Card
@@ -65,15 +68,16 @@ class StopProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        print(
-            f"   [DEFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        logger.debug(
+            "[DEFLECT] build_defense_steps called, context keys: %s",
+            list(context.keys()),
         )
-        print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
+        logger.debug("[DEFLECT] attack_is_ranged = %s", context.get("attack_is_ranged"))
         if context.get("attack_is_ranged"):
-            print("   [DEFLECT] Returning auto_block=True")
+            logger.debug("[DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print("   [DEFLECT] Returning defense_invalid=True")
+            logger.debug("[DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
 
@@ -413,15 +417,16 @@ class ReflectProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        print(
-            f"   [REFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        logger.debug(
+            "[REFLECT] build_defense_steps called, context keys: %s",
+            list(context.keys()),
         )
-        print(f"   [REFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
+        logger.debug("[REFLECT] attack_is_ranged = %s", context.get("attack_is_ranged"))
         if context.get("attack_is_ranged"):
-            print("   [REFLECT] Returning auto_block=True")
+            logger.debug("[REFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print("   [REFLECT] Returning defense_invalid=True")
+            logger.debug("[REFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(
@@ -466,15 +471,16 @@ class DeflectProjectilesEffect(CardEffect):
         stats: CardStats,
         context: Dict[str, Any],
     ) -> Optional[List[GameStep]]:
-        print(
-            f"   [DEFLECT] build_defense_steps called, context keys: {list(context.keys())}"
+        logger.debug(
+            "[DEFLECT] build_defense_steps called, context keys: %s",
+            list(context.keys()),
         )
-        print(f"   [DEFLECT] attack_is_ranged = {context.get('attack_is_ranged')}")
+        logger.debug("[DEFLECT] attack_is_ranged = %s", context.get("attack_is_ranged"))
         if context.get("attack_is_ranged"):
-            print("   [DEFLECT] Returning auto_block=True")
+            logger.debug("[DEFLECT] Returning auto_block=True")
             return [SetContextFlagStep(key="auto_block", value=True)]
         else:
-            print("   [DEFLECT] Returning defense_invalid=True")
+            logger.debug("[DEFLECT] Returning defense_invalid=True")
             return [SetContextFlagStep(key="defense_invalid", value=True)]
 
     def build_on_block_steps(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -90,8 +91,15 @@ async def create_game(
             status_code=400,
             detail=f"Invalid game_type '{body.game_type}'. Must be QUICK or LONG.",
         )
+    game_seed_id = uuid.uuid4().hex
+    game_id = game_seed_id[:12]
     state = GameSetup.create_game(
-        map_path, body.red_heroes, body.blue_heroes, body.cheats_enabled, body.game_type
+        map_path,
+        body.red_heroes,
+        body.blue_heroes,
+        body.cheats_enabled,
+        body.game_type,
+        seed=int(game_seed_id, 16),
     )
     session = GameSession(state)
 
@@ -100,7 +108,7 @@ async def create_game(
         for hero in team.heroes:
             hero_ids.append(hero.id)
 
-    game = registry.create_game(session, hero_ids)
+    game = registry.create_game(session, hero_ids, game_id=game_id)
 
     if game.game_logger:
         game.game_logger.log_game_created(

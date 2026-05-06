@@ -41,9 +41,11 @@ class GameRegistry:
         self._games: Dict[str, ManagedGame] = {}
         self._save_dir = save_dir
 
-    def create_game(self, session: GameSession, hero_ids: list[str]) -> ManagedGame:
+    def create_game(
+        self, session: GameSession, hero_ids: list[str], game_id: Optional[str] = None
+    ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
-        game_id = uuid.uuid4().hex[:12]
+        game_id = game_id or uuid.uuid4().hex[:12]
         player_tokens: Dict[str, str] = {}
         hero_to_token: Dict[str, str] = {}
         for hero_id in hero_ids:

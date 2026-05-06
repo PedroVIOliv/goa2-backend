@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import List, TYPE_CHECKING
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
@@ -33,7 +34,6 @@ from goa2.engine.filters import (
 )
 from goa2.domain.models import (
     CardContainerType,
-    CardState,
     TargetType,
 )
 from goa2.domain.models.effect import (
@@ -43,6 +43,8 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -729,9 +731,10 @@ class UnboundFuryEffect(CardEffect):
         for card in all_cards:
             if card is not None:
                 card.enraged_active_override = True
-        print(
-            f"   [UNBOUND FURY] All {len([c for c in all_cards if c is not None])} cards "
-            f"for {hero.id} now have enraged_active_override=True"
+        logger.debug(
+            "[UNBOUND FURY] All %s cards for %s now have enraged_active_override=True",
+            len([c for c in all_cards if c is not None]),
+            hero.id,
         )
 
     def build_steps(
