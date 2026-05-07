@@ -807,7 +807,10 @@ def _build_respawn_steps(
     Shared logic for Necromancy/Necromastery: find limbo minions, let the
     player choose one (if multiple), then respawn it at a filtered hex.
     """
-    team_obj = state.teams.get(hero.team) if hero.team else None
+    if hero.team is None:
+        return []
+    hero_team = hero.team
+    team_obj = state.teams.get(hero_team)
     if not team_obj:
         return []
 
@@ -864,7 +867,7 @@ def _build_respawn_steps(
     # Respawn at filtered hex
     steps.append(
         RespawnMinionAtHexStep(
-            team=hero.team,
+            team=hero_team,
             unit_key="respawn_minion",
             hex_filters=[
                 SpawnPointTeamFilter(relation="FRIENDLY"),

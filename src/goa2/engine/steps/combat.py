@@ -544,7 +544,7 @@ class CheckMinionProtectionStep(GameStep):
                 InputOption(
                     id=c.id,
                     text=c.name,
-                    metadata={"card_id": c.id, "color": c.color.value},
+                    metadata={"card_id": c.id, "color": c.color.value if c.color else None},
                 )
                 for c in qualifying_cards
             ]

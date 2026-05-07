@@ -939,7 +939,7 @@ class BloodFrenzyEffect(CardEffect):
         # Build 5 explicit repeat blocks with chained exclusions
         for i in range(2, 7):  # victims 2 through 6
             exclude_keys = [f"bfr_victim_{j}" for j in range(1, i)]
-            repeat_steps = [
+            repeat_steps: list[GameStep] = [
                 AttackSequenceStep(
                     damage=stats.primary_value,
                     range_val=1,

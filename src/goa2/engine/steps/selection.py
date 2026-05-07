@@ -698,7 +698,7 @@ class RevealAndResolveGuessStep(GameStep):
         if not target_card:
             return StepResult(is_finished=True)
 
-        actual_color = target_card.color.value
+        actual_color = target_card.color.value if target_card.color else None
         is_correct = guessed_color == actual_color
 
         if is_correct:
