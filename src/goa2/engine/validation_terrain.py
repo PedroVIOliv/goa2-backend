@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from goa2.domain.models.effect import EffectType
+from goa2.domain.models.effect import ActiveEffect, EffectType
 from goa2.domain.types import BoardEntityID
 from goa2.engine.topology import get_topology_service
 
@@ -12,6 +12,17 @@ if TYPE_CHECKING:
 
 
 class TerrainValidationMixin:
+    if TYPE_CHECKING:
+        # Provided at runtime by sibling EffectValidationMixin in ValidationService.
+        def _is_effect_active(self, effect: ActiveEffect, state: GameState) -> bool: ...
+        def _is_in_scope(
+            self,
+            effect: ActiveEffect,
+            target_id: str,
+            target_hex: Hex,
+            state: GameState,
+        ) -> bool: ...
+
     def is_obstacle_for_actor(
         self,
         state: GameState,
