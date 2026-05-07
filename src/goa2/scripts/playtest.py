@@ -191,7 +191,7 @@ class GameLogger:
 
         # Log unit positions
         for entity_id, hex_pos in state.entity_locations.items():
-            snapshot["units"][entity_id] = {  # type: ignore[index]
+            snapshot["units"][entity_id] = {
                 "hex": (hex_pos.model_dump() if hasattr(hex_pos, "model_dump") else hex_pos),
                 "type": "HERO" if state.get_hero(HeroID(entity_id)) else "MINION",
             }
@@ -351,7 +351,7 @@ def get_input(prompt: str, valid_range: range | None = None) -> str:
                 continue
             if valid_range is not None:
                 num = int(value)
-                if num in valid_range:  # type: ignore[operator]
+                if num in valid_range:
                     return value
                 print(
                     f"{Colors.RED}Please enter a number between {valid_range.start} and {valid_range.stop - 1}{Colors.RESET}"
@@ -362,7 +362,7 @@ def get_input(prompt: str, valid_range: range | None = None) -> str:
             if valid_range is not None:
                 print(f"{Colors.RED}Please enter a valid number{Colors.RESET}")
             else:
-                return value  # type: ignore[possibly-unbound,return-value]
+                return value  # type: ignore[return-value]
         except (KeyboardInterrupt, EOFError):
             print("\nExiting...")
             sys.exit(0)
@@ -701,15 +701,15 @@ def handle_select_unit(state: GameState, request: dict[str, Any]) -> dict[str, A
 
     # Display valid units
     for i, unit_id in enumerate(valid_ids, 1):
-        unit = state.get_unit(UnitID(str(unit_id)))  # type: ignore[arg-type]
-        hex_loc = state.entity_locations.get(str(unit_id))  # type: ignore[index,call-overload]
+        unit = state.get_unit(UnitID(str(unit_id)))
+        hex_loc = state.entity_locations.get(str(unit_id))  # type: ignore[call-overload]
         hex_str = format_hex(hex_loc) if hex_loc else "?"
 
         if isinstance(unit, Hero):
-            team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
+            team_value = unit.team.value if unit.team else "?"
             print(f"  [{i}] {Colors.BOLD}{unit.name}{Colors.RESET} ({team_value}) @ {hex_str}")
         elif isinstance(unit, Minion):
-            team_value = unit.team.value if unit.team else "?"  # type: ignore[union-attr]
+            team_value = unit.team.value if unit.team else "?"
             print(f"  [{i}] {unit.type.value} Minion ({team_value}) @ {hex_str}")
         else:
             print(f"  [{i}] {unit_id} @ {hex_str}")
