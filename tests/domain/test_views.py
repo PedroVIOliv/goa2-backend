@@ -296,7 +296,7 @@ class TestHeroScopedView:
         assert len(played_cards) == 2
 
         # Facedown played card hides 5 sensitive fields
-        facedown = [c for c in played_cards if c["is_facedown"]][0]
+        facedown = next(c for c in played_cards if c["is_facedown"])
         assert "id" not in facedown
         assert "name" not in facedown
         assert "is_ranged" not in facedown
@@ -311,7 +311,7 @@ class TestHeroScopedView:
         assert facedown["is_facedown"] is True
 
         # Faceup played card shows all fields
-        faceup = [c for c in played_cards if not c["is_facedown"]][0]
+        faceup = next(c for c in played_cards if not c["is_facedown"])
         assert "id" in faceup
         assert "name" in faceup
         assert faceup["id"] == "b_played2"
@@ -612,7 +612,7 @@ class TestViewStructure:
 
         # Get a facedown card (hero's own view)
         hand = view["teams"]["RED"]["heroes"][0]["hand"]
-        card = [c for c in hand if c["is_facedown"]][0]
+        card = next(c for c in hand if c["is_facedown"])
 
         expected_fields = [
             "id",

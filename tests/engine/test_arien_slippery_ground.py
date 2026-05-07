@@ -94,16 +94,16 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
     push_steps(slippery_state, [step])
 
     # Action: MOVEMENT (Primary)
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
     # Move selection (Arien stays put)
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     # Finish turn
     while slippery_state.execution_stack:
-        process_stack(slippery_state).input_request
+        _ = process_stack(slippery_state).input_request
 
     # Verify effect created
     assert len(slippery_state.active_effects) == 1
@@ -117,12 +117,12 @@ def test_slippery_ground_fast_travel_blocked(slippery_state):
 
     # 2. Adjacent Enemy (e1) tries to Fast Travel
     res = slippery_state.validator.can_fast_travel(slippery_state, "e1")
-    assert res.allowed == False, "Fast Travel should be blocked for adjacent enemy"
+    assert not res.allowed, "Fast Travel should be blocked for adjacent enemy"
     assert "prevented by effect" in res.reason
 
     # 3. Distant Enemy (e2) tries Fast Travel (should be allowed)
     res = slippery_state.validator.can_fast_travel(slippery_state, "e2")
-    assert res.allowed == True, "Fast Travel should be allowed for distant enemy"
+    assert res.allowed, "Fast Travel should be allowed for distant enemy"
 
 
 def test_slippery_ground_movement_limited(slippery_state):
@@ -131,14 +131,14 @@ def test_slippery_ground_movement_limited(slippery_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(slippery_state, [step])
 
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     while slippery_state.execution_stack:
-        process_stack(slippery_state).input_request
+        _ = process_stack(slippery_state).input_request
 
     # Finalize the hero's turn to move card to RESOLVED state
     # This is required because active effects only become active when the source card is RESOLVED
@@ -151,20 +151,20 @@ def test_slippery_ground_movement_limited(slippery_state):
     res = slippery_state.validator.can_move(
         slippery_state, "e1", distance=2, is_movement_action=True
     )
-    assert res.allowed == False, "Movement > 1 should be blocked for Movement Action"
+    assert not res.allowed, "Movement > 1 should be blocked for Movement Action"
     assert "Movement limited to 1" in res.reason
 
     # 3. Adjacent Enemy (e1) moves via Effect (not action) -> Should be Allowed
     res_effect = slippery_state.validator.can_move(
         slippery_state, "e1", distance=2, is_movement_action=False
     )
-    assert res_effect.allowed == True, "Effect movement should NOT be blocked"
+    assert res_effect.allowed, "Effect movement should NOT be blocked"
 
     # Try moving 1 space via Action -> Allowed
     res = slippery_state.validator.can_move(
         slippery_state, "e1", distance=1, is_movement_action=True
     )
-    assert res.allowed == True
+    assert res.allowed
 
 
 def test_move_sequence_step_caps_range_from_effect(slippery_state):
@@ -174,14 +174,14 @@ def test_move_sequence_step_caps_range_from_effect(slippery_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(slippery_state, [step])
 
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
 
-    process_stack(slippery_state).input_request
+    _ = process_stack(slippery_state).input_request
     slippery_state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
 
     while slippery_state.execution_stack:
-        process_stack(slippery_state).input_request
+        _ = process_stack(slippery_state).input_request
 
     # Activate the effect
     hero = slippery_state.get_hero("arien")

@@ -194,7 +194,7 @@ class TestLongThrustEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         req = process_stack(state).input_request
@@ -211,10 +211,10 @@ class TestLongThrustEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert state.execution_context.get("adj_rng_bonus") == 0
 
 
@@ -322,7 +322,7 @@ class TestRapidThrustsEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count step runs, then SELECT_UNIT for first target
@@ -363,7 +363,7 @@ class TestRapidThrustsEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count + SELECT_UNIT -> first target

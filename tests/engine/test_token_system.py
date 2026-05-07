@@ -169,11 +169,11 @@ def test_clear_action_removes_adjacent_tokens():
     )
 
     push_steps(state, [ResolveCardStep(hero_id="hero_a")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "CLEAR"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "smoke_bomb_1"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     assert "smoke_bomb_1" not in state.entity_locations
 
 

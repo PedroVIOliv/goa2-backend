@@ -106,7 +106,6 @@ def test_origin_key_from_context(straight_line_state):
 
 def test_missing_intermediate_hex_on_board(straight_line_state):
     """If an intermediate hex doesn't exist on the board, path is blocked."""
-    state = straight_line_state
     # Place hero at (3,0,-3), try to go to (0,0,0)
     # Intermediate (2,0,-2) and (1,0,-1) exist, so this works
     # Instead, create a board with a gap

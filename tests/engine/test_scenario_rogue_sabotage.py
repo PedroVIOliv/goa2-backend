@@ -156,7 +156,7 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
     # Order: Arien (11) > Hero3 (7)
 
     # We need to process to get to the next actor
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     assert state.current_actor_id == arien.id
     assert arien.current_turn_card.id == "noble_blade"
 
@@ -187,10 +187,10 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
 
     # 5. Rogue Reaction -> Pass
     state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Finalize Arien
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # --- CHECK NEXT ACTOR ---
     # Arien Done.
@@ -242,16 +242,16 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     if req and req["type"] == "SELECT_HEX":
         target = next(opt for opt in req["valid_options"] if opt != Hex(q=0, r=0, s=0))
         state.execution_stack[-1].pending_input = {"selection": target}
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
     # ConfirmResolutionStep (no opponent prompted during Rogue's MOVEMENT turn)
     req = process_stack(state).input_request
     if req and req.get("type") == "CHOOSE_ACTION":
         state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
     # Finish Rogue Turn
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # --- CHECK NEXT ACTOR ---
     # Rogue Done.
@@ -268,7 +268,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
     req = process_stack(state).input_request  # Choose Action for Hero 3
     if req and req["type"] == "CHOOSE_ACTION":
         state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
     # SKILL with no effect just logs and finishes.
     # Process until Hero3 done

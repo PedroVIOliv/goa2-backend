@@ -84,30 +84,6 @@ def test_validator_rebuilds_cache():
     # We want to ensure that if 'entity_locations' has data, but 'board.tiles' doesn't have occupancy,
     # the validator fills it in.
 
-    h_dict = {"q": 0, "r": 0, "s": 0}
-
-    state_dict = {
-        "board": {
-            "zones": {},
-            "spawn_points": [],
-            "tiles": {
-                # Pydantic V2 allows some flexibility in key parsing or we can assume it loads
-                # However, usually for JSON keys are strings "0,0,0".
-                # Here we are testing python dict input.
-                # Let's provide the tile structure expected.
-                # Note: Dictionary keys in JSON/Dict for complex types usually require a specific format or serialization.
-                # But for this test, we can minimalize the board to just have the tile structure needed.
-            },
-            "lane": [],
-        },
-        "teams": {
-            "RED": {"color": "RED", "heroes": [], "minions": []},
-            "BLUE": {"color": "BLUE", "heroes": [], "minions": []},
-        },
-        "entity_locations": {"ghost_unit": h_dict},
-        "misc_entities": {},
-    }
-
     # We need the Board to actually CONTAIN the tile at (0,0,0) so the validator can find it.
     # But passing keys for Hex in a dict is tricky without the serializer.
     # Instead of creating from dict, let's create the object and THEN modify it to simulate "unsynced" state,
@@ -159,54 +135,6 @@ def test_misc_entities_storage(empty_state):
     assert retrieved.token_type == TokenType.SMOKE_BOMB
 
     assert state.board.get_tile(loc).occupant_id == token_id
-
-
-def test_awaiting_input_type():
-    s = GameState(board=Board(), teams={})
-    assert s.awaiting_input_type == InputRequestType.NONE
-
-
-def test_hero_card_lifecycle():
-    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(
-        id="c1",
-        name="C1",
-        tier=CardTier.I,
-        color=CardColor.RED,
-        initiative=10,
-        primary_action=ActionType.ATTACK,
-        primary_action_value=2,
-        effect_id="e",
-        effect_text="t",
-    )
-    h1.hand.append(c1)
-
-    # Planning
-    # ... logic tested in integration tests usually
-    assert c1.state == CardState.HAND
-
-
-def test_retrieve_cards_logic():
-    h1 = Hero(id="h1", name="H", team=TeamColor.RED, deck=[])
-    c1 = Card(
-        id="c1",
-        name="C1",
-        tier=CardTier.I,
-        color=CardColor.RED,
-        initiative=10,
-        primary_action=ActionType.ATTACK,
-        primary_action_value=2,
-        effect_id="e",
-        effect_text="t",
-        played_this_round=True,
-        state=CardState.DISCARD,
-    )
-    h1.discard_pile.append(c1)
-
-    h1.retrieve_cards()
-    assert c1.state == CardState.HAND
-    assert c1 in h1.hand
-    assert not c1.played_this_round
 
 
 def test_awaiting_input_type():

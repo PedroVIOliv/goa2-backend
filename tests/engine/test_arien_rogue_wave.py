@@ -105,7 +105,7 @@ def test_rogue_wave_attack_and_push_2_spaces(rogue_wave_state):
     # 4. Combat resolves, then Select push target (optional)
     req = process_stack(rogue_wave_state).input_request
     assert req["type"] == "SELECT_UNIT"
-    assert req["can_skip"] == True  # Optional
+    assert req["can_skip"]  # Optional
     assert "enemy_minion" in req["valid_options"]  # Adjacent enemy
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
@@ -133,27 +133,27 @@ def test_rogue_wave_push_1_space(rogue_wave_state):
     push_steps(rogue_wave_state, [step])
 
     # 1. Action
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target the enemy_hero (range 2), so minion survives for push
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "enemy_hero"}
 
     # 3. Reaction
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Push target - select the adjacent minion
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
     # 5. Push distance = 1
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": 1}
 
     # 6. End
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
 
     # Verify: pushed only 1 space
     assert rogue_wave_state.entity_locations["enemy_minion"] == Hex(q=2, r=0, s=-2)
@@ -165,20 +165,20 @@ def test_rogue_wave_skip_push(rogue_wave_state):
     push_steps(rogue_wave_state, [step])
 
     # 1. Action
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "enemy_hero"}
 
     # 3. Reaction
-    process_stack(rogue_wave_state).input_request
+    _ = process_stack(rogue_wave_state).input_request
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Push target (skip)
     req = process_stack(rogue_wave_state).input_request
-    assert req["can_skip"] == True
+    assert req["can_skip"]
     rogue_wave_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # 5. Should finish (no push distance selection since we skipped)

@@ -296,7 +296,7 @@ class TestGuessCardColorStep:
         req = process_stack(state).input_request
         assert req is not None
         state.execution_stack[-1].pending_input = {"selection": "RED"}
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert state.execution_context["guessed_color"] == "RED"
 
 
@@ -336,7 +336,7 @@ class TestRevealAndResolveGuessStep:
         )
         ctx["guess_victim"] = "hero_enemy"
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert ctx.get("guess_correct") is True
         assert ctx.get("guess_wrong") is None
 
@@ -367,7 +367,7 @@ class TestRevealAndResolveGuessStep:
             ],
         )
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert ctx.get("guess_correct") is None
         assert ctx.get("guess_wrong") is True
 

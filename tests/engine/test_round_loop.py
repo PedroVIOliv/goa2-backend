@@ -40,7 +40,7 @@ def test_round_end_transition():
     resolve_next_action(state)
 
     # Run stack to execute EndPhaseStep
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert state.round == 2
     assert state.turn == 1
@@ -90,7 +90,7 @@ def test_planning_to_revelation():
 
     # 2. H1 Commits
     commit_card(state, "h1", c1)
-    assert c1.is_facedown == True
+    assert c1.is_facedown
     assert c1.state == CardState.UNRESOLVED
     assert state.phase == GamePhase.PLANNING
 
@@ -99,8 +99,8 @@ def test_planning_to_revelation():
 
     # Revelation happens immediately because all players committed
     assert state.phase == GamePhase.RESOLUTION  # Transitioned through REVELATION automatically
-    assert c1.is_facedown == False
-    assert c2.is_facedown == False
+    assert not c1.is_facedown
+    assert not c2.is_facedown
 
     # Verify Unresolved pool
     # H1 has initiative 10, H2 has 5.

@@ -53,13 +53,13 @@ def test_heavy_immunity_rule_logic(immunity_state):
     target = immunity_state.get_unit("m_heavy")
 
     # Should be Immune because m_supp is in zone
-    assert rules.is_immune(target, immunity_state) == True
+    assert rules.is_immune(target, immunity_state)
 
     # Remove Support
     immunity_state.remove_unit("m_supp")
 
     # Should NOT be Immune now
-    assert rules.is_immune(target, immunity_state) == False
+    assert not rules.is_immune(target, immunity_state)
 
 
 def test_select_step_respects_immunity(immunity_state):

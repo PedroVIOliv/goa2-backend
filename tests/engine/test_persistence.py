@@ -92,8 +92,8 @@ def test_round_trip_preserves_entity_locations(full_state, save_dir):
     restored = data["session"].state
 
     assert len(restored.entity_locations) == len(original_locs)
-    for eid, hex_val in original_locs.items():
-        assert str(eid) in [str(k) for k in restored.entity_locations.keys()]
+    for eid, _hex_val in original_locs.items():
+        assert str(eid) in [str(k) for k in restored.entity_locations]
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ def test_all_filter_types_round_trip(save_dir):
 
     # Collect all concrete filter subclasses
     filter_classes = []
-    for name, cls in inspect.getmembers(f_mod, inspect.isclass):
+    for _name, cls in inspect.getmembers(f_mod, inspect.isclass):
         if issubclass(cls, f_mod.FilterCondition) and cls is not f_mod.FilterCondition:
             filter_classes.append(cls)
 
@@ -299,9 +299,9 @@ def test_all_filter_types_round_trip(save_dir):
             if finfo.is_required():
                 # Provide minimal values
                 ann = finfo.annotation
-                if ann == str or ann == "str":
+                if ann is str or ann == "str":
                     kwargs[fname] = "test"
-                elif ann == int or ann == "int":
+                elif ann is int or ann == "int":
                     kwargs[fname] = 1
                 elif str(ann).startswith("typing.List") or str(ann) == "list":
                     kwargs[fname] = []

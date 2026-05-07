@@ -141,12 +141,12 @@ def test_reaction_window_full(steps_state):
 
     # Pass
     rw.pending_input = {"selection": "PASS"}
-    res_pass = rw.resolve(steps_state, ctx)
+    rw.resolve(steps_state, ctx)
     assert ctx["defense_value"] is None
 
     # Use Primary Defense
     rw.pending_input = {"selection": "def1"}
-    res_def = rw.resolve(steps_state, ctx)
+    rw.resolve(steps_state, ctx)
     assert ctx["defense_value"] == 3
 
     # Secondary defense

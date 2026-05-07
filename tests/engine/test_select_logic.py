@@ -35,7 +35,7 @@ def test_optional_select_disables_autoselect(select_state):
     Rule Check: If a step is optional ("You may..."), it should NOT auto-select
     even if only one candidate exists, because the player might want to skip.
     """
-    state, minion = select_state
+    state, _minion = select_state
 
     step = SelectStep(
         target_type="UNIT",
@@ -79,7 +79,7 @@ def test_optional_select_skip_input(select_state):
     """
     Rule Check: Providing "SKIP" to an optional step works.
     """
-    state, minion = select_state
+    state, _minion = select_state
 
     step = SelectStep(
         target_type="UNIT",

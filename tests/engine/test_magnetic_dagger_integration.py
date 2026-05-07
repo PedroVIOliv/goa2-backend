@@ -151,7 +151,7 @@ def run_full_turn(state, rogue_target="dummy", arien_target_hex=None):
     # Handle ConfirmResolutionStep if it appears (no opponent prompted during Arien's turn)
     if req and req.get("type") == "CHOOSE_ACTION" and "Confirm" in str(req.get("options", [])):
         state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
 
 def test_integration_dagger_blocks_leap(integrated_state):

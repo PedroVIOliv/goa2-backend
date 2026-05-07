@@ -133,16 +133,16 @@ def test_noble_blade_skip(noble_state):
     push_steps(noble_state, [step])
 
     # 1. Action
-    process_stack(noble_state).input_request
+    _ = process_stack(noble_state).input_request
     noble_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target
-    process_stack(noble_state).input_request
+    _ = process_stack(noble_state).input_request
     noble_state.execution_stack[-1].pending_input = {"selection": "e1"}
 
     # 3. Nudge (Skip)
     req = process_stack(noble_state).input_request
-    assert req["can_skip"] == True
+    assert req["can_skip"]
     noble_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # 4. Reaction (Should jump straight here, skipping Hex Select and Place)
@@ -151,7 +151,7 @@ def test_noble_blade_skip(noble_state):
     noble_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 5. End
-    process_stack(noble_state).input_request
+    _ = process_stack(noble_state).input_request
 
     # Verify NO move
     assert noble_state.entity_locations["m1"] == Hex(q=0, r=1, s=-1)

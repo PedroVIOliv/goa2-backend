@@ -200,14 +200,14 @@ def test_gold_awarded_even_when_protected(protection_state):
     gold_before = enemy.gold
 
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
-    result = process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Gold was awarded in DefeatUnitStep before protection check
     assert enemy.gold == gold_before + 2  # MELEE minion value = 2
 
     # Protect the minion
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Minion stays, gold stays
     assert state.entity_locations.get("minion_red_1") is not None

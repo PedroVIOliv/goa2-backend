@@ -6,14 +6,19 @@ Tests for submit_input(), process_stack(), GameSession, and SessionResult.
 
 import pytest
 
+import goa2.scripts.arien_effects
+import goa2.scripts.wasp_effects  # noqa: F401
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputRequest, InputResponse
+from goa2.domain.input import InputRequest, InputRequestType, InputResponse
 from goa2.domain.models import GamePhase, Team, TeamColor
 from goa2.domain.models.enums import TargetType
 from goa2.domain.models.unit import Hero
 from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack, push_steps, submit_input
+from goa2.engine.session import GameSession, SessionResult, SessionResultType
+from goa2.engine.setup import GameSetup
 from goa2.engine.steps import LogMessageStep, SelectStep
 
 
@@ -83,9 +88,6 @@ class TestProcessStack:
 # =============================================================================
 # Task 2: SessionResult and GameSession
 # =============================================================================
-
-from goa2.domain.input import InputRequestType
-from goa2.engine.session import GameSession, SessionResult, SessionResultType
 
 
 class TestSessionResult:
@@ -169,11 +171,6 @@ class TestGameSessionInit:
 # =============================================================================
 # Task 3: GameSession planning + advance integration tests
 # =============================================================================
-
-import goa2.scripts.arien_effects
-import goa2.scripts.wasp_effects  # noqa: F401
-from goa2.domain.types import HeroID
-from goa2.engine.setup import GameSetup
 
 
 @pytest.fixture

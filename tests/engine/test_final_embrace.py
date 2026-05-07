@@ -133,7 +133,7 @@ class TestFinishingStepsOnEndPhase:
 
         # Select melee minion
         embrace_state.execution_stack[-1].pending_input = {"selection": "melee_1"}
-        process_stack(embrace_state).input_request
+        _ = process_stack(embrace_state).input_request
 
         # Melee minion should be defeated (removed from locations)
         assert "melee_1" not in embrace_state.entity_locations
@@ -149,7 +149,7 @@ class TestFinishingStepsOnEndPhase:
 
         # Select ranged minion
         embrace_state.execution_stack[-1].pending_input = {"selection": "ranged_1"}
-        process_stack(embrace_state).input_request
+        _ = process_stack(embrace_state).input_request
 
         assert "ranged_1" not in embrace_state.entity_locations
 
@@ -207,7 +207,7 @@ class TestFinishingStepsOnEndPhase:
         req = process_stack(embrace_state).input_request
         if req is not None:
             embrace_state.execution_stack[-1].pending_input = {"selection": "melee_1"}
-            process_stack(embrace_state).input_request
+            _ = process_stack(embrace_state).input_request
 
         # Effect should be gone
         assert (
@@ -294,7 +294,7 @@ class TestCreateEffectStepWithFinishingSteps:
             ],
         )
         push_steps(embrace_state, [step])
-        process_stack(embrace_state).input_request
+        _ = process_stack(embrace_state).input_request
 
         assert len(embrace_state.active_effects) == 1
         effect = embrace_state.active_effects[0]

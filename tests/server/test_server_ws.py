@@ -4,6 +4,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from goa2.server.app import create_app
 
@@ -59,16 +60,20 @@ def test_ws_connect_spectator(client, game_data):
 
 def test_ws_invalid_token(client, game_data):
     game_id = game_data["game_id"]
-    with pytest.raises(Exception):
-        with client.websocket_connect(f"/games/{game_id}/ws?token=badtoken") as ws:
-            ws.receive_json()
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(f"/games/{game_id}/ws?token=badtoken") as ws,
+    ):
+        ws.receive_json()
 
 
 def test_ws_wrong_game(client, game_data):
     token = _token_for(game_data, "hero_arien")
-    with pytest.raises(Exception):
-        with client.websocket_connect(f"/games/wrong_game/ws?token={token}") as ws:
-            ws.receive_json()
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(f"/games/wrong_game/ws?token={token}") as ws,
+    ):
+        ws.receive_json()
 
 
 # ---- GET_VIEW ----
@@ -384,8 +389,8 @@ def test_ws_state_update_includes_winner_on_game_over(client):
     )
     data = resp.json()
     game_id = data["game_id"]
-    arien_token = _token_for(data, "hero_arien")
-    wasp_token = _token_for(data, "hero_wasp")
+    _token_for(data, "hero_arien")
+    _token_for(data, "hero_wasp")
     spectator_token = data["spectator_token"]
 
     # Connect spectator (non-acting player)

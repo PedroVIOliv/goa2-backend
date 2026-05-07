@@ -181,7 +181,7 @@ class TestEndPhaseCleanupStepExpiration:
         )
 
         push_steps(game_state, [EndPhaseCleanupStep()])
-        process_stack(game_state).input_request
+        _ = process_stack(game_state).input_request
 
         assert len(game_state.active_effects) == 1
         assert game_state.active_effects[0].id == "eff_2"
@@ -204,6 +204,6 @@ class TestEndPhaseCleanupStepExpiration:
         )
 
         push_steps(game_state, [EndPhaseCleanupStep()])
-        process_stack(game_state).input_request
+        _ = process_stack(game_state).input_request
 
         assert len(game_state.active_effects) == 1

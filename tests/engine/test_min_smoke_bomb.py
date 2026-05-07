@@ -117,7 +117,7 @@ def test_smoke_bomb_places_token_and_blocks_los(smoke_bomb_state):
 
     # Place at (1,-1,0) — between Min at (0,0,0) and enemy at (3,-3,0)
     state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Verify token is placed
     assert state.entity_locations.get(BoardEntityID("smoke_bomb_1")) == Hex(q=1, r=-1, s=0)
@@ -167,11 +167,11 @@ def test_smoke_bomb_removing_token_removes_effect(smoke_bomb_state):
 
     # Play Smoke Bomb through the full card flow
     push_steps(state, [ResolveCardStep(hero_id="hero_min")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Effect exists
     los_effects = [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER]
@@ -196,7 +196,7 @@ def test_smoke_bomb_only_empty_hex(smoke_bomb_state):
     state = smoke_bomb_state
 
     push_steps(state, [ResolveCardStep(hero_id="hero_min")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Select SKILL
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}

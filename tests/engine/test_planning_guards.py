@@ -65,7 +65,7 @@ def _make_state_2v2(h1_hand=None, h2_hand=None):
 
 def test_double_commit_raises_error():
     """Second commit from same hero raises ValueError."""
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, h1, _h2, c1, _c2 = _make_state_2v2()
     commit_card(state, "h1", c1)
 
     # Second commit should fail
@@ -77,7 +77,7 @@ def test_double_commit_raises_error():
 
 def test_double_commit_does_not_corrupt_state():
     """After a rejected double-commit, the original card is preserved."""
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, h1, _h2, c1, _c2 = _make_state_2v2()
     commit_card(state, "h1", c1)
 
     c_extra = _make_card("c_extra")
@@ -92,7 +92,7 @@ def test_double_commit_does_not_corrupt_state():
 
 def test_different_heroes_can_both_commit():
     """Two different heroes committing is fine — only same hero twice is blocked."""
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, _h1, _h2, c1, c2 = _make_state_2v2()
     commit_card(state, "h1", c1)
     commit_card(state, "h2", c2)
 
@@ -111,7 +111,7 @@ def test_auto_pass_empty_hand_on_new_turn():
     turn 4 → PLANNING (auto-pass) → REVELATION → RESOLUTION → end_turn →
     CLEANUP (turn 4 is last).
     """
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, h1, h2, _c1, _c2 = _make_state_2v2()
 
     h1.hand.clear()
     h2.hand.clear()
@@ -132,7 +132,7 @@ def test_auto_pass_all_empty_skips_planning():
     We verify by checking that at turn 3→4 the phase advances past PLANNING
     automatically without any manual commit_card or pass_turn calls.
     """
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, h1, h2, _c1, _c2 = _make_state_2v2()
 
     h1.hand.clear()
     h2.hand.clear()
@@ -148,7 +148,7 @@ def test_auto_pass_all_empty_skips_planning():
 
 def test_auto_pass_partial_empty_hands():
     """Only heroes with empty hands are auto-passed; others must commit."""
-    state, h1, h2, c1, c2 = _make_state_2v2()
+    state, h1, _h2, _c1, _c2 = _make_state_2v2()
 
     # h1 has no cards, h2 still has one
     h1.hand.clear()

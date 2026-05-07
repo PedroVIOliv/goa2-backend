@@ -95,8 +95,8 @@ def test_push_blocked_by_split(push_topology_state):
 
     # Try to push m_left (-1,0,1) into Center (0,0,0)
     # Direction is East (Index 0? let's check direction)
-    origin = Hex(q=-1, r=0, s=1)
-    target = Hex(q=0, r=0, s=0)
+    Hex(q=-1, r=0, s=1)
+    Hex(q=0, r=0, s=0)
 
     # We push m_left from a virtual source to the west of it?
     # Or just use PushUnitStep which takes target_id and source_id/hex.
@@ -111,7 +111,7 @@ def test_push_blocked_by_split(push_topology_state):
     step = PushUnitStep(target_id="m_left", source_hex=pusher_hex, distance=1, is_mandatory=True)
 
     push_steps(state, [step])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Verify m_left did NOT move
     new_loc = state.unit_locations["m_left"]
@@ -155,7 +155,7 @@ def test_push_crosses_bridge(push_topology_state):
     step = PushUnitStep(target_id="m_left", source_hex=pusher_hex, distance=2, is_mandatory=True)
 
     push_steps(state, [step])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Verify m_left moved all the way to Right
     new_loc = state.unit_locations["m_left"]

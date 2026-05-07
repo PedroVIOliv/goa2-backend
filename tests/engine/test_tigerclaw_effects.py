@@ -691,7 +691,7 @@ class TestBackstabEffect:
         # Simulate context with victim selected
         context = {"victim_id": "enemy", "current_actor_id": "tigerclaw"}
         tigerclaw_state.execution_context = context
-        result = count_step.resolve(tigerclaw_state, context)
+        count_step.resolve(tigerclaw_state, context)
 
         # Should count 1 friendly adjacent to enemy (the minion at (2,0,-2) is adjacent to (1,0,-1))
         assert context["friendly_adjacent_count"] >= 1
@@ -708,7 +708,7 @@ class TestBackstabEffect:
         # Simulate context - no friendly adjacent to enemy
         context = {"victim_id": "enemy", "current_actor_id": "tigerclaw"}
         tigerclaw_state.execution_context = context
-        result = count_step.resolve(tigerclaw_state, context)
+        count_step.resolve(tigerclaw_state, context)
 
         # Tigerclaw itself is adjacent to enemy but should be excluded (exclude_self)
         assert context["friendly_adjacent_count"] == 0
@@ -1092,7 +1092,7 @@ class TestLightFingeredEffect:
 
         step = StealCoinsStep(victim_key="steal_victim", amount=3, output_key="stole_coins")
         context = {"steal_victim": "enemy", "current_actor_id": "tigerclaw"}
-        result = step.resolve(tigerclaw_state, context)
+        step.resolve(tigerclaw_state, context)
 
         assert enemy.gold == 0
         assert tc.gold == 1
@@ -1424,7 +1424,7 @@ class TestBlendIntoShadowsEffect:
         tc = Hero(id="tigerclaw", name="Tigerclaw", team=TeamColor.RED, deck=[], level=1)
         # Create blockers for all non-terrain hexes within range 2
         blockers = []
-        for i, h in enumerate(hexes_list[2:]):
+        for i, _h in enumerate(hexes_list[2:]):
             blocker = Hero(
                 id=f"blocker_{i}",
                 name=f"Blocker{i}",

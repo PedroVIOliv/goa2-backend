@@ -214,7 +214,7 @@ class TestPreActionMovementViaOffense:
 
         basic_state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": -1, "s": 0}}
 
-        process_stack(basic_state).input_request
+        _ = process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("hero_misa") == Hex(q=1, r=-1, s=0)
         assert any(
@@ -315,7 +315,7 @@ class TestPreActionMovementViaDefense:
 
         basic_state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
 
-        process_stack(basic_state).input_request
+        _ = process_stack(basic_state).input_request
 
         assert basic_state.entity_locations.get("enemy") == Hex(q=2, r=0, s=-2)
         assert any(

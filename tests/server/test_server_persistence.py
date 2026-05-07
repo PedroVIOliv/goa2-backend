@@ -63,10 +63,7 @@ def test_commit_card_updates_save_file(tmp_path):
         data = _create_game(client)
         game_id = data["game_id"]
         token = _token_for(data, "hero_arien")
-
         save_file = tmp_path / f"{game_id}.json"
-        size_before = save_file.stat().st_size
-        mtime_before = save_file.stat().st_mtime_ns
 
         # Get a card to commit
         view = client.get(f"/games/{game_id}", headers=_auth(token)).json()
@@ -229,7 +226,7 @@ def test_multiple_games_survive_restart(tmp_path):
             tokens.append(_token_for(data, "hero_arien"))
 
     with _make_client(save_dir) as client2:
-        for gid, tok in zip(game_ids, tokens):
+        for gid, tok in zip(game_ids, tokens, strict=False):
             resp = client2.get(f"/games/{gid}", headers=_auth(tok))
             assert resp.status_code == 200
 
@@ -250,12 +247,14 @@ def test_ws_reconnect_after_restart(tmp_path):
         arien_token = _token_for(data, "hero_arien")
 
     # Session 2: reconnect via WebSocket
-    with _make_client(save_dir) as client2:
-        with client2.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
-            msg = ws.receive_json()
-            assert msg["type"] == "STATE_UPDATE"
-            assert "view" in msg
-            assert msg["view"]["phase"] == "PLANNING"
+    with (
+        _make_client(save_dir) as client2,
+        client2.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws,
+    ):
+        msg = ws.receive_json()
+        assert msg["type"] == "STATE_UPDATE"
+        assert "view" in msg
+        assert msg["view"]["phase"] == "PLANNING"
 
 
 # ---------------------------------------------------------------------------

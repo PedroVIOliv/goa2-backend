@@ -190,7 +190,7 @@ def test_charged_boomerang_attack_resolves(wasp_boomerang_state):
     wasp_boomerang_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # Finish resolution
-    process_stack(wasp_boomerang_state).input_request
+    _ = process_stack(wasp_boomerang_state).input_request
 
     # Target should be defeated (no defense, damage 3 vs defense None)
     assert "enemy_diagonal" not in wasp_boomerang_state.entity_locations

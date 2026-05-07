@@ -93,10 +93,10 @@ class TestMandatoryStepAbort:
             ],
         )
 
-        req = process_stack(basic_state).input_request
+        _ = process_stack(basic_state).input_request
 
         # Tracking log should have executed since select was optional
-        assert basic_state.execution_context.get("log_executed") == True
+        assert basic_state.execution_context.get("log_executed")
 
     def test_movement_select_no_valid_destinations_aborts(self, basic_state):
         """When SelectStep for movement has no valid destinations, it should abort.
@@ -158,12 +158,12 @@ class TestMandatoryStepAbort:
         )
 
         start_loc = basic_state.entity_locations["hero_red"]
-        req = process_stack(basic_state).input_request
+        _ = process_stack(basic_state).input_request
 
         # Hero did NOT move (path invalid)
         assert basic_state.entity_locations["hero_red"] == start_loc
         # But the next step DID execute (no abort occurred)
-        assert basic_state.execution_context.get("next_step_ran") == True
+        assert basic_state.execution_context.get("next_step_ran")
 
 
 class TestAbortClearsToFinalize:
@@ -201,7 +201,7 @@ class TestAbortClearsToFinalize:
             ],
         )
 
-        process_stack(basic_state).input_request
+        _ = process_stack(basic_state).input_request
 
         # None of the tracking logs should have executed
         assert "s2" not in executed

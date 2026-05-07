@@ -81,7 +81,7 @@ def test_defeat_cancels_active_effects():
     assert len(state.active_effects) == 1
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert len(state.active_effects) == 0
 
@@ -112,7 +112,7 @@ def test_defeat_resolves_unresolved_card():
     state.move_unit(victim.id, Hex(q=0, r=0, s=0))
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert victim.current_turn_card is None
     assert len(victim.played_cards) == 1
@@ -141,7 +141,7 @@ def test_defeat_removes_from_unresolved_hero_ids():
     state.unresolved_hero_ids = [HeroID("Victim"), HeroID("Killer")]
 
     push_steps(state, [DefeatUnitStep(victim_id="Victim", killer_id="Killer")])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert HeroID("Victim") not in state.unresolved_hero_ids
     assert HeroID("Killer") in state.unresolved_hero_ids
@@ -178,7 +178,7 @@ def _make_respawn_state(spawn_hex, hero_team=TeamColor.BLUE):
 
 def test_respawn_filters_occupied_spawn_points():
     spawn_hex = Hex(q=0, r=0, s=0)
-    state, hero = _make_respawn_state(spawn_hex)
+    state, _hero = _make_respawn_state(spawn_hex)
 
     # Place another unit on the spawn point to block it
     blocker = make_hero("Blocker", TeamColor.RED)
@@ -195,7 +195,7 @@ def test_respawn_filters_occupied_spawn_points():
 
 def test_respawn_offers_empty_spawn_point():
     spawn_hex = Hex(q=0, r=0, s=0)
-    state, hero = _make_respawn_state(spawn_hex)
+    state, _hero = _make_respawn_state(spawn_hex)
 
     step = RespawnHeroStep(hero_id="Hero")
     result = step.resolve(state, {})

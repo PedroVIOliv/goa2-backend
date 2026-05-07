@@ -76,7 +76,7 @@ def test_choose_secondary_movement(choice_state):
     push_steps(choice_state, [step])
 
     # 1. Run to prompt
-    process_stack(choice_state).input_request
+    _ = process_stack(choice_state).input_request
 
     # 2. Provide Input: Secondary Move
     choice_state.execution_stack[-1].pending_input = {"selection": "MOVEMENT"}
@@ -102,7 +102,7 @@ def test_choose_primary_script(choice_state):
     step = ResolveCardStep(hero_id="A")
     push_steps(choice_state, [step])
 
-    process_stack(choice_state).input_request
+    _ = process_stack(choice_state).input_request
 
     # Input: Primary
     choice_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}

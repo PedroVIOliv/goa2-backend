@@ -59,7 +59,7 @@ def test_mine_triggered_and_removed_after_movement():
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
     assert BoardEntityID("mine_1") not in state.entity_locations
@@ -71,7 +71,7 @@ def test_trigger_mine_step_directly():
     state.execution_context["triggered_mine_ids"] = ["mine_1"]
 
     push_steps(state, [TriggerMineStep()])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert BoardEntityID("mine_1") not in state.entity_locations
 
@@ -107,7 +107,7 @@ def test_no_mine_triggered_when_no_passable_tokens():
     assert req["type"] == "SELECT_HEX"
 
     state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -2, "s": 0}}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
 
@@ -118,7 +118,7 @@ def test_forced_movement_triggers_mine():
     state.execution_context["target_hex"] = {"q": 2, "r": -2, "s": 0}
 
     push_steps(state, [MoveUnitStep(unit_id="hero_a", destination_key="target_hex", range_val=2)])
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-2, s=0)
     assert BoardEntityID("mine_1") not in state.entity_locations
@@ -157,7 +157,7 @@ def test_blast_mine_forces_discard():
     assert req["player_id"] == "hero_a"
 
     state.execution_stack[-1].pending_input = {"selection": "card_1"}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert len(hero.hand) == 0
     assert any(c.id == "card_1" for c in hero.discard_pile)

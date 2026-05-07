@@ -141,7 +141,7 @@ class TestCleaveEffect:
         push_steps(cleave_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(cleave_state).input_request
+        _ = process_stack(cleave_state).input_request
         cleave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> attack minion
@@ -175,7 +175,7 @@ class TestCleaveEffect:
         push_steps(cleave_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(cleave_state).input_request
+        _ = process_stack(cleave_state).input_request
         cleave_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> attack hero A

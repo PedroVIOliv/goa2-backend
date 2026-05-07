@@ -130,7 +130,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         target_step = steps[0]
 
-        range_filter = [f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"][0]
+        range_filter = next(f for f in target_step.filters if f.__class__.__name__ == "RangeFilter")
         assert range_filter.min_range == 2
 
     def test_target_selection_in_range(self, sirens_call_state):
@@ -141,7 +141,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         target_step = steps[0]
 
-        range_filter = [f for f in target_step.filters if f.__class__.__name__ == "RangeFilter"][0]
+        range_filter = next(f for f in target_step.filters if f.__class__.__name__ == "RangeFilter")
         assert range_filter.max_range is not None
 
     def test_destination_filters(self, sirens_call_state):
@@ -166,7 +166,7 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         dest_step = steps[1]
 
-        range_filter = [f for f in dest_step.filters if f.__class__.__name__ == "RangeFilter"][0]
+        range_filter = next(f for f in dest_step.filters if f.__class__.__name__ == "RangeFilter")
         assert range_filter.max_range == 1
 
     def test_destination_reachable(self, sirens_call_state):
@@ -177,9 +177,9 @@ class TestSirensCallEffect:
         steps = effect.get_steps(sirens_call_state, xargatha, card)
         dest_step = steps[1]
 
-        path_filter = [
+        path_filter = next(
             f for f in dest_step.filters if f.__class__.__name__ == "MovementPathFilter"
-        ][0]
+        )
         assert path_filter.range_val == 3
         assert path_filter.unit_key == "sirens_call_target"
 
@@ -202,7 +202,7 @@ class TestSirensCallEffect:
         push_steps(sirens_call_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(sirens_call_state).input_request
+        _ = process_stack(sirens_call_state).input_request
         sirens_call_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy
@@ -229,7 +229,7 @@ class TestSirensCallEffect:
         push_steps(sirens_call_state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(sirens_call_state).input_request
+        _ = process_stack(sirens_call_state).input_request
         sirens_call_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy
@@ -286,7 +286,7 @@ class TestSirensCallEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Mandatory selection fails (no enemy in range) -> action aborts
@@ -335,7 +335,7 @@ class TestSirensCallEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION -> ATTACK
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. SELECT_UNIT -> target distant enemy

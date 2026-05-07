@@ -132,7 +132,7 @@ def test_violent_torrent_repeat_flow(violent_torrent_state):
     push_steps(violent_torrent_state, [step])
 
     # 1. Action Choice -> ATTACK
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target 1 -> minion1
@@ -154,7 +154,7 @@ def test_violent_torrent_repeat_flow(violent_torrent_state):
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "c1"}
 
     # 5. Resolve Attack 1
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
 
     assert len(violent_torrent_state.get_hero("victim1").hand) == 0
     assert "minion1" not in violent_torrent_state.entity_locations
@@ -181,7 +181,7 @@ def test_violent_torrent_repeat_flow(violent_torrent_state):
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "c2"}
 
     # 10. Resolve Attack 2
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
 
     assert len(violent_torrent_state.get_hero("victim2").hand) == 0
     assert "minion2" not in violent_torrent_state.entity_locations
@@ -195,11 +195,11 @@ def test_violent_torrent_no_repeat(violent_torrent_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(violent_torrent_state, [step])
 
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target 1
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
     # Backstab 1 - Skip (optional, even with valid candidates)
@@ -209,7 +209,7 @@ def test_violent_torrent_no_repeat(violent_torrent_state):
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # Resolve Attack 1
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
 
     # Repeat Prompt -> NO
     req = process_stack(violent_torrent_state).input_request
@@ -217,7 +217,7 @@ def test_violent_torrent_no_repeat(violent_torrent_state):
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "NO"}
 
     # Done
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     assert len(violent_torrent_state.execution_stack) == 0
 
     # Verify: Minion 1 dead, Minion 2 alive
@@ -235,17 +235,17 @@ def test_violent_torrent_defeat_condition(violent_torrent_state):
     step = ResolveCardStep(hero_id="arien")
     push_steps(violent_torrent_state, [step])
 
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
     violent_torrent_state.execution_stack[-1].pending_input = {"selection": "victim1"}
 
     # Empty hand -> Defeat
-    process_stack(violent_torrent_state).input_request
+    _ = process_stack(violent_torrent_state).input_request
 
     assert "victim1" not in violent_torrent_state.entity_locations
     assert "minion1" not in violent_torrent_state.entity_locations
@@ -336,11 +336,11 @@ def test_violent_torrent_alignment_filter():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Select Target
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "target"}
 
     # After target selection, backstab SelectStep runs
@@ -418,11 +418,11 @@ def test_violent_torrent_repeat_no_valid_targets():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "minion"}
 
     # Skip backstab
@@ -431,7 +431,7 @@ def test_violent_torrent_repeat_no_valid_targets():
     state.execution_stack[-1].pending_input = {"selection": "SKIP"}
 
     # Attack completes
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Repeat prompt -> YES (even though no other targets exist)
     req = process_stack(state).input_request
@@ -440,7 +440,7 @@ def test_violent_torrent_repeat_no_valid_targets():
 
     # Repeat steps spawn and auto-skip since no second target exists
     # Flow continues to completion
-    result = process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Verify minion is defeated from first attack
     assert "minion" not in state.entity_locations
@@ -511,15 +511,15 @@ def test_violent_torrent_repeat_vs_heavy_minion():
     step = ResolveCardStep(hero_id="arien")
     push_steps(state, [step])
 
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # Target -> minion1 (gets defeated)
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     state.execution_stack[-1].pending_input = {"selection": "minion1"}
 
     # Attack completes, minion1 defeated
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
     assert "minion1" not in state.entity_locations
 
     # Repeat prompt -> YES

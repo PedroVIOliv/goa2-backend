@@ -101,7 +101,7 @@ def _build_state(board, bain_card, bain_hex, enemy_hex, extra_units=None):
     red_minions = []
     blue_minions = []
     if extra_units:
-        for uid, team, hex_pos in extra_units:
+        for uid, team, _hex_pos in extra_units:
             m = Minion(id=uid, name=uid, team=team, type=MinionType.MELEE)
             if team == TeamColor.RED:
                 red_minions.append(m)

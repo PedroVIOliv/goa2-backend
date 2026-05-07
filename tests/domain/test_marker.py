@@ -116,7 +116,7 @@ class TestMarker:
 
         # Should still return effects, but with value 0
         assert len(effects) == 3
-        for stat, val in effects:
+        for _stat, val in effects:
             assert val == 0
 
 

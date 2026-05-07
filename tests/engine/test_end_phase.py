@@ -54,7 +54,7 @@ def test_minion_battle_simple_removal(battle_state):
     # Run Step — auto-skips (to_remove=1 >= N-1=0)
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    process_stack(battle_state).input_request
+    _ = process_stack(battle_state).input_request
 
     # Verify Blue minion removed
     assert m_blue1.id not in battle_state.unit_locations
@@ -92,7 +92,7 @@ def test_minion_battle_heavy_constraint(battle_state):
     # Run Step — auto-skips (to_remove=2 >= N-1=1)
     step = EndPhaseStep()
     push_steps(battle_state, [step])
-    process_stack(battle_state).input_request
+    _ = process_stack(battle_state).input_request
 
     assert m_red_melee.id not in battle_state.unit_locations
     assert m_red_heavy.id not in battle_state.unit_locations
@@ -144,9 +144,9 @@ def test_minion_battle_heavy_protection(battle_state):
     assert "r_melee2" in valid
 
     # Submit choice
-    resp = InputResponse(selection="r_melee1")
+    InputResponse(selection="r_melee1")
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee1"}
-    process_stack(battle_state).input_request
+    _ = process_stack(battle_state).input_request
 
     # Verify: chosen melee gone, heavy remains, other melee remains
     assert "r_melee1" not in battle_state.unit_locations
@@ -239,7 +239,7 @@ def test_minion_battle_multi_removal_choice(battle_state):
 
     # Choose to remove melee2
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee2"}
-    process_stack(battle_state).input_request
+    _ = process_stack(battle_state).input_request
 
     # Verify final state
     assert "r_melee1" not in battle_state.unit_locations

@@ -153,7 +153,7 @@ def test_reaction_window_validation(combat_state):
 
     # Pass 2: Select Invalid Card
     combat_state.execution_stack[-1].pending_input = {"selection": "def_card_1"}
-    process_stack(combat_state).input_request
+    _ = process_stack(combat_state).input_request
 
     assert combat_state.execution_context["defense_value"] == 5
 
@@ -166,7 +166,7 @@ def test_combat_resolution_block(combat_state):
     step = ResolveCombatStep(damage=3, target_key="victim_id")
     push_steps(combat_state, [step])
 
-    process_stack(combat_state).input_request
+    _ = process_stack(combat_state).input_request
 
 
 def test_combat_resolution_hit(combat_state):
@@ -177,7 +177,7 @@ def test_combat_resolution_hit(combat_state):
     step = ResolveCombatStep(damage=3, target_key="victim_id")
     push_steps(combat_state, [step])
 
-    process_stack(combat_state).input_request
+    _ = process_stack(combat_state).input_request
 
 
 def test_attack_sequence_expansion(combat_state):
@@ -192,7 +192,7 @@ def test_attack_sequence_expansion(combat_state):
     push_steps(combat_state, [step])
 
     # Run once to expand
-    process_stack(combat_state).input_request
+    _ = process_stack(combat_state).input_request
 
     # Now stack should have SelectStep at top waiting for input
     current = combat_state.execution_stack[-1]

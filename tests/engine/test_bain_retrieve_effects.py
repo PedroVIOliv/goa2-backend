@@ -139,7 +139,7 @@ class TestRetrieveCardStepHeroKey:
                 RetrieveCardStep(card_key="target_retrieve_card", hero_key="retrieve_target"),
             ],
         )
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         # Ally should have the card back in hand
         ally_ref = state.get_hero(HeroID("hero_ally"))
@@ -167,7 +167,7 @@ class TestRetrieveCardStepHeroKey:
         state.execution_context["my_card"] = "bain_discard"
 
         push_steps(state, [RetrieveCardStep(card_key="my_card")])
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         bain_ref = state.get_hero(HeroID("hero_bain"))
         assert any(c.id == "bain_discard" for c in bain_ref.hand)

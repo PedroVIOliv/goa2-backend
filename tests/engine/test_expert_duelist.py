@@ -9,6 +9,8 @@ Two effects:
 2. ATTACK_IMMUNITY effect - immune to attacks from other enemy heroes
 """
 
+from typing import ClassVar
+
 import pytest
 
 # Import to register effects
@@ -290,7 +292,7 @@ class TestExpertDuelistDefenseSteps:
             id = "expert_duelist_card"
             primary_action = ActionType.DEFENSE
             primary_action_value = 6
-            secondary_actions = {}
+            secondary_actions: ClassVar[dict] = {}
             range_value = None
             radius_value = None
             is_ranged = False
@@ -350,7 +352,7 @@ class TestMasterDuelistDefenseSteps:
             id = "master_duelist_card"
             primary_action = ActionType.DEFENSE
             primary_action_value = 6
-            secondary_actions = {}
+            secondary_actions: ClassVar[dict] = {}
             range_value = None
             radius_value = None
             is_ranged = False

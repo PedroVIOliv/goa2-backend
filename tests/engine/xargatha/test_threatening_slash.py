@@ -213,7 +213,7 @@ class TestThreateningSlashEffect:
         push_steps(state, [step])
 
         # 1. CHOOSE_ACTION
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
         # 2. Count step runs, then SELECT_UNIT for attack target
@@ -270,10 +270,10 @@ class TestThreateningSlashEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         # Only 1 enemy adjacent, subtract 1 -> bonus = 0
         assert state.execution_context.get("adj_atk_bonus") == 0
 
@@ -309,10 +309,10 @@ class TestDeadlySwipeEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 4
 
     def test_attack_range_is_adjacent(self):
@@ -358,10 +358,10 @@ class TestLethalSpinEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 6
 
     def test_full_flow_bonus_with_six_adjacent(self):
@@ -374,10 +374,10 @@ class TestLethalSpinEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
         assert state.execution_context.get("adj_atk_bonus") == 15
 
     def test_attack_range_is_adjacent(self):

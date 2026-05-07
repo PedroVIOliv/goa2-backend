@@ -110,7 +110,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
     push_steps(dangerous_current_state, [step])
 
     # 1. Action Choice (Attack)
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Attack Target (Mandatory) -> enemy_minion
@@ -136,7 +136,7 @@ def test_dangerous_current_discard_flow(dangerous_current_state):
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "fodder"}
 
     # 5. Execute Discard and Attack
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
 
     # Verify Discard
     victim = dangerous_current_state.get_hero("enemy_victim")
@@ -170,19 +170,19 @@ def test_dangerous_current_defeat_flow(dangerous_current_state):
     push_steps(dangerous_current_state, [step])
 
     # 1. Action -> Attack
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Select Target -> Minion
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
     # 3. Select Victim -> Victim
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
     dangerous_current_state.execution_stack[-1].pending_input = {"selection": "enemy_victim"}
 
     # 4. Logic detects empty hand -> DefeatUnitStep -> RemoveUnitStep
-    process_stack(dangerous_current_state).input_request
+    _ = process_stack(dangerous_current_state).input_request
 
     # Verify Victim Defeated (removed from board)
     assert "enemy_victim" not in dangerous_current_state.entity_locations

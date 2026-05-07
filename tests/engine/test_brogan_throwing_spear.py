@@ -223,7 +223,7 @@ def test_throwing_spear_ranged_no_discard_empty_pile_no_attack(spear_state):
     # Move enemy to range 3
     spear_state.place_entity("enemy", Hex(q=3, r=0, s=-3))
 
-    hero = spear_state.get_hero("brogan")
+    spear_state.get_hero("brogan")
     # No hand cards, no discard pile — ranged attack should not happen
 
     push_steps(spear_state, [ResolveCardStep(hero_id="brogan")])

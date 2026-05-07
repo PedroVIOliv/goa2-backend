@@ -57,10 +57,10 @@ def test_swap_hand_and_unresolved(hero, cards):
 
     # Verify State attributes
     assert card_hand.state == CardState.UNRESOLVED
-    assert card_hand.is_facedown == True
+    assert card_hand.is_facedown
 
     assert card_unres.state == CardState.HAND
-    assert card_unres.is_facedown == False
+    assert not card_unres.is_facedown
 
 
 def test_swap_hand_and_resolved(hero, cards):
@@ -112,7 +112,7 @@ def test_swap_hand_and_discard(hero, cards):
 
     assert card_disc.state == CardState.HAND
     assert card_hand.state == CardState.DISCARD
-    assert card_hand.is_facedown == False
+    assert not card_hand.is_facedown
 
 
 def test_swap_within_same_list(hero, cards):

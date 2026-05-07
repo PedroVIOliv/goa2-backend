@@ -69,13 +69,13 @@ def test_displacement_auto_select(displacement_state):
 
     # Run
     # Step 1: ResolveDisplacement -> Detects 1 Candidate -> Spawns PlaceUnitStep + Recursive Step
-    process_stack(displacement_state).input_request
+    _ = process_stack(displacement_state).input_request
 
     # Step 2: PlaceUnitStep runs
-    process_stack(displacement_state).input_request
+    _ = process_stack(displacement_state).input_request
 
     # Step 3: Recursive ResolveDisplacement (empty list) -> finishes
-    process_stack(displacement_state).input_request
+    _ = process_stack(displacement_state).input_request
 
     # Assert
     final_loc = displacement_state.entity_locations.get("m_disp")
@@ -85,7 +85,7 @@ def test_displacement_auto_select(displacement_state):
 def test_displacement_prompt(displacement_state):
     # Free up the other neighbor to force a choice
     # Clear (1,-1,0)
-    blocker_hex = Hex(q=1, r=-1, s=0)
+    Hex(q=1, r=-1, s=0)
     displacement_state.remove_entity("m_block")
 
     origin = Hex(q=0, r=0, s=0)
@@ -105,10 +105,10 @@ def test_displacement_prompt(displacement_state):
     # Provide Input
     target = Hex(q=1, r=-1, s=0)
     displacement_state.execution_stack[-1].pending_input = {"selection": target.model_dump()}
-    process_stack(displacement_state).input_request
+    _ = process_stack(displacement_state).input_request
 
     # Should spawn placement
-    process_stack(displacement_state).input_request  # PlaceUnit
+    process_stack(displacement_state)  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == target
 
@@ -138,9 +138,9 @@ def test_displacement_multi_unit_selection(displacement_state):
     # It sees 1 candidate (1,0,-1). Auto-places m_disp_2.
     # It returns new steps [PlaceUnit(m_disp_2), ResolveDisplacement(remaining)]
     # PlaceUnit runs.
-    process_stack(displacement_state).input_request  # Resolve(Input) -> Spawns Split
-    process_stack(displacement_state).input_request  # Resolve(m_disp_2) -> Spawns Place
-    process_stack(displacement_state).input_request  # PlaceUnit(m_disp_2)
+    process_stack(displacement_state)  # Resolve(Input) -> Spawns Split
+    process_stack(displacement_state)  # Resolve(m_disp_2) -> Spawns Place
+    _ = process_stack(displacement_state)  # PlaceUnit(m_disp_2).input_request
 
     assert displacement_state.entity_locations.get("m_disp_2") == Hex(q=1, r=0, s=-1)
 
@@ -151,8 +151,8 @@ def test_displacement_multi_unit_selection(displacement_state):
     # So m_disp has NO range 1 options!
     # It should look for Range 2. (2,0,-2) is in fixture and empty.
 
-    process_stack(displacement_state).input_request  # Resolve(m_disp)
+    _ = process_stack(displacement_state)  # Resolve(m_disp).input_request
     # Spawns PlaceUnit(m_disp) at (2,0,-2) (Auto-select)
-    process_stack(displacement_state).input_request  # PlaceUnit
+    process_stack(displacement_state)  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == Hex(q=2, r=0, s=-2)

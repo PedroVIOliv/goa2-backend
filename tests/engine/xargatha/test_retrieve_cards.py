@@ -138,7 +138,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         # melee_1 + hero_enemy = 2 adjacent enemies
         assert retrieve_state.execution_context["enemy_count"] == 2
 
@@ -158,7 +158,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         # Only melee_1 is an enemy minion
         assert retrieve_state.execution_context["minion_count"] == 1
 
@@ -178,7 +178,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["enemy_count"] == 0
 
     def test_skipped_when_active_if_key_missing(self, retrieve_state):
@@ -194,7 +194,7 @@ class TestCountStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert "enemy_count" not in retrieve_state.execution_context
 
 
@@ -214,7 +214,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_gte_false(self, retrieve_state):
@@ -227,7 +227,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         # Stores None (not False) so active_if_key checks work
         assert retrieve_state.execution_context["result"] is None
 
@@ -241,7 +241,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_lt_operator(self, retrieve_state):
@@ -254,7 +254,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is True
 
     def test_missing_key_defaults_to_zero(self, retrieve_state):
@@ -269,7 +269,7 @@ class TestCheckContextConditionStep:
                 )
             ],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert retrieve_state.execution_context["result"] is None
 
 
@@ -289,7 +289,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="card_sel")],
         )
-        result = process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         assert len(hero.discard_pile) == 1
         assert any(c.id == "card_a" for c in hero.hand)
@@ -304,7 +304,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="missing_key")],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert len(hero.discard_pile) == 2
 
     def test_skips_when_active_if_key_missing(self, retrieve_state):
@@ -314,7 +314,7 @@ class TestRetrieveCardStep:
             retrieve_state,
             [RetrieveCardStep(card_key="card_sel", active_if_key="nope")],
         )
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
         assert len(hero.discard_pile) == 2
 
 
@@ -347,7 +347,7 @@ class TestDevotedFollowers:
 
         # Select card_a
         retrieve_state.execution_stack[-1].pending_input = {"selection": "card_a"}
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_a" for c in hero.hand)
@@ -363,7 +363,7 @@ class TestDevotedFollowers:
         assert req["type"] == "SELECT_CARD"
 
         retrieve_state.execution_stack[-1].pending_input = {"selection": "card_b"}
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_b" for c in hero.hand)
@@ -392,7 +392,7 @@ class TestDevotedFollowers:
 
         # Submit SKIP
         retrieve_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert len(hero.hand) == 0
@@ -421,7 +421,7 @@ class TestFreshConverts:
         assert req["type"] == "SELECT_CARD"
 
         retrieve_state.execution_stack[-1].pending_input = {"selection": "card_a"}
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert any(c.id == "card_a" for c in hero.hand)
@@ -455,7 +455,7 @@ class TestFreshConverts:
         assert req is not None
 
         retrieve_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
-        process_stack(retrieve_state).input_request
+        _ = process_stack(retrieve_state).input_request
 
         hero = retrieve_state.get_hero("hero_xargatha")
         assert len(hero.hand) == 0

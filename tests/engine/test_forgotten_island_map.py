@@ -46,7 +46,7 @@ class TestZoneAdjacencies:
         red_base = zones_by_label["RedBase"]
         mid = zones_by_label["Mid"]
 
-        neighbor_labels = {
+        {
             zones_by_label[label].label
             for zone_id in red_jungle.neighbors
             for label, z in zones_by_label.items()

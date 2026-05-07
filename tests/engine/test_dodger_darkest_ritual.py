@@ -56,7 +56,7 @@ def _make_state(*, num_empty_spawns: int = 2, hero_level: int = 1):
         Hex(q=0, r=1, s=-1),
         Hex(q=-1, r=1, s=0),
     ]
-    for i, h in enumerate(spawn_hexes):
+    for _i, h in enumerate(spawn_hexes):
         sp = SpawnPoint(
             location=h,
             team=TeamColor.RED,

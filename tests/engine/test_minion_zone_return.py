@@ -63,7 +63,7 @@ def test_auto_return_single_path(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_stack(zone_state).input_request
+    _ = process_stack(zone_state).input_request
 
     loc = zone_state.unit_locations.get(m_red.id)
     zone = zone_state.board.zones["battle_zone"]
@@ -108,7 +108,7 @@ def test_multiple_minions_tiebreaker_order(zone_state):
 
     step = ReturnMinionToZoneStep()
     push_steps(zone_state, [step])
-    result = process_stack(zone_state).input_request
+    _ = process_stack(zone_state).input_request
 
     # Both minions should be returned to zone
     zone = zone_state.board.zones["battle_zone"]
@@ -166,7 +166,7 @@ def test_finalize_hero_turn_spawns_check(zone_state):
 
     step = FinalizeHeroTurnStep(hero_id="hero_test")
     push_steps(zone_state, [step])
-    result = process_stack(zone_state).input_request
+    _ = process_stack(zone_state).input_request
 
     # Minion should be returned to zone
     zone = zone_state.board.zones["battle_zone"]

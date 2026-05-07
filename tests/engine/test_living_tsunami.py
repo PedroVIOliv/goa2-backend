@@ -168,7 +168,7 @@ class TestCheckPassiveAbilitiesStep:
     def test_finds_ultimate_passive_at_level_8(self, game_state_with_hero):
         """Ultimate passive should be found when hero is level 8+."""
         state = game_state_with_hero
-        hero = state.get_hero(HeroID("hero_arien"))
+        state.get_hero(HeroID("hero_arien"))
         state.current_actor_id = HeroID("hero_arien")
 
         step = CheckPassiveAbilitiesStep(trigger=PassiveTrigger.BEFORE_ATTACK.value)

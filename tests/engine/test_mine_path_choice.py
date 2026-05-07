@@ -104,7 +104,7 @@ def test_mine_path_choice_select_then_move():
         if any(h == {"q": 1, "r": -1, "s": 0} for h in o["metadata"]["mine_hexes"])
     )
     state.execution_stack[-1].pending_input = {"selection": choice_idx}
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-1, s=-1)
     assert BoardEntityID("mine_A") not in state.entity_locations

@@ -106,7 +106,7 @@ def test_magnetic_dagger_flow(wasp_magnetic_state):
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Finish resolution
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
 
     # Verify effect created
     assert len(wasp_magnetic_state.active_effects) == 1
@@ -128,13 +128,13 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
     push_steps(wasp_magnetic_state, [step])
 
     # Attack e1
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
 
     # Finalize card to activate effects
     hero = wasp_magnetic_state.get_hero("wasp")
@@ -172,13 +172,13 @@ def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):
     push_steps(wasp_magnetic_state, [step])
 
     # Attack e1
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
     wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    process_stack(wasp_magnetic_state).input_request
+    _ = process_stack(wasp_magnetic_state).input_request
 
     # Finalize card to activate effects
     hero = wasp_magnetic_state.get_hero("wasp")

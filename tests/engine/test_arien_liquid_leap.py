@@ -109,11 +109,11 @@ def test_liquid_leap_execution(leap_state):
     push_steps(leap_state, [step])
 
     # 1. Select Action
-    process_stack(leap_state).input_request
+    _ = process_stack(leap_state).input_request
     leap_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 2. Select Hex
-    process_stack(leap_state).input_request
+    _ = process_stack(leap_state).input_request
     leap_state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
 
     # 3. Finalize

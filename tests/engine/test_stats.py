@@ -45,7 +45,7 @@ def aura_state():
 
     from goa2.domain.tile import Tile
 
-    for uid, h in locations.items():
+    for _uid, h in locations.items():
         board.tiles[h] = Tile(hex=h)  # Let place_entity handle occupancy
 
     # Ensure destination tile for test exists

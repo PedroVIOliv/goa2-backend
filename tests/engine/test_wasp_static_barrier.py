@@ -201,7 +201,7 @@ class TestStaticBarrierObstacleChecks:
         assert state.validator.is_obstacle_for_actor(state, hex_dist_2, "enemy_outside") is True
 
         # Distance 3 - should NOT be obstacle (outside radius)
-        hex_dist_3 = Hex(q=3, r=0, s=-3)
+        Hex(q=3, r=0, s=-3)
         # Note: This hex is occupied by 'friendly' so base is_obstacle is True
         # But the barrier itself should not block it
         # We need an empty hex at distance 3
@@ -372,7 +372,7 @@ class TestStaticBarrierMovementIntegration:
             range_val=5,
         )
         push_steps(state, [step])
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         # Unit should NOT have moved — barrier blocks destination
         from goa2.domain.state import BoardEntityID
@@ -395,7 +395,7 @@ class TestStaticBarrierMovementIntegration:
             range_val=2,
         )
         push_steps(state, [step])
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         from goa2.domain.state import BoardEntityID
 
@@ -434,7 +434,7 @@ class TestStaticBarrierMovementIntegration:
             distance=2,
         )
         push_steps(state, [step])
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         # Push direction is from (4,0,-4) toward (3,0,-3), continuing to (2,0,-2)
         # (2,0,-2) is inside radius — should be obstacle for enemy_outside actor

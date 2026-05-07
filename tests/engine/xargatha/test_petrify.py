@@ -327,7 +327,7 @@ def test_turn_into_statues_integration():
     effect = CardEffectRegistry.get("turn_into_statues")
     steps = effect.build_steps(state, xargatha, card, stats)
     push_steps(state, steps)
-    process_stack(state).input_request
+    _ = process_stack(state).input_request
 
     # Effect should be created but not active yet (NEXT_TURN timing)
     assert len(state.active_effects) == 1

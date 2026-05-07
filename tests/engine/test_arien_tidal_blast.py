@@ -87,19 +87,19 @@ def test_tidal_blast_push_3_spaces(tidal_blast_state):
     push_steps(tidal_blast_state, [step])
 
     # 1. Action
-    process_stack(tidal_blast_state).input_request
+    _ = process_stack(tidal_blast_state).input_request
     tidal_blast_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
 
     # 2. Target Enemy Hero
-    process_stack(tidal_blast_state).input_request
+    _ = process_stack(tidal_blast_state).input_request
     tidal_blast_state.execution_stack[-1].pending_input = {"selection": "enemy_hero"}
 
     # 3. Reaction
-    process_stack(tidal_blast_state).input_request
+    _ = process_stack(tidal_blast_state).input_request
     tidal_blast_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 4. Select Push Target (Minion)
-    process_stack(tidal_blast_state).input_request
+    _ = process_stack(tidal_blast_state).input_request
     tidal_blast_state.execution_stack[-1].pending_input = {"selection": "enemy_minion"}
 
     # 5. Select Distance (3)
@@ -109,7 +109,7 @@ def test_tidal_blast_push_3_spaces(tidal_blast_state):
     tidal_blast_state.execution_stack[-1].pending_input = {"selection": 3}
 
     # 6. Execute
-    process_stack(tidal_blast_state).input_request
+    _ = process_stack(tidal_blast_state).input_request
 
     # Verify push result: from (1,0,-1) -> (4,0,-4)
     assert tidal_blast_state.entity_locations["enemy_minion"] == Hex(q=4, r=0, s=-4)

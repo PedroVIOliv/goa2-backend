@@ -560,7 +560,7 @@ class TestPerfectSelf:
         state.execution_stack[-1].pending_input = None
         # Manually inject context
         state.execution_context = context
-        process_stack(state).input_request
+        _ = process_stack(state).input_request
 
         assert retired_card.state == CardState.ITEM
         assert hero.items.get(StatType.ATTACK, 0) >= 1

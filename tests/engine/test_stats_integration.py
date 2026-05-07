@@ -151,7 +151,7 @@ def test_reaction_window_defense_bonus(stats_state):
 
     # Choose Card
     step.pending_input = {"selection": "def1"}
-    res = step.resolve(stats_state, ctx)
+    step.resolve(stats_state, ctx)
 
     # Context should have computed defense: 4 (3+1)
     assert ctx["defense_value"] == 4

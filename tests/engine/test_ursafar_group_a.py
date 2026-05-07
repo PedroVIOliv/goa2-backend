@@ -311,7 +311,7 @@ class TestColdIre:
         _drive_choose_action(base_state, "MOVEMENT")
 
         # Move to adjacent
-        req = process_stack(base_state).input_request
+        _ = process_stack(base_state).input_request
         dest = Hex(q=-1, r=0, s=1)
         base_state.execution_stack[-1].pending_input = {"selection": dest.model_dump()}
 

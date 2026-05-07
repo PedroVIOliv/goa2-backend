@@ -99,7 +99,7 @@ def test_venom_strike_applies_debuffs(rogue_state):
     # 7. Provide Input: PASS reaction
     rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
-    process_stack(rogue_state).input_request
+    _ = process_stack(rogue_state).input_request
 
     att = get_computed_stat(rogue_state, "victim", StatType.ATTACK, base_value=3)
     dfe = get_computed_stat(rogue_state, "victim", StatType.DEFENSE, base_value=3)
@@ -137,7 +137,7 @@ def test_slippery_ground_limits_movement(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "SKILL"}
 
     # 4. Resolve steps
-    process_stack(rogue_state).input_request
+    _ = process_stack(rogue_state).input_request
 
     # 5. Verify effect is active in state
     assert len(rogue_state.active_effects) == 1
@@ -218,7 +218,7 @@ def test_magnetic_dagger_prevents_placement(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "PASS"}
 
     # 6. Finish resolution
-    process_stack(rogue_state).input_request
+    _ = process_stack(rogue_state).input_request
 
     # 7. Verify effect is active
     assert any(e.effect_type == EffectType.PLACEMENT_PREVENTION for e in rogue_state.active_effects)
@@ -332,7 +332,7 @@ def test_rogue_skill_gold_swaps_enemy_card(rogue_state):
     rogue_state.execution_stack[-1].pending_input = {"selection": "v_resolved"}
 
     # 8. Finish resolution (SwapCardStep)
-    process_stack(rogue_state).input_request
+    _ = process_stack(rogue_state).input_request
 
     # 9. Verify Swap on Victim
     assert victim.current_turn_card.id == "v_resolved"

@@ -52,8 +52,8 @@ def test_play_card_lifecycle(hero, sample_card):
     # Verify: Set as Current Turn Card (Unresolved)
     assert hero.current_turn_card == sample_card
     assert sample_card.state == CardState.UNRESOLVED
-    assert sample_card.is_facedown == True
-    assert sample_card.played_this_round == True
+    assert sample_card.is_facedown
+    assert sample_card.played_this_round
 
     # Verify: Not yet in Resolved list
     assert len(hero.played_cards) == 0
@@ -80,7 +80,7 @@ def test_discard_from_hand(hero, sample_card):
     assert sample_card not in hero.hand
     assert sample_card in hero.discard_pile
     assert sample_card.state == CardState.DISCARD
-    assert sample_card.is_facedown == False
+    assert not sample_card.is_facedown
 
 
 def test_discard_from_resolved(hero, sample_card):
@@ -164,8 +164,8 @@ def test_retrieve_cards_full_reset(hero, sample_card):
     # Verify States Reset
     for c in [sample_card, c2, c3]:
         assert c.state == CardState.HAND
-        assert c.is_facedown == False
-        assert c.played_this_round == False
+        assert not c.is_facedown
+        assert not c.played_this_round
 
     # Verify Containers Empty
     assert len(hero.played_cards) == 0
