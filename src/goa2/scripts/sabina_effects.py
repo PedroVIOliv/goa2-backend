@@ -306,7 +306,8 @@ class TroopMovementEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="tm")
-        return base_steps + [
+        return [
+            *base_steps,
             MayRepeatOnceStep(
                 steps_template=_build_minion_move_steps(stats, output_prefix="tm_r"),
             ),
@@ -331,7 +332,8 @@ class MarchingOrdersEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="mo")
-        return base_steps + [
+        return [
+            *base_steps,
             MayRepeatOnceStep(
                 steps_template=_build_minion_move_steps(stats, output_prefix="mo_r"),
             ),
@@ -356,7 +358,8 @@ class PathToVictoryEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         base_steps = _build_minion_move_steps(stats, output_prefix="ptv")
-        return base_steps + [
+        return [
+            *base_steps,
             MayRepeatNTimesStep(
                 max_repeats=2,
                 prompt="Move another friendly minion? (Path to Victory)",

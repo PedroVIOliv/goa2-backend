@@ -423,9 +423,13 @@ class ChooseMinionRemovalStep(GameStep):
         for unit_id, loc in state.unit_locations.items():
             if loc in zone.hexes:
                 unit = state.get_unit(UnitID(unit_id))
-                if unit and hasattr(unit, "type") and hasattr(unit, "is_heavy"):
-                    if unit.team == team_color:
-                        minions.append(unit)
+                if (
+                    unit
+                    and hasattr(unit, "type")
+                    and hasattr(unit, "is_heavy")
+                    and unit.team == team_color
+                ):
+                    minions.append(unit)
         return minions
 
     def _get_valid_choices(self, minions: list) -> list:
@@ -559,7 +563,7 @@ class ResolveTieBreakerStep(GameStep):
                 candidates = teams_represented[favored_team]
                 target_team = favored_team
             else:
-                target_team = list(teams_represented.keys())[0]
+                target_team = next(iter(teams_represented.keys()))
                 candidates = teams_represented[target_team]
 
             if len(candidates) > 1:
@@ -575,7 +579,7 @@ class ResolveTieBreakerStep(GameStep):
 
         # B. If only one team -> they must choose who goes next
         else:
-            target_team = list(teams_represented.keys())[0]
+            target_team = next(iter(teams_represented.keys()))
             candidates = teams_represented[target_team]
             if len(candidates) > 1:
                 needs_input = True

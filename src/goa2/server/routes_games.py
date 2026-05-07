@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputResponse
@@ -14,7 +14,7 @@ from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.session import GameSession, SessionResult
 from goa2.engine.setup import GameSetup
-from goa2.server.auth import PlayerContext, get_current_player, get_registry
+from goa2.server.auth import PlayerDep, RegistryDep
 from goa2.server.errors import (
     AlreadyCommittedError,
     CardNotInHandError,
@@ -31,7 +31,6 @@ from goa2.server.models import (
     PlayerToken,
     SubmitInputRequest,
 )
-from goa2.server.registry import GameRegistry
 
 router = APIRouter(prefix="/games", tags=["games"])
 
@@ -81,9 +80,7 @@ def _result_to_response(result: SessionResult) -> ActionResultResponse:
 
 
 @router.post("", response_model=CreateGameResponse, status_code=201)
-async def create_game(
-    body: CreateGameRequest, registry: GameRegistry = Depends(get_registry)
-) -> CreateGameResponse:
+async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateGameResponse:
     map_path = _map_path(body.map_name)
     if body.game_type not in ("QUICK", "LONG"):
         raise HTTPException(
@@ -124,8 +121,8 @@ async def create_game(
 @router.get("/{game_id}", response_model=GameViewResponse)
 async def get_game_view(
     game_id: str,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> GameViewResponse:
     game = registry.get(game_id)
     hero_id = player.hero_id if not player.is_spectator else None
@@ -144,8 +141,8 @@ async def get_game_view(
 async def commit_card(
     game_id: str,
     body: CommitCardRequest,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot commit cards")
@@ -179,8 +176,8 @@ async def commit_card(
 @router.post("/{game_id}/pass", response_model=ActionResultResponse)
 async def pass_turn(
     game_id: str,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot pass")
@@ -204,8 +201,8 @@ async def pass_turn(
 async def submit_input(
     game_id: str,
     body: SubmitInputRequest,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot submit input")
@@ -233,8 +230,8 @@ async def submit_input(
 @router.post("/{game_id}/advance", response_model=ActionResultResponse)
 async def advance(
     game_id: str,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot advance")
@@ -251,8 +248,8 @@ async def advance(
 @router.post("/{game_id}/rollback", response_model=ActionResultResponse)
 async def rollback_action(
     game_id: str,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot rollback")
@@ -267,7 +264,7 @@ async def rollback_action(
         try:
             result = session.rollback()
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
@@ -278,8 +275,8 @@ async def rollback_action(
 async def give_gold_cheat(
     game_id: str,
     body: GiveGoldRequest,
-    player: PlayerContext = Depends(get_current_player),
-    registry: GameRegistry = Depends(get_registry),
+    player: PlayerDep,
+    registry: RegistryDep,
 ) -> ActionResultResponse:
     if player.is_spectator:
         raise HTTPException(status_code=403, detail="Spectators cannot use cheats")

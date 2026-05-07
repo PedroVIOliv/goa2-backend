@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -61,7 +60,7 @@ class PassiveConfig(BaseModel):
     prompt: str = ""
 
 
-class CardEffect(ABC):
+class CardEffect:
     """
     Base class for custom card logic.
     Primary actions on cards delegate their execution to these effects.
@@ -290,7 +289,7 @@ class CardEffectRegistry:
     Global registry for card effects, indexed by effect_id.
     """
 
-    _effects: dict[str, CardEffect] = {}
+    _effects: ClassVar[dict[str, CardEffect]] = {}
 
     @classmethod
     def register(cls, effect_id: str, effect: CardEffect):
@@ -323,9 +322,13 @@ def get_active_aura_effects(state: GameState, hero: Hero) -> list[tuple[Card, Ca
             results.append((hero.ultimate_card, effect))
     # Check resolved face-up cards (future passive auras)
     for card in hero.played_cards:
-        if card and card.state == CardState.RESOLVED and not card.is_facedown:
-            if card.current_effect_id:
-                effect = CardEffectRegistry.get(card.current_effect_id)
-                if effect:
-                    results.append((card, effect))
+        if (
+            card
+            and card.state == CardState.RESOLVED
+            and not card.is_facedown
+            and card.current_effect_id
+        ):
+            effect = CardEffectRegistry.get(card.current_effect_id)
+            if effect:
+                results.append((card, effect))
     return results

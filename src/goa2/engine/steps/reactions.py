@@ -227,11 +227,11 @@ class ResolveDefenseTextStep(GameStep):
                     f"   [DEFENSE] Executing {len(defense_steps)} defense effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
-                wrapped = (
-                    [SetActorStep(actor_key="defender_id", save_key="_pre_defense_actor")]
-                    + list(defense_steps)
-                    + [SetActorStep(actor_key="_pre_defense_actor", save_key="_discard")]
-                )
+                wrapped = [
+                    SetActorStep(actor_key="defender_id", save_key="_pre_defense_actor"),
+                    *defense_steps,
+                    SetActorStep(actor_key="_pre_defense_actor", save_key="_discard"),
+                ]
                 return StepResult(is_finished=True, new_steps=wrapped)
             else:
                 if not defense_steps:
@@ -292,11 +292,11 @@ class ResolveOnBlockEffectStep(GameStep):
                     f"   [ON_BLOCK] Executing {len(on_block_steps)} on_block effect steps for {card.current_effect_id}"
                 )
                 # Wrap steps so current_actor_id is the defender during execution
-                wrapped = (
-                    [SetActorStep(actor_key="defender_id", save_key="_pre_onblock_actor")]
-                    + list(on_block_steps)
-                    + [SetActorStep(actor_key="_pre_onblock_actor", save_key="_discard")]
-                )
+                wrapped = [
+                    SetActorStep(actor_key="defender_id", save_key="_pre_onblock_actor"),
+                    *on_block_steps,
+                    SetActorStep(actor_key="_pre_onblock_actor", save_key="_discard"),
+                ]
                 return StepResult(is_finished=True, new_steps=wrapped)
 
         return StepResult(is_finished=True)
@@ -317,7 +317,6 @@ class ConfirmResolutionStep(GameStep):
             return StepResult(is_finished=True)
 
         if self.pending_input:
-            choice = self.pending_input.get("selection", "CONFIRM")
             # Both CONFIRM and ROLLBACK just finish this step.
             # Rollback is handled via the dedicated endpoint/message, not through input.
             return StepResult(is_finished=True)

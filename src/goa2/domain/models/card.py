@@ -170,9 +170,8 @@ class Card(GameEntity):
                 )
 
         # Case 3: Purple must be IV
-        elif color == CardColor.PURPLE:
-            if tier != CardTier.IV:
-                raise ValueError(f"Card color {color.name} must be Tier IV, got {tier.name}")
+        elif color == CardColor.PURPLE and tier != CardTier.IV:
+            raise ValueError(f"Card color {color.name} must be Tier IV, got {tier.name}")
 
         return self
 
@@ -184,22 +183,19 @@ class Card(GameEntity):
 
     @model_validator(mode="after")
     def ensure_fast_travel_if_applicable(self) -> Card:
-        if ActionType.FAST_TRAVEL not in self.secondary_actions:
-            if (
-                self.primary_action == ActionType.MOVEMENT
-                or ActionType.MOVEMENT in self.secondary_actions
-            ):
-                self.secondary_actions[ActionType.FAST_TRAVEL] = 0
+        if ActionType.FAST_TRAVEL not in self.secondary_actions and (
+            self.primary_action == ActionType.MOVEMENT
+            or ActionType.MOVEMENT in self.secondary_actions
+        ):
+            self.secondary_actions[ActionType.FAST_TRAVEL] = 0
         return self
 
     @model_validator(mode="after")
     def ensure_clear_if_applicable(self) -> Card:
-        if ActionType.CLEAR not in self.secondary_actions:
-            if (
-                self.primary_action == ActionType.ATTACK
-                or ActionType.ATTACK in self.secondary_actions
-            ):
-                self.secondary_actions[ActionType.CLEAR] = 0
+        if ActionType.CLEAR not in self.secondary_actions and (
+            self.primary_action == ActionType.ATTACK or ActionType.ATTACK in self.secondary_actions
+        ):
+            self.secondary_actions[ActionType.CLEAR] = 0
         return self
 
     @model_validator(mode="after")

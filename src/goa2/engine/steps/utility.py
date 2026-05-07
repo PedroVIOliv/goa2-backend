@@ -667,10 +667,7 @@ class ComputeHexStep(GameStep):
             return StepResult(is_finished=True)
 
         # Resolve origin hex
-        if self.origin_key:
-            origin_uid = context.get(self.origin_key)
-        else:
-            origin_uid = state.current_actor_id
+        origin_uid = context.get(self.origin_key) if self.origin_key else state.current_actor_id
         if not origin_uid:
             return StepResult(is_finished=True)
 

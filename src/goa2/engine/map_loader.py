@@ -175,7 +175,7 @@ def load_map(file_path: str) -> Board:
 
     # Distribute spawn points to their respective zones
     for sp in spawn_points:
-        for z_id, zone in zones.items():
+        for zone in zones.values():
             if sp.location in zone.hexes:
                 zone.spawn_points.append(sp)
                 break

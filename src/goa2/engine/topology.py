@@ -90,9 +90,10 @@ class TopologyService:
             if effect.effect_type == EffectType.TOPOLOGY_SPLIT:
                 if not self._check_split(origin, target, effect):
                     return False
-            elif effect.effect_type == EffectType.TOPOLOGY_ISOLATION:
-                if not self._check_isolation(origin, target, effect):
-                    return False
+            elif effect.effect_type == EffectType.TOPOLOGY_ISOLATION and not self._check_isolation(
+                origin, target, effect
+            ):
+                return False
         return True
 
     def are_adjacent(self, a: Hex, b: Hex, state: GameState) -> bool:
@@ -323,10 +324,7 @@ class TopologyService:
         # Block NEGATIVE <-> POSITIVE direct interaction
         if origin_region == "POSITIVE" and target_region == "NEGATIVE":
             return False
-        if origin_region == "NEGATIVE" and target_region == "POSITIVE":
-            return False
-
-        return True
+        return not (origin_region == "NEGATIVE" and target_region == "POSITIVE")
 
     def _check_isolation(self, origin: Hex, target: Hex, effect: ActiveEffect) -> bool:
         """

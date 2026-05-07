@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -55,10 +56,8 @@ def save_game(
         os.replace(tmp_path, target)
     except BaseException:
         # Clean up temp file on failure
-        try:
+        with suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
     logger.info("Saved game %s to %s", game_id, target)

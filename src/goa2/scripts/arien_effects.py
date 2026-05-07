@@ -376,7 +376,8 @@ class ViolentTorrentEffect(CardEffect):
             ),
         ]
 
-        return attack_steps + [
+        return [
+            *attack_steps,
             MayRepeatOnceStep(
                 active_if_key="victim_id_1",
                 steps_template=repeat_steps_template,

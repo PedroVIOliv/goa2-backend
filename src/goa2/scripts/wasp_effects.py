@@ -300,7 +300,7 @@ class MassTelekinesisEffect(CardEffect):
             ),
         ]
         repeat = MayRepeatOnceStep(steps_template=effect_steps)
-        return effect_steps + [repeat]
+        return [*effect_steps, repeat]
 
 
 @register_effect("electroblast")

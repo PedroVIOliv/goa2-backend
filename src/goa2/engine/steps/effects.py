@@ -307,12 +307,11 @@ class CheckPassiveAbilitiesStep(GameStep):
                 return
 
             # Check usage limit
-            if config.uses_per_turn > 0:
-                if card.passive_uses_this_turn >= config.uses_per_turn:
-                    logger.debug(
-                        f"   [PASSIVE] {card.name} already used {card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
-                    )
-                    return
+            if config.uses_per_turn > 0 and card.passive_uses_this_turn >= config.uses_per_turn:
+                logger.debug(
+                    f"   [PASSIVE] {card.name} already used {card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
+                )
+                return
 
             # Runtime predicate (e.g. Battle Fury filters on discard_source)
             if not effect.should_offer_passive(state, hero, card, trigger_enum, context):
@@ -394,7 +393,7 @@ class OfferPassiveStep(GameStep):
                 # Add MarkPassiveUsedStep after the passive steps
                 return StepResult(
                     is_finished=True,
-                    new_steps=passive_steps + [MarkPassiveUsedStep(card_id=self.card_id)],
+                    new_steps=[*passive_steps, MarkPassiveUsedStep(card_id=self.card_id)],
                 )
             return StepResult(is_finished=True)
 

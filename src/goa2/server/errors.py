@@ -55,9 +55,9 @@ def validate_input_turn(expected: str, hero_id: str, state: GameState) -> None:
     """Check that hero_id is allowed to respond to the current input request.
 
     Supports:
-    - ``"simultaneous"`` – anyone may respond
+    - ``"simultaneous"`` - anyone may respond
     - exact hero id match
-    - ``"team:RED"`` / ``"team:BLUE"`` – any hero on that team
+    - ``"team:RED"`` / ``"team:BLUE"`` - any hero on that team
     """
     if expected == "simultaneous" or expected == hero_id:
         return

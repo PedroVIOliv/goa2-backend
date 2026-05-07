@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from pydantic import Field
+
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType
 from goa2.domain.state import GameState
@@ -17,7 +19,7 @@ class OrFilter(FilterCondition):
     """Passes if ANY child filter passes (logical OR)."""
 
     type: FilterType = FilterType.OR_FILTER
-    filters: list[FilterCondition] = []
+    filters: list[FilterCondition] = Field(default_factory=list)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return any(f.apply(candidate, state, context) for f in self.filters)
@@ -27,7 +29,7 @@ class AndFilter(FilterCondition):
     """Passes if ALL child filters pass (logical AND)."""
 
     type: FilterType = FilterType.AND_FILTER
-    filters: list[FilterCondition] = []
+    filters: list[FilterCondition] = Field(default_factory=list)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return all(f.apply(candidate, state, context) for f in self.filters)
@@ -48,7 +50,7 @@ class CountMatchFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.COUNT_MATCH
-    sub_filters: list[FilterCondition] = []
+    sub_filters: list[FilterCondition] = Field(default_factory=list)
     min_count: int = 1
     max_count: int | None = None
 
@@ -74,7 +76,7 @@ class CountMatchFilter(FilterCondition):
         try:
             # Gather candidate units — mirrors CountStep's UNIT path.
             count = 0
-            for eid in state.entity_locations.keys():
+            for eid in state.entity_locations:
                 unit = state.get_unit(UnitID(str(eid)))
                 if unit is None:
                     continue
@@ -93,6 +95,4 @@ class CountMatchFilter(FilterCondition):
 
         if count < self.min_count:
             return False
-        if self.max_count is not None and count > self.max_count:
-            return False
-        return True
+        return not (self.max_count is not None and count > self.max_count)

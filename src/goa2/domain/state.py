@@ -324,7 +324,7 @@ class GameState(BaseModel):
         from goa2.domain.models import Token, Unit
 
         result = []
-        for eid in self.entity_locations.keys():
+        for eid in self.entity_locations:
             entity = self.get_entity(eid)
             if entity and isinstance(entity, (Unit, Token)):
                 result.append(eid)
@@ -364,9 +364,8 @@ class GameState(BaseModel):
             del self.entity_locations[entity_id]
 
             tile = self.board.get_tile(loc)
-            if tile:
-                if tile.occupant_id and str(tile.occupant_id) == str(entity_id):
-                    tile.occupant_id = None
+            if tile and tile.occupant_id and str(tile.occupant_id) == str(entity_id):
+                tile.occupant_id = None
 
     def move_unit(self, unit_id: UnitID, target_hex: Hex):
         """Wrapper for place_entity."""

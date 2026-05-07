@@ -47,11 +47,8 @@ class Hex(BaseModel):
     def validate_sum(cls, s: int, info) -> int:
         """Ensures the cube coordinate invariant holds."""
         values = info.data
-        if "q" in values and "r" in values:
-            if values["q"] + values["r"] + s != 0:
-                raise ValueError(
-                    f"Hex coordinates ({values['q']}, {values['r']}, {s}) must sum to 0"
-                )
+        if "q" in values and "r" in values and values["q"] + values["r"] + s != 0:
+            raise ValueError(f"Hex coordinates ({values['q']}, {values['r']}, {s}) must sum to 0")
         return s
 
     def __add__(self, other: Hex) -> Hex:

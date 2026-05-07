@@ -252,19 +252,16 @@ def validate_target(
     # Use topology-aware distance (respects reality splits)
     topology = get_topology_service()
 
-    if requires_straight_line:
-        if not topology.is_straight_line(s_loc, t_loc, state):
-            return False
+    if requires_straight_line and not topology.is_straight_line(s_loc, t_loc, state):
+        return False
 
     dist = topology.distance(s_loc, t_loc, state)
-    if dist > range_val:
-        return False
 
     # Rule 4.1: "No 'Line of Sight' obstructions" is standard for Range/Radius.
     # However, some specific rules might require it.
     # For now, default ignores it.
 
-    return True
+    return not (dist > range_val)
 
 
 def validate_attack_target(
@@ -295,9 +292,8 @@ def validate_attack_target(
 
     # Legacy Fallback (Geometry Only - no topology without state)
     # Note: This branch cannot use topology since state is not available
-    if requires_straight_line:
-        if not attacker_pos.is_straight_line(target_pos):
-            return False
+    if requires_straight_line and not attacker_pos.is_straight_line(target_pos):
+        return False
 
     # Use topology if state is available, otherwise pure geometry
     if state:
@@ -305,10 +301,7 @@ def validate_attack_target(
         dist = topology.distance(attacker_pos, target_pos, state)
     else:
         dist = attacker_pos.distance(target_pos)
-    if dist > range_val:
-        return False
-
-    return True
+    return not (dist > range_val)
 
 
 def get_safe_zones_for_fast_travel(
@@ -340,7 +333,7 @@ def get_safe_zones_for_fast_travel(
     if start_has_enemies:
         return []
 
-    candidates = [current_zone_id] + start_zone.neighbors
+    candidates = [current_zone_id, *start_zone.neighbors]
 
     for z_id in candidates:
         zone = state.board.zones.get(z_id)
@@ -442,6 +435,6 @@ def find_reachable_with_mines(
             if state_key in visited:
                 continue
             visited.add(state_key)
-            queue.append((neighbor, dist + 1, new_mines, path + (neighbor,)))
+            queue.append((neighbor, dist + 1, new_mines, (*path, neighbor)))
 
     return all_options

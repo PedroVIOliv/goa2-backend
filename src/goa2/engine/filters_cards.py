@@ -46,9 +46,7 @@ class CardsInContainerFilter(FilterCondition):
             return False
         if self.min_cards is not None and count < self.min_cards:
             return False
-        if self.max_cards is not None and count > self.max_cards:
-            return False
-        return True
+        return not (self.max_cards is not None and count > self.max_cards)
 
 
 class PlayedCardFilter(FilterCondition):

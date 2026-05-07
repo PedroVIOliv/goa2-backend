@@ -40,8 +40,8 @@ class GameSetup:
         """
         try:
             gt = GameType(game_type)
-        except ValueError:
-            raise ValueError(f"Invalid game_type '{game_type}'. Must be QUICK or LONG.")
+        except ValueError as exc:
+            raise ValueError(f"Invalid game_type '{game_type}'. Must be QUICK or LONG.") from exc
 
         if gt == GameType.QUICK:
             lc_lookup = {2: 3, 4: 4, 5: 4, 6: 5}

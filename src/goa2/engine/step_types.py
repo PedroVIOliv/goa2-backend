@@ -90,7 +90,7 @@ def _registered_union(
     members = tuple(
         Annotated[model_cls, Tag(tag)] for tag, model_cls in sorted(classes_by_tag.items())
     )
-    return Union[members]  # type: ignore[valid-type]
+    return Union[members]  # type: ignore[valid-type]  # noqa: UP007
 
 
 def _step_discriminator(v: Any) -> str:

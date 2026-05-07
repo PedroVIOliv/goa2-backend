@@ -55,7 +55,7 @@ def _has_ultimate(hero: Hero) -> bool:
 
 
 def _ultimate_post_placement_steps(
-    prefix: str = "ult", active_if_key: str = None
+    prefix: str = "ult", active_if_key: str | None = None
 ) -> list[GameStep]:
     return [
         SelectStep(

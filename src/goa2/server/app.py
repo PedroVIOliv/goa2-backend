@@ -6,13 +6,10 @@ import asyncio
 import importlib
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -30,6 +27,8 @@ from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 
 def register_all_effects():
@@ -69,10 +68,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         cleanup_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await cleanup_task
-        except asyncio.CancelledError:
-            pass
 
 
 def create_app() -> FastAPI:

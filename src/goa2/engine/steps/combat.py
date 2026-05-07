@@ -601,7 +601,7 @@ class CheckMinionProtectionStep(GameStep):
             new_steps=[
                 CheckMinionProtectionStep(
                     minion_id=self.minion_id,
-                    tried_effect_ids=self.tried_effect_ids + [effect_id],
+                    tried_effect_ids=[*self.tried_effect_ids, effect_id],
                 )
             ],
         )
@@ -1151,10 +1151,7 @@ class ReturnMinionToZoneStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             if selection:
-                if isinstance(selection, dict):
-                    target_hex = Hex(**selection)
-                else:
-                    target_hex = selection
+                target_hex = Hex(**selection) if isinstance(selection, dict) else selection
 
                 if target_hex in candidates:
                     logger.debug(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")

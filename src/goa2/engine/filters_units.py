@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import Field
+
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType, Hero, Minion, Unit
 from goa2.domain.models.enums import (
@@ -172,11 +174,12 @@ class AdjacencyFilter(FilterCondition):
                         matches = False
 
             if matches:
-                if self.skip_immune:
-                    # Check if this adjacent unit is immune (heavy minion
-                    # immunity + ATTACK_IMMUNITY effects)
-                    if not ImmunityFilter().apply(str(occupant.id), state, context):
-                        continue  # Skip immune units
+                # Check if this adjacent unit is immune (heavy minion immunity
+                # + ATTACK_IMMUNITY effects)
+                if self.skip_immune and not ImmunityFilter().apply(
+                    str(occupant.id), state, context
+                ):
+                    continue  # Skip immune units
                 return True
 
         return False
@@ -202,9 +205,8 @@ class ImmunityFilter(FilterCondition):
             return False
 
         # Check 1: Standard minion immunity (Heavy with support)
-        if isinstance(target, Unit):
-            if rules.is_immune(target, state):
-                return False  # Immune = fails filter
+        if isinstance(target, Unit) and rules.is_immune(target, state):
+            return False  # Immune = fails filter
 
         # Check 2: ATTACK_IMMUNITY effects
         # Only applies when current action is ATTACK
@@ -298,12 +300,11 @@ class ExcludeIdentityFilter(FilterCondition):
 
     type: FilterType = FilterType.EXCLUDE_IDENTITY
     exclude_self: bool = True
-    exclude_keys: list[str] = []
+    exclude_keys: list[str] = Field(default_factory=list)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if self.exclude_self and isinstance(candidate, str):
-            if candidate == state.current_actor_id:
-                return False
+        if self.exclude_self and isinstance(candidate, str) and candidate == state.current_actor_id:
+            return False
         for key in self.exclude_keys:
             val = context.get(key)
             if val is None:

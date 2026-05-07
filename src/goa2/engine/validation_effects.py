@@ -24,9 +24,8 @@ class EffectValidationMixin:
 
         # Card-based effects use explicit is_active flag
         # This flag is set to True when card resolves, False when card leaves play or goes facedown
-        if effect.source_card_id:
-            if not effect.is_active:
-                return False
+        if effect.source_card_id and not effect.is_active:
+            return False
 
         # Check temporal duration
         if effect.duration == DurationType.THIS_TURN:
@@ -187,7 +186,4 @@ class EffectValidationMixin:
             return True
         if effect.blocks_enemy_actors and is_actor_enemy_of_source:
             return True
-        if effect.blocks_friendly_actors and not is_actor_enemy_of_source and not is_actor_self:
-            return True
-
-        return False
+        return effect.blocks_friendly_actors and not is_actor_enemy_of_source and not is_actor_self

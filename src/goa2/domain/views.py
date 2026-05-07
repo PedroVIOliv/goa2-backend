@@ -87,7 +87,7 @@ def _build_unresolved_cards_view(
 
     hero_ids = list(state.unresolved_hero_ids)
     if state.current_actor_id:
-        hero_ids = [state.current_actor_id] + hero_ids
+        hero_ids = [state.current_actor_id, *hero_ids]
 
     if not hero_ids:
         return []

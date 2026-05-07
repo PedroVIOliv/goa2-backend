@@ -380,17 +380,16 @@ class ResolveCardStep(GameStep):
                     }
                 )
         # DEFENSE_SKILL is shown as SKILL option
-        elif primary_action == ActionType.DEFENSE_SKILL:
-            if is_action_available(ActionType.SKILL):
-                c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
-                options.append(
-                    {
-                        "id": ActionType.SKILL.name,
-                        "type": ActionType.SKILL,
-                        "value": c_val,
-                        "text": f"Primary: SKILL ({c_text})",
-                    }
-                )
+        elif primary_action == ActionType.DEFENSE_SKILL and is_action_available(ActionType.SKILL):
+            c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
+            options.append(
+                {
+                    "id": ActionType.SKILL.name,
+                    "type": ActionType.SKILL,
+                    "value": c_val,
+                    "text": f"Primary: SKILL ({c_text})",
+                }
+            )
 
         # Secondaries - DEFENSE cannot be chosen as an active action on your turn
         for action_type, val in card.current_secondary_actions.items():

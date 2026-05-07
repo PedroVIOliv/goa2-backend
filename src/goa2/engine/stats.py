@@ -36,9 +36,8 @@ def _is_effect_active(effect: ActiveEffect, state: GameState) -> bool:
         return True
 
     # Card-based effects use explicit is_active flag
-    if effect.source_card_id:
-        if not effect.is_active:
-            return False
+    if effect.source_card_id and not effect.is_active:
+        return False
 
     # Check temporal duration
     if effect.duration == DurationType.THIS_TURN:

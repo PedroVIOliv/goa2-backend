@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from goa2.domain.models import Hero
 
 HERO_DIFFICULTY_STARS = {
@@ -29,7 +31,7 @@ class HeroRegistry:
     Static registry for Hero definitions (Decks).
     """
 
-    _heroes: dict[str, Hero] = {}
+    _heroes: ClassVar[dict[str, Hero]] = {}
 
     @classmethod
     def register(cls, hero: Hero):

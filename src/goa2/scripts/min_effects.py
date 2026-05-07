@@ -926,22 +926,19 @@ class FlurryOfBlowsEffect(CardEffect):
         if last_target:
             for step in new_steps:
                 if isinstance(step, AttackSequenceStep):
-                    step.target_filters = list(step.target_filters) + [
-                        ExcludeIdentityFilter(exclude_keys=["last_flurry_target"])
+                    step.target_filters = [
+                        *step.target_filters,
+                        ExcludeIdentityFilter(exclude_keys=["last_flurry_target"]),
                     ]
                     step.is_mandatory = True
 
-        total_steps = (
-            [
-                SetContextFlagStep(key="last_flurry_target", value=last_target),
-                SetContextFlagStep(key="is_flurry_repeat", value=True),
-                SetContextFlagStep(key="victim_id", value=None),  # Clear previous target
-                SetContextFlagStep(key="defender_id", value=None),  # Clear previous target
-            ]
-            + new_steps
-            + [
-                SetContextFlagStep(key="is_flurry_repeat", value=None),
-            ]
-        )
+        total_steps = [
+            SetContextFlagStep(key="last_flurry_target", value=last_target),
+            SetContextFlagStep(key="is_flurry_repeat", value=True),
+            SetContextFlagStep(key="victim_id", value=None),  # Clear previous target
+            SetContextFlagStep(key="defender_id", value=None),  # Clear previous target
+            *new_steps,
+            SetContextFlagStep(key="is_flurry_repeat", value=None),
+        ]
 
         return total_steps

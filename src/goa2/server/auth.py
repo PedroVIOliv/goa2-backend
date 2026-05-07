@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
@@ -20,9 +21,10 @@ def get_registry(request: Request) -> GameRegistry:
     return request.app.state.registry
 
 
-def get_current_player(
-    request: Request, registry: GameRegistry = Depends(get_registry)
-) -> PlayerContext:
+RegistryDep = Annotated[GameRegistry, Depends(get_registry)]
+
+
+def get_current_player(request: Request, registry: RegistryDep) -> PlayerContext:
     """Extract and validate bearer token, returning a PlayerContext."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -41,3 +43,6 @@ def get_current_player(
         raise HTTPException(status_code=403, detail="Token does not match this game")
 
     return PlayerContext(game_id=game_id, hero_id=hero_id, is_spectator=is_spectator)
+
+
+PlayerDep = Annotated[PlayerContext, Depends(get_current_player)]

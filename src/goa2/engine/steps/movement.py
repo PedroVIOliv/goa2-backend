@@ -74,10 +74,7 @@ class MoveUnitStep(GameStep):
             logger.debug("   [ERROR] No destination for move.")
             return StepResult(is_finished=True)
 
-        if isinstance(dest_val, dict):
-            dest_hex = Hex(**dest_val)
-        else:
-            dest_hex = dest_val
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
 
         actor_id = state.current_actor_id or target_unit_id
 
@@ -700,10 +697,7 @@ class PlaceUnitStep(GameStep):
             logger.debug("   [ERROR] No destination for place.")
             return StepResult(is_finished=True)
 
-        if isinstance(dest_val, dict):
-            dest_hex = Hex(**dest_val)
-        else:
-            dest_hex = dest_val  # Assume it is already a Hex
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
 
         # Validation: Check Occupancy (allow if occupied by self)
         tile = state.board.get_tile(dest_hex)
@@ -886,9 +880,8 @@ class PushUnitStep(GameStep):
             return StepResult(is_finished=True)
 
         src_hex = self.source_hex
-        if not src_hex:
-            if state.current_actor_id:
-                src_hex = state.entity_locations.get(BoardEntityID(state.current_actor_id))
+        if not src_hex and state.current_actor_id:
+            src_hex = state.entity_locations.get(BoardEntityID(state.current_actor_id))
 
         if not src_hex:
             logger.debug("   [ERROR] No source for push.")

@@ -407,9 +407,6 @@ class FastTravelDestinationFilter(FilterCondition):
         tile = state.board.get_tile(candidate)
         # Note: SelectStep already filters for candidates.
         # But we must ensure it is empty.
-        if not tile or tile.is_occupied:
-            # Exception: if it's the unit's own hex, it might be "occupied" by itself
-            # but usually Fast Travel wants a NEW empty hex.
-            return False
-
-        return True
+        # Exception: if it's the unit's own hex, it might be "occupied" by itself
+        # but usually Fast Travel wants a NEW empty hex.
+        return not (not tile or tile.is_occupied)

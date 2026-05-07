@@ -624,9 +624,7 @@ class BattleFuryEffect(CardEffect):
         # discarded card belongs to Garrus.
         if context.get("discard_source") != CardContainerType.PLAYED.value:
             return False
-        if context.get("discarded_card_owner_id") != str(hero.id):
-            return False
-        return True
+        return context.get("discarded_card_owner_id") == str(hero.id)
 
     def get_passive_steps(
         self,
