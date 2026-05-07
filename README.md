@@ -55,6 +55,9 @@ The board is a "Smart Grid" that ensures safety on non-uniform maps.
 ```bash
 # Sync dependencies
 uv sync
+
+# Install pre-commit hooks (runs ruff + black on commit, pytest on push)
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 ### Running the Engine Demo
