@@ -1,5 +1,4 @@
 from collections import deque
-from typing import Optional
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
@@ -371,7 +370,7 @@ def find_reachable_with_mines(
     max_steps: int,
     state: GameState,
     actor_id: str | None = None,
-    moving_team: Optional["TeamColor"] = None,
+    moving_team: TeamColor | None = None,
 ) -> dict[Hex, list[MinePathOption]]:
     if max_steps <= 0:
         return {}
