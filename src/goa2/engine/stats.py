@@ -179,8 +179,8 @@ def get_computed_stat(
     if isinstance(unit, Hero):
         from goa2.engine.effects import get_active_aura_effects
 
-        for _card, effect in get_active_aura_effects(state, unit):
-            for aura in effect.get_stat_auras():
+        for _card, aura_effect in get_active_aura_effects(state, unit):
+            for aura in aura_effect.get_stat_auras():
                 if aura.stat_type != stat_type:
                     continue
                 # Check conditional aura restrictions

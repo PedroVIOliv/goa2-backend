@@ -424,8 +424,9 @@ def find_reachable_with_mines(
                     is_enemy_mine = True
                     if moving_team:
                         token_entity = state.get_entity(BoardEntityID(token_id))
-                        if hasattr(token_entity, "owner_id") and token_entity.owner_id:
-                            owner = state.get_hero(token_entity.owner_id)
+                        owner_id = getattr(token_entity, "owner_id", None)
+                        if owner_id:
+                            owner = state.get_hero(owner_id)
                             if owner and owner.team == moving_team:
                                 is_enemy_mine = False
                     if is_enemy_mine:

@@ -473,7 +473,7 @@ class FastAsLightningEffect(CardEffect):
         if red_card is None:
             return steps
 
-        effect = CardEffectRegistry.get(red_card.current_effect_id)
+        effect = CardEffectRegistry.get(red_card.current_effect_id or "")
         if effect is None:
             return steps
 

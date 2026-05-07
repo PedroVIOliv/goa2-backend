@@ -94,7 +94,7 @@ def _build_unresolved_cards_view(
 
     from goa2.engine.stats import get_computed_stat
 
-    entries = []
+    entries: list[dict[str, Any]] = []
     for h_id in hero_ids:
         hero = state.get_hero(h_id)
         if not hero or not hero.current_turn_card:

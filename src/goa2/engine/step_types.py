@@ -7,7 +7,7 @@ Must be imported AFTER all step/filter subclasses are defined.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypeVar, Union
+from typing import TYPE_CHECKING, Annotated, Any, TypeVar, Union
 
 from pydantic import BaseModel, Discriminator, Tag
 
@@ -90,7 +90,7 @@ def _registered_union(
     members = tuple(
         Annotated[model_cls, Tag(tag)] for tag, model_cls in sorted(classes_by_tag.items())
     )
-    return Union[members]  # type: ignore[valid-type]  # noqa: UP007
+    return Union[members]  # noqa: UP007
 
 
 def _step_discriminator(v: Any) -> str:
@@ -105,21 +105,27 @@ def _filter_discriminator(v: Any) -> str:
     return v.type.value if hasattr(v.type, "value") else str(v.type)
 
 
-AnyStep = Annotated[
-    _registered_union(
-        GameStep,
-        field_name="type",
-        ignored_tags={StepType.GENERIC.value},
-        ignored_classes={steps_mod.MayRepeatOnceStep},
-        aliases={StepType.MAY_REPEAT_ONCE.value: steps_mod.MayRepeatNTimesStep},
-    ),
-    Discriminator(_step_discriminator),
-]
+if TYPE_CHECKING:
+    # mypy can't see the runtime-built tagged union, so expose the bases.
+    # Pydantic still uses the runtime values below for serialization.
+    AnyStep = GameStep
+    AnyFilter = FilterCondition
+else:
+    AnyStep = Annotated[
+        _registered_union(
+            GameStep,
+            field_name="type",
+            ignored_tags={StepType.GENERIC.value},
+            ignored_classes={steps_mod.MayRepeatOnceStep},
+            aliases={StepType.MAY_REPEAT_ONCE.value: steps_mod.MayRepeatNTimesStep},
+        ),
+        Discriminator(_step_discriminator),
+    ]
 
-AnyFilter = Annotated[
-    _registered_union(FilterCondition, field_name="type"),
-    Discriminator(_filter_discriminator),
-]
+    AnyFilter = Annotated[
+        _registered_union(FilterCondition, field_name="type"),
+        Discriminator(_filter_discriminator),
+    ]
 
 
 # ---------------------------------------------------------------------------

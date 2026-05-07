@@ -2,15 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from goa2.domain.models.effect import EffectType
+from goa2.domain.models.effect import ActiveEffect, EffectType
 from goa2.domain.types import BoardEntityID
 from goa2.engine.validation_types import ValidationResult
 
 if TYPE_CHECKING:
+    from goa2.domain.hex import Hex
     from goa2.domain.state import GameState
 
 
 class TargetingValidationMixin:
+    if TYPE_CHECKING:
+        # Provided at runtime by sibling EffectValidationMixin in ValidationService.
+        def _is_effect_active(self, effect: ActiveEffect, state: GameState) -> bool: ...
+        def _get_origin_hex(self, effect: ActiveEffect, state: GameState) -> Hex | None: ...
+        def _actor_blocked_by_effect(
+            self, effect: ActiveEffect, actor: Any, target: Any, state: GameState
+        ) -> bool: ...
+
     def can_be_targeted(
         self,
         state: GameState,

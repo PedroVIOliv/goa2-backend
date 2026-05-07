@@ -706,7 +706,7 @@ class CrimsonTrailEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        move_dist = self._compute_move_distance(state, hero, stats.radius)
+        move_dist = self._compute_move_distance(state, hero, stats.radius or 0)
         steps: list[GameStep] = []
         if move_dist > 0:
             steps.extend(
@@ -939,7 +939,7 @@ class BloodFrenzyEffect(CardEffect):
         # Build 5 explicit repeat blocks with chained exclusions
         for i in range(2, 7):  # victims 2 through 6
             exclude_keys = [f"bfr_victim_{j}" for j in range(1, i)]
-            repeat_steps = [
+            repeat_steps: list[GameStep] = [
                 AttackSequenceStep(
                     damage=stats.primary_value,
                     range_val=1,

@@ -3,16 +3,31 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from goa2.domain.models import Card
-from goa2.domain.models.effect import EffectType
+from goa2.domain.models.effect import ActiveEffect, EffectType
 from goa2.domain.models.enums import ActionType, CardColor
 from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.validation_types import ValidationContext, ValidationResult
 
 if TYPE_CHECKING:
+    from goa2.domain.hex import Hex
     from goa2.domain.state import GameState
 
 
 class ActionValidationMixin:
+    if TYPE_CHECKING:
+        # Provided at runtime by sibling EffectValidationMixin in ValidationService.
+        def _is_effect_active(self, effect: ActiveEffect, state: GameState) -> bool: ...
+        def _is_in_scope(
+            self,
+            effect: ActiveEffect,
+            target_id: str,
+            target_hex: Hex,
+            state: GameState,
+        ) -> bool: ...
+        def _actor_blocked_by_effect(
+            self, effect: ActiveEffect, actor: Any, target: Any, state: GameState
+        ) -> bool: ...
+
     def can_perform_action(
         self,
         state: GameState,

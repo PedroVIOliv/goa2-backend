@@ -21,7 +21,7 @@ class BoardEntity(GameEntity):
     This allows us to treat Units and Tokens uniformly for occupancy.
     """
 
-    id: BoardEntityID  # type: ignore[assignment]
+    id: BoardEntityID
 
 
 class Placeholder(BoardEntity):

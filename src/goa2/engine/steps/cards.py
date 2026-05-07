@@ -1170,7 +1170,7 @@ def _one_man_army_bonus(state: GameState, zone) -> dict[TeamColor, int]:
             if hero.ultimate_card.effect_id != "one_man_army":
                 continue
             hero_loc = state.entity_locations.get(hero.id)
-            if hero_loc and hero_loc in zone.hexes:
+            if hero_loc and hero_loc in zone.hexes and hero.team is not None:
                 bonus[hero.team] += 1
                 logger.debug(f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)")
     return bonus

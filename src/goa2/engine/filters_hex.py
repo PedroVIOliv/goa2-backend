@@ -62,8 +62,8 @@ class RangeFilter(FilterCondition):
     """
 
     type: FilterType = FilterType.RANGE
-    max_range: int
-    min_range: int = 0
+    max_range: int | None = None
+    min_range: int | None = 0
     origin_id: str | None = None  # Literal ID
     origin_key: str | None = None  # Key in context to find ID
     origin_hex_key: str | None = None  # Key in context holding a Hex (or dict)
@@ -72,7 +72,8 @@ class RangeFilter(FilterCondition):
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve runtime bounds from context if keys are provided, otherwise
-        # fall back to the static min_range/max_range literals.
+        # fall back to the static min_range/max_range literals. None on either
+        # bound means "unbounded" on that side.
         max_r = self.max_range
         if self.max_range_key:
             raw_max = context.get(self.max_range_key)
@@ -123,7 +124,9 @@ class RangeFilter(FilterCondition):
         # Use topology-aware distance (respects reality splits)
         topology = get_topology_service()
         dist = topology.distance(origin_hex, target_hex, state)
-        return min_r <= dist <= max_r
+        if min_r is not None and dist < min_r:
+            return False
+        return max_r is None or dist <= max_r
 
 
 class SpawnPointFilter(FilterCondition):

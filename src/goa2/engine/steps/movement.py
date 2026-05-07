@@ -262,8 +262,8 @@ class MoveSequenceStep(GameStep):
             if hero:
                 from goa2.engine.effects import get_active_aura_effects
 
-                for _, effect in get_active_aura_effects(state, hero):
-                    aura = effect.get_movement_aura()
+                for _, aura_effect in get_active_aura_effects(state, hero):
+                    aura = aura_effect.get_movement_aura()
                     if aura and aura.pass_through_obstacles:
                         pass_through = True
                         break
@@ -566,7 +566,9 @@ class TriggerMineStep(GameStep):
         for mine_id in mine_ids:
             token = state.get_entity(BoardEntityID(mine_id))
             from_hex, _ = _remove_token_from_board(state, mine_id)
-            is_blast = hasattr(token, "token_type") and token.token_type == TokenType.MINE_BLAST
+            is_blast = (
+                token is not None and getattr(token, "token_type", None) == TokenType.MINE_BLAST
+            )
             if is_blast:
                 blast_count += 1
             if from_hex and token:
@@ -1210,15 +1212,15 @@ class ForceDefenseCardMovementStep(GameStep):
             return StepResult(is_finished=True)
 
         # Find the defense card (may be in discard or played)
-        card = None
+        card: Card | None = None
         for c in hero.discard_pile:
             if c.id == defense_card_id:
                 card = c
                 break
         if not card:
-            for c in hero.played_cards:
-                if c is not None and c.id == defense_card_id:
-                    card = c
+            for played in hero.played_cards:
+                if played is not None and played.id == defense_card_id:
+                    card = played
                     break
         if not card:
             return StepResult(is_finished=True)

@@ -9,6 +9,7 @@ from goa2.domain.models.enums import (
     CardContainerType,
 )
 from goa2.domain.state import GameState
+from goa2.domain.types import HeroID
 
 # -----------------------------------------------------------------------------
 # Base Filter
@@ -31,7 +32,7 @@ class CardsInContainerFilter(FilterCondition):
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
             return False
-        hero = state.get_hero(candidate)
+        hero = state.get_hero(HeroID(candidate))
         if not hero:
             return False
         if self.container == CardContainerType.HAND:
@@ -62,10 +63,12 @@ class PlayedCardFilter(FilterCondition):
     card_color: CardColor | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        hero = state.get_hero(str(candidate))
+        hero = state.get_hero(HeroID(str(candidate)))
         if not hero:
             return False
 
+        if state.current_actor_id is None:
+            return False
         actor = state.get_hero(state.current_actor_id)
         if not actor:
             return False
