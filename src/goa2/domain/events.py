@@ -8,7 +8,7 @@ NOT part of GameState.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from goa2.domain.hex import Hex
 
 
-class GameEventType(str, Enum):
+class GameEventType(StrEnum):
     # Movement
     UNIT_MOVED = "UNIT_MOVED"
     TOKEN_MOVED = "TOKEN_MOVED"

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel
 
 from goa2.domain.models.enums import StatType
 
 
-class MarkerType(str, Enum):
+class MarkerType(StrEnum):
     """Types of markers in the game. Each type is a singleton."""
 
     VENOM = "venom"  # Rogue's venom marker: debuffs Attack, Defense, Initiative

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -12,14 +12,14 @@ from goa2.domain.models.enums import ActionType, CardColor, DisplacementType, St
 from goa2.domain.models.marker import MarkerType
 
 
-class DurationType(str, Enum):
+class DurationType(StrEnum):
     THIS_TURN = "THIS_TURN"  # Expires at End of Turn
     NEXT_TURN = "NEXT_TURN"  # Activates next turn, expires at end of that turn
     THIS_ROUND = "THIS_ROUND"  # Expires at End of Round
     PASSIVE = "PASSIVE"  # Permanent (until source is removed)
 
 
-class EffectType(str, Enum):
+class EffectType(StrEnum):
     """Categories of spatial/behavioral effects."""
 
     PLACEMENT_PREVENTION = "placement_prevention"  # Magnetic Dagger
@@ -75,7 +75,7 @@ class EffectType(str, Enum):
     MOVEMENT_AURA_ZONE = "movement_aura_zone"
 
 
-class AffectsFilter(str, Enum):
+class AffectsFilter(StrEnum):
     """Who is affected by this effect."""
 
     SELF = "self"
@@ -89,7 +89,7 @@ class AffectsFilter(str, Enum):
     ALL_MINIONS = "all_minions"
 
 
-class Shape(str, Enum):
+class Shape(StrEnum):
     """Spatial shape of effect area."""
 
     POINT = "point"  # Single target (specified by target_id)

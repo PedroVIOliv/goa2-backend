@@ -7,7 +7,7 @@ without touching execution_stack or calling internal functions.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,7 +19,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 
 
-class SessionResultType(str, Enum):
+class SessionResultType(StrEnum):
     INPUT_NEEDED = "INPUT_NEEDED"
     ACTION_COMPLETE = "ACTION_COMPLETE"
     PHASE_CHANGED = "PHASE_CHANGED"

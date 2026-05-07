@@ -11,13 +11,13 @@ Phase 1 of Client-Readiness Roadmap:
 - Fixes pain point #8 (type coercion)
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class InputRequestType(str, Enum):
+class InputRequestType(StrEnum):
     """All possible input request types in the game engine."""
 
     # Legacy types (kept for backwards compatibility)

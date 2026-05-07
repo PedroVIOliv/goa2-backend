@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, model_validator
 
@@ -6,7 +6,7 @@ from goa2.domain.hex import Hex
 from goa2.domain.models.enums import MinionType, TeamColor
 
 
-class SpawnType(str, Enum):
+class SpawnType(StrEnum):
     HERO = "HERO"
     MINION = "MINION"
 

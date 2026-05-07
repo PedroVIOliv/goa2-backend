@@ -1,30 +1,30 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class TeamColor(str, Enum):
+class TeamColor(StrEnum):
     RED = "RED"
     BLUE = "BLUE"
 
 
-class GameType(str, Enum):
+class GameType(StrEnum):
     QUICK = "QUICK"
     LONG = "LONG"
 
 
-class MinionType(str, Enum):
+class MinionType(StrEnum):
     MELEE = "MELEE"
     RANGED = "RANGED"
     HEAVY = "HEAVY"
 
 
-class TokenType(str, Enum):
+class TokenType(StrEnum):
     SMOKE_BOMB = "smoke_bomb"
     GRENADE = "grenade"
     MINE_BLAST = "mine_blast"
     MINE_DUD = "mine_dud"
 
 
-class CardTier(str, Enum):
+class CardTier(StrEnum):
     I = "I"  # noqa: E741
     II = "II"
     III = "III"
@@ -32,7 +32,7 @@ class CardTier(str, Enum):
     UNTIERED = "UNTIERED"
 
 
-class CardColor(str, Enum):
+class CardColor(StrEnum):
     GOLD = "GOLD"  # Basic
     SILVER = "SILVER"  # Basic
     RED = "RED"  # Attack focus
@@ -41,7 +41,7 @@ class CardColor(str, Enum):
     PURPLE = "PURPLE"  # Ultimate
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     MOVEMENT = "MOVEMENT"
     ATTACK = "ATTACK"
     SKILL = "SKILL"
@@ -52,7 +52,7 @@ class ActionType(str, Enum):
     FAST_TRAVEL = "FAST_TRAVEL"  # Replaces Movement
 
 
-class DisplacementType(str, Enum):
+class DisplacementType(StrEnum):
     """Types of displacement that can be prevented by effects."""
 
     MOVE = "MOVE"  # Walking/stepping (MoveUnitStep)
@@ -61,7 +61,7 @@ class DisplacementType(str, Enum):
     PLACE = "PLACE"  # Direct placement (PlaceUnitStep)
 
 
-class StatType(str, Enum):
+class StatType(StrEnum):
     ATTACK = "ATTACK"
     DEFENSE = "DEFENSE"
     MOVEMENT = "MOVEMENT"
@@ -70,7 +70,7 @@ class StatType(str, Enum):
     RADIUS = "RADIUS"
 
 
-class CardState(str, Enum):
+class CardState(StrEnum):
     HAND = "HAND"
     DECK = "DECK"
     DISCARD = "DISCARD"
@@ -81,7 +81,7 @@ class CardState(str, Enum):
     RETIRED = "RETIRED"
 
 
-class GamePhase(str, Enum):
+class GamePhase(StrEnum):
     SETUP = "SETUP"
     PLANNING = "PLANNING"  # Card Selection
     REVELATION = "REVELATION"  # Reveal cards
@@ -91,13 +91,13 @@ class GamePhase(str, Enum):
     GAME_OVER = "GAME_OVER"  # Game has ended
 
 
-class ResolutionStep(str, Enum):
+class ResolutionStep(StrEnum):
     NONE = "NONE"
     ACTING = "ACTING"
     WAITING_FOR_INPUT = "WAITING_FOR_INPUT"
 
 
-class StepType(str, Enum):
+class StepType(StrEnum):
     GENERIC = "generic_step"
     CREATE_MODIFIER = "create_modifier"
     CREATE_EFFECT = "create_effect"
@@ -190,7 +190,7 @@ class StepType(str, Enum):
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
 
 
-class FilterType(str, Enum):
+class FilterType(StrEnum):
     OCCUPIED = "occupied_filter"
     TERRAIN = "terrain_filter"
     RANGE = "range_filter"
@@ -228,7 +228,7 @@ class FilterType(str, Enum):
     COUNT_MATCH = "count_match_filter"
 
 
-class TargetType(str, Enum):
+class TargetType(StrEnum):
     UNIT = "UNIT"
     TOKEN = "TOKEN"
     HEX = "HEX"
@@ -237,14 +237,14 @@ class TargetType(str, Enum):
     UNIT_OR_TOKEN = "UNIT_OR_TOKEN"
 
 
-class CardContainerType(str, Enum):
+class CardContainerType(StrEnum):
     HAND = "HAND"
     PLAYED = "PLAYED"
     DISCARD = "DISCARD"
     DECK = "DECK"
 
 
-class PassiveTrigger(str, Enum):
+class PassiveTrigger(StrEnum):
     """When passive abilities activate."""
 
     BEFORE_ATTACK = "before_attack"
