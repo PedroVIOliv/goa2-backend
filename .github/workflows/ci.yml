@@ -24,7 +24,6 @@ jobs:
         run: uv sync --dev
 
       - name: Run ruff
-        continue-on-error: true
         run: uv run ruff check src tests
 
       - name: Check formatting

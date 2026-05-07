@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check src tests
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: black
+        name: black
+        entry: uv run black --check src tests
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest tests/ -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
