@@ -124,3 +124,46 @@ def test_combat_ranged_debuff(aura_state):
     _ = process_stack(state).input_request
 
     assert victim.id not in state.unit_locations
+
+
+def test_combat_uses_locked_minion_modifier_even_if_board_changes(aura_state):
+    """
+    Attack 4 vs Def 4.
+    The minion modifier was locked at 0 before defense text.
+    An enemy minion becomes adjacent before combat, but the locked modifier still applies.
+    """
+    state, victim = aura_state
+    state.move_unit(victim.id, Hex(q=0, r=0, s=0))
+
+    enemy = create_minion("Enemy", TeamColor.RED, MinionType.MELEE)
+    state.teams[TeamColor.RED].minions.append(enemy)
+    state.move_unit(enemy.id, Hex(q=1, r=-1, s=0))
+
+    state.execution_context["victim_id"] = victim.id
+    state.execution_context["defense_value"] = 4
+    state.execution_context["minion_defense_modifier"] = 0
+
+    step = ResolveCombatStep(damage=4, target_key="victim_id")
+    push_steps(state, [step])
+    _ = process_stack(state).input_request
+
+    assert victim.id in state.unit_locations
+
+
+def test_combat_includes_primary_defense_text_bonus(aura_state):
+    """
+    Attack 6 vs Def 4.
+    Primary defense text grants +2 defense, so total defense is 6 and blocks.
+    """
+    state, victim = aura_state
+    state.move_unit(victim.id, Hex(q=0, r=0, s=0))
+
+    state.execution_context["victim_id"] = victim.id
+    state.execution_context["defense_value"] = 4
+    state.execution_context["defense_bonus"] = 2
+
+    step = ResolveCombatStep(damage=6, target_key="victim_id")
+    push_steps(state, [step])
+    _ = process_stack(state).input_request
+
+    assert victim.id in state.unit_locations

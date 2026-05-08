@@ -207,7 +207,9 @@ class ResolveCombatStep(GameStep):
             mod_val = 0
             logger.debug("   [COMBAT] Ignoring minion defense modifiers (effect active).")
         else:
-            mod_val = calculate_minion_defense_modifier(state, target_id)
+            mod_val = context.get("minion_defense_modifier")
+            if mod_val is None:
+                mod_val = calculate_minion_defense_modifier(state, target_id)
         if defense_card_val is None:
             # No defense played (minion or passed) - unit is defeated
             logger.debug(f"   [RESULT] No defense! {target_id} is DEFEATED!")
@@ -217,10 +219,12 @@ class ResolveCombatStep(GameStep):
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
                 events=[_combat_event("DEFEATED")],
             )
-        total_defense = defense_card_val + mod_val
+        defense_bonus = int(context.get("defense_bonus", 0))
+        total_defense = defense_card_val + defense_bonus + mod_val
 
         logger.debug(
-            f"   [COMBAT] Attack ({attack_val}) vs Defense ({defense_card_val} Card + {mod_val} Mod = {total_defense})"
+            f"   [COMBAT] Attack ({attack_val}) vs Defense "
+            f"({defense_card_val} Card + {defense_bonus} Bonus + {mod_val} Mod = {total_defense})"
         )
 
         if total_defense >= attack_val:

@@ -140,6 +140,7 @@ class ReactionWindowStep(GameStep):
 
         attack_value = context.get("attack_damage")
         minion_modifier = calculate_minion_defense_modifier(state, target_id)
+        context["minion_defense_modifier"] = minion_modifier
         defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
 
         prompt = f"Player {target_id}, select a Defense card."
