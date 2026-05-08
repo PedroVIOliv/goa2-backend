@@ -104,6 +104,7 @@ class LiquidLeapEffect(CardEffect):
 
 - [Effect Author Reference](docs/EFFECT_AUTHOR_REFERENCE.md) — Step/filter API and copy-paste patterns
 - [Card Effects Guidelines](docs/card_effects_guidelines.md) — Mandatory/optional rules
+- New or touched character effect tests should use `tests/engine/effects/` helpers (`builders.py`, `runner.py`, `assertions.py`) unless there is a documented reason not to. Mark them with `effect_contract` or `effect_flow`, and assert behavior rather than setup wiring.
 
 ## Server & API Layer
 

@@ -19,6 +19,10 @@ packages = ["src/goa2"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+markers = [
+    "effect_contract: fast, narrow character effect contract tests",
+    "effect_flow: integration-level character effect flow tests",
+]
 
 [tool.ruff]
 line-length = 100

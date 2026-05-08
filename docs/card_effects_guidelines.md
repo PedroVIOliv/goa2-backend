@@ -6,6 +6,27 @@ This guide explains how to implement card effects following GoA2's mandatory/opt
 
 > When performing a primary action the card text must be applied in exact order. If you cannot complete a mandatory step, stop and skip remaining steps.
 
+## Character Effect Test Convention
+
+New and touched character effect tests should use the dedicated helpers under `tests/engine/effects/` unless there is a documented reason not to.
+
+Use:
+
+- `tests/engine/effects/builders.py` for scenario setup through `EffectScenarioBuilder`.
+- `tests/engine/effects/runner.py` for card resolution, stack processing, and input submission.
+- `tests/engine/effects/assertions.py` for intent-level outcome checks.
+- `tests/engine/effects/cases/` for new character effect contract and flow tests.
+
+Quality gates:
+
+- Do not mutate `state.execution_stack` directly in effect tests except inside the runner DSL.
+- Every effect test must assert at least one board/entity state, active effect state, or emitted event.
+- Input-driven effects must assert the prompt type and valid options, including positive and negative option checks where relevant.
+- Mark narrow effect contract tests with `@pytest.mark.effect_contract`.
+- Mark gameplay interaction tests with `@pytest.mark.effect_flow`.
+
+Legacy effect tests may remain in their current files until they are touched or migrated for coverage parity.
+
 ## Mandatory vs Optional Steps
 
 | Text Pattern | Mandatory | Example |
