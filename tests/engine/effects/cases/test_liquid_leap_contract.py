@@ -27,7 +27,7 @@ def liquid_leap_state():
             ]
         )
         .spawn_point((1, -1, 0), team=TeamColor.RED)
-        .hero("hero_arien", team=TeamColor.RED, at=(0, 0, 0), current_card="liquid_leap")
+        .red_hero("hero_arien", at=(0, 0, 0), current_card="liquid_leap")
         .with_actor("hero_arien")
         .build()
     )

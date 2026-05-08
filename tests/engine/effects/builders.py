@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Self
 
+from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
     Card,
     CardColor,
+    CardState,
     CardTier,
     GamePhase,
     Hero,
@@ -107,6 +109,22 @@ def card_for_effect(card_id: str) -> Card:
     raise ValueError(f"No canonical card factory for effect card {card_id!r}")
 
 
+def hero_card(hero_name: str, card_id: str) -> Card:
+    hero = HeroRegistry.get(hero_name)
+    if hero is None:
+        raise ValueError(f"Unknown hero {hero_name!r}")
+    cards = [*hero.deck]
+    if hero.ultimate_card:
+        cards.append(hero.ultimate_card)
+    for card in cards:
+        if card.id == card_id:
+            playable = card.model_copy(deep=True)
+            playable.state = CardState.UNRESOLVED
+            playable.is_facedown = False
+            return playable
+    raise ValueError(f"No card {card_id!r} found for hero {hero_name!r}")
+
+
 class EffectScenarioBuilder:
     def __init__(self) -> None:
         self._board = Board()
@@ -178,28 +196,78 @@ class EffectScenarioBuilder:
         self._unresolved_hero_ids.append(hero_id)
         return self
 
-    def enemy_hero(
+    def red_hero(
         self,
         hero_id: str,
         *,
         at: Coords,
-        team: TeamColor = TeamColor.BLUE,
+        name: str | None = None,
         current_card: str | Card | None = None,
     ) -> Self:
-        return self.hero(hero_id, team=team, at=at, current_card=current_card)
+        return self.hero(
+            hero_id,
+            team=TeamColor.RED,
+            at=at,
+            name=name,
+            current_card=current_card,
+        )
 
-    def enemy_minion(
+    def blue_hero(
+        self,
+        hero_id: str,
+        *,
+        at: Coords,
+        name: str | None = None,
+        current_card: str | Card | None = None,
+    ) -> Self:
+        return self.hero(
+            hero_id,
+            team=TeamColor.BLUE,
+            at=at,
+            name=name,
+            current_card=current_card,
+        )
+
+    def minion(
         self,
         minion_id: str,
         *,
         at: Coords,
-        team: TeamColor = TeamColor.BLUE,
+        team: TeamColor,
         minion_type: MinionType = MinionType.MELEE,
     ) -> Self:
         minion = Minion(id=minion_id, name=minion_id, team=team, type=minion_type)
         self._teams[team].minions.append(minion)
         self._placements[minion_id] = hex_at(at)
         return self
+
+    def red_minion(
+        self,
+        minion_id: str,
+        *,
+        at: Coords,
+        minion_type: MinionType = MinionType.MELEE,
+    ) -> Self:
+        return self.minion(
+            minion_id,
+            team=TeamColor.RED,
+            at=at,
+            minion_type=minion_type,
+        )
+
+    def blue_minion(
+        self,
+        minion_id: str,
+        *,
+        at: Coords,
+        minion_type: MinionType = MinionType.MELEE,
+    ) -> Self:
+        return self.minion(
+            minion_id,
+            team=TeamColor.BLUE,
+            at=at,
+            minion_type=minion_type,
+        )
 
     def with_card(self, hero_id: str, card: str | Card) -> Self:
         hero = self._find_hero(hero_id)

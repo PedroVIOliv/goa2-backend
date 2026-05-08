@@ -1,7 +1,6 @@
 import pytest
 
 from goa2.domain.events import GameEventType
-from goa2.domain.models import TeamColor
 from goa2.domain.models.effect import DurationType, EffectType
 
 from ..assertions import assert_effect_active, assert_event_emitted, assert_valid_options
@@ -14,9 +13,9 @@ def static_barrier_state():
     return (
         EffectScenarioBuilder()
         .small_arena()
-        .hero("hero_wasp", team=TeamColor.RED, at=(0, 0, 0), current_card="static_barrier")
-        .enemy_hero("enemy_inside", at=(1, 0, -1), current_card=movement_card(value=3))
-        .enemy_hero("enemy_outside", at=(4, 0, -4), current_card=movement_card(value=3))
+        .red_hero("hero_wasp", at=(0, 0, 0), current_card="static_barrier")
+        .blue_hero("enemy_inside", at=(1, 0, -1), current_card=movement_card(value=3))
+        .blue_hero("enemy_outside", at=(4, 0, -4), current_card=movement_card(value=3))
         .with_actor("hero_wasp")
         .with_unresolved_heroes(["enemy_inside"])
         .build()
