@@ -140,6 +140,8 @@ class EndPhaseCleanupStep(GameStep):
         events: list[GameEvent] = []
         for token_list in state.token_pool.values():
             for token in token_list:
+                if token.persists_end_of_round:
+                    continue
                 from_hex, removed_effects = _remove_token_from_board(state, str(token.id))
                 if from_hex:
                     events.append(

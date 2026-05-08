@@ -118,6 +118,11 @@ class GameSession:
         actor_id = str(self.state.current_actor_id)
         rollback_disabled = self.state.execution_context.get("rollback_disabled", False)
 
+        if rollback_disabled:
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+            return
+
         # If actor changed, clear old snapshot so a fresh one is taken
         if self._rollback_actor_id is not None and self._rollback_actor_id != actor_id:
             self._rollback_snapshot = None
@@ -129,11 +134,7 @@ class GameSession:
             self._rollback_actor_id = actor_id
 
         # Set can_rollback flag when applicable
-        if (
-            self._rollback_snapshot is not None
-            and not rollback_disabled
-            and stack_result.input_request.player_id == actor_id
-        ):
+        if self._rollback_snapshot is not None and stack_result.input_request.player_id == actor_id:
             stack_result.input_request.can_rollback = True
 
     def _check_after_planning(self) -> SessionResult:

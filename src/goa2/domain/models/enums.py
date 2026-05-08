@@ -22,6 +22,7 @@ class TokenType(StrEnum):
     GRENADE = "grenade"
     MINE_BLAST = "mine_blast"
     MINE_DUD = "mine_dud"
+    ZOMBIE = "zombie"
 
 
 class CardTier(StrEnum):

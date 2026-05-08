@@ -156,7 +156,7 @@ def create_mortimer() -> Hero:
             radius_value=4,
             item=StatType.DEFENSE,
             effect_id="walking_dead",
-            effect_text="Target a unit adjacent to you. After the attack: Choose up to two times —\n• Move a Zombie token in radius 1 space.\n• Another enemy hero in radius, adjacent to a Zombie token, discards a card, if able; each enemy hero can only be targeted once.",
+            effect_text="Target a unit adjacent to you. After the attack: Choose up to two times —\n• Move a :zombie_token: Zombie token in radius 1 space.\n• Another enemy hero in radius, adjacent to a Zombie token, discards a card, if able; each enemy hero can only be targeted once.",
         ),
         Card(
             id="gathering_horde",
@@ -258,7 +258,7 @@ def create_mortimer() -> Hero:
             secondary_actions={ActionType.DEFENSE: 7, ActionType.MOVEMENT: 3},
             radius_value=4,
             effect_id="crawling_dead",
-            effect_text="Target a unit adjacent to you.\nAfter the attack: Choose one —\n• Move a Zombie token in radius 1 space.\n• Another enemy hero in radius, adjacent to a Zombie token, discards a card, if able.",
+            effect_text="Target a unit adjacent to you.\nAfter the attack: Choose one —\n• Move a :zombie_token: Zombie token in radius 1 space.\n• Another enemy hero in radius, adjacent to a Zombie token, discards a card, if able.",
         ),
         Card(
             id="corpse_slam",
@@ -272,7 +272,7 @@ def create_mortimer() -> Hero:
             is_ranged=True,
             range_value=4,
             effect_id="corpse_slam",
-            effect_text="Choose one —\n• Move a Zombie token in range up to 1 space; that Zombie token may push a unit or a token adjacent to it 1 space.\n• Move 1 space.",
+            effect_text="Choose one —\n• Move a :zombie_token: Zombie token in range up to 1 space; that Zombie token may push a unit or a token adjacent to it 1 space.\n• Move 1 space.",
         ),
         Card(
             id="stage_dive",
@@ -286,7 +286,7 @@ def create_mortimer() -> Hero:
             is_ranged=True,
             range_value=4,
             effect_id="stage_dive",
-            effect_text="Choose one —\n• Move a Zombie token in range 1 space.\n• Swap with a Zombie token in range.",
+            effect_text="Choose one —\n• Move a :zombie_token: Zombie token in range 1 space.\n• Swap with a Zombie token in range.",
         ),
     ]
 

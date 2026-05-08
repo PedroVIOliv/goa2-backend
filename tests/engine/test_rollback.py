@@ -254,6 +254,36 @@ class TestSessionRollback:
         assert result.input_request.player_id == "hero_b"
         assert result.input_request.can_rollback is False
 
+    def test_rollback_disabled_does_not_create_stale_snapshot(self):
+        """Disabled rollback prompts must not become rollback targets later."""
+        state = _make_state()
+        state.current_actor_id = "hero_b"
+        state.execution_context["rollback_disabled"] = True
+        session = GameSession(state)
+
+        # Simulates a defense effect prompt for hero_a during hero_b's action.
+        push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Defense effect?")])
+        result = session.advance()
+        assert result.input_request is not None
+        assert result.input_request.player_id == "hero_a"
+        assert result.input_request.can_rollback is False
+        assert session._rollback_snapshot is None
+        assert session._rollback_actor_id is None
+
+        # Later hero_a becomes the actor with rollback enabled again. The old
+        # defense prompt must not be reused as hero_a's rollback target.
+        state.execution_context.clear()
+        state.current_actor_id = "hero_a"
+        push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Hero A turn")])
+        result = session.advance()
+        assert result.input_request is not None
+        assert result.input_request.player_id == "hero_a"
+        assert result.input_request.can_rollback is True
+
+        rollback = session.rollback()
+        assert rollback.input_request is not None
+        assert rollback.input_request.prompt == "Hero A turn"
+
 
 # ---- Abort then rollback ----
 

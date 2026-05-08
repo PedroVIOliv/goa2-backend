@@ -11,6 +11,7 @@ TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.GRENADE: 1,
     TokenType.MINE_BLAST: 2,
     TokenType.MINE_DUD: 2,
+    TokenType.ZOMBIE: 4,
 }
 
 
@@ -25,3 +26,4 @@ class Token(BoardEntity):
     owner_id: HeroID | None = None
     is_passable: bool = False
     is_facedown: bool = False
+    persists_end_of_round: bool = False
