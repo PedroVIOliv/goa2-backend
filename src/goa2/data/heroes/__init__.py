@@ -7,6 +7,7 @@ import goa2.data.heroes.dodger
 import goa2.data.heroes.garrus
 import goa2.data.heroes.min
 import goa2.data.heroes.misa
+import goa2.data.heroes.mortimer
 import goa2.data.heroes.rowenna
 import goa2.data.heroes.sabina
 import goa2.data.heroes.silverarrow

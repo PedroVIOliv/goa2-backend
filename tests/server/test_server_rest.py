@@ -75,6 +75,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Misa": 2,
         "Garrus": 2,
         "Silverarrow": 2,
+        "Mortimer": 3,
     }
 
 

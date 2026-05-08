@@ -18,6 +18,7 @@ HERO_DIFFICULTY_STARS = {
     "Misa": 2,
     "Garrus": 2,
     "Silverarrow": 2,
+    "Mortimer": 3,
 }
 
 
