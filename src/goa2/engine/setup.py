@@ -174,7 +174,7 @@ class GameSetup:
             state.token_pool[token_type] = []
 
             is_mine = token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
-            persists_end_of_round = token_type == TokenType.ZOMBIE
+            persists_end_of_round = token_type in (TokenType.ZOMBIE, TokenType.PYRO)
             for _ in range(supply):
                 token_id = state.create_entity_id("mine" if is_mine else token_type.value)
                 token = Token(

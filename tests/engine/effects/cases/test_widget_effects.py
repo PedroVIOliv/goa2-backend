@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import pytest
+
+from goa2.domain.events import GameEventType
+from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType
+from goa2.domain.models import Token, TokenType
+from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.setup import GameSetup
+
+from ..builders import EffectScenarioBuilder, hero_card
+from ..runner import run_card
+
+
+def _option_set(run) -> set:
+    assert run.latest_request is not None
+    options = set()
+    for option in run.latest_request.options:
+        if hasattr(option, "metadata") and option.metadata and "raw" in option.metadata:
+            options.add(option.metadata.get("raw"))
+        elif hasattr(option, "id"):
+            options.add(option.id)
+        else:
+            options.add(option)
+    return options
+
+
+def _add_pyro_pool(state) -> None:
+    state.token_pool[TokenType.PYRO] = []
+    token = Token(
+        id="pyro_1",
+        name="Pyro",
+        token_type=TokenType.PYRO,
+        persists_end_of_round=True,
+    )
+    state.register_entity(token)
+    state.token_pool[TokenType.PYRO].append(token)
+
+
+@pytest.mark.effect_contract
+def test_widget_easy_effects_are_registered() -> None:
+    for effect_id in [
+        "dragon_bond",
+        "take_off",
+        "all_aboard",
+        "diversionary_strike",
+        "diversionary_attack",
+        "diversionary_assault",
+    ]:
+        assert CardEffectRegistry.get(effect_id) is not None
+
+
+@pytest.mark.effect_contract
+def test_setup_creates_persistent_pyro_token() -> None:
+    state = EffectScenarioBuilder().line_board().red_hero("hero_widget", at=(0, 0, 0)).build()
+    GameSetup._initialize_token_pool(state)
+
+    assert len(state.token_pool[TokenType.PYRO]) == 1
+    assert state.token_pool[TokenType.PYRO][0].persists_end_of_round
+
+
+@pytest.mark.effect_flow
+def test_dragon_bond_places_pyro_in_radius() -> None:
+    pyro_hex = Hex(q=1, r=0, s=-1)
+    far_hex = Hex(q=3, r=0, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "dragon_bond"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_HEX)
+    assert pyro_hex in _option_set(run)
+    assert far_hex not in _option_set(run)
+
+    run.choose(pyro_hex).finish()
+
+    assert state.entity_locations["pyro_1"] == pyro_hex
+    assert state.token_pool[TokenType.PYRO][0].persists_end_of_round
+    assert any(e.event_type == GameEventType.TOKEN_PLACED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_dragon_bond_move_branch_aborts_if_pyro_is_not_in_play() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "dragon_bond"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).finish()
+
+    assert "pyro_1" not in state.entity_locations
+    assert state.entity_locations["hero_widget"] == Hex(q=0, r=0, s=0)
+
+
+@pytest.mark.effect_flow
+def test_dragon_bond_moves_pyro_then_widget_when_chosen() -> None:
+    widget_start = Hex(q=0, r=0, s=0)
+    pyro_start = Hex(q=2, r=0, s=-2)
+    pyro_dest = Hex(q=3, r=0, s=-3)
+    widget_dest = Hex(q=1, r=0, s=-1)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=widget_start,
+            current_card=hero_card("Widget", "dragon_bond"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_NUMBER)
+    assert state.execution_context["dragon_bond_pyro"] == "pyro_1"
+
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)
+    assert pyro_dest in _option_set(run)
+
+    run.choose(pyro_dest).expect_input(InputRequestType.SELECT_HEX)
+    assert widget_dest in _option_set(run)
+
+    run.choose(widget_dest).finish()
+
+    assert state.entity_locations["pyro_1"] == pyro_dest
+    assert state.entity_locations["hero_widget"] == widget_dest
+    assert sum(e.event_type == GameEventType.TOKEN_MOVED for e in run.events) == 1
+    assert sum(e.event_type == GameEventType.UNIT_MOVED for e in run.events) == 1
+
+
+@pytest.mark.effect_flow
+def test_take_off_swaps_pyro_with_widget() -> None:
+    widget_start = Hex(q=0, r=0, s=0)
+    pyro_start = Hex(q=2, r=0, s=-2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2)])
+        .red_hero(
+            "hero_widget",
+            at=widget_start,
+            current_card=hero_card("Widget", "take_off"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["pyro_swap_id"] == "pyro_1"
+
+    assert _option_set(run) == {"hero_widget"}
+
+    run.choose("hero_widget").finish()
+
+    assert state.entity_locations["hero_widget"] == pyro_start
+    assert state.entity_locations["pyro_1"] == widget_start
+    assert any(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_diversionary_strike_attacks_then_moves_pyro_up_to_two() -> None:
+    pyro_start = Hex(q=1, r=1, s=-2)
+    pyro_dest = Hex(q=3, r=1, s=-4)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (1, 1, -2),
+                (2, 1, -3),
+                (3, 1, -4),
+            ]
+        )
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "diversionary_strike"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    assert _option_set(run) == {"pyro_1"}
+
+    run.choose("pyro_1").expect_input(InputRequestType.SELECT_HEX)
+    assert pyro_dest in _option_set(run)
+
+    run.choose(pyro_dest).finish()
+
+    assert state.entity_locations["pyro_1"] == pyro_dest
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events
+    assert combat_events[-1].metadata["attack_value"] == 5
+    assert any(e.event_type == GameEventType.TOKEN_MOVED for e in run.events)

@@ -23,6 +23,7 @@ class TokenType(StrEnum):
     MINE_BLAST = "mine_blast"
     MINE_DUD = "mine_dud"
     ZOMBIE = "zombie"
+    PYRO = "pyro"
 
 
 class CardTier(StrEnum):
