@@ -44,6 +44,7 @@ def test_widget_easy_effects_are_registered() -> None:
         "dragon_bond",
         "take_off",
         "all_aboard",
+        "safe_landing",
         "diversionary_strike",
         "diversionary_attack",
         "diversionary_assault",
@@ -191,6 +192,44 @@ def test_take_off_swaps_pyro_with_widget() -> None:
 
     assert state.entity_locations["hero_widget"] == pyro_start
     assert state.entity_locations["pyro_1"] == widget_start
+    assert any(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_safe_landing_may_move_pyro_then_swap_with_friendly_hero() -> None:
+    pyro_start = Hex(q=2, r=0, s=-2)
+    pyro_move_dest = Hex(q=2, r=1, s=-3)
+    ally_start = Hex(q=1, r=0, s=-1)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (2, 1, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "safe_landing"),
+        )
+        .red_hero("friendly_widget_ally", at=ally_start)
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("pyro_1").expect_input(InputRequestType.SELECT_HEX)
+    assert pyro_move_dest in _option_set(run)
+
+    run.choose(pyro_move_dest).expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["pyro_swap_id"] == "pyro_1"
+    assert _option_set(run) == {"hero_widget", "friendly_widget_ally"}
+
+    run.choose("friendly_widget_ally").finish()
+
+    assert state.entity_locations["pyro_1"] == ally_start
+    assert state.entity_locations["friendly_widget_ally"] == pyro_move_dest
+    assert any(e.event_type == GameEventType.TOKEN_MOVED for e in run.events)
     assert any(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events)
 
 

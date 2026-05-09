@@ -398,6 +398,17 @@ class AllAboardEffect(TakeOffEffect):
     pass
 
 
+@register_effect("safe_landing")
+class SafeLandingEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            *_move_pyro_steps(range_val=stats.range, move_distance=1, is_mandatory=False),
+            *_swap_with_pyro_steps(stats.range),
+        ]
+
+
 @register_effect("diversionary_strike")
 class DiversionaryStrikeEffect(CardEffect):
     def build_steps(
