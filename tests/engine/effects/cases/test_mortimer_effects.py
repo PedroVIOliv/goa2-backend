@@ -346,3 +346,172 @@ def test_crowd_surf_prompts_for_five_choices_with_master_of_puppets() -> None:
     run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
 
     assert "up to 5" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_robbing_zombies_moves_zombie_and_gains_coin() -> None:
+    zombie_start = Hex(q=1, r=0, s=-1)
+    zombie_dest = Hex(q=1, r=1, s=-2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (1, 1, -2), (2, 0, -2)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "robbing_zombies"),
+        )
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    assert mortimer.gold == 0
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 2" in run.latest_request.prompt
+    assert _option_texts(run) == [
+        "Move a Zombie token in range up to 1 space and gain 1 coin",
+        "Move 1 space",
+    ]
+
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(zombie_dest).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_dest
+    assert mortimer.gold == 1
+    assert any(e.event_type == GameEventType.GOLD_GAINED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_robbing_zombies_can_choose_current_zombie_hex_and_gain_coin() -> None:
+    zombie_start = Hex(q=1, r=0, s=-1)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (1, 1, -2)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "robbing_zombies"),
+        )
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    assert zombie_start in _option_set(run)
+
+    run.choose(zombie_start).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_start
+    assert mortimer.gold == 1
+    assert any(e.event_type == GameEventType.GOLD_GAINED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_morbid_mosh_can_move_zombie_and_push_from_zombie() -> None:
+    zombie_start = Hex(q=1, r=0, s=-1)
+    zombie_dest = Hex(q=1, r=1, s=-2)
+    enemy_start = Hex(q=2, r=1, s=-3)
+    enemy_dest = Hex(q=3, r=1, s=-4)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (1, 1, -2),
+                (2, 1, -3),
+                (3, 1, -4),
+            ]
+        )
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "morbid_mosh"),
+        )
+        .blue_minion("blue_minion", at=enemy_start)
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 2" in run.latest_request.prompt
+
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(zombie_dest).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_dest
+    assert state.entity_locations["blue_minion"] == enemy_dest
+    assert any(e.event_type == GameEventType.UNIT_PUSHED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_stalking_scalpers_prompts_for_five_choices_with_master_of_puppets() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "stalking_scalpers"),
+        )
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    mortimer.level = 8
+    mortimer.ultimate_card = hero_card("Mortimer", "master_of_puppets")
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 5" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_macabre_mayhem_prompts_for_three_choices_without_ultimate() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "macabre_mayhem"),
+        )
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 3" in run.latest_request.prompt
