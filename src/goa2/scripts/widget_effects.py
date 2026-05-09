@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from goa2.domain.models.enums import TargetType, TokenType
+from goa2.domain.models.enums import ActionType, CardContainerType, TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import OrFilter
 from goa2.engine.filters_geometry import InStraightLineFilter
@@ -32,6 +32,7 @@ from goa2.engine.steps import (
     GameStep,
     MoveTokenStep,
     MoveUnitStep,
+    PerformPrimaryActionStep,
     PlaceTokenStep,
     RemoveTokenStep,
     RemoveUnitStep,
@@ -431,6 +432,40 @@ class DiversionaryAssaultEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _diversionary_steps(stats.primary_value, 4)
+
+
+@register_effect("fight_as_one")
+class FightAsOneEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        faceup_skill_card_ids = [
+            c.id
+            for c in hero.played_cards
+            if c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
+        ]
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_id_key="fight_as_one_initial_target",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                prompt="Select a resolved skill card to perform",
+                output_key="fight_as_one_skill_card",
+                card_container=CardContainerType.PLAYED,
+                card_action_types=[ActionType.SKILL],
+                allowed_card_ids=faceup_skill_card_ids,
+                is_mandatory=False,
+            ),
+            PerformPrimaryActionStep(
+                card_key="fight_as_one_skill_card",
+                hero_id=str(hero.id),
+                exclude_target_key="fight_as_one_initial_target",
+                active_if_key="fight_as_one_skill_card",
+            ),
+        ]
 
 
 @register_effect("airborne_attack")

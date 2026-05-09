@@ -5,7 +5,7 @@ import pytest
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import Token, TokenType
+from goa2.domain.models import CardState, Token, TokenType
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.setup import GameSetup
 
@@ -46,6 +46,7 @@ def test_widget_easy_effects_are_registered() -> None:
         "all_aboard",
         "safe_landing",
         "diversionary_strike",
+        "fight_as_one",
         "diversionary_attack",
         "diversionary_assault",
         "airborne_attack",
@@ -276,6 +277,58 @@ def test_diversionary_strike_attacks_then_moves_pyro_up_to_two() -> None:
     assert combat_events
     assert combat_events[-1].metadata["attack_value"] == 5
     assert any(e.event_type == GameEventType.TOKEN_MOVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_fight_as_one_replays_resolved_skill_against_different_unit() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (0, 1, -1), (1, 0, -1), (1, 1, -2)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "fight_as_one"),
+        )
+        .blue_hero("blue_initial_target", at=(1, 0, -1))
+        .blue_hero("blue_replay_target", at=(1, 1, -2))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", Hex(q=0, r=1, s=-1))
+
+    widget = state.get_hero("hero_widget")
+    assert widget is not None
+    played_skill = hero_card("Widget", "fiery_breath")
+    played_skill.state = CardState.RESOLVED
+    widget.played_cards.append(played_skill)
+
+    initial_target = state.get_hero("blue_initial_target")
+    assert initial_target is not None
+    initial_target.hand.append(hero_card("Widget", "dragon_bond"))
+
+    replay_target = state.get_hero("blue_replay_target")
+    assert replay_target is not None
+    replay_target.hand.append(hero_card("Widget", "all_aboard"))
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_initial_target").expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+    run.choose("dragon_bond").expect_input(InputRequestType.SELECT_CARD)
+    assert _option_set(run) == {"fiery_breath"}
+
+    run.choose("fiery_breath").expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["pyro_breath_id"] == "pyro_1"
+    assert _option_set(run) == {"blue_replay_target"}
+
+    run.choose("blue_replay_target").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("all_aboard").finish()
+
+    assert state.execution_context["fight_as_one_initial_target"] == "blue_initial_target"
+    assert state.entity_locations["blue_initial_target"] == Hex(q=1, r=0, s=-1)
+    assert len(replay_target.hand) == 0
+    assert replay_target.discard_pile[0].id == "all_aboard"
 
 
 @pytest.mark.effect_flow

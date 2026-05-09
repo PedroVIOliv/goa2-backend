@@ -23,7 +23,7 @@ from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.filters_hex import RangeFilter
-from goa2.engine.filters_units import UnitTypeFilter
+from goa2.engine.filters_units import ExcludeIdentityFilter, UnitTypeFilter
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -899,6 +899,7 @@ class PerformPrimaryActionStep(GameStep):
     type: StepType = StepType.PERFORM_PRIMARY_ACTION
     card_key: str = "selected_card"
     hero_id: str | None = None
+    exclude_target_key: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -937,11 +938,35 @@ class PerformPrimaryActionStep(GameStep):
 
         stats = compute_card_stats(state, UnitID(str(actor_id)), card)
         steps = effect.build_steps(state, hero, card, stats)
+        if self.exclude_target_key:
+            self._inject_exclusion_filter(steps, self.exclude_target_key)
 
         logger.debug(
             f"   [PERFORM] Performing primary action of {card.name} " f"({len(steps)} steps)"
         )
         return StepResult(is_finished=True, new_steps=steps)
+
+    @classmethod
+    def _inject_exclusion_filter(cls, steps: list[GameStep], exclude_key: str) -> None:
+        from goa2.engine.steps.combat import AttackSequenceStep
+        from goa2.engine.steps.effects import CreateEffectStep
+        from goa2.engine.steps.selection import MultiSelectStep, SelectStep
+        from goa2.engine.steps.utility import ForEachStep, MayRepeatNTimesStep
+
+        exclusion = ExcludeIdentityFilter(exclude_self=False, exclude_keys=[exclude_key])
+
+        for step in steps:
+            if isinstance(step, (SelectStep, MultiSelectStep)) and step.target_type in (
+                TargetType.UNIT,
+                TargetType.UNIT_OR_TOKEN,
+            ):
+                step.filters.append(exclusion.model_copy(deep=True))
+            elif isinstance(step, AttackSequenceStep):
+                step.target_filters.append(exclusion.model_copy(deep=True))
+            elif isinstance(step, (MayRepeatNTimesStep, ForEachStep)):
+                cls._inject_exclusion_filter(step.steps_template, exclude_key)
+            elif isinstance(step, CreateEffectStep):
+                cls._inject_exclusion_filter(step.finishing_steps, exclude_key)
 
 
 class ConvertCardToItemStep(GameStep):
