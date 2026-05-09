@@ -850,6 +850,7 @@ class PushUnitStep(GameStep):
     target_id: str | None = None  # Direct target ID
     target_key: str | None = None  # Read target from context
     source_hex: Hex | None = None  # If None, uses current actor's location
+    source_key: str | None = None  # Read push source entity from context
     distance: int = 1  # Default/fallback distance
     distance_key: str | None = None  # Read distance from context
     collision_output_key: str | None = None  # If set, stores True on collision
@@ -882,6 +883,10 @@ class PushUnitStep(GameStep):
             return StepResult(is_finished=True)
 
         src_hex = self.source_hex
+        if not src_hex and self.source_key:
+            source_id = context.get(self.source_key)
+            if source_id:
+                src_hex = state.entity_locations.get(BoardEntityID(str(source_id)))
         if not src_hex and state.current_actor_id:
             src_hex = state.entity_locations.get(BoardEntityID(state.current_actor_id))
 

@@ -5,9 +5,24 @@ from typing import TYPE_CHECKING
 from goa2.domain.models.enums import TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import AndFilter, OrFilter
-from goa2.engine.filters_hex import ObstacleFilter, RangeFilter, SpawnPointFilter
-from goa2.engine.filters_units import ExcludeIdentityFilter
-from goa2.engine.steps import GameStep, PlaceTokenStep, SelectStep
+from goa2.engine.filters_hex import (
+    MovementPathFilter,
+    ObstacleFilter,
+    RangeFilter,
+    SpawnPointFilter,
+)
+from goa2.engine.filters_units import ExcludeIdentityFilter, TokenTypeFilter, UnitTypeFilter
+from goa2.engine.steps import (
+    CheckContextConditionStep,
+    GameStep,
+    MoveSequenceStep,
+    MoveTokenStep,
+    PlaceTokenStep,
+    PushUnitStep,
+    SelectStep,
+    SetContextFlagStep,
+    SwapUnitsStep,
+)
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card, Hero
@@ -55,6 +70,160 @@ def _awaken_placement_steps(radius: int) -> list[GameStep]:
     return steps
 
 
+def _choose_one_step(
+    output_key: str,
+    number_labels: dict[int, str],
+    *,
+    prompt: str = "Choose one",
+    is_mandatory: bool = True,
+    active_if_key: str | None = None,
+) -> SelectStep:
+    return SelectStep(
+        target_type=TargetType.NUMBER,
+        prompt=prompt,
+        output_key=output_key,
+        number_options=[1, 2],
+        number_labels=number_labels,
+        is_mandatory=is_mandatory,
+        active_if_key=active_if_key,
+    )
+
+
+def _zombie_selection_step(output_key: str, range_val: int, *, active_if_key: str) -> SelectStep:
+    return SelectStep(
+        target_type=TargetType.UNIT_OR_TOKEN,
+        prompt="Select a Zombie token",
+        output_key=output_key,
+        skip_immunity_filter=True,
+        skip_self_filter=True,
+        filters=[
+            UnitTypeFilter(unit_type="TOKEN"),
+            TokenTypeFilter(token_type=TokenType.ZOMBIE),
+            RangeFilter(max_range=range_val),
+        ],
+        active_if_key=active_if_key,
+        is_mandatory=False,
+    )
+
+
+def _zombie_move_steps(
+    *,
+    zombie_key: str,
+    destination_key: str,
+    active_if_key: str,
+) -> list[GameStep]:
+    return [
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="Select Zombie destination",
+            output_key=destination_key,
+            filters=[
+                ObstacleFilter(is_obstacle=False),
+                MovementPathFilter(range_val=1, unit_key=zombie_key),
+                RangeFilter(max_range=1, origin_key=zombie_key),
+            ],
+            active_if_key=active_if_key,
+            is_mandatory=False,
+        ),
+        MoveTokenStep(
+            token_key=zombie_key,
+            destination_key=destination_key,
+            range_val=1,
+            active_if_key=destination_key,
+        ),
+    ]
+
+
+def _has_master_of_puppets(hero: Hero) -> bool:
+    return (
+        hero.level >= 8
+        and hero.ultimate_card is not None
+        and hero.ultimate_card.id == "master_of_puppets"
+    )
+
+
+def _choice_limit(hero: Hero, base_limit: int) -> int:
+    if base_limit == 3 and _has_master_of_puppets(hero):
+        return 5
+    return base_limit
+
+
+def _stage_dive_choice_steps(
+    prefix: str,
+    range_val: int,
+    *,
+    prompt: str = "Choose one",
+    is_mandatory: bool = True,
+    active_if_key: str | None = None,
+) -> list[GameStep]:
+    return [
+        SetContextFlagStep(key=f"{prefix}_zombie", value=None),
+        SetContextFlagStep(key=f"{prefix}_zombie_dest", value=None),
+        SetContextFlagStep(key=f"{prefix}_swap_zombie", value=None),
+        _choose_one_step(
+            f"{prefix}_choice",
+            {
+                1: "Move a Zombie token in range 1 space",
+                2: "Swap with a Zombie token in range",
+            },
+            prompt=prompt,
+            is_mandatory=is_mandatory,
+            active_if_key=active_if_key,
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=1,
+            output_key=f"{prefix}_chose_move",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_zombie",
+            range_val,
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        *_zombie_move_steps(
+            zombie_key=f"{prefix}_zombie",
+            destination_key=f"{prefix}_zombie_dest",
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=2,
+            output_key=f"{prefix}_chose_swap",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_swap_zombie",
+            range_val,
+            active_if_key=f"{prefix}_chose_swap",
+        ),
+        SwapUnitsStep(
+            unit_a_key=f"{prefix}_hero",
+            unit_b_key=f"{prefix}_swap_zombie",
+            active_if_key=f"{prefix}_swap_zombie",
+        ),
+    ]
+
+
+def _stage_dive_repeat_steps(hero: Hero, range_val: int, max_choices: int) -> list[GameStep]:
+    steps: list[GameStep] = []
+    previous_choice_key: str | None = None
+    for i in range(max_choices):
+        prefix = f"mortimer_crowd_{i}"
+        steps.append(SetContextFlagStep(key=f"{prefix}_hero", value=str(hero.id)))
+        steps.extend(
+            _stage_dive_choice_steps(
+                prefix,
+                range_val,
+                prompt=f"Choose one (up to {max_choices}, choice {i + 1})",
+                is_mandatory=False,
+                active_if_key=previous_choice_key,
+            )
+        )
+        previous_choice_key = f"{prefix}_choice"
+    return steps
+
+
 @register_effect("awaken")
 class AwakenEffect(CardEffect):
     """Place up to 4 Zombie tokens adjacent to you or into spawn points in radius."""
@@ -63,3 +232,99 @@ class AwakenEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _awaken_placement_steps(stats.radius)
+
+
+@register_effect("stage_dive")
+class StageDiveEffect(CardEffect):
+    """Choose one: move a Zombie token in range 1 space, or swap with one in range."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            SetContextFlagStep(key="stage_dive_hero", value=str(hero.id)),
+            *_stage_dive_choice_steps("stage_dive", stats.range),
+        ]
+
+
+@register_effect("crowd_drift")
+class CrowdDriftEffect(CardEffect):
+    """Choose up to two times: move a Zombie token, or swap with one in range."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _stage_dive_repeat_steps(hero, stats.range, _choice_limit(hero, 2))
+
+
+@register_effect("crowd_surf")
+class CrowdSurfEffect(CardEffect):
+    """Choose up to three times, or five with Master of Puppets."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _stage_dive_repeat_steps(hero, stats.range, _choice_limit(hero, 3))
+
+
+@register_effect("corpse_slam")
+class CorpseSlamEffect(CardEffect):
+    """Choose one: move a Zombie token that may push adjacent, or move 1 space."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            _choose_one_step(
+                "corpse_slam_choice",
+                {
+                    1: "Move a Zombie token in range up to 1 space; it may push adjacent",
+                    2: "Move 1 space",
+                },
+            ),
+            CheckContextConditionStep(
+                input_key="corpse_slam_choice",
+                operator="==",
+                threshold=1,
+                output_key="corpse_slam_chose_zombie",
+            ),
+            _zombie_selection_step(
+                "corpse_slam_zombie",
+                stats.range,
+                active_if_key="corpse_slam_chose_zombie",
+            ),
+            *_zombie_move_steps(
+                zombie_key="corpse_slam_zombie",
+                destination_key="corpse_slam_zombie_dest",
+                active_if_key="corpse_slam_zombie",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select adjacent unit or token to push",
+                output_key="corpse_slam_push_target",
+                skip_immunity_filter=True,
+                skip_self_filter=True,
+                filters=[RangeFilter(min_range=1, max_range=1, origin_key="corpse_slam_zombie")],
+                active_if_key="corpse_slam_zombie",
+                is_mandatory=False,
+            ),
+            PushUnitStep(
+                target_key="corpse_slam_push_target",
+                source_key="corpse_slam_zombie",
+                distance=1,
+                active_if_key="corpse_slam_push_target",
+            ),
+            CheckContextConditionStep(
+                input_key="corpse_slam_choice",
+                operator="==",
+                threshold=2,
+                output_key="corpse_slam_chose_move",
+            ),
+            MoveSequenceStep(
+                unit_id=str(hero.id),
+                range_val=1,
+                destination_key="corpse_slam_self_dest",
+                active_if_key="corpse_slam_chose_move",
+                is_mandatory=False,
+            ),
+        ]

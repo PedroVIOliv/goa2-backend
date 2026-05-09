@@ -286,6 +286,7 @@ class MayRepeatNTimesStep(GameStep):
         # 2. Input Handling
         if self.pending_input:
             selection = self.pending_input.get("selection")
+            self.pending_input = None
             if selection == "YES":
                 self.repeats_done += 1
                 logger.debug(
