@@ -4,14 +4,19 @@ from typing import TYPE_CHECKING
 
 from goa2.domain.models.enums import TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.filters_composite import AndFilter, OrFilter
+from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.filters_hex import (
     MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
     SpawnPointFilter,
 )
-from goa2.engine.filters_units import ExcludeIdentityFilter, TokenTypeFilter, UnitTypeFilter
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
+    TeamFilter,
+    TokenTypeFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     CheckContextConditionStep,
     GainCoinsStep,
@@ -20,6 +25,8 @@ from goa2.engine.steps import (
     MoveUnitStep,
     PlaceTokenStep,
     PushUnitStep,
+    RecordHexStep,
+    RemoveUnitStep,
     SelectStep,
     SetContextFlagStep,
     SwapUnitsStep,
@@ -238,6 +245,117 @@ def _stage_dive_repeat_steps(hero: Hero, range_val: int, max_choices: int) -> li
     return steps
 
 
+def _horde_choice_steps(
+    prefix: str,
+    range_val: int,
+    *,
+    prompt: str = "Choose one",
+    is_mandatory: bool = True,
+    active_if_key: str | None = None,
+) -> list[GameStep]:
+    replace_key = f"{prefix}_replace_minion"
+    replace_hex_key = f"{prefix}_replace_hex"
+
+    return [
+        SetContextFlagStep(key=f"{prefix}_zombie", value=None),
+        SetContextFlagStep(key=f"{prefix}_zombie_dest", value=None),
+        SetContextFlagStep(key=replace_key, value=None),
+        SetContextFlagStep(key=replace_hex_key, value=None),
+        _choose_one_step(
+            f"{prefix}_choice",
+            {
+                1: "Move a Zombie token in range 1 space",
+                2: "Replace an enemy minion adjacent to two or more Zombie tokens",
+            },
+            prompt=prompt,
+            is_mandatory=is_mandatory,
+            active_if_key=active_if_key,
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=1,
+            output_key=f"{prefix}_chose_move",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_zombie",
+            range_val,
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        *_zombie_move_steps(
+            zombie_key=f"{prefix}_zombie",
+            destination_key=f"{prefix}_zombie_dest",
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=2,
+            output_key=f"{prefix}_chose_replace",
+        ),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select enemy minion to replace with a Zombie token",
+            output_key=replace_key,
+            is_mandatory=False,
+            active_if_key=f"{prefix}_chose_replace",
+            skip_if_key="mortimer_horde_replaced",
+            filters=[
+                UnitTypeFilter(unit_type="MINION"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=range_val),
+                CountMatchFilter(
+                    min_count=2,
+                    include_tokens=True,
+                    sub_filters=[
+                        UnitTypeFilter(unit_type="TOKEN"),
+                        TokenTypeFilter(token_type=TokenType.ZOMBIE),
+                        RangeFilter(
+                            min_range=1,
+                            max_range=1,
+                            origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY,
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        RecordHexStep(
+            unit_key=replace_key,
+            output_key=replace_hex_key,
+            active_if_key=replace_key,
+        ),
+        RemoveUnitStep(unit_key=replace_key, active_if_key=replace_key),
+        PlaceTokenStep(
+            token_type=TokenType.ZOMBIE,
+            hex_key=replace_hex_key,
+            active_if_key=replace_hex_key,
+        ),
+        SetContextFlagStep(
+            key="mortimer_horde_replaced",
+            value=True,
+            active_if_key=replace_key,
+        ),
+    ]
+
+
+def _horde_repeat_steps(hero: Hero, range_val: int, max_choices: int) -> list[GameStep]:
+    steps: list[GameStep] = [SetContextFlagStep(key="mortimer_horde_replaced", value=None)]
+    previous_choice_key: str | None = None
+    for i in range(max_choices):
+        prefix = f"mortimer_horde_{i}"
+        steps.extend(
+            _horde_choice_steps(
+                prefix,
+                range_val,
+                prompt=f"Choose one (up to {max_choices}, choice {i + 1})",
+                is_mandatory=False,
+                active_if_key=previous_choice_key,
+            )
+        )
+        previous_choice_key = f"{prefix}_choice"
+    return steps
+
+
 def _corpse_slam_choice_steps(
     prefix: str,
     range_val: int,
@@ -417,6 +535,26 @@ class CrowdSurfEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _stage_dive_repeat_steps(hero, stats.range, _choice_limit(hero, 3))
+
+
+@register_effect("gathering_horde")
+class GatheringHordeEffect(CardEffect):
+    """Choose up to two times: move a Zombie, or once replace a surrounded enemy minion."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _horde_repeat_steps(hero, stats.range, _choice_limit(hero, 2))
+
+
+@register_effect("army_of_darkness")
+class ArmyOfDarknessEffect(CardEffect):
+    """Choose up to three times, or five with Master of Puppets."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _horde_repeat_steps(hero, stats.range, _choice_limit(hero, 3))
 
 
 @register_effect("corpse_slam")

@@ -349,6 +349,108 @@ def test_crowd_surf_prompts_for_five_choices_with_master_of_puppets() -> None:
 
 
 @pytest.mark.effect_flow
+def test_gathering_horde_replaces_enemy_minion_adjacent_to_two_zombies() -> None:
+    minion_hex = Hex(q=2, r=0, s=-2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (1, 1, -2),
+                (2, 0, -2),
+                (2, -1, -1),
+                (3, 0, -3),
+            ]
+        )
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "gathering_horde"),
+        )
+        .blue_minion("blue_minion", at=minion_hex)
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=1, r=0, s=-1))
+    state.place_entity("zombie_2", Hex(q=2, r=-1, s=-1))
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 2" in run.latest_request.prompt
+    assert _option_texts(run) == [
+        "Move a Zombie token in range 1 space",
+        "Replace an enemy minion adjacent to two or more Zombie tokens",
+    ]
+
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"blue_minion"}
+
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert "blue_minion" not in state.entity_locations
+    assert state.entity_locations["zombie_3"] == minion_hex
+    assert any(e.event_type == GameEventType.UNIT_REMOVED for e in run.events)
+    assert any(e.event_type == GameEventType.TOKEN_PLACED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_gathering_horde_replacement_requires_two_adjacent_zombies() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "gathering_horde"),
+        )
+        .blue_minion("blue_minion", at=(2, 0, -2))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["blue_minion"] == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_army_of_darkness_prompts_for_five_choices_with_master_of_puppets() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "army_of_darkness"),
+        )
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    mortimer.level = 8
+    mortimer.ultimate_card = hero_card("Mortimer", "master_of_puppets")
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 5" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
 def test_robbing_zombies_moves_zombie_and_gains_coin() -> None:
     zombie_start = Hex(q=1, r=0, s=-1)
     zombie_dest = Hex(q=1, r=1, s=-2)

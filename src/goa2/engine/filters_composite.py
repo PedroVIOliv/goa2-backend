@@ -53,6 +53,7 @@ class CountMatchFilter(FilterCondition):
     sub_filters: list[FilterCondition] = Field(default_factory=list)
     min_count: int = 1
     max_count: int | None = None
+    include_tokens: bool = False
 
     ORIGIN_HEX_KEY: ClassVar[str] = "_cmf_origin_hex"
 
@@ -74,12 +75,21 @@ class CountMatchFilter(FilterCondition):
         prev = context.get(self.ORIGIN_HEX_KEY)
         context[self.ORIGIN_HEX_KEY] = origin_hex.model_dump()
         try:
-            # Gather candidate units — mirrors CountStep's UNIT path.
+            # Gather candidate units by default. Token-counting effects can
+            # opt in without changing existing "unit" semantics.
             count = 0
-            for eid in state.entity_locations:
-                unit = state.get_unit(UnitID(str(eid)))
-                if unit is None:
-                    continue
+            candidates = (
+                state.get_units_and_tokens() if self.include_tokens else state.entity_locations
+            )
+            for eid in candidates:
+                if self.include_tokens:
+                    entity = state.get_entity(BoardEntityID(str(eid)))
+                    if entity is None:
+                        continue
+                else:
+                    unit = state.get_unit(UnitID(str(eid)))
+                    if unit is None:
+                        continue
                 ok = True
                 for f in self.sub_filters:
                     if not f.apply(str(eid), state, context):
