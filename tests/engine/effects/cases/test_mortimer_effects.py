@@ -7,7 +7,9 @@ from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import Token, TokenType
 from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import EndPhaseCleanupStep
+from goa2.scripts.mortimer_effects import _dead_choice_steps
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -712,3 +714,546 @@ def test_macabre_mayhem_prompts_for_three_choices_without_ultimate() -> None:
     run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
 
     assert "up to 3" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_braaaaaaaaains_can_move_zombie_before_attack() -> None:
+    zombie_start = Hex(q=2, r=0, s=-2)
+    zombie_dest = Hex(q=2, r=1, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (2, 1, -3)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"blue_minion"}
+
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 3" in run.latest_request.prompt
+    assert _option_texts(run) == [
+        "Move a Zombie token in radius 1 space",
+        "Retrieve a discarded card if an enemy hero in radius is adjacent to a Zombie token",
+    ]
+
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    assert zombie_dest in _option_set(run)
+
+    run.choose(zombie_dest).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_dest
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events, "expected the attack to resolve after the choice phase"
+    assert combat_events[-1].metadata["attack_value"] == 7
+
+
+@pytest.mark.effect_flow
+def test_braaaaaaaaains_retrieves_discarded_card_when_zombie_pins_enemy_hero() -> None:
+    target_hex = Hex(q=1, r=0, s=-1)
+    zombie_hex = Hex(q=2, r=0, s=-2)
+    enemy_hero_hex = Hex(q=3, r=0, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), target_hex, zombie_hex, enemy_hero_hex])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+        )
+        .blue_hero("hero_enemy", at=enemy_hero_hex)
+        .blue_minion("blue_minion", at=target_hex)
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_hex)
+
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    discarded = hero_card("Mortimer", "stage_dive")
+    mortimer.discard_pile = [discarded]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    run.choose(2).expect_input(InputRequestType.SELECT_CARD)
+    assert discarded.id in _option_set(run)
+
+    run.choose(discarded.id).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert discarded in mortimer.hand
+    assert discarded not in mortimer.discard_pile
+    assert any(e.event_type == GameEventType.CARD_RETRIEVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_braaaaaaaaains_skips_retrieve_when_no_enemy_hero_pinned() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))
+
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    discarded = hero_card("Mortimer", "stage_dive")
+    mortimer.discard_pile = [discarded]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Choose retrieve, but with no eligible enemy hero pinned by a zombie
+    # the retrieve branch is gated off, so we land on the next choice
+    # prompt without ever seeing a SELECT_CARD request.
+    run.choose(2).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert discarded in mortimer.discard_pile
+    assert discarded not in mortimer.hand
+    assert not any(e.event_type == GameEventType.CARD_RETRIEVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_braaains_prompts_for_two_choices() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "braaains"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 2" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_braaaaaaaaains_prompts_for_five_choices_with_master_of_puppets() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    mortimer.level = 8
+    mortimer.ultimate_card = hero_card("Mortimer", "master_of_puppets")
+    _add_zombie_pool(state)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 5" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_crawling_dead_attacks_then_moves_zombie() -> None:
+    zombie_start = Hex(q=2, r=0, s=-2)
+    zombie_dest = Hex(q=2, r=1, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (2, 1, -3)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "crawling_dead"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    # T1 "Choose one" — mandatory single iteration, no SKIP option.
+    assert "up to" not in run.latest_request.prompt
+    assert _option_texts(run) == [
+        "Move a Zombie token in radius 1 space",
+        "An enemy hero in radius adjacent to a Zombie token discards a card",
+    ]
+
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(zombie_dest).finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_dest
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events, "expected the attack to resolve before the choice phase"
+    assert combat_events[-1].metadata["attack_value"] == 6
+
+
+@pytest.mark.effect_flow
+def test_crawling_dead_forces_hero_discard_when_zombie_pins_enemy_hero() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "crawling_dead"),
+        )
+        .blue_hero("hero_enemy", at=(3, 0, -3))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))
+
+    enemy = state.get_hero("hero_enemy")
+    assert enemy is not None
+    victim_card = hero_card("Mortimer", "stage_dive")
+    enemy.hand = [victim_card]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_enemy"}
+
+    run.choose("hero_enemy").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(victim_card.id).finish()
+
+    assert victim_card not in enemy.hand
+    assert victim_card in enemy.discard_pile
+
+
+@pytest.mark.effect_flow
+def test_walking_dead_enforces_each_hero_only_once() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (2, 0, -2),
+                (3, 0, -3),
+                (1, 1, -2),
+                (1, 2, -3),
+            ]
+        )
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "walking_dead"),
+        )
+        .blue_hero("hero_a", at=(3, 0, -3))
+        .blue_hero("hero_b", at=(1, 2, -3))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))
+    state.place_entity("zombie_2", Hex(q=1, r=1, s=-2))
+
+    hero_a = state.get_hero("hero_a")
+    hero_b = state.get_hero("hero_b")
+    assert hero_a is not None and hero_b is not None
+    card_a = hero_card("Mortimer", "stage_dive")
+    card_b = hero_card("Mortimer", "corpse_slam")
+    hero_a.hand = [card_a]
+    hero_b.hand = [card_b]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 2" in run.latest_request.prompt
+
+    # First choice: discard from hero_a — both heroes are eligible.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_a", "hero_b"}
+
+    run.choose("hero_a").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_a.id).expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Second choice: only hero_b remains selectable — once-per-hero excludes hero_a.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_b"}
+
+    run.choose("hero_b").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_b.id).finish()
+
+    assert card_a in hero_a.discard_pile
+    assert card_b in hero_b.discard_pile
+
+
+@pytest.mark.effect_flow
+def test_racing_dead_prompts_for_five_choices_with_master_of_puppets() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "racing_dead"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    mortimer = state.get_hero("hero_mortimer")
+    assert mortimer is not None
+    mortimer.level = 8
+    mortimer.ultimate_card = hero_card("Mortimer", "master_of_puppets")
+    _add_zombie_pool(state)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    assert "up to 5" in run.latest_request.prompt
+
+
+@pytest.mark.effect_flow
+def test_racing_dead_excludes_all_prior_picks_at_three_deep() -> None:
+    """Iteration 2 must drop *both* iter-0 and iter-1 picks, not just the most recent."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (2, 0, -2),
+                (3, 0, -3),
+                (1, 1, -2),
+                (3, -1, -2),
+            ]
+        )
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "racing_dead"),
+        )
+        .blue_hero("hero_a", at=(3, 0, -3))
+        .blue_hero("hero_b", at=(1, 1, -2))
+        .blue_hero("hero_c", at=(3, -1, -2))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    # Single zombie pinning all three enemy heroes (each adjacent to it).
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))
+
+    hero_a = state.get_hero("hero_a")
+    hero_b = state.get_hero("hero_b")
+    hero_c = state.get_hero("hero_c")
+    assert hero_a is not None and hero_b is not None and hero_c is not None
+    card_a = hero_card("Mortimer", "stage_dive")
+    card_b = hero_card("Mortimer", "corpse_slam")
+    card_c = hero_card("Mortimer", "awaken")
+    hero_a.hand = [card_a]
+    hero_b.hand = [card_b]
+    hero_c.hand = [card_c]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Iter 0: pick hero_a — pool has all three.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_a", "hero_b", "hero_c"}
+    run.choose("hero_a").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_a.id).expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Iter 1: hero_a must be excluded.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_b", "hero_c"}
+    run.choose("hero_b").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_b.id).expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Iter 2: both hero_a AND hero_b must be excluded — only hero_c remains.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_c"}
+    run.choose("hero_c").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_c.id).finish()
+
+    assert card_a in hero_a.discard_pile
+    assert card_b in hero_b.discard_pile
+    assert card_c in hero_c.discard_pile
+
+
+@pytest.mark.effect_flow
+def test_walking_dead_move_zombie_does_not_consume_a_hero_slot() -> None:
+    """If iter 0 picks the move-zombie option, iter 1's discard pool is still full."""
+    move_dest = Hex(q=-2, r=0, s=2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (2, 0, -2),
+                (3, 0, -3),
+                (1, 1, -2),
+                (1, 2, -3),
+                (-1, 0, 1),
+                (-2, 0, 2),
+            ]
+        )
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "walking_dead"),
+        )
+        .blue_hero("hero_a", at=(3, 0, -3))
+        .blue_hero("hero_b", at=(1, 2, -3))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    # Two zombies pin the heroes, plus a third zombie we'll move (harmlessly).
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))  # pins hero_a
+    state.place_entity("zombie_2", Hex(q=1, r=1, s=-2))  # pins hero_b
+    state.place_entity("zombie_3", Hex(q=-1, r=0, s=1))  # gets moved away
+
+    hero_a = state.get_hero("hero_a")
+    hero_b = state.get_hero("hero_b")
+    assert hero_a is not None and hero_b is not None
+    card_a = hero_card("Mortimer", "stage_dive")
+    card_b = hero_card("Mortimer", "corpse_slam")
+    hero_a.hand = [card_a]
+    hero_b.hand = [card_b]
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Iter 0: pick "move zombie" (option 1) — no hero is consumed.
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_3").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(move_dest).expect_input(InputRequestType.SELECT_NUMBER)
+
+    # Iter 1: discard pool must still include BOTH heroes — the move-zombie
+    # branch must not have left a stale hero key in the exclusion list.
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_a", "hero_b"}
+
+    run.choose("hero_a").expect_input(InputRequestType.SELECT_CARD)
+    run.choose(card_a.id).finish()
+
+    assert state.entity_locations["zombie_3"] == move_dest
+    assert card_a in hero_a.discard_pile
+    assert card_b in hero_b.hand  # untouched
+
+
+@pytest.mark.effect_contract
+def test_dead_choice_excludes_attack_target_when_target_is_a_hero() -> None:
+    """The attack target ("dead_target") is always excluded from the discard pool,
+    so the card's "another enemy hero" wording holds even when the target is a hero.
+
+    Driven via the raw-stack pattern: we push only the post-attack choice steps
+    and pre-populate ``dead_target`` in context, sidestepping the reaction
+    window that a real hero-vs-hero attack would trigger.
+    """
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (1, 0, -1),
+                (2, 0, -2),
+                (3, 0, -3),
+            ]
+        )
+        .red_hero("hero_mortimer", at=(0, 0, 0))
+        .blue_hero("hero_target", at=(1, 0, -1))
+        .blue_hero("hero_other", at=(3, 0, -3))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    # Zombie pins BOTH heroes (each adjacent to it).
+    state.place_entity("zombie_1", Hex(q=2, r=0, s=-2))
+
+    hero_target = state.get_hero("hero_target")
+    hero_other = state.get_hero("hero_other")
+    assert hero_target is not None and hero_other is not None
+    hero_target.hand = [hero_card("Mortimer", "stage_dive")]
+    hero_other.hand = [hero_card("Mortimer", "corpse_slam")]
+
+    # Simulate "attack just resolved on hero_target" by seeding the context.
+    state.execution_context["dead_target"] = "hero_target"
+    push_steps(
+        state,
+        _dead_choice_steps(
+            "test_dead_target_excl",
+            radius=4,
+            prompt="Choose one",
+            is_mandatory=True,
+        ),
+    )
+
+    # First request: SELECT_NUMBER for the choice. Pick option 2 (discard).
+    result = process_stack(state)
+    assert result.input_request is not None
+    assert result.input_request.request_type == InputRequestType.SELECT_NUMBER
+    state.execution_stack[-1].pending_input = {"selection": 2}
+
+    # Next request: SELECT_UNIT for the discard target. hero_target must be
+    # excluded ("another enemy hero"); only hero_other should remain.
+    result = process_stack(state)
+    assert result.input_request is not None
+    assert result.input_request.request_type == InputRequestType.SELECT_UNIT
+    options = {opt.id for opt in result.input_request.options}
+    assert options == {"hero_other"}
+    assert "hero_target" not in options

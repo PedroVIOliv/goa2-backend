@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from goa2.domain.models.enums import TargetType, TokenType
+from goa2.domain.models.enums import CardContainerType, TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.filters_hex import (
@@ -21,6 +21,8 @@ from goa2.engine.steps import (
     AddContextValueStep,
     AttackSequenceStep,
     CheckContextConditionStep,
+    CountStep,
+    ForceDiscardStep,
     GainCoinsStep,
     GameStep,
     MoveTokenStep,
@@ -30,6 +32,7 @@ from goa2.engine.steps import (
     RecordHexStep,
     RemoveTokenStep,
     RemoveUnitStep,
+    RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
     SwapUnitsStep,
@@ -473,6 +476,264 @@ def _knife_living_dead_steps(damage: int, radius: int, max_choices: int) -> list
     return steps
 
 
+def _brains_choice_steps(
+    prefix: str,
+    radius: int,
+    *,
+    prompt: str,
+    active_if_key: str | None = None,
+) -> list[GameStep]:
+    eligible_count_key = f"{prefix}_eligible_count"
+    can_retrieve_key = f"{prefix}_can_retrieve"
+    return [
+        SetContextFlagStep(key=f"{prefix}_zombie", value=None),
+        SetContextFlagStep(key=f"{prefix}_zombie_dest", value=None),
+        SetContextFlagStep(key=f"{prefix}_retrieved_card", value=None),
+        _choose_one_step(
+            f"{prefix}_choice",
+            {
+                1: "Move a Zombie token in radius 1 space",
+                2: "Retrieve a discarded card if an enemy hero in radius is adjacent to a Zombie token",
+            },
+            prompt=prompt,
+            is_mandatory=False,
+            active_if_key=active_if_key,
+        ),
+        # Branch 1: move a zombie token in radius 1 space
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=1,
+            output_key=f"{prefix}_chose_move",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_zombie",
+            radius,
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        *_zombie_move_steps(
+            zombie_key=f"{prefix}_zombie",
+            destination_key=f"{prefix}_zombie_dest",
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        # Branch 2: retrieve a discarded card iff an enemy hero in radius is
+        # adjacent to a Zombie token. Counts under the same gate so a SKIP on
+        # this choice cannot accidentally surface the retrieve prompt.
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=2,
+            output_key=f"{prefix}_chose_retrieve",
+        ),
+        CountStep(
+            target_type=TargetType.UNIT,
+            output_key=eligible_count_key,
+            active_if_key=f"{prefix}_chose_retrieve",
+            filters=[
+                UnitTypeFilter(unit_type="HERO"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=radius),
+                CountMatchFilter(
+                    min_count=1,
+                    include_tokens=True,
+                    sub_filters=[
+                        UnitTypeFilter(unit_type="TOKEN"),
+                        TokenTypeFilter(token_type=TokenType.ZOMBIE),
+                        RangeFilter(
+                            min_range=1,
+                            max_range=1,
+                            origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY,
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        CheckContextConditionStep(
+            input_key=eligible_count_key,
+            operator=">",
+            threshold=0,
+            output_key=can_retrieve_key,
+        ),
+        SelectStep(
+            target_type=TargetType.CARD,
+            prompt="Select a discarded card to retrieve",
+            output_key=f"{prefix}_retrieved_card",
+            card_container=CardContainerType.DISCARD,
+            is_mandatory=False,
+            active_if_key=can_retrieve_key,
+        ),
+        RetrieveCardStep(
+            card_key=f"{prefix}_retrieved_card",
+            active_if_key=f"{prefix}_retrieved_card",
+        ),
+    ]
+
+
+def _brains_steps(damage: int, radius: int, max_choices: int) -> list[GameStep]:
+    steps: list[GameStep] = [
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select Attack Target",
+            output_key="brains_target",
+            filters=[TeamFilter(relation="ENEMY"), RangeFilter(max_range=1)],
+            is_mandatory=True,
+        ),
+    ]
+    previous_choice_key: str | None = None
+    for i in range(max_choices):
+        prefix = f"mortimer_brains_{i}"
+        steps.extend(
+            _brains_choice_steps(
+                prefix,
+                radius,
+                prompt=f"Choose one (up to {max_choices}, choice {i + 1})",
+                active_if_key=previous_choice_key,
+            )
+        )
+        previous_choice_key = f"{prefix}_choice"
+
+    steps.append(
+        AttackSequenceStep(
+            damage=damage,
+            range_val=1,
+            target_id_key="brains_target",
+        )
+    )
+    return steps
+
+
+def _dead_choice_steps(
+    prefix: str,
+    radius: int,
+    *,
+    prompt: str,
+    is_mandatory: bool,
+    active_if_key: str | None = None,
+    excluded_hero_keys: list[str] | None = None,
+) -> list[GameStep]:
+    hero_key = f"{prefix}_hero"
+    discard_excluded_keys = ["dead_target", *(excluded_hero_keys or [])]
+    return [
+        SetContextFlagStep(key=f"{prefix}_zombie", value=None),
+        SetContextFlagStep(key=f"{prefix}_zombie_dest", value=None),
+        SetContextFlagStep(key=hero_key, value=None),
+        _choose_one_step(
+            f"{prefix}_choice",
+            {
+                1: "Move a Zombie token in radius 1 space",
+                2: "An enemy hero in radius adjacent to a Zombie token discards a card",
+            },
+            prompt=prompt,
+            is_mandatory=is_mandatory,
+            active_if_key=active_if_key,
+        ),
+        # Branch 1: move a zombie token in radius 1 space.
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=1,
+            output_key=f"{prefix}_chose_move",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_zombie",
+            radius,
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        *_zombie_move_steps(
+            zombie_key=f"{prefix}_zombie",
+            destination_key=f"{prefix}_zombie_dest",
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        # Branch 2: an eligible enemy hero discards a card.
+        # The attack target ("dead_target") is always excluded so the
+        # "another enemy hero" wording holds. ``excluded_hero_keys`` carries
+        # the per-iteration "each enemy hero only once" constraint.
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=2,
+            output_key=f"{prefix}_chose_discard",
+        ),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy hero adjacent to a Zombie token to discard a card",
+            output_key=hero_key,
+            is_mandatory=False,
+            active_if_key=f"{prefix}_chose_discard",
+            filters=[
+                UnitTypeFilter(unit_type="HERO"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=radius),
+                CountMatchFilter(
+                    min_count=1,
+                    include_tokens=True,
+                    sub_filters=[
+                        UnitTypeFilter(unit_type="TOKEN"),
+                        TokenTypeFilter(token_type=TokenType.ZOMBIE),
+                        RangeFilter(
+                            min_range=1,
+                            max_range=1,
+                            origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY,
+                        ),
+                    ],
+                ),
+                ExcludeIdentityFilter(
+                    exclude_self=False,
+                    exclude_keys=discard_excluded_keys,
+                ),
+            ],
+        ),
+        ForceDiscardStep(victim_key=hero_key, active_if_key=hero_key),
+    ]
+
+
+def _dead_steps(
+    damage: int,
+    radius: int,
+    max_choices: int,
+    *,
+    enforce_once_per_hero: bool,
+) -> list[GameStep]:
+    steps: list[GameStep] = [
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select Attack Target",
+            output_key="dead_target",
+            filters=[TeamFilter(relation="ENEMY"), RangeFilter(max_range=1)],
+            is_mandatory=True,
+        ),
+        AttackSequenceStep(
+            damage=damage,
+            range_val=1,
+            target_id_key="dead_target",
+        ),
+    ]
+    previous_choice_key: str | None = None
+    prior_hero_keys: list[str] = []
+    for i in range(max_choices):
+        prefix = f"mortimer_dead_{i}"
+        steps.extend(
+            _dead_choice_steps(
+                prefix,
+                radius,
+                prompt=(
+                    f"Choose one (up to {max_choices}, choice {i + 1})"
+                    if max_choices > 1
+                    else "Choose one"
+                ),
+                # T1 ("Choose one") forces a choice; T2/T3 ("up to N times")
+                # are optional so the player can stop early.
+                is_mandatory=(max_choices == 1),
+                active_if_key=previous_choice_key,
+                excluded_hero_keys=list(prior_hero_keys) if enforce_once_per_hero else None,
+            )
+        )
+        previous_choice_key = f"{prefix}_choice"
+        if enforce_once_per_hero:
+            prior_hero_keys.append(f"{prefix}_hero")
+    return steps
+
+
 def _corpse_slam_choice_steps(
     prefix: str,
     range_val: int,
@@ -684,6 +945,76 @@ class KnifeOfTheLivingDeadEffect(CardEffect):
     ) -> list[GameStep]:
         assert stats.radius is not None, "knife_of_the_living_dead card requires a radius"
         return _knife_living_dead_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
+
+
+@register_effect("braaains")
+class BraaainsEffect(CardEffect):
+    """Adjacent attack; before it, move Zombies or retrieve a card if a Zombie pins an enemy hero."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "braaains card requires a radius"
+        return _brains_steps(stats.primary_value, stats.radius, _choice_limit(hero, 2))
+
+
+@register_effect("braaaaaaaaains")
+class BraaaaaaaaainsEffect(CardEffect):
+    """Tier III Brains: up to three choices (five with Master of Puppets)."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "braaaaaaaaains card requires a radius"
+        return _brains_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
+
+
+@register_effect("crawling_dead")
+class CrawlingDeadEffect(CardEffect):
+    """Adjacent attack; after it, choose one — move a Zombie or force a hero to discard."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "crawling_dead card requires a radius"
+        return _dead_steps(
+            stats.primary_value,
+            stats.radius,
+            max_choices=1,
+            enforce_once_per_hero=False,
+        )
+
+
+@register_effect("walking_dead")
+class WalkingDeadEffect(CardEffect):
+    """Tier II Dead: up to two post-attack choices; each enemy hero may discard at most once."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "walking_dead card requires a radius"
+        return _dead_steps(
+            stats.primary_value,
+            stats.radius,
+            max_choices=_choice_limit(hero, 2),
+            enforce_once_per_hero=True,
+        )
+
+
+@register_effect("racing_dead")
+class RacingDeadEffect(CardEffect):
+    """Tier III Dead: up to three (five with Master of Puppets); once-per-hero discard."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "racing_dead card requires a radius"
+        return _dead_steps(
+            stats.primary_value,
+            stats.radius,
+            max_choices=_choice_limit(hero, 3),
+            enforce_once_per_hero=True,
+        )
 
 
 @register_effect("corpse_slam")
