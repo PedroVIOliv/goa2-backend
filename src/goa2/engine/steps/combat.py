@@ -203,13 +203,16 @@ class ResolveCombatStep(GameStep):
         # Calculate Passive Modifiers (unless ignored by defense effect)
         from goa2.engine.stats import calculate_minion_defense_modifier
 
+        mod_val: int
         if context.get("ignore_minion_defense"):
             mod_val = 0
             logger.debug("   [COMBAT] Ignoring minion defense modifiers (effect active).")
         else:
-            mod_val = context.get("minion_defense_modifier")
-            if mod_val is None:
+            cached_mod = context.get("minion_defense_modifier")
+            if cached_mod is None:
                 mod_val = calculate_minion_defense_modifier(state, target_id)
+            else:
+                mod_val = cached_mod
         if defense_card_val is None:
             # No defense played (minion or passed) - unit is defeated
             logger.debug(f"   [RESULT] No defense! {target_id} is DEFEATED!")

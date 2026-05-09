@@ -618,6 +618,7 @@ class AwakenEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
+        assert stats.radius is not None, "awaken card requires a radius"
         return _awaken_placement_steps(stats.radius)
 
 
@@ -681,6 +682,7 @@ class KnifeOfTheLivingDeadEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
+        assert stats.radius is not None, "knife_of_the_living_dead card requires a radius"
         return _knife_living_dead_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
 
 
