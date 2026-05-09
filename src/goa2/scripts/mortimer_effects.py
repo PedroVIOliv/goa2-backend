@@ -18,6 +18,8 @@ from goa2.engine.filters_units import (
     UnitTypeFilter,
 )
 from goa2.engine.steps import (
+    AddContextValueStep,
+    AttackSequenceStep,
     CheckContextConditionStep,
     GainCoinsStep,
     GameStep,
@@ -26,6 +28,7 @@ from goa2.engine.steps import (
     PlaceTokenStep,
     PushUnitStep,
     RecordHexStep,
+    RemoveTokenStep,
     RemoveUnitStep,
     SelectStep,
     SetContextFlagStep,
@@ -167,6 +170,16 @@ def _choice_limit(hero: Hero, base_limit: int) -> int:
     if base_limit == 3 and _has_master_of_puppets(hero):
         return 5
     return base_limit
+
+
+@register_effect("master_of_puppets")
+class MasterOfPuppetsEffect(CardEffect):
+    """Passive: Mortimer may choose five times instead of three times."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return []
 
 
 def _stage_dive_choice_steps(
@@ -353,6 +366,110 @@ def _horde_repeat_steps(hero: Hero, range_val: int, max_choices: int) -> list[Ga
             )
         )
         previous_choice_key = f"{prefix}_choice"
+    return steps
+
+
+def _knife_choice_steps(
+    prefix: str,
+    radius: int,
+    *,
+    prompt: str,
+    active_if_key: str | None = None,
+) -> list[GameStep]:
+    return [
+        SetContextFlagStep(key=f"{prefix}_zombie", value=None),
+        SetContextFlagStep(key=f"{prefix}_zombie_dest", value=None),
+        SetContextFlagStep(key=f"{prefix}_remove_zombie", value=None),
+        _choose_one_step(
+            f"{prefix}_choice",
+            {
+                1: "Move a Zombie token in radius 1 space",
+                2: "Remove a Zombie token adjacent to the target for +1 Attack",
+            },
+            prompt=prompt,
+            is_mandatory=False,
+            active_if_key=active_if_key,
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=1,
+            output_key=f"{prefix}_chose_move",
+        ),
+        _zombie_selection_step(
+            f"{prefix}_zombie",
+            radius,
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        *_zombie_move_steps(
+            zombie_key=f"{prefix}_zombie",
+            destination_key=f"{prefix}_zombie_dest",
+            active_if_key=f"{prefix}_chose_move",
+        ),
+        CheckContextConditionStep(
+            input_key=f"{prefix}_choice",
+            operator="==",
+            threshold=2,
+            output_key=f"{prefix}_chose_remove",
+        ),
+        SelectStep(
+            target_type=TargetType.UNIT_OR_TOKEN,
+            prompt="Select Zombie token adjacent to the target to remove",
+            output_key=f"{prefix}_remove_zombie",
+            skip_immunity_filter=True,
+            skip_self_filter=True,
+            is_mandatory=False,
+            active_if_key=f"{prefix}_chose_remove",
+            filters=[
+                UnitTypeFilter(unit_type="TOKEN"),
+                TokenTypeFilter(token_type=TokenType.ZOMBIE),
+                RangeFilter(min_range=1, max_range=1, origin_key="knife_target"),
+            ],
+        ),
+        RemoveTokenStep(
+            token_key=f"{prefix}_remove_zombie",
+            active_if_key=f"{prefix}_remove_zombie",
+        ),
+        AddContextValueStep(
+            key="knife_atk_bonus",
+            amount=1,
+            active_if_key=f"{prefix}_remove_zombie",
+        ),
+    ]
+
+
+def _knife_living_dead_steps(damage: int, radius: int, max_choices: int) -> list[GameStep]:
+    steps: list[GameStep] = [
+        SetContextFlagStep(key="knife_atk_bonus", value=0),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select Attack Target",
+            output_key="knife_target",
+            filters=[TeamFilter(relation="ENEMY"), RangeFilter(max_range=1)],
+            is_mandatory=True,
+        ),
+    ]
+    previous_choice_key: str | None = None
+    for i in range(max_choices):
+        prefix = f"mortimer_knife_{i}"
+        steps.extend(
+            _knife_choice_steps(
+                prefix,
+                radius,
+                prompt=f"Choose one (up to {max_choices}, choice {i + 1})",
+                active_if_key=previous_choice_key,
+            )
+        )
+        previous_choice_key = f"{prefix}_choice"
+
+    steps.append(
+        AttackSequenceStep(
+            damage=damage,
+            range_val=1,
+            target_id_key="knife_target",
+            damage_bonus_key="knife_atk_bonus",
+        )
+    )
     return steps
 
 
@@ -555,6 +672,16 @@ class ArmyOfDarknessEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _horde_repeat_steps(hero, stats.range, _choice_limit(hero, 3))
+
+
+@register_effect("knife_of_the_living_dead")
+class KnifeOfTheLivingDeadEffect(CardEffect):
+    """Adjacent attack; before it, move Zombies or remove adjacent Zombies for +Attack."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _knife_living_dead_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
 
 
 @register_effect("corpse_slam")

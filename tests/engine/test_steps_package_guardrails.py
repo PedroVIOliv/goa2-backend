@@ -22,6 +22,7 @@ from goa2.engine.handler import push_steps
 from goa2.engine.steps import GameStep
 
 EXPECTED_STEP_CLASSES = {
+    "AddContextValueStep",
     "AdvanceTurnStep",
     "AskConfirmationStep",
     "AttackSequenceStep",

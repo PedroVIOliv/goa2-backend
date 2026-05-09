@@ -55,6 +55,24 @@ class SetContextFlagStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class AddContextValueStep(GameStep):
+    """Adds a numeric amount to a value in execution context."""
+
+    type: StepType = StepType.ADD_CONTEXT_VALUE
+    key: str
+    amount: int = 1
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+        current = context.get(self.key, 0)
+        if not isinstance(current, (int, float)):
+            current = 0
+        context[self.key] = current + self.amount
+        logger.debug(f"   [CONTEXT] Added {self.amount} to {self.key} = {context[self.key]}")
+        return StepResult(is_finished=True)
+
+
 class SetActorStep(GameStep):
     """
     Swaps current_actor_id, saving the previous value to context.

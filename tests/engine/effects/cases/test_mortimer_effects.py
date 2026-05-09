@@ -6,6 +6,7 @@ from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import Token, TokenType
+from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.steps import EndPhaseCleanupStep
 
 from ..builders import EffectScenarioBuilder, hero_card
@@ -41,6 +42,14 @@ def _add_zombie_pool(state) -> None:
         )
         state.register_entity(token)
         state.token_pool[TokenType.ZOMBIE].append(token)
+
+
+@pytest.mark.effect_contract
+def test_master_of_puppets_effect_is_registered_as_passive_modifier() -> None:
+    effect = CardEffectRegistry.get("master_of_puppets")
+
+    assert effect is not None
+    assert effect.get_passive_config() is None
 
 
 @pytest.mark.effect_flow
@@ -106,6 +115,92 @@ def test_awaken_zombies_persist_through_end_phase_cleanup() -> None:
 
     assert state.entity_locations["zombie_1"] == zombie_hex
     assert not any(e.event_type == GameEventType.TOKEN_REMOVED for e in result.events)
+
+
+@pytest.mark.effect_flow
+def test_knife_of_the_living_dead_removes_zombies_for_attack_bonus() -> None:
+    target_hex = Hex(q=1, r=0, s=-1)
+    zombie_a = Hex(q=2, r=0, s=-2)
+    zombie_b = Hex(q=1, r=1, s=-2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (1, 1, -2)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "knife_of_the_living_dead"),
+        )
+        .blue_minion("blue_minion", at=target_hex)
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_a)
+    state.place_entity("zombie_2", zombie_b)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"blue_minion"}
+
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    assert "up to 3" in run.latest_request.prompt
+    assert _option_texts(run) == [
+        "Move a Zombie token in radius 1 space",
+        "Remove a Zombie token adjacent to the target for +1 Attack",
+    ]
+
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    assert _option_set(run) == {"zombie_1", "zombie_2"}
+
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    assert _option_set(run) == {"zombie_2"}
+
+    run.choose("zombie_2").expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert "zombie_1" not in state.entity_locations
+    assert "zombie_2" not in state.entity_locations
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events
+    assert combat_events[-1].metadata["attack_value"] == 6
+    assert any(e.event_type == GameEventType.TOKEN_REMOVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_knife_of_the_living_dead_can_move_zombie_before_attack() -> None:
+    zombie_start = Hex(q=1, r=1, s=-2)
+    zombie_dest = Hex(q=2, r=1, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (1, 1, -2), (2, 1, -3)])
+        .red_hero(
+            "hero_mortimer",
+            at=(0, 0, 0),
+            current_card=hero_card("Mortimer", "knife_of_the_living_dead"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mortimer")
+        .build()
+    )
+    _add_zombie_pool(state)
+    state.place_entity("zombie_1", zombie_start)
+
+    run = run_card(state, "hero_mortimer")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("zombie_1").expect_input(InputRequestType.SELECT_HEX)
+    assert zombie_dest in _option_set(run)
+
+    run.choose(zombie_dest).expect_input(InputRequestType.SELECT_NUMBER)
+    run.skip().finish()
+
+    assert state.entity_locations["zombie_1"] == zombie_dest
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events[-1].metadata["attack_value"] == 4
 
 
 @pytest.mark.effect_flow

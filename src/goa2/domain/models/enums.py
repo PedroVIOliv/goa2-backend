@@ -143,6 +143,7 @@ class StepType(StrEnum):
     RESOLVE_UPGRADES = "resolve_upgrades"
     TRIGGER_GAME_OVER = "trigger_game_over"
     SET_CONTEXT_FLAG = "set_context_flag"
+    ADD_CONTEXT_VALUE = "add_context_value"
     RESOLVE_DEFENSE_TEXT = "resolve_defense_text"
     RESOLVE_ON_BLOCK_EFFECT = "resolve_on_block_effect"
     CANCEL_EFFECTS = "cancel_effects"
