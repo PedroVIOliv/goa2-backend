@@ -12,9 +12,11 @@ import goa2.data.heroes.rowenna
 import goa2.data.heroes.sabina
 import goa2.data.heroes.silverarrow
 import goa2.data.heroes.tigerclaw
+import goa2.data.heroes.trinkets
 import goa2.data.heroes.ursafar
 import goa2.data.heroes.wasp
 import goa2.data.heroes.whisper
+import goa2.data.heroes.widget
 import goa2.data.heroes.xargatha
 
 from .registry import HeroRegistry

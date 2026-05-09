@@ -19,6 +19,8 @@ HERO_DIFFICULTY_STARS = {
     "Garrus": 2,
     "Silverarrow": 2,
     "Mortimer": 3,
+    "Widget": 3,
+    "Trinkets": 3,
 }
 
 

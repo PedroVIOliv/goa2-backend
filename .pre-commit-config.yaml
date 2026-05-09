@@ -22,6 +22,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: check-card-items
+        name: check card item counts
+        entry: env PYTHONPATH=src uv run python -m goa2.scripts.check_card_items
+        language: system
+        pass_filenames: false
+        files: ^src/goa2/data/heroes/.*\.py$
+        stages: [pre-commit]
+
       - id: pytest
         name: pytest
         entry: uv run pytest tests/ -q
