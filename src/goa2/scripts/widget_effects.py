@@ -15,15 +15,26 @@ from typing import TYPE_CHECKING
 from goa2.domain.models.enums import TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import OrFilter
+from goa2.engine.filters_geometry import InStraightLineFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
-from goa2.engine.filters_units import TeamFilter, TokenTypeFilter, UnitTypeFilter
+from goa2.engine.filters_units import (
+    AdjacencyToContextFilter,
+    TeamFilter,
+    TokenTypeFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    DefeatUnitStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
     GameStep,
     MoveTokenStep,
     MoveUnitStep,
     PlaceTokenStep,
+    RemoveTokenStep,
+    RemoveUnitStep,
     SelectStep,
     SetContextFlagStep,
     SwapUnitsStep,
@@ -148,9 +159,30 @@ def _move_widget_steps(
     ]
 
 
-def _swap_with_pyro_steps(range_val: int, *, is_mandatory: bool = True) -> list[GameStep]:
+def _swap_with_pyro_steps(
+    selection_distance: int,
+    *,
+    is_mandatory: bool = True,
+    include_friendly_heroes: bool = True,
+) -> list[GameStep]:
+    target_filters = [
+        UnitTypeFilter(unit_type="HERO"),
+        RangeFilter(max_range=selection_distance),
+    ]
+    if include_friendly_heroes:
+        target_filters.append(
+            OrFilter(
+                filters=[
+                    TeamFilter(relation="SELF"),
+                    TeamFilter(relation="FRIENDLY"),
+                ]
+            )
+        )
+    else:
+        target_filters.append(TeamFilter(relation="SELF"))
+
     return [
-        _pyro_selection_step("pyro_swap_id", range_val, is_mandatory=is_mandatory),
+        _pyro_selection_step("pyro_swap_id", selection_distance, is_mandatory=is_mandatory),
         SelectStep(
             target_type=TargetType.UNIT,
             prompt="Select yourself or a friendly hero to swap with Pyro",
@@ -158,16 +190,7 @@ def _swap_with_pyro_steps(range_val: int, *, is_mandatory: bool = True) -> list[
             is_mandatory=is_mandatory,
             active_if_key="pyro_swap_id",
             skip_self_filter=True,
-            filters=[
-                UnitTypeFilter(unit_type="HERO"),
-                OrFilter(
-                    filters=[
-                        TeamFilter(relation="SELF"),
-                        TeamFilter(relation="FRIENDLY"),
-                    ]
-                ),
-                RangeFilter(max_range=range_val),
-            ],
+            filters=target_filters,
         ),
         SwapUnitsStep(
             unit_a_key="pyro_swap_id",
@@ -182,6 +205,73 @@ def _diversionary_steps(damage: int, pyro_move: int) -> list[GameStep]:
     return [
         AttackSequenceStep(damage=damage, range_val=1),
         *_move_pyro_steps(range_val=99, move_distance=pyro_move, is_mandatory=False),
+    ]
+
+
+def _airborne_steps(damage: int, *, radius: int, after_swap: bool) -> list[GameStep]:
+    steps: list[GameStep] = [
+        *_swap_with_pyro_steps(radius, is_mandatory=False, include_friendly_heroes=False),
+        AttackSequenceStep(damage=damage, range_val=1),
+    ]
+    if after_swap:
+        steps.extend(
+            _swap_with_pyro_steps(radius, is_mandatory=False, include_friendly_heroes=False)
+        )
+    return steps
+
+
+def _pyro_adjacent_enemy_minion_removal_steps(
+    *, hero_id: str, range_val: int, defeat: bool
+) -> list[GameStep]:
+    remove_step: GameStep
+    if defeat:
+        remove_step = DefeatUnitStep(victim_key="pyro_adjacent_minion", killer_id=hero_id)
+    else:
+        remove_step = RemoveUnitStep(unit_key="pyro_adjacent_minion")
+
+    return [
+        _pyro_selection_step("pyro_skill_id", 99, is_mandatory=True),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy minion adjacent to Pyro",
+            output_key="pyro_adjacent_minion",
+            active_if_key="pyro_skill_id",
+            is_mandatory=True,
+            filters=[
+                UnitTypeFilter(unit_type="MINION"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=range_val),
+                AdjacencyToContextFilter(target_key="pyro_skill_id"),
+            ],
+        ),
+        remove_step,
+        RemoveTokenStep(token_key="pyro_skill_id"),
+    ]
+
+
+def _breath_steps(*, range_val: int, defeat_if_unable: bool) -> list[GameStep]:
+    discard_step: GameStep
+    if defeat_if_unable:
+        discard_step = ForceDiscardOrDefeatStep(victim_key="breath_target")
+    else:
+        discard_step = ForceDiscardStep(victim_key="breath_target")
+
+    return [
+        _pyro_selection_step("pyro_breath_id", 99, is_mandatory=True),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy hero in range and in a straight line from Pyro",
+            output_key="breath_target",
+            active_if_key="pyro_breath_id",
+            is_mandatory=True,
+            filters=[
+                UnitTypeFilter(unit_type="HERO"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=range_val, origin_key="pyro_breath_id"),
+                InStraightLineFilter(origin_key="pyro_breath_id"),
+            ],
+        ),
+        discard_step,
     ]
 
 
@@ -330,3 +420,62 @@ class DiversionaryAssaultEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _diversionary_steps(stats.primary_value, 4)
+
+
+@register_effect("airborne_attack")
+class AirborneAttackEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "airborne_attack requires a radius"
+        return _airborne_steps(stats.primary_value, radius=stats.radius, after_swap=False)
+
+
+@register_effect("airborne_assault")
+class AirborneAssaultEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        assert stats.radius is not None, "airborne_assault requires a radius"
+        return _airborne_steps(stats.primary_value, radius=stats.radius, after_swap=True)
+
+
+@register_effect("nibble")
+class NibbleEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _pyro_adjacent_enemy_minion_removal_steps(
+            hero_id=str(hero.id), range_val=stats.range, defeat=False
+        )
+
+
+@register_effect("gnaw")
+class GnawEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _pyro_adjacent_enemy_minion_removal_steps(
+            hero_id=str(hero.id), range_val=stats.range, defeat=True
+        )
+
+
+@register_effect("fiery_breath")
+class FieryBreathEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _breath_steps(range_val=stats.range, defeat_if_unable=False)
+
+
+@register_effect("flaming_breath")
+class FlamingBreathEffect(FieryBreathEffect):
+    pass
+
+
+@register_effect("scorching_breath")
+class ScorchingBreathEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _breath_steps(range_val=stats.range, defeat_if_unable=True)

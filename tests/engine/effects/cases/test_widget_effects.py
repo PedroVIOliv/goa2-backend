@@ -47,6 +47,13 @@ def test_widget_easy_effects_are_registered() -> None:
         "diversionary_strike",
         "diversionary_attack",
         "diversionary_assault",
+        "airborne_attack",
+        "airborne_assault",
+        "nibble",
+        "gnaw",
+        "fiery_breath",
+        "flaming_breath",
+        "scorching_breath",
     ]:
         assert CardEffectRegistry.get(effect_id) is not None
 
@@ -230,3 +237,109 @@ def test_diversionary_strike_attacks_then_moves_pyro_up_to_two() -> None:
     assert combat_events
     assert combat_events[-1].metadata["attack_value"] == 5
     assert any(e.event_type == GameEventType.TOKEN_MOVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_airborne_assault_can_swap_before_and_after_attack() -> None:
+    widget_start = Hex(q=0, r=0, s=0)
+    pyro_start = Hex(q=2, r=0, s=-2)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=widget_start,
+            current_card=hero_card("Widget", "airborne_assault"),
+        )
+        .red_hero("friendly_widget_ally", at=(3, 0, -3))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("pyro_1").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_widget"}
+
+    run.choose("hero_widget").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("pyro_1").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"hero_widget"}
+
+    run.choose("hero_widget").finish()
+
+    assert state.entity_locations["hero_widget"] == widget_start
+    assert state.entity_locations["pyro_1"] == pyro_start
+    assert sum(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events) == 2
+    combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert combat_events[-1].metadata["attack_value"] == 4
+
+
+@pytest.mark.effect_flow
+def test_nibble_removes_enemy_minion_adjacent_to_pyro_then_removes_pyro() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3), (4, 0, -4)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "nibble"),
+        )
+        .blue_minion("blue_minion", at=(3, 0, -3))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", Hex(q=4, r=0, s=-4))
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["pyro_skill_id"] == "pyro_1"
+    assert _option_set(run) == {"blue_minion"}
+
+    run.choose("blue_minion").finish()
+
+    assert "blue_minion" not in state.entity_locations
+    assert "pyro_1" not in state.entity_locations
+    assert any(e.event_type == GameEventType.UNIT_REMOVED for e in run.events)
+    assert any(e.event_type == GameEventType.TOKEN_REMOVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_fiery_breath_forces_straight_line_enemy_hero_to_discard() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (2, 1, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "fiery_breath"),
+        )
+        .blue_hero("blue_target", at=(2, 0, -2))
+        .blue_hero("blue_offline", at=(2, 1, -3))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", Hex(q=1, r=0, s=-1))
+    target = state.get_hero("blue_target")
+    assert target is not None
+    target.hand.append(hero_card("Widget", "all_aboard"))
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["pyro_breath_id"] == "pyro_1"
+    assert _option_set(run) == {"blue_target"}
+
+    run.choose("blue_target").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("all_aboard").finish()
+
+    assert len(target.hand) == 0
+    assert len(target.discard_pile) == 1
+    assert target.discard_pile[0].id == "all_aboard"
