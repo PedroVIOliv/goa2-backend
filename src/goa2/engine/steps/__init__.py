@@ -52,6 +52,7 @@ from goa2.engine.steps.markers import (  # noqa: F401
     _remove_token_from_board,
 )
 from goa2.engine.steps.movement import (  # noqa: F401
+    CoDirectionalDragStep,
     FastTravelSequenceStep,
     FastTravelStep,
     ForceDefenseCardMovementStep,

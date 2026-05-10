@@ -402,6 +402,205 @@ def test_nibble_removes_enemy_minion_adjacent_to_pyro_then_removes_pyro() -> Non
     assert any(e.event_type == GameEventType.TOKEN_REMOVED for e in run.events)
 
 
+_DRAG_LINE = [
+    (-3, 0, 3),
+    (-2, 0, 2),
+    (-1, 0, 1),
+    (0, 0, 0),
+    (1, 0, -1),
+    (2, 0, -2),
+    (3, 0, -3),
+    (4, 0, -4),
+    (5, 0, -5),
+]
+_WIDGET_PERCH = (0, 1, -1)  # Off-line hex so Widget never blocks the action.
+
+
+@pytest.mark.effect_flow
+def test_drag_off_drags_pyro_and_enemy_in_same_direction() -> None:
+    """Pyro at (0,0,0), enemy adjacent at (1,0,-1). Pyro picks (3,0,-3) (distance 3,
+    direction toward the enemy). Both shift +3 along that axis: Pyro to (3,0,-3),
+    enemy to (4,0,-4). Pyro's path passes through the enemy's starting hex, which
+    is fine because the enemy is moving out of it."""
+    pyro_start = Hex(q=0, r=0, s=0)
+    enemy_start = Hex(q=1, r=0, s=-1)
+    pyro_dest = Hex(q=3, r=0, s=-3)
+    enemy_dest = Hex(q=4, r=0, s=-4)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([*_DRAG_LINE, _WIDGET_PERCH])
+        .red_hero("hero_widget", at=_WIDGET_PERCH, current_card=hero_card("Widget", "drag_off"))
+        .blue_minion("blue_minion", at=enemy_start)
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"blue_minion"}
+
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+    options = _option_set(run)
+    # Distance must be 2 or 3 — distance 1 (enemy_start) excluded.
+    assert pyro_dest in options
+    assert Hex(q=2, r=0, s=-2) in options
+    assert enemy_start not in options
+
+    run.choose(pyro_dest).finish()
+
+    assert state.entity_locations["pyro_1"] == pyro_dest
+    assert state.entity_locations["blue_minion"] == enemy_dest
+    assert any(e.event_type == GameEventType.TOKEN_MOVED for e in run.events)
+    assert any(e.event_type == GameEventType.UNIT_MOVED for e in run.events)
+
+
+@pytest.mark.effect_flow
+def test_drag_off_works_in_opposite_direction_through_pyro() -> None:
+    """Direction away from the enemy: enemy ends up passing through Pyro's
+    starting hex. Enemy at (1,0,-1), Pyro at (0,0,0), Pyro picks (-2,0,2).
+    Enemy lands at (-1,0,1) — its path crosses Pyro's old hex (0,0,0), which
+    is treated as empty because Pyro is leaving."""
+    pyro_start = Hex(q=0, r=0, s=0)
+    enemy_start = Hex(q=1, r=0, s=-1)
+    pyro_dest = Hex(q=-2, r=0, s=2)
+    enemy_dest = Hex(q=-1, r=0, s=1)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([*_DRAG_LINE, _WIDGET_PERCH])
+        .red_hero("hero_widget", at=_WIDGET_PERCH, current_card=hero_card("Widget", "drag_off"))
+        .blue_minion("blue_minion", at=enemy_start)
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+    assert pyro_dest in _option_set(run)
+
+    run.choose(pyro_dest).finish()
+
+    assert state.entity_locations["pyro_1"] == pyro_dest
+    assert state.entity_locations["blue_minion"] == enemy_dest
+
+
+@pytest.mark.effect_flow
+def test_drag_off_rejects_destination_when_enemy_path_blocked() -> None:
+    """Blocker on enemy's intermediate path. drag_off respects path obstacles,
+    so destinations forcing the enemy through the blocker must be filtered.
+    Opposite-direction destinations remain available, proving the rejection
+    is path-specific rather than total."""
+    pyro_start = Hex(q=0, r=0, s=0)
+    enemy_start = Hex(q=1, r=0, s=-1)
+    # Blocker at (3,0,-3) is the *intermediate* hex on the enemy's slide if
+    # Pyro picks (3,0,-3) → enemy lands at (4,0,-4) crossing (2,0,-2)+(3,0,-3).
+    # It also makes Pyro's landing (3,0,-3) itself invalid.
+    blocker_hex = Hex(q=3, r=0, s=-3)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([*_DRAG_LINE, _WIDGET_PERCH])
+        .red_hero("hero_widget", at=_WIDGET_PERCH, current_card=hero_card("Widget", "drag_off"))
+        .blue_minion("blue_minion", at=enemy_start)
+        .blue_minion("blocker", at=blocker_hex)
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+
+    options = _option_set(run)
+    # Pyro→(2,0,-2) would land enemy on the blocker. Reject.
+    assert Hex(q=2, r=0, s=-2) not in options
+    # Pyro→(3,0,-3) is the blocker hex itself. Reject.
+    assert blocker_hex not in options
+    # Opposite direction is unaffected by the blocker — must remain selectable.
+    assert Hex(q=-2, r=0, s=2) in options
+    assert Hex(q=-3, r=0, s=3) in options
+
+
+@pytest.mark.effect_flow
+def test_carry_away_ignores_blocked_path_for_partner() -> None:
+    """Same blocker-on-path setup as drag_off. carry_away ignores path
+    obstacles, so the destination that drag_off would reject must now be
+    selectable, *and* selecting it must successfully drag both units past
+    the blocker."""
+    pyro_start = Hex(q=0, r=0, s=0)
+    enemy_start = Hex(q=1, r=0, s=-1)
+    # Blocker at (2,0,-2) sits on Pyro's path when Pyro picks (3,0,-3) and
+    # on the enemy's path when the enemy slides to (4,0,-4).
+    blocker_hex = Hex(q=2, r=0, s=-2)
+    pyro_dest = Hex(q=3, r=0, s=-3)
+    enemy_dest = Hex(q=4, r=0, s=-4)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([*_DRAG_LINE, _WIDGET_PERCH])
+        .red_hero("hero_widget", at=_WIDGET_PERCH, current_card=hero_card("Widget", "carry_away"))
+        .blue_minion("blue_minion", at=enemy_start)
+        .blue_minion("blocker", at=blocker_hex)
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+
+    options = _option_set(run)
+    assert pyro_dest in options
+    # Even ignoring path obstacles, landings must still be free — Pyro
+    # cannot land on the blocker.
+    assert blocker_hex not in options
+
+    run.choose(pyro_dest).finish()
+    assert state.entity_locations["pyro_1"] == pyro_dest
+    assert state.entity_locations["blue_minion"] == enemy_dest
+
+
+@pytest.mark.effect_flow
+def test_carry_away_rejects_destination_when_enemy_landing_occupied() -> None:
+    """Even with ignore_obstacles, a unit on the enemy's *landing* hex still
+    blocks the destination."""
+    pyro_start = Hex(q=0, r=0, s=0)
+    enemy_start = Hex(q=1, r=0, s=-1)
+    enemy_landing = Hex(q=4, r=0, s=-4)
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([*_DRAG_LINE, _WIDGET_PERCH])
+        .red_hero("hero_widget", at=_WIDGET_PERCH, current_card=hero_card("Widget", "carry_away"))
+        .blue_minion("blue_minion", at=enemy_start)
+        .blue_minion("blocker", at=enemy_landing)  # Where enemy *would* land.
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", pyro_start)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+
+    # Pyro→(3,0,-3) would push enemy to (4,0,-4) (occupied by blocker).
+    options = _option_set(run)
+    assert Hex(q=3, r=0, s=-3) not in options
+    # Sanity: opposite direction is still selectable.
+    assert Hex(q=-2, r=0, s=2) in options
+
+
 @pytest.mark.effect_flow
 def test_fiery_breath_forces_straight_line_enemy_hero_to_discard() -> None:
     state = (

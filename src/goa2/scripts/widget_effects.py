@@ -15,10 +15,11 @@ from typing import TYPE_CHECKING
 from goa2.domain.models.enums import ActionType, CardContainerType, TargetType, TokenType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import OrFilter
-from goa2.engine.filters_geometry import InStraightLineFilter
+from goa2.engine.filters_geometry import CoMoverValidHexFilter, InStraightLineFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import (
     AdjacencyToContextFilter,
+    ForcedMovementByEnemyFilter,
     TeamFilter,
     TokenTypeFilter,
     UnitTypeFilter,
@@ -26,6 +27,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CoDirectionalDragStep,
     DefeatUnitStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
@@ -247,6 +249,46 @@ def _pyro_adjacent_enemy_minion_removal_steps(
         ),
         remove_step,
         RemoveTokenStep(token_key="pyro_skill_id"),
+    ]
+
+
+def _drag_steps(*, ignore_obstacles: bool) -> list[GameStep]:
+    return [
+        _pyro_selection_step("drag_pyro_id", 99, is_mandatory=True),
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy unit adjacent to Pyro",
+            output_key="drag_enemy_id",
+            active_if_key="drag_pyro_id",
+            is_mandatory=True,
+            filters=[
+                TeamFilter(relation="ENEMY"),
+                AdjacencyToContextFilter(target_key="drag_pyro_id"),
+                ForcedMovementByEnemyFilter(),
+            ],
+        ),
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="Select Pyro destination (2 or 3 spaces in a straight line)",
+            output_key="drag_pyro_dest",
+            active_if_key="drag_enemy_id",
+            is_mandatory=True,
+            filters=[
+                RangeFilter(min_range=2, max_range=3, origin_key="drag_pyro_id"),
+                InStraightLineFilter(origin_key="drag_pyro_id"),
+                CoMoverValidHexFilter(
+                    anchor_key="drag_pyro_id",
+                    partner_key="drag_enemy_id",
+                    ignore_path_obstacles=ignore_obstacles,
+                ),
+            ],
+        ),
+        CoDirectionalDragStep(
+            anchor_key="drag_pyro_id",
+            partner_key="drag_enemy_id",
+            anchor_dest_key="drag_pyro_dest",
+            ignore_path_obstacles=ignore_obstacles,
+        ),
     ]
 
 
@@ -525,3 +567,23 @@ class ScorchingBreathEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _breath_steps(range_val=stats.range, defeat_if_unable=True)
+
+
+@register_effect("drag_off")
+class DragOffEffect(CardEffect):
+    """Move Pyro and an adjacent enemy unit 2-3 spaces in the same direction."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _drag_steps(ignore_obstacles=False)
+
+
+@register_effect("carry_away")
+class CarryAwayEffect(CardEffect):
+    """Drag Off, ignoring obstacles on either unit's path."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return _drag_steps(ignore_obstacles=True)

@@ -424,6 +424,123 @@ class ClearLineOfSightFilter(FilterCondition):
         return True
 
 
+class CoMoverValidHexFilter(FilterCondition):
+    """
+    Validates a candidate hex as a destination for an anchor unit when a
+    partner unit must mirror the move co-directionally (same offset vector).
+
+    Resolves anchor and partner from context. For a candidate hex C, computes
+    offset = C - anchor_current and partner_dest = partner_current + offset.
+    Validates:
+
+      * Anchor's landing (C) is on-board, not blocked terrain/obstacle, and
+        not occupied by any unit other than the partner (which is leaving).
+      * Partner's landing (partner_dest) satisfies the same, with anchor
+        excluded.
+      * If ignore_path_obstacles=False, both units' straight-line paths from
+        their starts to their landings are clear, treating each unit's own
+        starting hex as empty on the other's path (they "move together").
+
+    The straight-line and distance constraints on the candidate hex itself
+    are intentionally NOT checked here — compose with `InStraightLineFilter`
+    and `RangeFilter(min_range, max_range)` at the call site.
+    """
+
+    type: FilterType = FilterType.CO_MOVER_VALID_HEX
+    anchor_key: str
+    partner_key: str
+    ignore_path_obstacles: bool = False
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        anchor_id = context.get(self.anchor_key)
+        partner_id = context.get(self.partner_key)
+        if not anchor_id or not partner_id:
+            return False
+
+        anchor_hex = state.entity_locations.get(BoardEntityID(str(anchor_id)))
+        partner_hex = state.entity_locations.get(BoardEntityID(str(partner_id)))
+        if not anchor_hex or not partner_hex or anchor_hex == partner_hex:
+            return False
+
+        if not anchor_hex.is_straight_line(candidate) or candidate == anchor_hex:
+            return False
+
+        offset = candidate - anchor_hex
+        partner_dest = partner_hex + offset
+
+        actor_id = str(state.current_actor_id) if state.current_actor_id else None
+        moving_ids = {str(anchor_id), str(partner_id)}
+
+        if not self._landing_ok(state, candidate, moving_ids, actor_id, context):
+            return False
+        if not self._landing_ok(state, partner_dest, moving_ids, actor_id, context):
+            return False
+
+        if not self.ignore_path_obstacles:
+            if not self._path_clear(
+                state, anchor_hex, candidate, str(partner_id), actor_id, context
+            ):
+                return False
+            if not self._path_clear(
+                state, partner_hex, partner_dest, str(anchor_id), actor_id, context
+            ):
+                return False
+
+        return True
+
+    @staticmethod
+    def _landing_ok(
+        state: GameState,
+        hex_pos: Hex,
+        moving_ids: set[str],
+        actor_id: str | None,
+        context: dict,
+    ) -> bool:
+        if hex_pos not in state.board.tiles:
+            return False
+        tile = state.board.tiles[hex_pos]
+        # Reject if a non-moving unit occupies the landing.
+        if tile.occupant_id and str(tile.occupant_id) not in moving_ids:
+            return False
+        # Terrain/wall checks still apply even on a hex that one of the
+        # moving units is vacating.
+        if state.validator and state.validator.is_terrain_hex(state, hex_pos):
+            return False
+        # If empty (or only the leaving co-mover), use the validator for any
+        # remaining obstacle classes (e.g. impassable tokens).
+        if not tile.occupant_id:
+            return not state.validator.is_obstacle_for_actor(state, hex_pos, actor_id, context)
+        return True
+
+    @staticmethod
+    def _path_clear(
+        state: GameState,
+        start: Hex,
+        end: Hex,
+        excluded_unit_id: str,
+        actor_id: str | None,
+        context: dict,
+    ) -> bool:
+        try:
+            path = start.line_to(end)
+        except ValueError:
+            return False
+        # path is [step1, ..., end]; intermediates only — landing is checked
+        # separately by _landing_ok.
+        for hex_pos in path[:-1]:
+            if hex_pos not in state.board.tiles:
+                return False
+            tile = state.board.tiles[hex_pos]
+            if tile.occupant_id and str(tile.occupant_id) == excluded_unit_id:
+                continue
+            if state.validator.is_obstacle_for_actor(state, hex_pos, actor_id, context):
+                return False
+        return True
+
+
 class BetweenHexesFilter(FilterCondition):
     """
     Unit filter: passes if the candidate unit sits on the straight-line path

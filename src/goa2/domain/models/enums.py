@@ -191,6 +191,7 @@ class StepType(StrEnum):
     CHECK_DISTANCE = "check_distance"
     COMPUTE_DISTANCE = "compute_distance"
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
+    CO_DIRECTIONAL_DRAG = "co_directional_drag"
 
 
 class FilterType(StrEnum):
@@ -229,6 +230,7 @@ class FilterType(StrEnum):
     TOKEN_TYPE = "token_type_filter"
     BETWEEN_HEXES = "between_hexes_filter"
     COUNT_MATCH = "count_match_filter"
+    CO_MOVER_VALID_HEX = "co_mover_valid_hex_filter"
 
 
 class TargetType(StrEnum):

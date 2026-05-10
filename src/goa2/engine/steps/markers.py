@@ -161,6 +161,7 @@ class MoveTokenStep(GameStep):
     token_key: str
     destination_key: str = "target_hex"
     range_val: int = 1
+    pass_through_obstacles: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         token_id = context.get(self.token_key)
@@ -190,6 +191,7 @@ class MoveTokenStep(GameStep):
                 max_steps=self.range_val,
                 state=state,
                 actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                pass_through_obstacles=self.pass_through_obstacles,
             )
             if not is_valid:
                 logger.debug(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")

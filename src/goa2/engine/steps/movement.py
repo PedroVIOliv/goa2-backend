@@ -1044,6 +1044,78 @@ class PushUnitStep(GameStep):
         )
 
 
+class CoDirectionalDragStep(GameStep):
+    """
+    Sequencer that, given an anchor's chosen destination, computes the
+    partner's mirrored destination (same offset vector) and pushes a
+    `MoveTokenStep` for the anchor and a `MoveUnitStep` for the partner
+    onto the stack in collision-free order.
+
+    Order rule: if the partner's starting hex sits on the anchor's
+    straight-line path, the partner is moved first so the anchor's path
+    is clear by the time its move runs. Otherwise the anchor moves first.
+
+    Going through the standard movement steps means mine triggers,
+    displacement validation, and `MOVEMENT_ZONE` effects all apply to the
+    dragged unit naturally. Validity of the anchor's chosen destination is
+    expected to be enforced by `CoMoverValidHexFilter` at the `SelectStep`
+    that produced `anchor_dest_key`.
+    """
+
+    type: StepType = StepType.CO_DIRECTIONAL_DRAG
+    anchor_key: str
+    partner_key: str
+    anchor_dest_key: str = "anchor_dest"
+    partner_dest_key: str = "co_drag_partner_dest"
+    ignore_path_obstacles: bool = False
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        anchor_id = context.get(self.anchor_key)
+        partner_id = context.get(self.partner_key)
+        dest_val = context.get(self.anchor_dest_key)
+        if not anchor_id or not partner_id or not dest_val:
+            return StepResult(is_finished=True)
+
+        anchor_dest = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
+        anchor_hex = state.entity_locations.get(BoardEntityID(str(anchor_id)))
+        partner_hex = state.entity_locations.get(BoardEntityID(str(partner_id)))
+        if not anchor_hex or not partner_hex:
+            return StepResult(is_finished=True)
+
+        offset = anchor_dest - anchor_hex
+        partner_dest = partner_hex + offset
+        distance = anchor_hex.distance(anchor_dest)
+
+        context[self.partner_dest_key] = partner_dest
+
+        from goa2.engine.steps.markers import MoveTokenStep
+
+        anchor_move = MoveTokenStep(
+            token_key=self.anchor_key,
+            destination_key=self.anchor_dest_key,
+            range_val=distance,
+            pass_through_obstacles=self.ignore_path_obstacles,
+        )
+        partner_move = MoveUnitStep(
+            unit_key=self.partner_key,
+            destination_key=self.partner_dest_key,
+            range_val=distance,
+            is_movement_action=False,
+            pass_through_obstacles=self.ignore_path_obstacles,
+        )
+
+        anchor_path = anchor_hex.line_to(anchor_dest)
+        if partner_hex in anchor_path:
+            ordered: list[GameStep] = [partner_move, anchor_move]
+        else:
+            ordered = [anchor_move, partner_move]
+
+        return StepResult(is_finished=True, new_steps=ordered)
+
+
 class ResolveDisplacementStep(GameStep):
     """
     Handles the placement of minions that could not spawn due to occupied tiles.

@@ -36,6 +36,7 @@ EXPECTED_STEP_CLASSES = {
     "CheckPassiveAbilitiesStep",
     "CheckUnitTypeStep",
     "ChooseMinionRemovalStep",
+    "CoDirectionalDragStep",
     "CombineBooleanContextStep",
     "ComputeDistanceStep",
     "ComputeHexStep",

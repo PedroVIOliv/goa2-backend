@@ -13,6 +13,7 @@ from goa2.engine.filters_composite import (
 from goa2.engine.filters_geometry import (
     BetweenHexesFilter,
     ClearLineOfSightFilter,
+    CoMoverValidHexFilter,
     InStraightLineFilter,
     LineBehindTargetFilter,
     NotInStraightLineFilter,
@@ -79,6 +80,7 @@ for _name in [
     "RelativeDistanceFilter",
     "ClearLineOfSightFilter",
     "BetweenHexesFilter",
+    "CoMoverValidHexFilter",
     "CardsInContainerFilter",
     "PlayedCardFilter",
     "OrFilter",
@@ -97,6 +99,7 @@ __all__ = [
     "CanBePlacedByActorFilter",
     "CardsInContainerFilter",
     "ClearLineOfSightFilter",
+    "CoMoverValidHexFilter",
     "CountMatchFilter",
     "ExcludeIdentityFilter",
     "FastTravelDestinationFilter",
