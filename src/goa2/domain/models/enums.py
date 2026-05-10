@@ -259,6 +259,7 @@ class PassiveTrigger(StrEnum):
     AFTER_BASIC_SKILL = "after_basic_skill"
     AFTER_BASIC_ACTION = "after_basic_action"
     AFTER_ATTACK = "after_attack"
+    AFTER_MOVEMENT = "after_movement"
     AFTER_PUSH = "after_push"
     AFTER_PLACE_MARKER = "after_place_marker"
     AFTER_CARD_DISCARD = "after_card_discard"

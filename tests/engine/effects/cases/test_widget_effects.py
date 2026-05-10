@@ -38,6 +38,18 @@ def _add_pyro_pool(state) -> None:
     state.token_pool[TokenType.PYRO].append(token)
 
 
+def _activate_dragon_knight(state, hero_id: str = "hero_widget") -> None:
+    """Configure widget so the dragon_knight ultimate passive is active."""
+    from goa2.data.heroes.registry import HeroRegistry
+
+    widget = state.get_hero(hero_id)
+    assert widget is not None
+    widget.level = 8
+    template = HeroRegistry.get("Widget")
+    assert template is not None and template.ultimate_card is not None
+    widget.ultimate_card = template.ultimate_card
+
+
 @pytest.mark.effect_contract
 def test_widget_easy_effects_are_registered() -> None:
     for effect_id in [
@@ -633,4 +645,120 @@ def test_fiery_breath_forces_straight_line_enemy_hero_to_discard() -> None:
 
     assert len(target.hand) == 0
     assert len(target.discard_pile) == 1
+    assert target.discard_pile[0].id == "all_aboard"
+
+
+@pytest.mark.effect_contract
+def test_widget_dragon_knight_is_registered() -> None:
+    assert CardEffectRegistry.get("dragon_knight") is not None
+
+
+@pytest.mark.effect_flow
+def test_dragon_knight_offers_perform_after_movement_secondary() -> None:
+    """Choosing the MOVEMENT secondary action triggers AFTER_MOVEMENT,
+    which offers Dragon Knight when there's a faceup skill card to perform."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "take_off"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    _activate_dragon_knight(state)
+
+    widget = state.get_hero("hero_widget")
+    assert widget is not None
+    played_skill = hero_card("Widget", "fiery_breath")
+    played_skill.state = CardState.RESOLVED
+    widget.played_cards.append(played_skill)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("MOVEMENT").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(Hex(q=1, r=0, s=-1)).expect_input(InputRequestType.CONFIRM_PASSIVE)
+
+    assert run.latest_request is not None
+    assert "Dragon Knight" in run.latest_request.prompt
+
+    run.choose("NO").finish()
+
+    assert state.entity_locations["hero_widget"] == Hex(q=1, r=0, s=-1)
+
+
+@pytest.mark.effect_flow
+def test_dragon_knight_skipped_when_no_faceup_skill_cards() -> None:
+    """should_offer_passive must short-circuit when there are no faceup
+    skill cards — the YES/NO prompt should never appear."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "take_off"),
+        )
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    _activate_dragon_knight(state)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("MOVEMENT").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(Hex(q=1, r=0, s=-1)).finish()
+
+    assert state.entity_locations["hero_widget"] == Hex(q=1, r=0, s=-1)
+
+
+@pytest.mark.effect_flow
+def test_dragon_knight_performs_selected_skill_card_primary_action() -> None:
+    """Accepting the offer should let the player pick a faceup skill card,
+    and then run that card's primary action (here, fiery_breath forces a
+    discard against an enemy hero in a straight line from Pyro)."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "take_off"),
+        )
+        .blue_hero("blue_target", at=(3, 0, -3))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", Hex(q=2, r=0, s=-2))
+    _activate_dragon_knight(state)
+
+    widget = state.get_hero("hero_widget")
+    assert widget is not None
+    played_skill = hero_card("Widget", "fiery_breath")
+    played_skill.state = CardState.RESOLVED
+    widget.played_cards.append(played_skill)
+
+    target = state.get_hero("blue_target")
+    assert target is not None
+    target.hand.append(hero_card("Widget", "all_aboard"))
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("MOVEMENT").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(Hex(q=1, r=0, s=-1)).expect_input(InputRequestType.CONFIRM_PASSIVE)
+    run.choose("YES").expect_input(InputRequestType.SELECT_CARD)
+    assert _option_set(run) == {"fiery_breath"}
+
+    run.choose("fiery_breath").expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"blue_target"}
+
+    run.choose("blue_target").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("all_aboard").finish()
+
+    assert len(target.hand) == 0
     assert target.discard_pile[0].id == "all_aboard"

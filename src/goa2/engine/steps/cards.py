@@ -527,6 +527,12 @@ class ResolveCardStep(GameStep):
                         CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_ATTACK.value)
                     )
 
+                # Add AFTER_MOVEMENT passive check for ALL movement actions
+                if act_type == ActionType.MOVEMENT:
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_MOVEMENT.value)
+                    )
+
                 # Add AFTER_BASIC_SKILL passive check for Gold/Silver SKILL cards
                 if act_type == ActionType.SKILL and card.current_color in (
                     CardColor.GOLD,

@@ -10,10 +10,16 @@ Remaining useful precedents:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from goa2.domain.models.enums import ActionType, CardContainerType, TargetType, TokenType
-from goa2.engine.effects import CardEffect, register_effect
+from goa2.domain.models.enums import (
+    ActionType,
+    CardContainerType,
+    PassiveTrigger,
+    TargetType,
+    TokenType,
+)
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_composite import OrFilter
 from goa2.engine.filters_geometry import CoMoverValidHexFilter, InStraightLineFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
@@ -587,3 +593,67 @@ class CarryAwayEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return _drag_steps(ignore_obstacles=True)
+
+
+@register_effect("dragon_knight")
+class DragonKnightEffect(CardEffect):
+    """Each time after you perform a movement action, you may perform the
+    primary action on one of your faceup skill cards."""
+
+    def get_passive_config(self) -> PassiveConfig | None:
+        return PassiveConfig(
+            trigger=PassiveTrigger.AFTER_MOVEMENT,
+            uses_per_turn=0,  # unlimited
+            is_optional=True,
+            prompt="Dragon Knight: Perform the primary action of a faceup skill card?",
+        )
+
+    def should_offer_passive(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> bool:
+        # Only offer when the player actually has a faceup skill card to use.
+        return any(
+            c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
+            for c in hero.played_cards
+        )
+
+    def get_passive_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
+        if trigger != PassiveTrigger.AFTER_MOVEMENT:
+            return []
+
+        faceup_skill_card_ids = [
+            c.id
+            for c in hero.played_cards
+            if c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
+        ]
+        if not faceup_skill_card_ids:
+            return []
+
+        return [
+            SelectStep(
+                target_type=TargetType.CARD,
+                prompt="Select a faceup skill card to perform",
+                output_key="dragon_knight_skill_card",
+                card_container=CardContainerType.PLAYED,
+                card_action_types=[ActionType.SKILL],
+                allowed_card_ids=faceup_skill_card_ids,
+                is_mandatory=True,
+            ),
+            PerformPrimaryActionStep(
+                card_key="dragon_knight_skill_card",
+                hero_id=str(hero.id),
+                active_if_key="dragon_knight_skill_card",
+            ),
+        ]
