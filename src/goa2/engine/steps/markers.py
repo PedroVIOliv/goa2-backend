@@ -7,7 +7,7 @@ from typing import Any
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
-from goa2.domain.models import StepType, TargetType, Token, TokenType
+from goa2.domain.models import StepType, TargetType, Token, TokenType, Turret
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
@@ -16,6 +16,8 @@ from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+TURRET_ID = BoardEntityID("trinkets_turret")
 
 
 def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Hex | None, int]:
@@ -154,6 +156,96 @@ class PlaceTokenStep(GameStep):
             )
         )
         return StepResult(is_finished=True, events=events)
+
+
+class PlaceTurretStep(GameStep):
+    type: StepType = StepType.PLACE_TURRET
+    hex_key: str = "target_hex"
+    owner_id: str | None = None
+    owner_id_key: str | None = None
+    output_key: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        dest_val = context.get(self.hex_key)
+        if not dest_val:
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
+        target_tile = state.board.get_tile(dest_hex)
+        old_hex = state.entity_locations.get(TURRET_ID)
+
+        if target_tile and target_tile.is_occupied and target_tile.occupant_id != TURRET_ID:
+            logger.debug("   [TURRET] Cannot place Turret at %s: occupied.", dest_hex)
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        owner_id: str | None = self.owner_id
+        if self.owner_id_key:
+            owner_id = context.get(self.owner_id_key, owner_id)
+        if owner_id is None and state.current_actor_id is not None:
+            owner_id = str(state.current_actor_id)
+
+        turret = state.misc_entities.get(TURRET_ID)
+        if not isinstance(turret, Turret):
+            turret = Turret(id=TURRET_ID, name="Turret", owner_id=owner_id)
+            state.register_entity(turret, "board_entity")
+        else:
+            turret.owner_id = owner_id
+
+        state.place_entity(TURRET_ID, dest_hex)
+
+        if self.output_key:
+            context[self.output_key] = str(TURRET_ID)
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.BOARD_ENTITY_PLACED,
+                    actor_id=str(owner_id) if owner_id else None,
+                    target_id=str(TURRET_ID),
+                    from_hex=_hex_dict(old_hex),
+                    to_hex=_hex_dict(dest_hex),
+                    metadata={"entity_kind": turret.entity_kind, "is_obstacle": turret.is_obstacle},
+                )
+            ],
+        )
+
+
+class RemoveTurretStep(GameStep):
+    type: StepType = StepType.REMOVE_TURRET
+    output_key: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        turret = state.misc_entities.get(TURRET_ID)
+        if not isinstance(turret, Turret):
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        from_hex = state.entity_locations.get(TURRET_ID)
+        if not from_hex:
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        state.remove_entity(TURRET_ID)
+        if self.output_key:
+            context[self.output_key] = str(TURRET_ID)
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.BOARD_ENTITY_REMOVED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(TURRET_ID),
+                    from_hex=_hex_dict(from_hex),
+                    metadata={"entity_kind": "turret"},
+                )
+            ],
+        )
 
 
 class MoveTokenStep(GameStep):

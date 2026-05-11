@@ -201,7 +201,7 @@ class GameState(BaseModel):
         if self.get_entity(entity.id) is not None:
             raise ValueError(f"ID Collision: Entity with ID {entity.id} already exists!")
 
-        if collection_type == "token":
+        if collection_type in {"token", "misc", "board_entity"}:
             self.misc_entities[entity.id] = entity
         elif collection_type == "minion":
             if not hasattr(entity, "team") or entity.team not in self.teams:

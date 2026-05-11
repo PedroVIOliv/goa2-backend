@@ -529,7 +529,8 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   },
   "effects": [ ... ],
   "markers": { ... },
-  "tokens": [ ... ]
+  "tokens": [ ... ],
+  "board_entities": [ ... ]
 }
 ```
 
@@ -547,6 +548,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
+| `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 
 ### Team data
 
@@ -725,6 +727,32 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect.
 
 When a token is removed from the board, any effects anchored to it (via `scope.origin_id`) are automatically removed.
+
+### Board Entities
+
+Some board objects are neither units nor tokens. They appear in `board_entities` and in `entity_locations`.
+
+```json
+{
+  "id": "trinkets_turret",
+  "name": "Turret",
+  "entity_kind": "turret",
+  "owner_id": "hero_trinkets",
+  "is_obstacle": true,
+  "hex": {"q": 1, "r": 0, "s": -1}
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique board entity ID (also appears in `entity_locations` and tile `occupant_id`) |
+| `name` | string | Display name |
+| `entity_kind` | string | Entity kind, currently `"turret"` |
+| `owner_id` | string/null | Hero ID that owns/placed this entity |
+| `is_obstacle` | boolean | Whether this entity blocks occupancy/pathing |
+| `hex` | hex/null | Current position on the board. `null` if the entity exists but is not placed |
+
+The Trinkets Turret is a unique board entity. It is an obstacle, but it is not a unit and not a token.
 
 #### Mine path choice
 
@@ -907,6 +935,7 @@ Events describe what happened during a game action. They are meant for animation
 | `TOKEN_MOVED` | A token moved to a new hex | `target_id`, `from_hex`, `to_hex` |
 | `UNIT_PLACED` | A unit was placed on the board (spawn, summon) | `actor_id`, `to_hex` |
 | `TOKEN_PLACED` | A token was placed on the board | `actor_id`, `target_id`, `to_hex` |
+| `BOARD_ENTITY_PLACED` | A non-unit, non-token board entity was placed or repositioned | `actor_id`, `target_id`, `from_hex`, `to_hex`, `metadata.entity_kind` |
 | `UNIT_PUSHED` | A unit was forcibly moved | `actor_id`, `from_hex`, `to_hex` |
 | `TOKEN_PUSHED` | A token was forcibly moved | `actor_id`, `target_id`, `from_hex`, `to_hex` |
 | `UNITS_SWAPPED` | Two units exchanged positions | `actor_id`, `target_id`, `from_hex`, `to_hex` |
@@ -914,6 +943,7 @@ Events describe what happened during a game action. They are meant for animation
 | `UNIT_DEFEATED` | A unit was defeated | `actor_id` (defeated unit) |
 | `UNIT_REMOVED` | A unit was removed from the board | `actor_id` |
 | `TOKEN_REMOVED` | A token was removed from the board | `target_id`, `from_hex` |
+| `BOARD_ENTITY_REMOVED` | A non-unit, non-token board entity was removed from the board | `actor_id`, `target_id`, `from_hex`, `metadata.entity_kind` |
 | `MINE_TRIGGERED` | A mine token was triggered by hero movement | `actor_id` (current actor), `target_id` (mine ID), `from_hex`, `metadata.token_type`, `metadata.is_blast` |
 | `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details) |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |

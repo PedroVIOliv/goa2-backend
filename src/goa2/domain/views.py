@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
 from goa2.domain.models.enums import GamePhase, StatType
 from goa2.domain.models.unit import Hero, Minion
@@ -52,6 +53,9 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
     # Build tokens view (public info, with facedown hiding)
     tokens_view = _build_tokens_view(state, for_hero_id)
 
+    # Build other public board entities view
+    board_entities_view = _build_board_entities_view(state)
+
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id)
 
@@ -70,6 +74,7 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
         "effects": effects_view,
         "markers": markers_view,
         "tokens": tokens_view,
+        "board_entities": board_entities_view,
     }
 
 
@@ -381,6 +386,27 @@ def _build_tokens_view(state: GameState, for_hero_id: HeroID | None = None) -> l
                 }
             )
     return tokens_view
+
+
+def _build_board_entities_view(state: GameState) -> list[dict[str, Any]]:
+    """Build a view of non-token, non-unit board entities."""
+    entities_view = []
+    for entity_id, entity in state.misc_entities.items():
+        if not isinstance(entity, Turret):
+            continue
+
+        loc = state.entity_locations.get(BoardEntityID(str(entity_id)))
+        entities_view.append(
+            {
+                "id": str(entity.id),
+                "name": entity.name,
+                "entity_kind": entity.entity_kind,
+                "owner_id": entity.owner_id,
+                "is_obstacle": entity.is_obstacle,
+                "hex": ({"q": loc.q, "r": loc.r, "s": loc.s} if loc else None),
+            }
+        )
+    return entities_view
 
 
 def _build_markers_view(state: GameState) -> dict[str, Any]:

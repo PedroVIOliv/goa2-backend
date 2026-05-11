@@ -1,4 +1,4 @@
-from .base import BoardEntity, GameEntity
+from .base import BoardEntity, GameEntity, Turret
 from .card import Card
 from .effect import ActiveEffect, AffectsFilter, DurationType, EffectScope, EffectType, Shape
 from .enums import (
@@ -62,6 +62,7 @@ __all__ = [
     "TeamColor",
     "Token",
     "TokenType",
+    "Turret",
     "Unit",
 ]
 

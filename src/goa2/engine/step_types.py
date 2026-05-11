@@ -133,7 +133,7 @@ else:
 # When adding a new BoardEntity type (e.g. Turret, Dragon), add it here with
 # its own entity_kind Literal tag. Without this, persistence/rollback will break.
 # ---------------------------------------------------------------------------
-from goa2.domain.models.base import Placeholder  # noqa: E402
+from goa2.domain.models.base import Placeholder, Turret  # noqa: E402
 from goa2.domain.models.token import Token  # noqa: E402
 
 
@@ -144,7 +144,9 @@ def _misc_entity_discriminator(v: Any) -> str:
 
 
 AnyMiscEntity = Annotated[
-    Annotated[Token, Tag("token")] | Annotated[Placeholder, Tag("placeholder")],
+    Annotated[Token, Tag("token")]
+    | Annotated[Turret, Tag("turret")]
+    | Annotated[Placeholder, Tag("placeholder")],
     Discriminator(_misc_entity_discriminator),
 ]
 
