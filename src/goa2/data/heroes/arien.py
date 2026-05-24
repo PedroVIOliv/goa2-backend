@@ -25,6 +25,7 @@ def create_arien() -> Hero:
     ultimate = Card(
         id="living_tsunami",
         name="Living Tsunami",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -45,6 +46,7 @@ def create_arien() -> Hero:
         Card(
             id="ebb_and_flow",
             name="Ebb and Flow",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -60,6 +62,7 @@ def create_arien() -> Hero:
         Card(
             id="stranger_tide",
             name="Stranger Tide",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -75,6 +78,7 @@ def create_arien() -> Hero:
         Card(
             id="deluge",
             name="Deluge",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -92,6 +96,7 @@ def create_arien() -> Hero:
         Card(
             id="master_duelist",
             name="Master Duelist",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -105,6 +110,7 @@ def create_arien() -> Hero:
         Card(
             id="violent_torrent",
             name="Violent Torrent",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -118,6 +124,7 @@ def create_arien() -> Hero:
         Card(
             id="tidal_blast",
             name="Tidal Blast",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -136,6 +143,7 @@ def create_arien() -> Hero:
         Card(
             id="arcane_whirlpool",
             name="Arcane Whirlpool",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -151,6 +159,7 @@ def create_arien() -> Hero:
         Card(
             id="magical_current",
             name="Magical Current",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -166,6 +175,7 @@ def create_arien() -> Hero:
         Card(
             id="expert_duelist",
             name="Expert Duelist",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -179,6 +189,7 @@ def create_arien() -> Hero:
         Card(
             id="slippery_ground",
             name="Slippery Ground",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -192,6 +203,7 @@ def create_arien() -> Hero:
         Card(
             id="rogue_wave",
             name="Rogue Wave",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -207,6 +219,7 @@ def create_arien() -> Hero:
         Card(
             id="raging_stream",
             name="Raging Stream",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -223,6 +236,7 @@ def create_arien() -> Hero:
         Card(
             id="spell_break",
             name="Spell Break",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -236,6 +250,7 @@ def create_arien() -> Hero:
         Card(
             id="noble_blade",
             name="Noble Blade",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -248,6 +263,7 @@ def create_arien() -> Hero:
         Card(
             id="aspiring_duelist",
             name="Aspiring Duelist",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,
@@ -260,6 +276,7 @@ def create_arien() -> Hero:
         Card(
             id="dangerous_current",
             name="Dangerous Current",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -272,6 +289,7 @@ def create_arien() -> Hero:
         Card(
             id="liquid_leap",
             name="Liquid Leap",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,

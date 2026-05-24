@@ -23,6 +23,7 @@ def create_min() -> Hero:
     ultimate = Card(
         id="flurry_of_blows",
         name="Flurry of Blows",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_min() -> Hero:
         Card(
             id="cobra_stance",
             name="Cobra Stance",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -56,6 +58,7 @@ def create_min() -> Hero:
         Card(
             id="dragon_stance",
             name="Dragon Stance",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -69,6 +72,7 @@ def create_min() -> Hero:
         Card(
             id="holy_death_grenade",
             name="Holy Death Grenade",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -83,6 +87,7 @@ def create_min() -> Hero:
         Card(
             id="minefield",
             name="Minefield",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -97,6 +102,7 @@ def create_min() -> Hero:
         Card(
             id="perfect_self",
             name="Perfect Self",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=1,
@@ -110,6 +116,7 @@ def create_min() -> Hero:
         Card(
             id="ruse",
             name="Ruse",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=1,
@@ -128,6 +135,7 @@ def create_min() -> Hero:
         Card(
             id="viper_stance",
             name="Viper Stance",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -142,6 +150,7 @@ def create_min() -> Hero:
         Card(
             id="tiger_stance",
             name="Tiger Stance",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -155,6 +164,7 @@ def create_min() -> Hero:
         Card(
             id="death_grenade",
             name="Death Grenade",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=11,
@@ -169,6 +179,7 @@ def create_min() -> Hero:
         Card(
             id="cluster_mine",
             name="Cluster Mine",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=11,
@@ -183,6 +194,7 @@ def create_min() -> Hero:
         Card(
             id="inner_strength",
             name="Inner Strength",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -196,6 +208,7 @@ def create_min() -> Hero:
         Card(
             id="vanish",
             name="Vanish",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -214,6 +227,7 @@ def create_min() -> Hero:
         Card(
             id="fast_as_lightning",
             name="Fast as Lightning",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=13,
@@ -228,6 +242,7 @@ def create_min() -> Hero:
         Card(
             id="smoke_bomb",
             name="Smoke Bomb",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=12,
@@ -241,6 +256,7 @@ def create_min() -> Hero:
         Card(
             id="crane_stance",
             name="Crane Stance",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -253,6 +269,7 @@ def create_min() -> Hero:
         Card(
             id="trip_mine",
             name="Trip Mine",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -266,6 +283,7 @@ def create_min() -> Hero:
         Card(
             id="poof",
             name="Poof!",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=2,

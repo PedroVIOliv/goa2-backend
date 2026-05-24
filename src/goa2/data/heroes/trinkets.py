@@ -23,6 +23,7 @@ def create_trinkets() -> Hero:
     ultimate = Card(
         id="unlimited_firepower",
         name="Unlimited Firepower",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_trinkets() -> Hero:
         Card(
             id="flame_belcher",
             name="Flame Belcher",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -57,6 +59,7 @@ def create_trinkets() -> Hero:
         Card(
             id="supercharged_cannon",
             name="Supercharged Cannon",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -72,6 +75,7 @@ def create_trinkets() -> Hero:
         Card(
             id="deployable_bastion",
             name="Deployable Bastion",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -86,6 +90,7 @@ def create_trinkets() -> Hero:
         Card(
             id="disruptor_grid",
             name="Disruptor Grid",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -100,6 +105,7 @@ def create_trinkets() -> Hero:
         Card(
             id="emergency_protocol",
             name="Emergency Protocol",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -114,6 +120,7 @@ def create_trinkets() -> Hero:
         Card(
             id="perfected_design",
             name="Perfected Design",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -131,6 +138,7 @@ def create_trinkets() -> Hero:
         Card(
             id="steam_discharge",
             name="Steam Discharge",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -146,6 +154,7 @@ def create_trinkets() -> Hero:
         Card(
             id="gatling_gun",
             name="Gatling Gun",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -161,6 +170,7 @@ def create_trinkets() -> Hero:
         Card(
             id="deployable_barrier",
             name="Deployable Barrier",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -175,6 +185,7 @@ def create_trinkets() -> Hero:
         Card(
             id="disruptor_pulse",
             name="Disruptor Pulse",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -189,6 +200,7 @@ def create_trinkets() -> Hero:
         Card(
             id="self_destruct",
             name="Self-Destruct",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -203,6 +215,7 @@ def create_trinkets() -> Hero:
         Card(
             id="updated_design",
             name="Updated Design",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -220,6 +233,7 @@ def create_trinkets() -> Hero:
         Card(
             id="salvage_parts",
             name="Salvage Parts",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=5,
@@ -232,6 +246,7 @@ def create_trinkets() -> Hero:
         Card(
             id="rapid_redeployment",
             name="Rapid Redeployment",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -244,6 +259,7 @@ def create_trinkets() -> Hero:
         Card(
             id="makeshift_minigun",
             name="Makeshift Minigun",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -258,6 +274,7 @@ def create_trinkets() -> Hero:
         Card(
             id="disruptor_jolt",
             name="Disruptor Jolt",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -271,6 +288,7 @@ def create_trinkets() -> Hero:
         Card(
             id="early_prototype",
             name="Early Prototype",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,

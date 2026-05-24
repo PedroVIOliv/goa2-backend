@@ -220,6 +220,7 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
         return {
             "id": card.id,
             "name": card.name,
+            "image_id": card.image_id,
             "tier": card.tier.value,
             "color": card.color.value if card.color else None,
             "primary_action": (card.primary_action.value if card.primary_action else None),

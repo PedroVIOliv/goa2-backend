@@ -23,6 +23,7 @@ def create_ursafar() -> Hero:
     ultimate = Card(
         id="unbound_fury",
         name="Unbound Fury",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_ursafar() -> Hero:
         Card(
             id="tear",
             name="Tear",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -55,6 +57,7 @@ def create_ursafar() -> Hero:
         Card(
             id="feeding_frenzy",
             name="Feeding Frenzy",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -69,6 +72,7 @@ def create_ursafar() -> Hero:
         Card(
             id="eyes_of_flame",
             name="Eyes of Flame",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -82,6 +86,7 @@ def create_ursafar() -> Hero:
         Card(
             id="unstoppable_force",
             name="Unstoppable Force",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -95,6 +100,7 @@ def create_ursafar() -> Hero:
         Card(
             id="evolutionary_response",
             name="Evolutionary Response",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -108,6 +114,7 @@ def create_ursafar() -> Hero:
         Card(
             id="apex_predator",
             name="Apex Predator",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -126,6 +133,7 @@ def create_ursafar() -> Hero:
         Card(
             id="rip",
             name="Rip",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -139,6 +147,7 @@ def create_ursafar() -> Hero:
         Card(
             id="prey_abundance",
             name="Prey Abundance",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -153,6 +162,7 @@ def create_ursafar() -> Hero:
         Card(
             id="cold_ire",
             name="Cold Ire",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -166,6 +176,7 @@ def create_ursafar() -> Hero:
         Card(
             id="rampaging_beast",
             name="Rampaging Beast",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -179,6 +190,7 @@ def create_ursafar() -> Hero:
         Card(
             id="instinctive_reaction",
             name="Instinctive Reaction",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -192,6 +204,7 @@ def create_ursafar() -> Hero:
         Card(
             id="eyes_on_the_prey",
             name="Eyes on the Prey",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -210,6 +223,7 @@ def create_ursafar() -> Hero:
         Card(
             id="claws_that_catch",
             name="Claws That Catch",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -222,6 +236,7 @@ def create_ursafar() -> Hero:
         Card(
             id="angry_roar",
             name="Angry Roar",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=7,
@@ -234,6 +249,7 @@ def create_ursafar() -> Hero:
         Card(
             id="prey_drive",
             name="Prey Drive",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -247,6 +263,7 @@ def create_ursafar() -> Hero:
         Card(
             id="prowling_brute",
             name="Prowling Brute",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,
@@ -259,6 +276,7 @@ def create_ursafar() -> Hero:
         Card(
             id="sniff_out",
             name="Sniff Out",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,

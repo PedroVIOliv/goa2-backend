@@ -11,6 +11,7 @@ def create_knight() -> Hero:
     deck = [
         Card(
             id=CardID("knight_gold_1"),
+            image_id="Gold",
             name="Shield Bash",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -23,6 +24,7 @@ def create_knight() -> Hero:
         ),
         Card(
             id=CardID("knight_gold_2"),
+            image_id="Gold",
             name="March",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -35,6 +37,7 @@ def create_knight() -> Hero:
         ),
         Card(
             id=CardID("knight_silver_1"),
+            image_id="Silver",
             name="Defend",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,

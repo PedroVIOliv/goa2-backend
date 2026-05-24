@@ -23,6 +23,7 @@ def create_garrus() -> Hero:
     ultimate = Card(
         id="battle_fury",
         name="Battle Fury",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_garrus() -> Hero:
         Card(
             id="send_flying",
             name="Send Flying",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -55,6 +57,7 @@ def create_garrus() -> Hero:
         Card(
             id="hunt_down",
             name="Hunt Down",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -68,6 +71,7 @@ def create_garrus() -> Hero:
         Card(
             id="testudo",
             name="Testudo!",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -83,6 +87,7 @@ def create_garrus() -> Hero:
         Card(
             id="terrify",
             name="Terrify",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -98,6 +103,7 @@ def create_garrus() -> Hero:
         Card(
             id="heavy_pilum",
             name="Heavy Pilum",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=4,
@@ -113,6 +119,7 @@ def create_garrus() -> Hero:
         Card(
             id="battle_ready",
             name="Battle Ready",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=4,
@@ -130,6 +137,7 @@ def create_garrus() -> Hero:
         Card(
             id="blunt_force",
             name="Blunt Force",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -143,6 +151,7 @@ def create_garrus() -> Hero:
         Card(
             id="chase",
             name="Chase",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -156,6 +165,7 @@ def create_garrus() -> Hero:
         Card(
             id="form_up",
             name="Form Up!",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -171,6 +181,7 @@ def create_garrus() -> Hero:
         Card(
             id="threaten",
             name="Threaten",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -186,6 +197,7 @@ def create_garrus() -> Hero:
         Card(
             id="light_pilum",
             name="Light Pilum",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -201,6 +213,7 @@ def create_garrus() -> Hero:
         Card(
             id="make_a_stand",
             name="Make a Stand",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -218,6 +231,7 @@ def create_garrus() -> Hero:
         Card(
             id="chilling_howl",
             name="Chilling Howl",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -231,6 +245,7 @@ def create_garrus() -> Hero:
         Card(
             id="angry_strike",
             name="Angry Strike",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -243,6 +258,7 @@ def create_garrus() -> Hero:
         Card(
             id="trace",
             name="Trace",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=7,
@@ -255,6 +271,7 @@ def create_garrus() -> Hero:
         Card(
             id="menace",
             name="Menace",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,
@@ -269,6 +286,7 @@ def create_garrus() -> Hero:
         Card(
             id="hold_ground",
             name="Hold Ground",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=5,

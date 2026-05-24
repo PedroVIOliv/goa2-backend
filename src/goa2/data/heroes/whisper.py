@@ -23,6 +23,7 @@ def create_whisper() -> Hero:
     ultimate = Card(
         id="grim_reaper",
         name="Grim Reaper",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_frenzy",
             name="Blood Frenzy",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -56,6 +58,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_pilgrimage",
             name="Blood Pilgrimage",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -70,6 +73,7 @@ def create_whisper() -> Hero:
         Card(
             id="greater_good",
             name="Greater Good",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -85,6 +89,7 @@ def create_whisper() -> Hero:
         Card(
             id="blooming_nightmare",
             name="Blooming Nightmare",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -99,6 +104,7 @@ def create_whisper() -> Hero:
         Card(
             id="sealed_fate",
             name="Sealed Fate",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -114,6 +120,7 @@ def create_whisper() -> Hero:
         Card(
             id="creeping_shadow",
             name="Creeping Shadow",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -132,6 +139,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_fury",
             name="Blood Fury",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -146,6 +154,7 @@ def create_whisper() -> Hero:
         Card(
             id="sanguine_path",
             name="Sanguine Path",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -160,6 +169,7 @@ def create_whisper() -> Hero:
         Card(
             id="lesser_evil",
             name="Lesser Evil",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -175,6 +185,7 @@ def create_whisper() -> Hero:
         Card(
             id="sprouts_of_panic",
             name="Sprouts of Panic",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -189,6 +200,7 @@ def create_whisper() -> Hero:
         Card(
             id="cruel_twist",
             name="Cruel Twist",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -204,6 +216,7 @@ def create_whisper() -> Hero:
         Card(
             id="shadow_walk",
             name="Shadow Walk",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -222,6 +235,7 @@ def create_whisper() -> Hero:
         Card(
             id="death_seeker",
             name="Death Seeker",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -235,6 +249,7 @@ def create_whisper() -> Hero:
         Card(
             id="swift_justice",
             name="Swift Justice",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -249,6 +264,7 @@ def create_whisper() -> Hero:
         Card(
             id="crimson_trail",
             name="Crimson Trail",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -262,6 +278,7 @@ def create_whisper() -> Hero:
         Card(
             id="seeds_of_fear",
             name="Seeds of Fear",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -275,6 +292,7 @@ def create_whisper() -> Hero:
         Card(
             id="shadow_step",
             name="Shadow Step",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,

@@ -23,6 +23,7 @@ def create_misa() -> Hero:
     ultimate = Card(
         id="power_overwhelming",
         name="Power Overwhelming",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_misa() -> Hero:
         Card(
             id="thunder_shot",
             name="Thunder Shot",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -57,6 +59,7 @@ def create_misa() -> Hero:
         Card(
             id="worthy_opponent",
             name="Worthy Opponent",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -70,6 +73,7 @@ def create_misa() -> Hero:
         Card(
             id="death_from_above",
             name="Death From Above",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -83,6 +87,7 @@ def create_misa() -> Hero:
         Card(
             id="crushing_squall",
             name="Crushing Squall",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -96,6 +101,7 @@ def create_misa() -> Hero:
         Card(
             id="storm_spirit",
             name="Storm Spirit",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -110,6 +116,7 @@ def create_misa() -> Hero:
         Card(
             id="mastery",
             name="Mastery",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -126,6 +133,7 @@ def create_misa() -> Hero:
         Card(
             id="power_shot",
             name="Power Shot",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -141,6 +149,7 @@ def create_misa() -> Hero:
         Card(
             id="matter_of_honor",
             name="Matter of Honor",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -154,6 +163,7 @@ def create_misa() -> Hero:
         Card(
             id="dash_and_slash",
             name="Dash and Slash",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -167,6 +177,7 @@ def create_misa() -> Hero:
         Card(
             id="gust_of_wind",
             name="Gust of Wind",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -180,6 +191,7 @@ def create_misa() -> Hero:
         Card(
             id="living_tornado",
             name="Living Tornado",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -194,6 +206,7 @@ def create_misa() -> Hero:
         Card(
             id="discipline",
             name="Discipline",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -210,6 +223,7 @@ def create_misa() -> Hero:
         Card(
             id="swoop_in",
             name="Swoop In",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=6,
@@ -223,6 +237,7 @@ def create_misa() -> Hero:
         Card(
             id="watch_how_i_soar",
             name="Watch How I Soar",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -237,6 +252,7 @@ def create_misa() -> Hero:
         Card(
             id="challenge_accepted",
             name="Challenge Accepted",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -249,6 +265,7 @@ def create_misa() -> Hero:
         Card(
             id="sudden_breeze",
             name="Sudden Breeze",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -261,6 +278,7 @@ def create_misa() -> Hero:
         Card(
             id="focus",
             name="Focus",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,

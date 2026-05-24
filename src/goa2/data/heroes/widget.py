@@ -23,6 +23,7 @@ def create_widget() -> Hero:
     ultimate = Card(
         id="dragon_knight",
         name="Dragon Knight",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_widget() -> Hero:
         Card(
             id="diversionary_assault",
             name="Diversionary Assault",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -55,6 +57,7 @@ def create_widget() -> Hero:
         Card(
             id="airborne_assault",
             name="Airborne Assault",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -69,6 +72,7 @@ def create_widget() -> Hero:
         Card(
             id="gnaw",
             name="Gnaw",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -84,6 +88,7 @@ def create_widget() -> Hero:
         Card(
             id="scorching_breath",
             name="Scorching Breath",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -99,6 +104,7 @@ def create_widget() -> Hero:
         Card(
             id="carry_away",
             name="Carry Away",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -112,6 +118,7 @@ def create_widget() -> Hero:
         Card(
             id="safe_landing",
             name="Safe Landing",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -130,6 +137,7 @@ def create_widget() -> Hero:
         Card(
             id="diversionary_attack",
             name="Diversionary Attack",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -143,6 +151,7 @@ def create_widget() -> Hero:
         Card(
             id="airborne_attack",
             name="Airborne Attack",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -157,6 +166,7 @@ def create_widget() -> Hero:
         Card(
             id="nibble",
             name="Nibble",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -172,6 +182,7 @@ def create_widget() -> Hero:
         Card(
             id="flaming_breath",
             name="Flaming Breath",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -187,6 +198,7 @@ def create_widget() -> Hero:
         Card(
             id="drag_off",
             name="Drag Off",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -200,6 +212,7 @@ def create_widget() -> Hero:
         Card(
             id="take_off",
             name="Take-Off",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -218,6 +231,7 @@ def create_widget() -> Hero:
         Card(
             id="diversionary_strike",
             name="Diversionary Strike",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -230,6 +244,7 @@ def create_widget() -> Hero:
         Card(
             id="fight_as_one",
             name="Fight As One",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -242,6 +257,7 @@ def create_widget() -> Hero:
         Card(
             id="fiery_breath",
             name="Fiery Breath",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,
@@ -256,6 +272,7 @@ def create_widget() -> Hero:
         Card(
             id="dragon_bond",
             name="Dragon Bond",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=6,
@@ -269,6 +286,7 @@ def create_widget() -> Hero:
         Card(
             id="all_aboard",
             name="All Aboard",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,

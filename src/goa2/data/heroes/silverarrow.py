@@ -23,6 +23,7 @@ def create_silverarrow() -> Hero:
     ultimate = Card(
         id="wild_hunt",
         name="Wild Hunt",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="clear_shot",
             name="Clear Shot",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -57,6 +59,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="rain_of_arrows",
             name="Rain of Arrows",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -72,6 +75,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="grappling_branches",
             name="Grappling Branches",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -86,6 +90,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="treetop_sentinel",
             name="Treetop Sentinel",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -100,6 +105,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="lead_astray",
             name="Lead Astray",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -113,6 +119,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="natures_blessing",
             name="Nature's Blessing",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -130,6 +137,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="opportunity_shot",
             name="Opportunity Shot",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -145,6 +153,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="long_shot",
             name="Long Shot",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -160,6 +169,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="warning_shot",
             name="Warning Shot",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -174,6 +184,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="entangling_vines",
             name="Entangling Vines",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -188,6 +199,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="divert_attention",
             name="Divert Attention",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -201,6 +213,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="fae_healing",
             name="Fae Healing",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -218,6 +231,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="shoot_and_scoot",
             name="Shoot and Scoot",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -232,6 +246,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="trailblazer",
             name="Trailblazer",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -245,6 +260,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="snap_shot",
             name="Snap Shot",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -259,6 +275,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="grasping_roots",
             name="Grasping Roots",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -272,6 +289,7 @@ def create_silverarrow() -> Hero:
         Card(
             id="disorient",
             name="Disorient",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,

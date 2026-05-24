@@ -583,6 +583,31 @@ Each team contains:
 }
 ```
 
+### Card data
+
+Each card object in the view contains:
+
+| Field | Type | Facedown | Description |
+|-------|------|----------|-------------|
+| `id` | string | hidden | Unique card ID |
+| `name` | string | hidden | Card display name |
+| `image_id` | string | hidden | Frontend image identifier (e.g. `"BlueIIA"`, `"Gold"`, `"Ultimate"`). Maps to the card image asset filename |
+| `tier` | string | shown | `"I"`, `"II"`, `"III"`, `"IV"`, or `"UNTIERED"` |
+| `color` | string\|null | shown | `"RED"`, `"BLUE"`, `"GREEN"`, `"GOLD"`, `"SILVER"`, `"PURPLE"`, or `null` |
+| `primary_action` | string\|null | shown | Primary action type: `"ATTACK"`, `"SKILL"`, `"MOVEMENT"`, `"DEFENSE"`, `"DEFENSE_SKILL"`, or `null` |
+| `primary_action_value` | int\|null | shown | Value for the primary action (has value for ATTACK/MOVEMENT; null or value for SKILL/DEFENSE/DEFENSE_SKILL depending on card) |
+| `secondary_actions` | object | shown | Map of action types to values (e.g. `{"DEFENSE": 3, "MOVEMENT": 2}`). Always includes `HOLD` |
+| `effect_id` | string\|null | shown | ID for looking up card effect logic |
+| `effect_text` | string | shown | Human-readable card text |
+| `initiative` | int | shown | Initiative value for turn ordering (0 when facedown) |
+| `state` | string | shown | Current card state: `"HAND"`, `"DECK"`, `"DISCARD"`, `"UNRESOLVED"`, `"RESOLVED"`, `"ITEM"`, `"PASSIVE"`, or `"RETIRED"` |
+| `is_facedown` | bool | shown | Whether this card is hidden from opponents |
+| `is_ranged` | bool | hidden | Whether the card is ranged |
+| `range_value` | int\|null | hidden | Max distance when ranged |
+| `radius_value` | int\|null | hidden | Area of effect radius |
+| `item` | string\|null | shown | When equipped as item, which stat it boosts: `"ATTACK"`, `"DEFENSE"`, `"MOVEMENT"`, `"INITIATIVE"`, `"RANGE"`, `"RADIUS"` |
+| `is_active` | bool | shown | Whether the card's active effect is available (tapped/un-tapped) |
+
 **Important:** `played_cards` is a fixed-position array where:
 - Turn 1 card → `played_cards[0]`
 - Turn 2 card → `played_cards[1]`
@@ -608,7 +633,7 @@ The view is player-scoped — what you see depends on your token:
 
 - **Your hero's cards:** Full details visible for all cards (hand, deck, played, current turn card, ultimate)
 - **Other heroes' FACEUP cards:** Full details visible (id, name, tier, action, is_ranged, range_value, radius_value, etc.)
-- **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `is_ranged`, `range_value`, `radius_value`. Shows `tier`, `color`, `primary_action`, `primary_action_value`, `secondary_actions`, `effect_id`, `effect_text`, `initiative`, `state`, `is_facedown`, `item`, `is_active`
+- **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `image_id`, `is_ranged`, `range_value`, `radius_value`. Shows `tier`, `color`, `primary_action`, `primary_action_value`, `secondary_actions`, `effect_id`, `effect_text`, `initiative`, `state`, `is_facedown`, `item`, `is_active`
 - **Other heroes' hand:** Empty array `[]` (no cards visible at all in hand)
 - **Deck of other heroes:** Shows `{"count": N}` instead of card details
 - **Discard piles:** Always fully visible (public information)

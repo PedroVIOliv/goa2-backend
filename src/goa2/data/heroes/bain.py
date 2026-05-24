@@ -23,6 +23,7 @@ def create_bain() -> Hero:
     ultimate = Card(
         id="a_complicated_profession",
         name="A Complicated Profession",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_bain() -> Hero:
         Card(
             id="hunter_seeker",
             name="Hunter-Seeker",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -57,6 +59,7 @@ def create_bain() -> Hero:
         Card(
             id="arbalest",
             name="Arbalest",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -72,6 +75,7 @@ def create_bain() -> Hero:
         Card(
             id="high_ground",
             name="High Ground",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -85,6 +89,7 @@ def create_bain() -> Hero:
         Card(
             id="perfect_getaway",
             name="Perfect Getaway",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -98,6 +103,7 @@ def create_bain() -> Hero:
         Card(
             id="another_one",
             name="Another One!",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -112,6 +118,7 @@ def create_bain() -> Hero:
         Card(
             id="were_not_done_yet",
             name="We're Not Done Yet!",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -129,6 +136,7 @@ def create_bain() -> Hero:
         Card(
             id="hand_crossbow",
             name="Hand Crossbow",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -144,6 +152,7 @@ def create_bain() -> Hero:
         Card(
             id="heavy_crossbow",
             name="Heavy Crossbow",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -159,6 +168,7 @@ def create_bain() -> Hero:
         Card(
             id="vantage_point",
             name="Vantage Point",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -172,6 +182,7 @@ def create_bain() -> Hero:
         Card(
             id="narrow_escape",
             name="Narrow Escape",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -185,6 +196,7 @@ def create_bain() -> Hero:
         Card(
             id="dead_mans_hand",
             name="Dead Man's Hand",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -199,6 +211,7 @@ def create_bain() -> Hero:
         Card(
             id="drinking_buddies",
             name="Drinking Buddies",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -216,6 +229,7 @@ def create_bain() -> Hero:
         Card(
             id="get_over_here",
             name="Get Over Here!",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -230,6 +244,7 @@ def create_bain() -> Hero:
         Card(
             id="dead_or_alive",
             name="Dead or Alive",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -243,6 +258,7 @@ def create_bain() -> Hero:
         Card(
             id="light_crossbow",
             name="Light Crossbow",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -257,6 +273,7 @@ def create_bain() -> Hero:
         Card(
             id="close_call",
             name="Close Call",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,
@@ -269,6 +286,7 @@ def create_bain() -> Hero:
         Card(
             id="a_game_of_chance",
             name="A Game of Chance",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,

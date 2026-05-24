@@ -66,6 +66,11 @@ class Card(GameEntity):
     def is_active(self, value: bool) -> None:
         self.is_active_base = value
 
+    image_id: str = Field(
+        default="",
+        description="Frontend image identifier (e.g. 'BlueIIA', 'Gold', 'Ultimate')",
+    )
+
     metadata: dict[str, Any] | None = None
 
     def __init__(self, **data):

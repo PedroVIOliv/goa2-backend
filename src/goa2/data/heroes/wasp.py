@@ -13,6 +13,7 @@ def create_wasp() -> Hero:
         Card(
             id="electrocute",
             name="Electrocute",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -27,6 +28,7 @@ def create_wasp() -> Hero:
         Card(
             id="mass_telekinesis",
             name="Mass Telekinesis",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -42,6 +44,7 @@ def create_wasp() -> Hero:
         Card(
             id="charged_boomerang",
             name="Charged Boomerang",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -57,6 +60,7 @@ def create_wasp() -> Hero:
         Card(
             id="reflect_projectiles",
             name="Reflect Projectiles",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -72,6 +76,7 @@ def create_wasp() -> Hero:
         Card(
             id="center_of_mass",
             name="Center of Mass",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -86,6 +91,7 @@ def create_wasp() -> Hero:
         Card(
             id="kinetic_blast",
             name="Kinetic Blast",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -99,6 +105,7 @@ def create_wasp() -> Hero:
         Card(
             id="thunder_boomerang",
             name="Thunder Boomerang",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -114,6 +121,7 @@ def create_wasp() -> Hero:
         Card(
             id="electroblast",
             name="Electroblast",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -128,6 +136,7 @@ def create_wasp() -> Hero:
         Card(
             id="control_gravity",
             name="Control Gravity",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -142,6 +151,7 @@ def create_wasp() -> Hero:
         Card(
             id="kinetic_repulse",
             name="Kinetic Repulse",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -155,6 +165,7 @@ def create_wasp() -> Hero:
         Card(
             id="telekinesis",
             name="Telekinesis",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -170,6 +181,7 @@ def create_wasp() -> Hero:
         Card(
             id="deflect_projectiles",
             name="Deflect Projectiles",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -185,6 +197,7 @@ def create_wasp() -> Hero:
         Card(
             id="stop_projectiles",
             name="Stop Projectiles",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,
@@ -199,6 +212,7 @@ def create_wasp() -> Hero:
         Card(
             id="magnetic_dagger",
             name="Magnetic Dagger",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -212,6 +226,7 @@ def create_wasp() -> Hero:
         Card(
             id="static_barrier",
             name="Static Barrier",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=13,
@@ -225,6 +240,7 @@ def create_wasp() -> Hero:
         Card(
             id="lift_up",
             name="Lift Up",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -238,6 +254,7 @@ def create_wasp() -> Hero:
         Card(
             id="shock",
             name="Shock",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -253,6 +270,7 @@ def create_wasp() -> Hero:
     ultimate = Card(
         id="high_voltage",
         name="High Voltage",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,

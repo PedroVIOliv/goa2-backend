@@ -23,6 +23,7 @@ def create_dodger() -> Hero:
     ultimate = Card(
         id="tide_of_darkness",
         name="Tide of Darkness",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_dodger() -> Hero:
         Card(
             id="aegis_of_doom",
             name="Aegis of Doom",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -56,6 +58,7 @@ def create_dodger() -> Hero:
         Card(
             id="enfeeblement",
             name="Enfeeblement",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -70,6 +73,7 @@ def create_dodger() -> Hero:
         Card(
             id="middlefinger_of_death",
             name="Middlefinger of Death",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -85,6 +89,7 @@ def create_dodger() -> Hero:
         Card(
             id="blazing_skull",
             name="Blazing Skull",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -100,6 +105,7 @@ def create_dodger() -> Hero:
         Card(
             id="necromastery",
             name="Necromastery",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -114,6 +120,7 @@ def create_dodger() -> Hero:
         Card(
             id="darkest_ritual",
             name="Darkest Ritual",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=2,
@@ -131,6 +138,7 @@ def create_dodger() -> Hero:
         Card(
             id="vampiric_shield",
             name="Vampiric Shield",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -145,6 +153,7 @@ def create_dodger() -> Hero:
         Card(
             id="weakness",
             name="Weakness",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -159,6 +168,7 @@ def create_dodger() -> Hero:
         Card(
             id="finger_of_death",
             name="Finger of Death",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -174,6 +184,7 @@ def create_dodger() -> Hero:
         Card(
             id="burning_skull",
             name="Burning Skull",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -189,6 +200,7 @@ def create_dodger() -> Hero:
         Card(
             id="necromancy",
             name="Necromancy",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -202,6 +214,7 @@ def create_dodger() -> Hero:
         Card(
             id="darker_ritual",
             name="Darker Ritual",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -219,6 +232,7 @@ def create_dodger() -> Hero:
         Card(
             id="death_trap",
             name="Death Trap",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=7,
@@ -232,6 +246,7 @@ def create_dodger() -> Hero:
         Card(
             id="dread_razor",
             name="Dread Razor",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -246,6 +261,7 @@ def create_dodger() -> Hero:
         Card(
             id="shield_of_decay",
             name="Shield of Decay",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,
@@ -259,6 +275,7 @@ def create_dodger() -> Hero:
         Card(
             id="littlefinger_of_death",
             name="Littlefinger of Death",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -273,6 +290,7 @@ def create_dodger() -> Hero:
         Card(
             id="dark_ritual",
             name="Dark Ritual",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=3,

@@ -21,6 +21,7 @@ def create_rogue() -> Hero:
         # 1. Gold (Untiered) - Init 8
         Card(
             id=CardID("rogue_gold"),
+            image_id="Gold",
             name="Shadow Step",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -34,6 +35,7 @@ def create_rogue() -> Hero:
         # 2. Silver (Untiered) - Init 7
         Card(
             id=CardID("rogue_silver"),
+            image_id="Silver",
             name="Smoke Bomb",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
@@ -47,6 +49,7 @@ def create_rogue() -> Hero:
         # 3. Red (Tier I) - Init 6
         Card(
             id=CardID("rogue_red_1"),
+            image_id="RedIA",
             name="Crimson Strike",
             tier=CardTier.I,
             color=CardColor.RED,
@@ -60,6 +63,7 @@ def create_rogue() -> Hero:
         # 4. Blue (Tier I) - Init 5
         Card(
             id=CardID("rogue_blue_1"),
+            image_id="BlueIA",
             name="Azure Dash",
             tier=CardTier.I,
             color=CardColor.BLUE,
@@ -73,6 +77,7 @@ def create_rogue() -> Hero:
         # 5. Green (Tier I) - Init 4
         Card(
             id=CardID("rogue_green_1"),
+            image_id="GreenIA",
             name="Emerald Cloak",
             tier=CardTier.I,
             color=CardColor.GREEN,

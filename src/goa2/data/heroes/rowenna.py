@@ -23,6 +23,7 @@ def create_rowenna() -> Hero:
     ultimate = Card(
         id="fabled_lance",
         name="Fabled Lance",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -44,6 +45,7 @@ def create_rowenna() -> Hero:
         Card(
             id="paragon_of_valor",
             name="Paragon of Valor",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -58,6 +60,7 @@ def create_rowenna() -> Hero:
         Card(
             id="paragon_of_grace",
             name="Paragon of Grace",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -72,6 +75,7 @@ def create_rowenna() -> Hero:
         Card(
             id="opening_volley",
             name="Opening Volley",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -86,6 +90,7 @@ def create_rowenna() -> Hero:
         Card(
             id="grand_melee",
             name="Grand Melee",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -100,6 +105,7 @@ def create_rowenna() -> Hero:
         Card(
             id="glorious_triumph",
             name="Glorious Triumph",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -113,6 +119,7 @@ def create_rowenna() -> Hero:
         Card(
             id="defend_the_innocent",
             name="Defend the Innocent",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -131,6 +138,7 @@ def create_rowenna() -> Hero:
         Card(
             id="feat_of_bravery",
             name="Feat of Bravery",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -145,6 +153,7 @@ def create_rowenna() -> Hero:
         Card(
             id="fair_share",
             name="Fair Share",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -159,6 +168,7 @@ def create_rowenna() -> Hero:
         Card(
             id="opening_shots",
             name="Opening Shots",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -173,6 +183,7 @@ def create_rowenna() -> Hero:
         Card(
             id="melee",
             name="Melee",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -187,6 +198,7 @@ def create_rowenna() -> Hero:
         Card(
             id="protect_the_weak",
             name="Protect the Weak",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -202,6 +214,7 @@ def create_rowenna() -> Hero:
         Card(
             id="accept_surrender",
             name="Accept Surrender",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -218,6 +231,7 @@ def create_rowenna() -> Hero:
         Card(
             id="throw_the_gauntlet",
             name="Throw the Gauntlet",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=5,
@@ -232,6 +246,7 @@ def create_rowenna() -> Hero:
         Card(
             id="code_of_chivalry",
             name="Code of Chivalry",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -244,6 +259,7 @@ def create_rowenna() -> Hero:
         Card(
             id="token_of_gratitude",
             name="Token of Gratitude",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
@@ -257,6 +273,7 @@ def create_rowenna() -> Hero:
         Card(
             id="close_quarters",
             name="Close Quarters",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,
@@ -270,6 +287,7 @@ def create_rowenna() -> Hero:
         Card(
             id="stand_guard",
             name="Stand Guard",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,

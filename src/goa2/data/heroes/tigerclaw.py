@@ -23,6 +23,7 @@ def create_tigerclaw() -> Hero:
     ultimate = Card(
         id="cloak_and_daggers",
         name="Cloak and Daggers",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="poisoned_dart",
             name="Poisoned Dart",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=1,
@@ -57,6 +59,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="master_thief",
             name="Master Thief",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=1,
@@ -70,6 +73,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="riposte",
             name="Riposte",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -83,6 +87,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="evade",
             name="Evade",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=11,
@@ -96,6 +101,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="backstab_with_a_ballista",
             name="Backstab with a Ballista",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -111,6 +117,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="leaping_strike",
             name="Leaping Strike",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -127,6 +134,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="poisoned_dagger",
             name="Poisoned Dagger",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -142,6 +150,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="pick_pocket",
             name="Pick Pocket",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=2,
@@ -155,6 +164,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="sidestep",
             name="Sidestep",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=11,
@@ -168,6 +178,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="parry",
             name="Parry",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=11,
@@ -181,6 +192,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="combat_reflexes",
             name="Combat Reflexes",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -194,6 +206,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="backstab",
             name="Backstab",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -210,6 +223,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="blend_into_shadows",
             name="Blend Into Shadows",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=6,
@@ -223,6 +237,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="blink_strike",
             name="Blink Strike",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=13,
@@ -235,6 +250,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="hit_and_run",
             name="Hit and Run",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=9,
@@ -247,6 +263,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="light_fingered",
             name="Light-Fingered",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=2,
@@ -259,6 +276,7 @@ def create_tigerclaw() -> Hero:
         Card(
             id="dodge",
             name="Dodge",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=10,

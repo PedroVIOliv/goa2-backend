@@ -23,6 +23,7 @@ def create_brogan() -> Hero:
     ultimate = Card(
         id="one_man_army",
         name="One Man Army",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_brogan() -> Hero:
         Card(
             id="throwing_spear",
             name="Throwing Spear",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -57,6 +59,7 @@ def create_brogan() -> Hero:
         Card(
             id="furious_charge",
             name="Furious Charge",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -70,6 +73,7 @@ def create_brogan() -> Hero:
         Card(
             id="master_skald",
             name="Master Skald",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=5,
@@ -85,6 +89,7 @@ def create_brogan() -> Hero:
         Card(
             id="fortify",
             name="Fortify",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=5,
@@ -99,6 +104,7 @@ def create_brogan() -> Hero:
         Card(
             id="counterattack",
             name="Counterattack",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=9,
@@ -112,6 +118,7 @@ def create_brogan() -> Hero:
         Card(
             id="savage_kick",
             name="Savage Kick",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=9,
@@ -128,6 +135,7 @@ def create_brogan() -> Hero:
         Card(
             id="throwing_axe",
             name="Throwing Axe",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=7,
@@ -143,6 +151,7 @@ def create_brogan() -> Hero:
         Card(
             id="bullrush",
             name="Bullrush",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=7,
@@ -156,6 +165,7 @@ def create_brogan() -> Hero:
         Card(
             id="war_drummer",
             name="War Drummer",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=5,
@@ -171,6 +181,7 @@ def create_brogan() -> Hero:
         Card(
             id="bolster",
             name="Bolster",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=5,
@@ -185,6 +196,7 @@ def create_brogan() -> Hero:
         Card(
             id="shield_bash",
             name="Shield Bash",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=9,
@@ -198,6 +210,7 @@ def create_brogan() -> Hero:
         Card(
             id="mighty_punch",
             name="Mighty Punch",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=9,
@@ -214,6 +227,7 @@ def create_brogan() -> Hero:
         Card(
             id="bulwark",
             name="Bulwark",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=12,
@@ -227,6 +241,7 @@ def create_brogan() -> Hero:
         Card(
             id="onslaught",
             name="Onslaught",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -239,6 +254,7 @@ def create_brogan() -> Hero:
         Card(
             id="shield",
             name="Shield",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=6,
@@ -252,6 +268,7 @@ def create_brogan() -> Hero:
         Card(
             id="brutal_jab",
             name="Brutal Jab",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=8,
@@ -264,6 +281,7 @@ def create_brogan() -> Hero:
         Card(
             id="mad_dash",
             name="Mad Dash",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=7,

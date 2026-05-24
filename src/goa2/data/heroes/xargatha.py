@@ -16,6 +16,7 @@ def create_xargatha() -> Hero:
     ultimate = Card(
         id="metamorphosis",
         name="Metamorphosis",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -35,6 +36,7 @@ def create_xargatha() -> Hero:
         Card(
             id="dominate",
             name="Dominate",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=4,
@@ -49,6 +51,7 @@ def create_xargatha() -> Hero:
         Card(
             id="final_embrace",
             name="Final Embrace",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=4,
@@ -62,6 +65,7 @@ def create_xargatha() -> Hero:
         Card(
             id="devoted_followers",
             name="Devoted Followers",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -75,6 +79,7 @@ def create_xargatha() -> Hero:
         Card(
             id="turn_into_statues",
             name="Turn into Statues",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -89,6 +94,7 @@ def create_xargatha() -> Hero:
         Card(
             id="lethal_spin",
             name="Lethal Spin",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -102,6 +108,7 @@ def create_xargatha() -> Hero:
         Card(
             id="rapid_thrusts",
             name="Rapid Thrusts",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -120,6 +127,7 @@ def create_xargatha() -> Hero:
         Card(
             id="sirens_call",
             name="Siren's Call",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=3,
@@ -134,6 +142,7 @@ def create_xargatha() -> Hero:
         Card(
             id="cleave",
             name="Cleave",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=11,
@@ -146,6 +155,7 @@ def create_xargatha() -> Hero:
         Card(
             id="charm",
             name="Charm",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=5,
@@ -159,6 +169,7 @@ def create_xargatha() -> Hero:
         Card(
             id="stone_gaze",
             name="Stone Gaze",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,
@@ -172,6 +183,7 @@ def create_xargatha() -> Hero:
         Card(
             id="threatening_slash",
             name="Threatening Slash",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=7,
@@ -187,6 +199,7 @@ def create_xargatha() -> Hero:
         Card(
             id="long_thrust",
             name="Long Thrust",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -202,6 +215,7 @@ def create_xargatha() -> Hero:
         Card(
             id="deadly_swipe",
             name="Deadly Swipe",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -215,6 +229,7 @@ def create_xargatha() -> Hero:
         Card(
             id="fresh_converts",
             name="Fresh Converts",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -228,6 +243,7 @@ def create_xargatha() -> Hero:
         Card(
             id="petrifying_stare",
             name="Petrifying Stare",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -242,6 +258,7 @@ def create_xargatha() -> Hero:
         Card(
             id="constrict",
             name="Constrict",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,
@@ -255,6 +272,7 @@ def create_xargatha() -> Hero:
         Card(
             id="control",
             name="Control",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=4,

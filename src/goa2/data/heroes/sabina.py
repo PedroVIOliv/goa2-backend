@@ -23,6 +23,7 @@ def create_sabina() -> Hero:
     ultimate = Card(
         id="big_sodding_gun",
         name="Big Sodding Gun",
+        image_id="Ultimate",
         tier=CardTier.IV,
         color=CardColor.PURPLE,
         initiative=0,
@@ -42,6 +43,7 @@ def create_sabina() -> Hero:
         Card(
             id="covering_fire",
             name="Covering Fire",
+            image_id="GreenIIIB",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -56,6 +58,7 @@ def create_sabina() -> Hero:
         Card(
             id="path_to_victory",
             name="Path to Victory",
+            image_id="GreenIIIA",
             tier=CardTier.III,
             color=CardColor.GREEN,
             initiative=3,
@@ -70,6 +73,7 @@ def create_sabina() -> Hero:
         Card(
             id="dead_shot",
             name="Dead Shot",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -85,6 +89,7 @@ def create_sabina() -> Hero:
         Card(
             id="unwavering_resolve",
             name="Unwavering Resolve",
+            image_id="BlueIIIB",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -99,6 +104,7 @@ def create_sabina() -> Hero:
         Card(
             id="ready_and_waiting",
             name="Ready and Waiting",
+            image_id="BlueIIIA",
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -113,6 +119,7 @@ def create_sabina() -> Hero:
         Card(
             id="bullet_hell",
             name="Bullet Hell",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -131,6 +138,7 @@ def create_sabina() -> Hero:
         Card(
             id="close_support",
             name="Close Support",
+            image_id="GreenIIB",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -145,6 +153,7 @@ def create_sabina() -> Hero:
         Card(
             id="shootout",
             name="Shootout",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -160,6 +169,7 @@ def create_sabina() -> Hero:
         Card(
             id="gunslinger",
             name="Gunslinger",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -175,6 +185,7 @@ def create_sabina() -> Hero:
         Card(
             id="marching_orders",
             name="Marching Orders",
+            image_id="GreenIIA",
             tier=CardTier.II,
             color=CardColor.GREEN,
             initiative=3,
@@ -189,6 +200,7 @@ def create_sabina() -> Hero:
         Card(
             id="steady_advance",
             name="Steady Advance",
+            image_id="BlueIIB",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -203,6 +215,7 @@ def create_sabina() -> Hero:
         Card(
             id="roger_roger",
             name="Roger Roger",
+            image_id="BlueIIA",
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=10,
@@ -220,6 +233,7 @@ def create_sabina() -> Hero:
         Card(
             id="point_blank_shot",
             name="Point Blank Shot",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
             initiative=12,
@@ -234,6 +248,7 @@ def create_sabina() -> Hero:
         Card(
             id="back_to_back",
             name="Back to Back",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
             color=CardColor.SILVER,
             initiative=8,
@@ -247,6 +262,7 @@ def create_sabina() -> Hero:
         Card(
             id="troop_movement",
             name="Troop Movement",
+            image_id="GreenIA",
             tier=CardTier.I,
             color=CardColor.GREEN,
             initiative=4,
@@ -260,6 +276,7 @@ def create_sabina() -> Hero:
         Card(
             id="listen_up",
             name="Listen Up",
+            image_id="BlueIA",
             tier=CardTier.I,
             color=CardColor.BLUE,
             initiative=9,
@@ -273,6 +290,7 @@ def create_sabina() -> Hero:
         Card(
             id="quickdraw",
             name="Quickdraw",
+            image_id="RedIA",
             tier=CardTier.I,
             color=CardColor.RED,
             initiative=8,
