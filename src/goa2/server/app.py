@@ -83,14 +83,18 @@ def create_app() -> FastAPI:
     # CORS
     allowed_origins = os.environ.get("GOA2_CORS_ORIGINS", "").split(",")
     allowed_origins = [o.strip() for o in allowed_origins if o.strip()]
-    if allowed_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=allowed_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    allowed_origin_regex = os.environ.get("GOA2_CORS_ORIGIN_REGEX", "").strip()
+    if allowed_origins or allowed_origin_regex:
+        cors_kwargs: dict = {
+            "allow_credentials": True,
+            "allow_methods": ["*"],
+            "allow_headers": ["*"],
+        }
+        if allowed_origins:
+            cors_kwargs["allow_origins"] = allowed_origins
+        if allowed_origin_regex:
+            cors_kwargs["allow_origin_regex"] = allowed_origin_regex
+        app.add_middleware(CORSMiddleware, **cors_kwargs)
 
     # Exception handlers
     @app.exception_handler(GameNotFoundError)
