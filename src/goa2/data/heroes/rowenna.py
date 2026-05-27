@@ -45,7 +45,7 @@ def create_rowenna() -> Hero:
         Card(
             id="paragon_of_valor",
             name="Paragon of Valor",
-            image_id="RedIIIA",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -60,7 +60,7 @@ def create_rowenna() -> Hero:
         Card(
             id="paragon_of_grace",
             name="Paragon of Grace",
-            image_id="RedIIIB",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=9,
@@ -138,7 +138,7 @@ def create_rowenna() -> Hero:
         Card(
             id="feat_of_bravery",
             name="Feat of Bravery",
-            image_id="RedIIA",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,
@@ -153,7 +153,7 @@ def create_rowenna() -> Hero:
         Card(
             id="fair_share",
             name="Fair Share",
-            image_id="RedIIB",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=8,

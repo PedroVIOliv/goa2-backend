@@ -43,7 +43,7 @@ def create_mortimer() -> Hero:
         Card(
             id="braaaaaaaaains",
             name="Braaaaaaaaains...!",
-            image_id="RedIIIA",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -58,7 +58,7 @@ def create_mortimer() -> Hero:
         Card(
             id="racing_dead",
             name="Racing Dead",
-            image_id="RedIIIB",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=8,
@@ -140,7 +140,7 @@ def create_mortimer() -> Hero:
         Card(
             id="braaains",
             name="Braaains...!",
-            image_id="RedIIA",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=7,
@@ -155,7 +155,7 @@ def create_mortimer() -> Hero:
         Card(
             id="walking_dead",
             name="Walking Dead",
-            image_id="RedIIB",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=7,

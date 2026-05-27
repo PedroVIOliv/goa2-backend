@@ -43,7 +43,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_frenzy",
             name="Blood Frenzy",
-            image_id="RedIIIA",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -58,7 +58,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_pilgrimage",
             name="Blood Pilgrimage",
-            image_id="RedIIIB",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -139,7 +139,7 @@ def create_whisper() -> Hero:
         Card(
             id="blood_fury",
             name="Blood Fury",
-            image_id="RedIIA",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -154,7 +154,7 @@ def create_whisper() -> Hero:
         Card(
             id="sanguine_path",
             name="Sanguine Path",
-            image_id="RedIIB",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,

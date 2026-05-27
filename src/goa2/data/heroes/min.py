@@ -43,7 +43,7 @@ def create_min() -> Hero:
         Card(
             id="cobra_stance",
             name="Cobra Stance",
-            image_id="RedIIIA",
+            image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -58,7 +58,7 @@ def create_min() -> Hero:
         Card(
             id="dragon_stance",
             name="Dragon Stance",
-            image_id="RedIIIB",
+            image_id="RedIIIA",
             tier=CardTier.III,
             color=CardColor.RED,
             initiative=10,
@@ -135,7 +135,7 @@ def create_min() -> Hero:
         Card(
             id="viper_stance",
             name="Viper Stance",
-            image_id="RedIIA",
+            image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
@@ -150,7 +150,7 @@ def create_min() -> Hero:
         Card(
             id="tiger_stance",
             name="Tiger Stance",
-            image_id="RedIIB",
+            image_id="RedIIA",
             tier=CardTier.II,
             color=CardColor.RED,
             initiative=9,
