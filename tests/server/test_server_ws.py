@@ -340,8 +340,10 @@ def test_ws_cheats_gold_broadcasts_state(client):
         client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws_a,
         client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws_w,
     ):
-        ws_a.receive_json()  # initial Arien
+        initial_a = ws_a.receive_json()  # initial Arien
         ws_w.receive_json()  # initial Wasp
+        # Initial connect state carries no events (nothing to animate yet).
+        assert "events" not in initial_a
 
         # Arien gives gold
         ws_a.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": 5})
@@ -357,6 +359,11 @@ def test_ws_cheats_gold_broadcasts_state(client):
 
         msg_w = ws_w.receive_json()
         assert msg_w["type"] == "STATE_UPDATE"
+
+        # The broadcast carries the action's events so the non-acting player
+        # (Wasp) can animate too, not just the actor.
+        assert msg_w["events"][0]["event_type"] == "GOLD_GAINED"
+        assert msg_a2["events"][0]["event_type"] == "GOLD_GAINED"
 
         # Verify gold was updated in both views
         arien_gold = None

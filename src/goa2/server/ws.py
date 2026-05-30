@@ -50,12 +50,26 @@ async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
         return False
 
 
-async def broadcast(game: ManagedGame, registry: GameRegistry) -> None:
-    """Send player-scoped state updates to all connected websockets."""
+async def broadcast(
+    game: ManagedGame,
+    registry: GameRegistry,
+    events: list[dict[str, Any]] | None = None,
+) -> None:
+    """Send player-scoped state updates to all connected websockets.
+
+    ``events`` is the public event list from the mutation that triggered this
+    broadcast. When provided it rides along on every recipient's STATE_UPDATE so
+    that non-acting players and spectators can drive animations too — not just
+    the acting player who received the ACTION_RESULT. It is the same list that
+    was just computed for the reply, so it never goes stale. Connect/GET_VIEW
+    updates pass nothing and stay event-free.
+    """
     dead_tokens: list[str] = []
     for token, ws in game.ws_connections.items():
         hero_id = game.player_tokens.get(token)
         msg = _build_state_update(game, hero_id)
+        if events:
+            msg["events"] = events
         if not await _send_json(ws, msg):
             dead_tokens.append(token)
     for t in dead_tokens:
@@ -310,7 +324,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 # Send reply to sender
                 await websocket.send_json(reply)
 
-                # Broadcast state to others after mutations
+                # Broadcast state to others after mutations. Forward the same
+                # events we just sent the actor so every client can animate.
                 if msg_type in (
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
@@ -318,7 +333,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     "ROLLBACK",
                     "CHEATS_GOLD",
                 ):
-                    await broadcast(game, registry)
+                    await broadcast(game, registry, events=reply.get("events"))
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError) as exc:
                 if game.game_logger:

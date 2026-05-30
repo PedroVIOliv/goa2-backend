@@ -414,13 +414,16 @@ Sent on connection, on `GET_VIEW` requests, and broadcast to all connected clien
   "type": "STATE_UPDATE",
   "view": { ... },
   "input_request": { ... },
-  "winner": "RED"
+  "winner": "RED",
+  "events": [ ... ]
 }
 ```
 
 The `input_request` key is only present when there is a pending input request. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
 
 The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `msg.get("winner")` rather than assuming it exists.
+
+The `events` key is only present on **broadcasts that follow a mutation**, and carries the same public event list as that action's `ACTION_RESULT` (see below). It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
 
 #### `ACTION_RESULT`
 
@@ -451,9 +454,9 @@ Sent to the player who performed the action:
 After a mutation (`COMMIT_CARD`, `PASS_TURN`, `SUBMIT_INPUT`):
 
 1. The acting player receives an `ACTION_RESULT` message
-2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view
+2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view, carrying the same action's `events`
 
-This means the acting player gets both messages. The `ACTION_RESULT` contains events for animation, while `STATE_UPDATE` has the authoritative view to render.
+This means the acting player gets both messages, with identical `events` on each — animate from one source only (the `STATE_UPDATE` broadcast is recommended, since every client receives it). The `ACTION_RESULT` still contains events for animation and the authoritative view to render lives on `STATE_UPDATE.view`. Non-acting players and spectators, who never receive an `ACTION_RESULT`, now get the events on their broadcast so they can animate the same action.
 
 ### Spectator restrictions
 
