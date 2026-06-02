@@ -239,7 +239,7 @@ class HighGroundEffect(_IgnoreObstaclesMovementEffect):
 class DeadOrAliveEffect(CardEffect):
     """
     Card Text: "Target a unit adjacent to you.
-    After the attack: You may give an enemy hero in play the Bounty marker.
+    After the attack: You may give an enemy hero in radius the Bounty marker.
     A hero with the Bounty marker spends 1 additional Life counter when defeated."
     """
 
@@ -253,13 +253,14 @@ class DeadOrAliveEffect(CardEffect):
             ),
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="You may give an enemy hero the Bounty marker",
+                prompt="You may give an enemy hero in radius the Bounty marker",
                 output_key="bounty_target",
                 is_mandatory=False,
                 skip_immunity_filter=True,
                 filters=[
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius),
                 ],
             ),
             PlaceMarkerStep(

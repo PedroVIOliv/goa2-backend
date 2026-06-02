@@ -253,7 +253,7 @@ def create_bain() -> Hero:
             secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 1},
             radius_value=4,
             effect_id="dead_or_alive",
-            effect_text="Target a unit adjacent to you.\nAfter the attack: You may give an enemy hero in play the  :bounty_marker: Bounty marker.\nA hero with the Bounty marker spends 1 additional :life_counter: Life counter when defeated.",
+            effect_text="Target a unit adjacent to you.\nAfter the attack: You may give an enemy hero in radius the  :bounty_marker: Bounty marker.\nA hero with the Bounty marker spends 1 additional :life_counter: Life counter when defeated.",
         ),
         Card(
             id="light_crossbow",
