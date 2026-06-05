@@ -398,6 +398,13 @@ class FastTravelSequenceStep(GameStep):
         from goa2.engine.steps.selection import SelectStep
 
         actor_id = self.unit_id or state.current_actor_id
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        travel_validation = state.validator.can_fast_travel(state, str(actor_id), context)
+        if not travel_validation.allowed:
+            logger.debug(f"   [BLOCKED] FastTravelSequenceStep: {travel_validation.reason}")
+            return StepResult(is_finished=True)
 
         if context.get(self.destination_key):
             return StepResult(

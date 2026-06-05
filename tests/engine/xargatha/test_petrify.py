@@ -7,7 +7,7 @@ and cannot perform movement actions. (If you move, the radius 'moves' with you.)
 
 # Register xargatha effects
 import goa2.scripts.xargatha_effects  # noqa: F401
-from goa2.domain.board import Board
+from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
@@ -31,6 +31,8 @@ from goa2.domain.tile import Tile
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import TerrainFilter
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.stats import compute_card_stats
+from goa2.engine.steps import FastTravelSequenceStep, ResolveCardStep
 
 
 def make_stone_gaze_card():
@@ -84,6 +86,22 @@ def make_turn_into_statues_card():
     )
 
 
+def make_movement_card():
+    return Card(
+        id="movement_card",
+        name="Movement Card",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=5,
+        primary_action=ActionType.MOVEMENT,
+        primary_action_value=3,
+        secondary_actions={},
+        effect_id="movement_card",
+        effect_text="Move.",
+        is_facedown=False,
+    )
+
+
 def _make_petrify_state() -> GameState:
     """
     Board setup:
@@ -125,6 +143,23 @@ def _make_petrify_state() -> GameState:
     state.current_actor_id = "hero_xargatha"
 
     return state
+
+
+def _make_fast_travel_available_for_enemy_1(state: GameState) -> None:
+    state.board.zones = {
+        "enemy_safe_zone": Zone(
+            id="enemy_safe_zone",
+            hexes={Hex(q=0, r=2, s=-2), Hex(q=1, r=2, s=-3)},
+        )
+    }
+    state.board.populate_tiles_from_zones()
+
+
+def _action_option_ids(state: GameState, hero_id: str) -> set[str]:
+    push_steps(state, [ResolveCardStep(hero_id=hero_id)])
+    request = process_stack(state).input_request
+    assert request is not None
+    return {option["id"] for option in request["options"]}
 
 
 def test_is_terrain_hex_basic():
@@ -283,6 +318,74 @@ def test_fast_travel_prevention():
     assert "action" in result.reason.lower()
 
 
+def test_stone_gaze_removes_movement_and_fast_travel_action_choices():
+    """Stone Gaze blocks both movement-like card actions once active."""
+    baseline = _make_petrify_state()
+    _make_fast_travel_available_for_enemy_1(baseline)
+    baseline.get_hero("hero_enemy_1").current_turn_card = make_movement_card()
+    baseline.current_actor_id = "hero_enemy_1"
+
+    baseline_options = _action_option_ids(baseline, "hero_enemy_1")
+    assert ActionType.MOVEMENT.name in baseline_options
+    assert ActionType.FAST_TRAVEL.name in baseline_options
+
+    state = _make_petrify_state()
+    _make_fast_travel_available_for_enemy_1(state)
+    state.current_actor_id = "hero_xargatha"
+    xargatha = state.get_hero("hero_xargatha")
+    stone_gaze = make_stone_gaze_card()
+
+    stats = compute_card_stats(state, xargatha.id, stone_gaze)
+    effect = CardEffectRegistry.get("stone_gaze")
+    push_steps(state, effect.build_steps(state, xargatha, stone_gaze, stats))
+    assert process_stack(state).input_request is None
+
+    petrify = state.active_effects[-1]
+    assert set(petrify.restrictions) == {ActionType.MOVEMENT, ActionType.FAST_TRAVEL}
+
+    state.turn = 2
+    state.get_hero("hero_enemy_1").current_turn_card = make_movement_card()
+    state.current_actor_id = "hero_enemy_1"
+
+    options = _action_option_ids(state, "hero_enemy_1")
+    assert ActionType.MOVEMENT.name not in options
+    assert ActionType.FAST_TRAVEL.name not in options
+    assert ActionType.HOLD.name in options
+
+
+def test_stone_gaze_blocks_prefilled_fast_travel_sequence():
+    """A preselected FastTravelSequenceStep cannot bypass Stone Gaze."""
+    state = _make_petrify_state()
+    _make_fast_travel_available_for_enemy_1(state)
+    start_hex = Hex(q=0, r=2, s=-2)
+    destination_hex = Hex(q=1, r=2, s=-3)
+
+    effect = ActiveEffect(
+        id="petrify_1",
+        source_id="hero_xargatha",
+        effect_type=EffectType.PETRIFY,
+        scope=EffectScope(
+            shape=Shape.RADIUS,
+            range=2,
+            origin_id="hero_xargatha",
+            affects=AffectsFilter.ENEMY_HEROES,
+        ),
+        restrictions=[ActionType.MOVEMENT, ActionType.FAST_TRAVEL],
+        duration=DurationType.NEXT_TURN,
+        created_at_turn=1,
+        created_at_round=1,
+        is_active=True,
+    )
+    state.active_effects.append(effect)
+    state.turn = 2
+    state.current_actor_id = "hero_enemy_1"
+    state.execution_context["target_hex"] = destination_hex
+
+    push_steps(state, [FastTravelSequenceStep(unit_id="hero_enemy_1")])
+    assert process_stack(state).input_request is None
+    assert state.entity_locations["hero_enemy_1"] == start_hex
+
+
 def test_next_turn_timing():
     """Test that effect is not active on creation turn, but active next turn."""
     state = _make_petrify_state()
@@ -320,8 +423,6 @@ def test_turn_into_statues_integration():
 
     xargatha = state.get_hero("hero_xargatha")
     card = make_turn_into_statues_card()
-
-    from goa2.engine.stats import compute_card_stats
 
     stats = compute_card_stats(state, xargatha.id, card)
     effect = CardEffectRegistry.get("turn_into_statues")

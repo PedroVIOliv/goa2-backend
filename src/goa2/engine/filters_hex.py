@@ -377,7 +377,7 @@ class FastTravelDestinationFilter(FilterCondition):
             return False
 
         # Check validation first
-        if not state.validator.can_fast_travel(state, str(uid)).allowed:
+        if not state.validator.can_fast_travel(state, str(uid), context).allowed:
             return False
 
         unit = state.get_unit(UnitID(str(uid)))
