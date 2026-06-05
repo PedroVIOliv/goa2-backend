@@ -256,7 +256,6 @@ class DeadOrAliveEffect(CardEffect):
                 prompt="You may give an enemy hero in radius the Bounty marker",
                 output_key="bounty_target",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
@@ -453,7 +452,6 @@ def _build_retrieve_steps(stats: CardStats) -> list[GameStep]:
             prompt="You may have a hero in radius retrieve a discarded card",
             output_key="retrieve_target",
             is_mandatory=False,
-            skip_immunity_filter=True,
             filters=[
                 RangeFilter(max_range=stats.radius),
                 UnitTypeFilter(unit_type="HERO"),

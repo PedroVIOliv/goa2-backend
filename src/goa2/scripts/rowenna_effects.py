@@ -98,7 +98,6 @@ class TokenOfGratitudeEffect(CardEffect):
                 prompt="Select a friendly hero in radius to gain 1 coin",
                 output_key="coin_target",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
@@ -145,7 +144,6 @@ class ParagonOfGraceEffect(CardEffect):
                 prompt="Select a friendly hero in radius to gain 1 coin",
                 output_key="coin_target",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
@@ -211,7 +209,6 @@ class FeatOfBraveryEffect(CardEffect):
                 prompt="Select a friendly hero in radius to retrieve a discarded card",
                 output_key="retrieve_ally",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
@@ -263,7 +260,6 @@ class ParagonOfValorEffect(CardEffect):
                 prompt="A friendly hero in radius may retrieve a discarded card",
                 output_key="retrieve_ally",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="FRIENDLY"),
@@ -337,7 +333,6 @@ class StandGuardEffect(CardEffect):
                 prompt="Select a friendly unit to swap with",
                 output_key="swap_target",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 filters=[
                     TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.range),
@@ -393,7 +388,6 @@ class DefendTheInnocentEffect(CardEffect):
                 prompt="Select a friendly unit to swap with",
                 output_key="swap_target",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 filters=[
                     TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.range),
@@ -667,7 +661,6 @@ class CloseQuartersEffect(CardEffect):
                 prompt="Select a friendly minion in radius to place",
                 output_key="place_minion_1",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 active_if_key="chose_place_friendly",
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
@@ -802,7 +795,6 @@ class GrandMeleeEffect(CardEffect):
                 prompt="Select a friendly minion in radius",
                 output_key=f"place_min_{suffix}",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 active_if_key=f"chose_friendly_{suffix}",
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
@@ -987,7 +979,6 @@ class ThrowTheGauntletEffect(CardEffect):
                 prompt="Select an enemy hero in range",
                 output_key="target_hero",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),

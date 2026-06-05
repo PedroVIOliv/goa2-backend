@@ -802,7 +802,6 @@ class CruelTwistEffect(CardEffect):
                     ),
                 ],
                 is_mandatory=True,
-                skip_immunity_filter=True,
             ),
             SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
             SelectStep(

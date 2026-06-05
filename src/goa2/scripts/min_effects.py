@@ -369,7 +369,6 @@ class ViperStanceEffect(CardEffect):
                 prompt="Select a Smoke Bomb to swap with (optional)",
                 output_key="swap_token_id",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     RangeFilter(max_range=stats.radius),
                     TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
@@ -403,7 +402,6 @@ class CobraStanceEffect(CardEffect):
                 prompt="Select a Smoke Bomb to swap with (optional)",
                 output_key="swap_token_id",
                 is_mandatory=False,
-                skip_immunity_filter=True,
                 filters=[
                     RangeFilter(max_range=stats.radius),
                     TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
@@ -521,7 +519,6 @@ def _smoke_bomb_swap_defense_steps(
                 RangeFilter(max_range=stats.range, origin_id=str(defender.id)),
             ],
             output_key="smoke_bomb_count",
-            skip_immunity_filter=True,
         ),
         CheckContextConditionStep(
             input_key="smoke_bomb_count",
@@ -543,7 +540,6 @@ def _smoke_bomb_swap_defense_steps(
             prompt="Select a Smoke Bomb token to swap with",
             output_key="swap_token_id",
             is_mandatory=True,
-            skip_immunity_filter=True,
             filters=[
                 RangeFilter(max_range=stats.range),
                 TokenTypeFilter(token_type=TokenType.SMOKE_BOMB),
@@ -670,7 +666,6 @@ def _grenade_steps(hero: Hero, stats: CardStats, max_targets: int) -> list[GameS
                     prompt="Select the Grenade token",
                     output_key="grenade_resolve_id",
                     auto_select_if_one=True,
-                    skip_immunity_filter=True,
                     skip_self_filter=True,
                     is_mandatory=True,
                     filters=[TokenTypeFilter(token_type=TokenType.GRENADE)],
@@ -683,7 +678,6 @@ def _grenade_steps(hero: Hero, stats: CardStats, max_targets: int) -> list[GameS
                     min_selections=0,
                     is_mandatory=False,
                     active_if_key="grenade_resolve_id",
-                    skip_immunity_filter=True,
                     filters=[
                         AdjacencyToContextFilter(target_key="grenade_resolve_id"),
                         TeamFilter(relation="ENEMY"),

@@ -108,7 +108,6 @@ def _zombie_selection_step(output_key: str, range_val: int, *, active_if_key: st
         target_type=TargetType.UNIT_OR_TOKEN,
         prompt="Select a Zombie token",
         output_key=output_key,
-        skip_immunity_filter=True,
         skip_self_filter=True,
         filters=[
             UnitTypeFilter(unit_type="TOKEN"),
@@ -419,7 +418,6 @@ def _knife_choice_steps(
             target_type=TargetType.UNIT_OR_TOKEN,
             prompt="Select Zombie token adjacent to the target to remove",
             output_key=f"{prefix}_remove_zombie",
-            skip_immunity_filter=True,
             skip_self_filter=True,
             is_mandatory=False,
             active_if_key=f"{prefix}_chose_remove",
@@ -789,7 +787,6 @@ def _corpse_slam_choice_steps(
                     target_type=TargetType.UNIT_OR_TOKEN,
                     prompt="Select adjacent unit or token to push",
                     output_key=f"{prefix}_push_target",
-                    skip_immunity_filter=True,
                     skip_self_filter=True,
                     filters=[RangeFilter(min_range=1, max_range=1, origin_key=f"{prefix}_zombie")],
                     active_if_key=f"{prefix}_zombie",

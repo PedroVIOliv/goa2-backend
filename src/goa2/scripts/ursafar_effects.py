@@ -349,7 +349,6 @@ class ProwlingBruteEffect(CardEffect):
                         prompt="Select a unit or token adjacent to you to swap with (optional).",
                         output_key="swap_target",
                         is_mandatory=False,
-                        skip_immunity_filter=True,
                         filters=[
                             RangeFilter(max_range=1),
                         ],
@@ -383,7 +382,6 @@ class RampagingBeastEffect(CardEffect):
                         prompt="Select a unit or token adjacent to you to swap with (optional).",
                         output_key="swap_target",
                         is_mandatory=False,
-                        skip_immunity_filter=True,
                         filters=[
                             RangeFilter(max_range=1),
                         ],
@@ -423,7 +421,6 @@ class UnstoppableForceEffect(CardEffect):
                         prompt="Select a unit or token adjacent to you to swap with (optional).",
                         output_key="swap_target",
                         is_mandatory=False,
-                        skip_immunity_filter=True,
                         filters=[
                             RangeFilter(max_range=1),
                         ],
