@@ -228,7 +228,7 @@ class TestCheckContextConditionStep:
             ],
         )
         _ = process_stack(retrieve_state).input_request
-        # Stores None (not False) so active_if_key checks work
+        # Stores None for failed conditions so active_if_key skips.
         assert retrieve_state.execution_context["result"] is None
 
     def test_eq_operator(self, retrieve_state):

@@ -42,7 +42,7 @@ class GameStep(BaseModel):
         """Checks if the step should be skipped based on active_if_key or skip_if_key."""
         if self.active_if_key:
             val = context.get(self.active_if_key)
-            if val is None:
+            if not val:
                 return True
         if self.skip_if_key:
             val = context.get(self.skip_if_key)

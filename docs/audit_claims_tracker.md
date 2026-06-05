@@ -27,7 +27,7 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 
 | ID | Status | Claim | Primary location(s) | Resolution notes |
 |---|---|---|---|---|
-| H1 | Open | `GameStep.should_skip()` treats `False` as "run", so `active_if_key` gates fire when they should skip. Affects Ursafar `block_succeeded` and Arien Ebb and Flow `can_repeat`. | `src/goa2/engine/steps/base.py`; `src/goa2/engine/steps/combat.py`; `src/goa2/engine/steps/utility.py`; `src/goa2/scripts/ursafar_effects.py`; `src/goa2/scripts/arien_effects.py` | Proposed fix: skip on falsy values or enforce `True`/`None` convention everywhere. |
+| H1 | Resolved | `GameStep.should_skip()` treats `False` as "run", so `active_if_key` gates fire when they should skip. Affects Ursafar `block_succeeded` and Arien Ebb and Flow `can_repeat`. | `src/goa2/engine/steps/base.py`; `src/goa2/engine/steps/combat.py`; `src/goa2/engine/steps/utility.py`; `src/goa2/scripts/ursafar_effects.py`; `src/goa2/scripts/arien_effects.py` | `active_if_key` now skips on falsy values. Added a direct `False` regression and corrected Ebb and Flow distant-target expectation. |
 | H2 | Open | Trinkets is registered/selectable, but 17 of 18 card effects reference unregistered `effect_id`s and silently no-op. | `src/goa2/data/heroes/trinkets.py`; `src/goa2/scripts/trinkets_effects.py` | Implement/register missing effects or unregister the hero until complete. Add registry-walk test. |
 | H3 | Open | `MultiSelectStep` accepts client-submitted selections without validating they are in the offered candidate set. | `src/goa2/engine/steps/selection.py` | Mirror `SelectStep` validation and re-request input on invalid selection. |
 | H4 | Open | `find_nearest_empty_hexes()` returns terrain/wall hexes as valid placement targets because it checks occupancy only. | `src/goa2/engine/map_logic.py`; callers in `src/goa2/engine/steps/combat.py` and `src/goa2/engine/steps/movement.py` | Check `not tile.is_obstacle`; add test with terrain inside searched zone. |
@@ -72,7 +72,7 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 
 | ID | Status | Gap | Primary location(s) | Resolution notes |
 |---|---|---|---|---|
-| T1 | Open | No test asserts `active_if_key` skips when the value is `False`; one Ebb and Flow test codifies the bug. | `tests/engine/test_ursafar_group_a.py`; `tests/engine/test_ebb_and_flow.py` | Add direct gate test and correct Ebb and Flow expectation. |
+| T1 | Resolved | No test asserts `active_if_key` skips when the value is `False`; one Ebb and Flow test codifies the bug. | `tests/engine/test_ursafar_group_a.py`; `tests/engine/test_ebb_and_flow.py` | Added direct `active_if_key=False` coverage and corrected Ebb and Flow distant-target expectation. |
 | T2 | Open | No global test walks `HeroRegistry` and verifies every card `effect_id` resolves to a registered effect. | `tests/` | Add registry completeness test. |
 | T3 | Open | `expire_active_turn_effects` NEXT_TURN boundary and cross-round timing are untested. | `src/goa2/engine/effect_manager.py` | Add boundary tests. |
 | T4 | Open | No test rejects invalid filtered-out selections for `MultiSelectStep`. | `tests/engine/test_steps.py` | Add invalid selection test for `MultiSelectStep`. |
@@ -89,7 +89,7 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 
 | ID | Status | Follow-up | Resolution notes |
 |---|---|---|---|
-| F1 | Open | Sweep every `active_if_key` consumer and producer for bool-`False` producers beyond `block_succeeded` and `can_repeat`. | Close after review or tests cover the pattern. |
+| F1 | Resolved | Sweep every `active_if_key` consumer and producer for bool-`False` producers beyond `block_succeeded` and `can_repeat`. | Global gate now skips all falsy context values; full test suite passes with the new contract. |
 | F2 | Open | Systematically review input-content validation for every input type, not only the confirmed invalid-selection cases. | Include `SELECT_NUMBER`, `SELECT_OPTION`, `CHOOSE_ACTION`, and `SELECT_HEX`. |
 | F3 | Open | Audit every `AttackSequenceStep` across hero scripts against each card's `is_ranged` field. | Add a regression test if practical. |
 | F4 | Open | Add a global hero-data completeness test for all production heroes. | Likely overlaps T2. |
@@ -99,3 +99,4 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 | F8 | Open | Add persistence property tests for dump/validate/dump idempotence. | Especially useful for nested step/filter unions. |
 | F9 | Open | Examine auth token generation and comparison for entropy and timing behavior. | No issue confirmed in audit. |
 | F10 | Open | Re-run review of whisper, mortimer, ursafar, rowenna, and tigerclaw effect scripts. | Same coverage gap as A1. |
+| F11 | Open | Update Ursafar Prey Drive / Prey Abundance / Feeding Frenzy to gate on whether the attack target remains on the board, not `block_succeeded`. | Brogan-style minion protection can make `block_succeeded=False` while the target was still not removed. |

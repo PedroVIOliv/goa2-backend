@@ -642,8 +642,7 @@ class CheckContextConditionStep(GameStep):
             "!=": value != self.threshold,
         }
         result = ops.get(self.operator, False)
-        # Store True or None (not False) so active_if_key checks work correctly:
-        # active_if_key skips when value is None, not when False.
+        # Store True or None so active_if_key skips failed conditions.
         context[self.output_key] = True if result else None
         logger.debug(
             f"   [CHECK] {self.input_key}={value} {self.operator} {self.threshold} -> {result}"

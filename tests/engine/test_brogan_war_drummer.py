@@ -127,6 +127,15 @@ class TestGainCoinsStep:
         _ = process_stack(state).input_request
         assert ally.gold == 0
 
+    def test_active_if_key_skips_when_false(self, coin_state):
+        state = coin_state
+        ally = state.get_hero(HeroID("ally"))
+        state.execution_context["target"] = "ally"
+        state.execution_context["flag"] = False
+        push_steps(state, [GainCoinsStep(hero_key="target", amount=5, active_if_key="flag")])
+        _ = process_stack(state).input_request
+        assert ally.gold == 0
+
     def test_active_if_key_runs_when_set(self, coin_state):
         state = coin_state
         ally = state.get_hero(HeroID("ally"))

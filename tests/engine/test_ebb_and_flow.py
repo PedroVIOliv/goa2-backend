@@ -76,10 +76,11 @@ def test_ebb_and_flow_distant(empty_state: GameState):
 
     repeat_step = next(s for s in steps if isinstance(s, MayRepeatOnceStep))
 
-    # It should be active (can_repeat=True)
+    # It should skip because the first target was not adjacent.
     res = repeat_step.resolve(state, state.execution_context)
-    assert res.requires_input is True
-    assert res.input_request["type"] == "SELECT_OPTION"
+    assert res.requires_input is False
+    assert res.is_finished is True
+    assert res.input_request is None
 
 
 def test_ebb_and_flow_adjacent(empty_state: GameState):
