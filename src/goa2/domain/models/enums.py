@@ -192,6 +192,7 @@ class StepType(StrEnum):
     CONVERT_CARD_TO_ITEM = "convert_card_to_item"
     CHECK_DISTANCE = "check_distance"
     COMPUTE_DISTANCE = "compute_distance"
+    CHECK_UNIT_ON_BOARD = "check_unit_on_board"
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
     CO_DIRECTIONAL_DRAG = "co_directional_drag"
 

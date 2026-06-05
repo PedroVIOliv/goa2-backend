@@ -34,6 +34,7 @@ EXPECTED_STEP_CLASSES = {
     "CheckLanePushStep",
     "CheckMinionProtectionStep",
     "CheckPassiveAbilitiesStep",
+    "CheckUnitOnBoardStep",
     "CheckUnitTypeStep",
     "ChooseMinionRemovalStep",
     "CoDirectionalDragStep",
@@ -212,6 +213,30 @@ def test_round_trip_respawn_minion_at_hex_with_filters():
     assert type(s).__name__ == "RespawnMinionAtHexStep"
     assert len(s.hex_filters) == 1
     assert type(s.hex_filters[0]).__name__ == "RangeFilter"
+
+
+def test_round_trip_check_unit_on_board_step():
+    """CheckUnitOnBoardStep round-trips through serialization."""
+    from goa2.engine.steps import CheckUnitOnBoardStep
+
+    state = _make_state()
+    push_steps(
+        state,
+        [
+            CheckUnitOnBoardStep(
+                unit_key="victim_id",
+                output_key="target_not_removed",
+            )
+        ],
+    )
+
+    data = state.model_dump(mode="json")
+    restored = GameState.model_validate(data)
+
+    s = restored.execution_stack[0]
+    assert type(s).__name__ == "CheckUnitOnBoardStep"
+    assert s.unit_key == "victim_id"
+    assert s.output_key == "target_not_removed"
 
 
 # ---------------------------------------------------------------------------

@@ -97,6 +97,7 @@ from goa2.engine.steps.utility import (  # noqa: F401
     CheckContextConditionStep,
     CheckDistanceStep,
     CheckHeroDefeatedThisRoundStep,
+    CheckUnitOnBoardStep,
     CheckUnitTypeStep,
     CombineBooleanContextStep,
     ComputeDistanceStep,

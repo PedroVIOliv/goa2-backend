@@ -664,6 +664,26 @@ class CheckHeroDefeatedThisRoundStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CheckUnitOnBoardStep(GameStep):
+    """Sets context[output_key] to True if a unit id from context is still on the board."""
+
+    type: StepType = StepType.CHECK_UNIT_ON_BOARD
+    unit_key: str
+    output_key: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        unit_id = context.get(self.unit_key)
+        if unit_id and BoardEntityID(str(unit_id)) in state.entity_locations:
+            context[self.output_key] = True
+        else:
+            context[self.output_key] = None
+        logger.debug(
+            f"   [CHECK] Unit from {self.unit_key}={unit_id!r} on board -> "
+            f"{bool(context[self.output_key])}"
+        )
+        return StepResult(is_finished=True)
+
+
 class ComputeHexStep(GameStep):
     """
     Generic hex vector arithmetic step.

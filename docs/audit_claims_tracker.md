@@ -99,4 +99,4 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 | F8 | Open | Add persistence property tests for dump/validate/dump idempotence. | Especially useful for nested step/filter unions. |
 | F9 | Open | Examine auth token generation and comparison for entropy and timing behavior. | No issue confirmed in audit. |
 | F10 | Open | Re-run review of whisper, mortimer, ursafar, rowenna, and tigerclaw effect scripts. | Same coverage gap as A1. |
-| F11 | Open | Update Ursafar Prey Drive / Prey Abundance / Feeding Frenzy to gate on whether the attack target remains on the board, not `block_succeeded`. | Brogan-style minion protection can make `block_succeeded=False` while the target was still not removed. |
+| F11 | Resolved | Update Ursafar Prey Drive / Prey Abundance / Feeding Frenzy to gate on whether the attack target remains on the board, not `block_succeeded`. | Added `CheckUnitOnBoardStep` and gated Ursafar's bonus removal on `target_not_removed`. Regression tests cover removed targets, Brogan-protected targets, and Feeding Frenzy step construction. |

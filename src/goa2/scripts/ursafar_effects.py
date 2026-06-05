@@ -28,6 +28,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckUnitOnBoardStep,
     CheckUnitTypeStep,
     CombineBooleanContextStep,
     CreateEffectStep,
@@ -246,12 +247,16 @@ class PreyDriveEffect(CardEffect):
         if is_enraged(hero, card):
             steps.extend(
                 [
+                    CheckUnitOnBoardStep(
+                        unit_key="victim_id",
+                        output_key="target_not_removed",
+                    ),
                     SelectStep(
                         target_type=TargetType.UNIT,
                         prompt="Select an enemy minion in radius to remove (optional).",
                         output_key="remove_target",
                         is_mandatory=False,
-                        active_if_key="block_succeeded",
+                        active_if_key="target_not_removed",
                         filters=[
                             UnitTypeFilter(unit_type="MINION"),
                             TeamFilter(relation="ENEMY"),
@@ -296,6 +301,10 @@ class FeedingFrenzyEffect(CardEffect):
         if is_enraged(hero, card):
             steps.extend(
                 [
+                    CheckUnitOnBoardStep(
+                        unit_key="victim_id",
+                        output_key="target_not_removed",
+                    ),
                     MultiSelectStep(
                         target_type=TargetType.UNIT,
                         prompt="Select enemy minions in radius to remove.",
@@ -303,7 +312,7 @@ class FeedingFrenzyEffect(CardEffect):
                         max_selections=2,
                         min_selections=0,
                         is_mandatory=False,
-                        active_if_key="block_succeeded",
+                        active_if_key="target_not_removed",
                         filters=[
                             UnitTypeFilter(unit_type="MINION"),
                             TeamFilter(relation="ENEMY"),
