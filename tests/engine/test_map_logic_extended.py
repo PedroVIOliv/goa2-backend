@@ -168,3 +168,24 @@ def test_find_nearest_empty_hexes_optimization_break(map_state):
     assert len(candidates) == 6
     for h in h_ring1:
         assert h in candidates
+
+
+def test_find_nearest_empty_hexes_skips_terrain(map_state):
+    # Terrain inside a searched zone must not be offered as a placement target.
+    # is_occupied is False for an unoccupied wall/water hex, so the candidate
+    # check must reject obstacles, not just occupants.
+    h_center = Hex(q=0, r=0, s=0)
+    h_ring1 = h_center.neighbors()
+
+    zone_hexes = {h_center} | set(h_ring1)
+    map_state.board.zones["Large"] = Zone(id="Large", label="Large", hexes=zone_hexes)
+    map_state.board.populate_tiles_from_zones()
+
+    # Mark one ring hex as terrain (a wall/water tile with no occupant).
+    terrain_hex = h_ring1[0]
+    map_state.board.tiles[terrain_hex].is_terrain = True
+
+    candidates = find_nearest_empty_hexes(map_state, h_center, "Large")
+
+    assert terrain_hex not in candidates
+    assert len(candidates) == 5

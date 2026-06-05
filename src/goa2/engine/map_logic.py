@@ -130,9 +130,9 @@ def find_nearest_empty_hexes(state: GameState, start_hex: Hex, zone_id: str) -> 
         if dist > 0 and current in zone.hexes:
             tile = state.board.get_tile(current)
             # Check for Obstacle/Occupancy
-            # Note: Token is an obstacle. Unit is an occupant.
-            # Valid = Not Obstacle AND Not Occupied.
-            if tile and not tile.is_occupied:
+            # Note: Token is an obstacle. Unit is an occupant. Terrain is an obstacle.
+            # Valid = Not Obstacle (terrain OR occupant).
+            if tile and not tile.is_obstacle:
                 candidates.append(current)
                 found_distance = dist
 
