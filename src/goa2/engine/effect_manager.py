@@ -71,7 +71,15 @@ class EffectManager:
 
     @staticmethod
     def expire_by_card(state: GameState, card_id: str):
-        """Remove all effects linked to a specific card."""
+        """Remove all effects linked to a specific card (premature removal).
+
+        Intentionally does NOT collect or run ``finishing_steps``: those fire
+        only when an effect ends *naturally* via its duration (see
+        ``expire_active_turn_effects`` / ``expire_effects``). An effect cut short
+        — card leaves play, source defeated — must not trigger its end-of-turn /
+        end-of-round payload. (Per game rules: e.g. if Min is defeated the
+        Death Grenade does not explode.)
+        """
         state.active_effects = [e for e in state.active_effects if e.source_card_id != card_id]
         card = state.get_card_by_id(card_id)
         if card:
@@ -126,7 +134,17 @@ class EffectManager:
 
     @staticmethod
     def expire_by_source(state: GameState, source_id: str):
-        """Remove all effects from a specific source (e.g., defeated hero)."""
+        """Remove all effects from a specific source, e.g. a defeated hero
+        (premature removal).
+
+        Intentionally does NOT collect or run ``finishing_steps``. Finishing
+        steps are an effect's *natural* end-of-turn/round payload and only fire
+        when the effect expires on schedule (``expire_active_turn_effects`` /
+        ``expire_effects``). When the source ends prematurely (defeated), the
+        payload must not run — per game rules a delayed trigger whose owner is
+        gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
+        physical leftovers (tokens) are reclaimed by the normal round-end sweep.
+        """
         affected_card_ids = {
             e.source_card_id
             for e in state.active_effects
