@@ -113,6 +113,8 @@ class GameRegistry:
                 hero_to_token=game.hero_to_token,
                 created_at=game.created_at,
                 save_dir=self._save_dir,
+                rollback_snapshot=game.session._rollback_snapshot,
+                rollback_actor_id=game.session._rollback_actor_id,
             )
         except Exception:
             logger.exception("Failed to save game %s", game_id)

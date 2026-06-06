@@ -400,6 +400,87 @@ class TestRollbackPerActorIsolation:
         assert session.state.current_actor_id == "hero_b"
 
 
+# ---- Snapshot board exclusion & persistence ----
+
+
+def _loc(state, entity_id):
+    """Look up an entity's hex regardless of key type coercion."""
+    for k, v in state.entity_locations.items():
+        if str(k) == entity_id:
+            return v
+    return None
+
+
+class TestRollbackSnapshotBoardExclusion:
+    def test_snapshot_excludes_board(self):
+        """The rollback snapshot omits the static board to stay small."""
+        state = _make_state()
+        session = GameSession(state)
+        _setup_resolution(state)
+
+        result = session.advance()
+        assert result.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+        assert "board" not in session._rollback_snapshot
+
+    def test_rollback_restores_positions_without_snapshotting_board(self):
+        """Rolling back restores unit positions even though the board is excluded."""
+        state = _make_state()
+        session = GameSession(state)
+        _setup_resolution(state)
+
+        session.advance()  # snapshot taken at turn start; hero_a at (0,0,0)
+
+        # Move hero_a after the snapshot
+        session.state.place_entity("hero_a", Hex(q=1, r=-1, s=0))
+        assert _loc(session.state, "hero_a") == Hex(q=1, r=-1, s=0)
+
+        session.rollback()
+        assert _loc(session.state, "hero_a") == Hex(q=0, r=0, s=0)
+
+
+class TestRollbackSnapshotPersistence:
+    def test_snapshot_and_can_rollback_survive_save_load(self, tmp_path):
+        """A mid-action rollback snapshot survives a save/reload cycle."""
+        from goa2.engine.persistence import load_game, save_game
+
+        state = _make_state()
+        session = GameSession(state)
+        _setup_resolution(state)
+
+        result = session.advance()  # action choice; snapshot taken
+        assert result.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+
+        path = save_game(
+            game_id="g1",
+            state=session.state,
+            player_tokens={},
+            spectator_token="s",
+            hero_to_token={},
+            created_at=0.0,
+            save_dir=str(tmp_path),
+            rollback_snapshot=session._rollback_snapshot,
+            rollback_actor_id=session._rollback_actor_id,
+        )
+
+        data = load_game(str(path))
+        restored = data["session"]
+
+        # Snapshot and actor survived
+        assert restored._rollback_snapshot is not None
+        assert restored._rollback_actor_id == "hero_a"
+
+        # The re-derived last_result re-offers rollback to the actor
+        assert data["last_result"] is not None
+        assert data["last_result"].input_request.can_rollback is True
+
+        # Rollback actually works after reload
+        rb = restored.rollback()
+        assert rb.input_request is not None
+        assert rb.input_request.player_id == "hero_a"
+
+
 # ---- StepType registration ----
 
 

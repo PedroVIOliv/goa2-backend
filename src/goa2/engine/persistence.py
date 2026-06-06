@@ -33,6 +33,8 @@ def save_game(
     hero_to_token: dict[str, str],
     created_at: float,
     save_dir: str,
+    rollback_snapshot: dict[str, Any] | None = None,
+    rollback_actor_id: str | None = None,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -43,6 +45,8 @@ def save_game(
         "hero_to_token": hero_to_token,
         "created_at": created_at,
         "state": state.model_dump(mode="json"),
+        "rollback_snapshot": rollback_snapshot,
+        "rollback_actor_id": rollback_actor_id,
     }
 
     os.makedirs(save_dir, exist_ok=True)
@@ -79,6 +83,11 @@ def load_game(file_path: str) -> dict[str, Any]:
     state = GameState.model_validate(payload["state"])
     session = GameSession(state)
 
+    # Restore the in-memory rollback snapshot (not part of GameState) so a
+    # mid-action rollback survives a restart.
+    session._rollback_snapshot = payload.get("rollback_snapshot")
+    session._rollback_actor_id = payload.get("rollback_actor_id")
+
     # Re-derive last_result by processing the stack. In the server, saves
     # happen after mutations, so the stack either has a step waiting for input
     # or is empty. process_stack will re-emit any pending input request.
@@ -86,6 +95,16 @@ def load_game(file_path: str) -> dict[str, Any]:
     if state.execution_stack:
         stack_result = process_stack(state)
         if stack_result.input_request:
+            # process_stack re-emits the request with can_rollback defaulted to
+            # False; re-assert it when the restored snapshot belongs to the
+            # actor the request targets (mirrors GameSession._manage_rollback).
+            actor_id = str(state.current_actor_id) if state.current_actor_id is not None else None
+            if (
+                session._rollback_snapshot is not None
+                and actor_id is not None
+                and stack_result.input_request.player_id == actor_id
+            ):
+                stack_result.input_request.can_rollback = True
             last_result = session._build_result(
                 stack_result.input_request, events=stack_result.events
             )

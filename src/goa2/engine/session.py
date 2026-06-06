@@ -91,7 +91,7 @@ class GameSession:
         if self._rollback_snapshot is None:
             raise ValueError("No rollback snapshot available")
 
-        self.state = GameState.model_validate(self._rollback_snapshot)
+        self.state = GameState.model_validate(self._restore_snapshot(self._rollback_snapshot))
         # Don't clear snapshot — player may rollback again after re-choosing
 
         from goa2.engine.handler import process_stack
@@ -103,6 +103,29 @@ class GameSession:
         return self._build_result(stack_result.input_request, events=stack_result.events)
 
     # -- internals --
+
+    def _make_snapshot(self) -> dict:
+        """Dump the current state for rollback, excluding the static board.
+
+        The board (tiles, zones, spawn points, lane) is fixed after setup and
+        makes up the bulk of a state dump; the only board field that changes in
+        play is ``tile.occupant_id``, which is derived from ``entity_locations``
+        and rebuilt on load. Excluding it keeps the snapshot small in memory and
+        on disk. NOTE: this assumes board geometry/terrain never mutates mid-turn.
+        """
+        snap = self.state.model_dump(mode="json")
+        snap.pop("board", None)
+        return snap
+
+    def _restore_snapshot(self, snapshot: dict) -> dict:
+        """Re-attach the live (static) board so the snapshot can be validated.
+
+        ``GameState`` requires a board, and validation re-derives tile occupancy
+        from the restored ``entity_locations`` via ``rebuild_occupancy_cache``.
+        """
+        data = dict(snapshot)
+        data["board"] = self.state.board.model_dump(mode="json")
+        return data
 
     def _manage_rollback(self, stack_result) -> None:
         """Take snapshots and set can_rollback flag on input requests."""
@@ -130,7 +153,7 @@ class GameSession:
 
         # Take snapshot on the first input request targeting the current actor
         if self._rollback_snapshot is None and stack_result.input_request.player_id == actor_id:
-            self._rollback_snapshot = self.state.model_dump(mode="json")
+            self._rollback_snapshot = self._make_snapshot()
             self._rollback_actor_id = actor_id
 
         # Set can_rollback flag when applicable
