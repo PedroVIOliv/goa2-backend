@@ -505,6 +505,45 @@ class TestMultiSelectStep:
         assert result.is_finished
         assert context["selected_targets"] == []
 
+    def test_rejects_selection_outside_candidate_set(self, multi_unit_state):
+        """A client-submitted id that is filtered out must be rejected, not accepted."""
+        step = MultiSelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select up to 2 enemies",
+            output_key="selected_targets",
+            max_selections=2,
+            filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
+        )
+        context = {}
+
+        # enemy3 is at range 2 -> excluded by RangeFilter(max_range=1).
+        step.pending_input = {"selection": "enemy3"}
+        result = step.resolve(multi_unit_state, context)
+
+        # The invalid id is not accepted; the step re-requests input.
+        assert "enemy3" not in step.selections
+        assert context.get("selected_targets", []) == []
+        assert result.requires_input
+
+    def test_rejects_done_below_min_selections(self, multi_unit_state):
+        """DONE/SKIP cannot finish the step while below min_selections."""
+        step = MultiSelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select 2 enemies",
+            output_key="selected_targets",
+            max_selections=2,
+            min_selections=2,
+            filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
+        )
+        context = {}
+
+        step.pending_input = {"selection": "DONE"}
+        result = step.resolve(multi_unit_state, context)
+
+        # Below min: DONE is ignored and the step keeps prompting for input.
+        assert result.requires_input
+        assert step.selections == []
+
 
 # =============================================================================
 # ForEachStep Tests

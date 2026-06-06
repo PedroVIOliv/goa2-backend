@@ -351,24 +351,43 @@ class MultiSelectStep(GameStep):
             selection = self.pending_input.get("selection")
 
             if selection in ("DONE", "SKIP"):
+                # Only honor an early finish once the minimum is satisfied.
+                # A client must not under-select a mandatory minimum via DONE.
+                if len(self.selections) >= self.min_selections:
+                    logger.debug(
+                        f"   [MULTI-SELECT] Player chose DONE with {len(self.selections)} selections."
+                    )
+                    context[self.output_key] = list(self.selections)
+                    return StepResult(is_finished=True)
                 logger.debug(
-                    f"   [MULTI-SELECT] Player chose DONE with {len(self.selections)} selections."
+                    f"   [MULTI-SELECT] DONE ignored: {len(self.selections)} < min "
+                    f"{self.min_selections}. Re-requesting."
                 )
-                context[self.output_key] = list(self.selections)
-                return StepResult(is_finished=True)
+                self.pending_input = None
+            else:
+                # Validate the submitted id is in the currently offered candidate
+                # set before accepting it (mirrors SelectStep). An invalid id is
+                # dropped and the step re-requests input.
+                valid_now = self._get_candidates(state, context)
+                if str(selection) in valid_now:
+                    self.selections.append(str(selection))
+                    context[self.output_key] = list(self.selections)
+                    logger.debug(
+                        f"   [MULTI-SELECT] Added {selection}. "
+                        f"Total: {len(self.selections)}/{self.max_selections}"
+                    )
 
-            # Add selection
-            self.selections.append(str(selection))
-            context[self.output_key] = list(self.selections)
-            logger.debug(
-                f"   [MULTI-SELECT] Added {selection}. Total: {len(self.selections)}/{self.max_selections}"
-            )
-            self.pending_input = None
-
-            # Hit max? Done
-            if len(self.selections) >= self.max_selections:
-                logger.debug("   [MULTI-SELECT] Max reached. Finishing.")
-                return StepResult(is_finished=True)
+                    # Hit max? Done
+                    if len(self.selections) >= self.max_selections:
+                        logger.debug("   [MULTI-SELECT] Max reached. Finishing.")
+                        self.pending_input = None
+                        return StepResult(is_finished=True)
+                else:
+                    logger.debug(
+                        f"   [MULTI-SELECT] Rejected invalid selection {selection!r}. "
+                        "Re-requesting."
+                    )
+                self.pending_input = None
 
         # Get remaining valid candidates
         candidates = self._get_candidates(state, context)
