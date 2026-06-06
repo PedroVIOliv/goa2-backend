@@ -172,3 +172,29 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     req = process_stack(complex_tie_state).input_request
     assert req is None
+
+
+def test_tie_breaker_rejects_winner_outside_candidates(complex_tie_state):
+    """A submitted winner_id not among the tied candidates is rejected, not honored."""
+    # Single tied team (RED: A, D) -> the team must choose between A and D.
+    step = ResolveTieBreakerStep(tied_hero_ids=["A", "D"])
+
+    # First resolve: requests a choice between A and D.
+    result = step.resolve(complex_tie_state, {})
+    assert result.requires_input
+    assert result.input_request["type"] == "CHOOSE_ACTOR"
+    assert set(result.input_request["player_ids"]) == {"A", "D"}
+
+    # Submit "B" — a real hero, but on the other team and not a candidate.
+    step.pending_input = {"selection": "B"}
+    result = step.resolve(complex_tie_state, {})
+
+    # Rejected: no winner installed, input is re-requested.
+    assert result.requires_input
+    assert complex_tie_state.current_actor_id != "B"
+
+    # A valid choice is still accepted afterward.
+    step.pending_input = {"selection": "A"}
+    result = step.resolve(complex_tie_state, {})
+    assert result.is_finished
+    assert complex_tie_state.current_actor_id == "A"

@@ -480,9 +480,13 @@ class ChooseMinionRemovalStep(GameStep):
             return StepResult(is_finished=True, new_steps=removal_steps)
 
         # Player choice needed
+        valid = self._get_valid_choices(minions)
         if self.pending_input:
             chosen_id = self.pending_input.get("selection")
-            if chosen_id:
+            self.pending_input = None
+            # Validate the choice was actually offered: a client must not be able
+            # to remove a heavy minion while non-heavy minions remain.
+            if chosen_id and str(chosen_id) in {str(m.id) for m in valid}:
                 logger.debug(f"   [BATTLE] {self.losing_team} chose to remove {chosen_id}.")
                 new_steps: list[GameStep] = [
                     RemoveUnitStep(unit_id=str(chosen_id)),
@@ -493,8 +497,10 @@ class ChooseMinionRemovalStep(GameStep):
                     ),
                 ]
                 return StepResult(is_finished=True, new_steps=new_steps)
+            logger.debug(
+                f"   [BATTLE] Rejected invalid minion removal {chosen_id!r}; re-requesting."
+            )
 
-        valid = self._get_valid_choices(minions)
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
@@ -607,13 +613,27 @@ class ResolveTieBreakerStep(GameStep):
 
         if needs_input:
             if self.pending_input:
-                winner_id = self.pending_input.get("selection")
-                logger.debug(f"   [TIE] Team {target_team.name} chose {winner_id} to act first.")
-                if len(teams_represented) > 1:
-                    state.tie_breaker_team = (
-                        TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
+                submitted = self.pending_input.get("selection")
+                self.pending_input = None
+                # Validate the chosen hero is one of the tied candidates. A client
+                # must not be able to install an arbitrary (or wrong-team) hero.
+                if str(submitted) in {str(c) for c in candidates}:
+                    winner_id = submitted
+                    logger.debug(
+                        f"   [TIE] Team {target_team.name} chose {winner_id} to act first."
                     )
-            else:
+                    if len(teams_represented) > 1:
+                        state.tie_breaker_team = (
+                            TeamColor.BLUE
+                            if state.tie_breaker_team == TeamColor.RED
+                            else TeamColor.RED
+                        )
+                else:
+                    logger.debug(
+                        f"   [TIE] Rejected invalid tie-break selection {submitted!r}; "
+                        "re-requesting."
+                    )
+            if winner_id is None:
                 return StepResult(
                     requires_input=True,
                     input_request=create_input_request(
@@ -629,7 +649,8 @@ class ResolveTieBreakerStep(GameStep):
         if not winner_id:
             raise ValueError("No winner identified in tie breaker.")
 
-        state.get_hero(HeroID(winner_id))
+        if not state.get_hero(HeroID(winner_id)):
+            raise ValueError(f"Tie breaker winner {winner_id!r} is not a known hero.")
 
         # CRITICAL: Remove winner from unresolved pool so they don't act again immediately
         if winner_id in state.unresolved_hero_ids:
