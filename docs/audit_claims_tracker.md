@@ -100,3 +100,13 @@ When closing a claim, update `Status`, `Resolution notes`, and add the fixing PR
 | F9 | Open | Examine auth token generation and comparison for entropy and timing behavior. | No issue confirmed in audit. |
 | F10 | Open | Re-run review of whisper, mortimer, ursafar, rowenna, and tigerclaw effect scripts. | Same coverage gap as A1. |
 | F11 | Resolved | Update Ursafar Prey Drive / Prey Abundance / Feeding Frenzy to gate on whether the attack target remains on the board, not `block_succeeded`. | Added `CheckUnitOnBoardStep` and gated Ursafar's bonus removal on `target_not_removed`. Regression tests cover removed targets, Brogan-protected targets, and Feeding Frenzy step construction. |
+
+## Rules-Compliance Findings (post-audit)
+
+Found while cross-checking the official Active-Effects and Changing-Card-State rules against the engine. Not part of the original audit.
+
+| ID | Status | Finding | Primary location(s) | Resolution notes |
+|---|---|---|---|---|
+| R1 | Resolved | Per rules, changing a card's state (discard / swap / retrieve / facedown) must cancel its active effect; only end-of-round retrieve did so. | `src/goa2/engine/steps/cards.py` | `DiscardCardStep`, `SwapCardStep`, and `RetrieveCardStep` now call `EffectManager.expire_by_card` after the state change (premature end → finishing_steps do not run, consistent with M11). Gives `expire_by_card` its first production callers. Regression: `tests/engine/test_card_state_cancels_effects.py`. Facedown is not yet wired because no production step turns a resolved card facedown — any future facedown step MUST call `expire_by_card`. |
+| R2 | Open | Simultaneous order-dependent active effects should resolve in Tie-Breaker-coin order (without flipping the coin); engine resolves finishing effects in `active_effects` insertion order instead. | `src/goa2/engine/phases.py` (`end_turn`); `src/goa2/engine/steps/phases.py` (`EndPhaseStep`) | Order the `[(source_id, finishing_steps)]` lists by tie-breaker before pushing. Narrow impact (needs multiple simultaneous order-mattering finishing effects). |
+| R3 | Verified OK | Radius active effects calculate from the hero's current space ("move with you"); This/Next/This-Round durations and hero-defeat cancellation behave per rules. | `src/goa2/engine/stats.py`; `src/goa2/engine/effect_manager.py` | No change needed. `origin_hex`-pinned auras (e.g. Smoke Bomb) intentionally stay fixed. |

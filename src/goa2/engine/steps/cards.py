@@ -86,6 +86,12 @@ class DiscardCardStep(GameStep):
         logger.debug(f"   [DISCARD] {h_id} discards {target_card.name}")
         hero.discard_card(target_card, from_hand=(self.source == CardContainerType.HAND))
 
+        # Changing a card's state cancels its active effect (premature end, so
+        # finishing_steps do not run). Harmless no-op for hand cards.
+        from goa2.engine.effect_manager import EffectManager
+
+        EffectManager.expire_by_card(state, target_card.id)
+
         # Fire AFTER_CARD_DISCARD passive trigger for every discard.
         # Passives that only care about specific sources (e.g. Battle Fury, which
         # only triggers on discards of resolved cards) filter via discard_source.
@@ -657,7 +663,16 @@ class SwapCardStep(GameStep):
         logger.debug(
             f"   [SWAP] Swapping {hero.id}'s current card {hero.current_turn_card.name} with {target_card.name}"
         )
+        # Both cards change state in a swap, which cancels their active effects
+        # (premature end, so finishing_steps do not run). Capture ids first.
+        swapped_out_id = hero.current_turn_card.id
+        swapped_in_id = target_card.id
         hero.swap_cards(hero.current_turn_card, target_card)
+
+        from goa2.engine.effect_manager import EffectManager
+
+        EffectManager.expire_by_card(state, swapped_out_id)
+        EffectManager.expire_by_card(state, swapped_in_id)
 
         # NOTE: After swapping, the "current_turn_card" has changed!
         # This might affect subsequent steps if they rely on "current_card_id" in context.
@@ -719,6 +734,12 @@ class RetrieveCardStep(GameStep):
 
         hero.return_card_to_hand(target_card)
         logger.debug(f"   [RETRIEVE] {actor_id} retrieved {target_card.name} from {source}.")
+
+        # Returning a card to hand changes its state, cancelling its active
+        # effect (premature end, so finishing_steps do not run).
+        from goa2.engine.effect_manager import EffectManager
+
+        EffectManager.expire_by_card(state, target_card.id)
 
         event = GameEvent(
             event_type=GameEventType.CARD_RETRIEVED,
