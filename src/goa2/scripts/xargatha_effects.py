@@ -327,7 +327,7 @@ class CharmEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion_after"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",
@@ -404,7 +404,7 @@ class ControlEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion_after"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",
@@ -495,7 +495,7 @@ class DominateEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=2, origin_key="charmed_minion_after"),
                     ObstacleFilter(is_obstacle=False),
-                    MovementPathFilter(range_val=2, unit_key="charmed_minion"),
+                    MovementPathFilter(range_val=2, unit_key="charmed_minion_after"),
                 ],
                 is_mandatory=False,  # "you may"
                 active_if_key="charmed_minion_after",

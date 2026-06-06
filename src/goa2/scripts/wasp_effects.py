@@ -136,6 +136,7 @@ class ChargedBoomerangEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
                 target_filters=[NotInStraightLineFilter()],
             ),
         ]
@@ -368,6 +369,7 @@ class ThunderBoomerangEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range or 0,
+                is_ranged=True,
                 target_id_key="thunder_target_1",
             ),
             # 3. Check if target was a hero
@@ -395,6 +397,7 @@ class ThunderBoomerangEffect(CardEffect):
                     AttackSequenceStep(
                         damage=stats.primary_value,
                         range_val=stats.range or 0,
+                        is_ranged=True,
                         target_id_key="thunder_target_2",
                     ),
                 ],

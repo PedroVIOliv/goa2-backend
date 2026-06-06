@@ -647,6 +647,7 @@ class BurningSkullEffect(CardEffect):
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
+                is_ranged=True,
             ),
             SelectStep(
                 target_type=TargetType.UNIT,
