@@ -126,12 +126,21 @@ class EndPhaseCleanupStep(GameStep):
     def _retrieve_cards(self, state: GameState):
         for team in state.teams.values():
             for hero in team.heroes:
-                # Deactivate effects from all cards before retrieval
+                # Expire (not merely deactivate) effects tied to each card before
+                # retrieval. expire_by_card removes the effect from active_effects
+                # AND clears the card's is_active flag, so cards don't return to
+                # hand still marked active. (deactivate_effects_by_card only flips
+                # effect.is_active and left both the effect lingering and the card
+                # flag stuck True.) Token-bound PASSIVE effects have no
+                # source_card_id and are untouched here — they persist via
+                # cleanup_stale_effects. Any THIS_ROUND / THIS_TURN finishing steps
+                # have already fired earlier in the End Phase, so the
+                # premature-removal semantics of expire_by_card are correct.
                 for card in hero.played_cards:
                     if card:
-                        EffectManager.deactivate_effects_by_card(state, card.id)
+                        EffectManager.expire_by_card(state, card.id)
                 if hero.current_turn_card:
-                    EffectManager.deactivate_effects_by_card(state, hero.current_turn_card.id)
+                    EffectManager.expire_by_card(state, hero.current_turn_card.id)
                 hero.retrieve_cards()
 
     def _clear_tokens(self, state: GameState) -> list[GameEvent]:

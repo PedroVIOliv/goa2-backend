@@ -195,6 +195,26 @@ class EffectManager:
                 return
 
     @staticmethod
+    def expire_effect_by_id(state: GameState, effect_id: str):
+        """Remove a single effect by ID and refresh its card's active status.
+
+        Use this (instead of ``deactivate_effect_by_id``) when an effect is
+        permanently *consumed* — e.g. a one-shot disruptor that fires once and
+        is spent. ``deactivate_effect_by_id`` only flips ``effect.is_active`` and
+        leaves the effect in ``active_effects``; because a card's ``is_active``
+        flag tracks effect *existence* (see ``_update_card_active_status``), the
+        owning card would stay marked active (tapped) even though its effect is
+        done. Removing the effect outright untaps a card whose only effect was
+        this one, and suppresses re-triggering regardless of card linkage.
+        """
+        card_ids = {
+            e.source_card_id for e in state.active_effects if e.id == effect_id and e.source_card_id
+        }
+        state.active_effects = [e for e in state.active_effects if e.id != effect_id]
+        for card_id in card_ids:
+            EffectManager._update_card_active_status(state, card_id)
+
+    @staticmethod
     def cleanup_stale_effects(state: GameState):
         """
         Remove effects that are no longer active and have expired.

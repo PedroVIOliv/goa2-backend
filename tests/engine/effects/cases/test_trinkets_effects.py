@@ -564,8 +564,12 @@ def test_disruptor_pulse_forces_discard_before_enemy_primary_action() -> None:
     assert blue is not None
     assert not blue.hand
     assert any(c.id == "blue_filler" for c in blue.discard_pile)
-    # A discard deactivates the effect.
-    assert effect.is_active is False
+    # A discard consumes the effect: it is removed from active_effects and the
+    # Trinkets card is no longer marked active (untapped).
+    assert not any(e.effect_type == EffectType.PRE_ACTION_DISCARD for e in state.active_effects)
+    disruptor_card = state.get_card_by_id("disruptor_pulse")
+    assert disruptor_card is not None
+    assert disruptor_card.is_active is False
 
 
 @pytest.mark.effect_flow

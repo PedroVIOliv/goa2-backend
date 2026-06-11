@@ -119,9 +119,11 @@ class ResolvePreActionDiscardStep(GameStep):
     that affect a hero about to perform a primary action.
 
     For each matching effect (one per resolve, re-checking state in between):
-    - If the hero has cards: deactivate the effect and force a discard.
+    - If the hero has cards: expire (consume) the effect and force a discard.
+      Removing it untaps the source card, whose is_active flag tracks effect
+      existence.
     - If the hero has no cards and the effect is discard_or_defeat: defeat
-      the hero (the effect stays active — only a discard deactivates it).
+      the hero (the effect stays active — only a discard consumes it).
     - Otherwise ("if able"): nothing happens and the effect stays active.
 
     If the hero leaves the board mid-resolution (defeated by a disruptor),
@@ -160,8 +162,13 @@ class ResolvePreActionDiscardStep(GameStep):
             self.processed_effect_ids.append(effect.id)
 
             if hero.hand:
-                # A discard will definitely happen — deactivate now.
-                EffectManager.deactivate_effect_by_id(state, effect.id)
+                # A discard will definitely happen — the disruptor is spent.
+                # Expire (remove) it rather than just deactivating: the card's
+                # is_active flag tracks effect existence, so a merely-deactivated
+                # effect would leave the Trinkets card marked active (tapped) for
+                # the rest of the round. Removal untaps the card and also stops
+                # the disruptor from re-firing regardless of card linkage.
+                EffectManager.expire_effect_by_id(state, effect.id)
                 context["pre_action_discard_victim"] = self.hero_id
                 logger.debug(f"   [DISRUPTOR] {self.hero_id} must discard before primary action.")
                 return StepResult(
