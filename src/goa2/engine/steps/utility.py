@@ -664,6 +664,36 @@ class CheckHeroDefeatedThisRoundStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CheckUnitFiltersStep(GameStep):
+    """
+    Applies a list of filters to a single unit (from context) and stores
+    True in context[output_key] when ALL filters pass, None otherwise
+    (matching CheckContextConditionStep semantics for active_if_key).
+
+    Used by Trinkets' cannon family to test whether the selected attack
+    target is in a straight line from both Trinkets and the Turret.
+    """
+
+    type: StepType = StepType.CHECK_UNIT_FILTERS
+    unit_key: str
+    filters: list[FilterCondition] = Field(default_factory=list)
+    output_key: str = "filters_match"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        unit_id = context.get(self.unit_key)
+        if not unit_id:
+            context[self.output_key] = None
+            return StepResult(is_finished=True)
+
+        result = all(f.apply(str(unit_id), state, context) for f in self.filters)
+        context[self.output_key] = True if result else None
+        logger.debug(f"   [CHECK] Unit {unit_id} vs {len(self.filters)} filter(s) -> {result}")
+        return StepResult(is_finished=True)
+
+
 class CheckUnitOnBoardStep(GameStep):
     """Sets context[output_key] to True if a unit id from context is still on the board."""
 

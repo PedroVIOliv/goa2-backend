@@ -872,7 +872,9 @@ class HighVoltageEffect(CardEffect):
                 prompt="Select adjacent enemy hero to force discard",
             ),
             # 3. Defeat the minion
-            DefeatUnitStep(victim_key="hv_minion", active_if_key="hv_minion"),
+            DefeatUnitStep(
+                victim_key="hv_minion", killer_id=str(hero.id), active_if_key="hv_minion"
+            ),
             # 4. Force hero to discard (if able)
             ForceDiscardStep(victim_key="hv_hero"),
         ]

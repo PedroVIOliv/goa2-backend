@@ -6,7 +6,7 @@ from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import DefeatUnitStep, RemoveUnitStep
+from goa2.engine.steps import DefeatUnitStep, ForceDiscardOrDefeatStep, RemoveUnitStep
 
 
 def create_hero(id_str, team):
@@ -107,6 +107,70 @@ def test_remove_unit_no_rewards(combat_state):
     assert killer.gold == 0
 
     # 2. Check Removal
+    assert minion.id not in state.unit_locations
+
+
+def test_force_discard_or_defeat_credits_acting_hero(combat_state):
+    """A 'discard or be defeated' kill credits the acting hero (current actor).
+
+    Every caller of ForceDiscardOrDefeatStep runs during the actor's own action
+    chain, so current_actor_id is the source hero who should get the bounty.
+    """
+    state, killer, _, hero_v = combat_state
+    hero_v.hand = []  # no cards -> must be defeated
+    state.current_actor_id = killer.id
+
+    state.execution_context["v"] = str(hero_v.id)
+    push_steps(state, [ForceDiscardOrDefeatStep(victim_key="v")])
+
+    result = process_stack(state)
+    while state.execution_stack and result.input_request is None:
+        result = process_stack(state)
+
+    assert hero_v.id not in state.unit_locations
+    # Level-3 victim -> 3 gold to the acting hero.
+    assert killer.gold == 3
+    defeated = [e for e in result.events if e.event_type.value == "UNIT_DEFEATED"]
+    assert defeated and defeated[-1].actor_id == str(killer.id)
+
+
+def test_force_discard_or_defeat_killer_override(combat_state):
+    """killer_id overrides the current-actor default for callers where the
+    acting hero is not the source (e.g. an effect firing on the victim's turn)."""
+    state, killer, _, hero_v = combat_state
+    hero_v.hand = []
+    # Victim is the current actor (as it would be for a disruptor-style trigger),
+    # but the kill should still be credited to the overridden source hero.
+    state.current_actor_id = hero_v.id
+
+    state.execution_context["v"] = str(hero_v.id)
+    push_steps(state, [ForceDiscardOrDefeatStep(victim_key="v", killer_id=str(killer.id))])
+
+    result = process_stack(state)
+    while state.execution_stack and result.input_request is None:
+        result = process_stack(state)
+
+    assert hero_v.id not in state.unit_locations
+    assert killer.gold == 3
+    assert hero_v.gold == 0  # the victim/current-actor is not credited
+
+
+def test_defeat_without_killer_awards_no_gold(combat_state):
+    """`killer_id=None` deliberately credits no one — gold needs an explicit killer.
+
+    This pins the contract so nobody "fixes" the default to silently use
+    current_actor_id: that would mis-credit effects (e.g. Trinkets' disruptor)
+    where the current actor is the *victim*, not the source. Effects that defeat
+    a unit must pass killer_id explicitly to award the kill.
+    """
+    state, killer, minion, _ = combat_state
+
+    step = DefeatUnitStep(victim_id=minion.id)  # no killer_id
+    push_steps(state, [step])
+
+    _ = process_stack(state).input_request
+
+    assert killer.gold == 0
     assert minion.id not in state.unit_locations
 
 

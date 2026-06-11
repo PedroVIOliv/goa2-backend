@@ -653,6 +653,7 @@ class WatchHowISoarEffect(CardEffect):
             ),
             DefeatUnitStep(
                 victim_key="soar_defeat_target",
+                killer_id=str(hero.id),
                 active_if_key="chose_defeat",
             ),
         ]
@@ -678,6 +679,7 @@ class WatchHowISoarEffect(CardEffect):
                     ),
                     DefeatUnitStep(
                         victim_key="soar_ult_defeat_target",
+                        killer_id=str(hero.id),
                         active_if_key="soar_ult_defeat_target",
                     ),
                 ]

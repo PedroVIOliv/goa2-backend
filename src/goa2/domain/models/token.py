@@ -13,6 +13,7 @@ TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.MINE_DUD: 2,
     TokenType.ZOMBIE: 4,
     TokenType.PYRO: 1,
+    TokenType.BARRIER: 3,
 }
 
 

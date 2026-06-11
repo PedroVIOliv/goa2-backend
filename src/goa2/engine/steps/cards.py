@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
+from pydantic import Field
+
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputRequestType, create_input_request
 from goa2.domain.models import (
@@ -111,6 +113,79 @@ class DiscardCardStep(GameStep):
         )
 
 
+class ResolvePreActionDiscardStep(GameStep):
+    """
+    Checks for active PRE_ACTION_DISCARD effects (Trinkets - Disruptor family)
+    that affect a hero about to perform a primary action.
+
+    For each matching effect (one per resolve, re-checking state in between):
+    - If the hero has cards: deactivate the effect and force a discard.
+    - If the hero has no cards and the effect is discard_or_defeat: defeat
+      the hero (the effect stays active — only a discard deactivates it).
+    - Otherwise ("if able"): nothing happens and the effect stays active.
+
+    If the hero leaves the board mid-resolution (defeated by a disruptor),
+    the remaining action is aborted.
+    """
+
+    type: StepType = StepType.RESOLVE_PRE_ACTION_DISCARD
+    hero_id: str
+    processed_effect_ids: list[str] = Field(default_factory=list)
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.domain.models.effect import EffectType
+        from goa2.engine.effect_manager import EffectManager
+        from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
+        from goa2.engine.steps.combat import DefeatUnitStep
+
+        hero = state.get_hero(HeroID(self.hero_id))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        if BoardEntityID(self.hero_id) not in state.entity_locations:
+            # Hero was defeated by a previous disruptor trigger — cancel the action.
+            logger.debug(f"   [DISRUPTOR] {self.hero_id} left the board. Aborting action.")
+            return StepResult(is_finished=True, abort_action=True)
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.PRE_ACTION_DISCARD:
+                continue
+            if effect.id in self.processed_effect_ids:
+                continue
+            if not _is_effect_active(effect, state):
+                continue
+            if not is_unit_in_effect_scope(effect, self.hero_id, state):
+                continue
+
+            self.processed_effect_ids.append(effect.id)
+
+            if hero.hand:
+                # A discard will definitely happen — deactivate now.
+                EffectManager.deactivate_effect_by_id(state, effect.id)
+                context["pre_action_discard_victim"] = self.hero_id
+                logger.debug(f"   [DISRUPTOR] {self.hero_id} must discard before primary action.")
+                return StepResult(
+                    is_finished=False,
+                    new_steps=[ForceDiscardStep(victim_key="pre_action_discard_victim")],
+                )
+
+            if effect.discard_or_defeat:
+                logger.debug(f"   [DISRUPTOR] {self.hero_id} has no cards to discard! DEFEATED!")
+                # Credit the defeat to the hero who created the disruptor
+                # (effect.source_id == Trinkets), NOT current_actor_id — the
+                # current actor here is the victim taking their own action.
+                return StepResult(
+                    is_finished=False,
+                    new_steps=[
+                        DefeatUnitStep(victim_id=self.hero_id, killer_id=effect.source_id),
+                    ],
+                )
+
+            logger.debug(f"   [DISRUPTOR] {self.hero_id} has no cards to discard (Safe).")
+
+        return StepResult(is_finished=True)
+
+
 class ForceDiscardStep(GameStep):
     """
     Checks if a victim has cards.
@@ -159,10 +234,17 @@ class ForceDiscardOrDefeatStep(GameStep):
     Checks if a victim has cards.
     If YES: Spawns a SelectStep (for victim to choose) + DiscardCardStep.
     If NO: Spawns DefeatUnitStep (the penalty for not discarding).
+
+    Kill attribution: by default the defeat is credited to the current actor,
+    which is correct for every caller that runs during its own action chain.
+    Callers where the actor is NOT the source (e.g. an effect that fires on the
+    victim's own turn) can override via killer_id / killer_key.
     """
 
     type: StepType = StepType.FORCE_DISCARD_OR_DEFEAT
     victim_key: str
+    killer_id: str | None = None  # Literal override for kill credit
+    killer_key: str | None = None  # Context key override for kill credit
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import DefeatUnitStep
@@ -178,8 +260,19 @@ class ForceDiscardOrDefeatStep(GameStep):
 
         if not victim.hand:
             logger.debug(f"   [EFFECT] {victim_id} has no cards to discard! DEFEATED!")
+            # Credit the kill. Prefer an explicit override; otherwise fall back to
+            # the current actor, which is the source for every caller that runs
+            # during its own action chain. (An effect that fires on the victim's
+            # own turn must override, since current_actor would be the victim.)
+            killer_id = self.killer_id
+            if not killer_id and self.killer_key:
+                ctx_killer = context.get(self.killer_key)
+                killer_id = str(ctx_killer) if ctx_killer else None
+            if not killer_id:
+                killer_id = str(state.current_actor_id) if state.current_actor_id else None
             return StepResult(
-                is_finished=True, new_steps=[DefeatUnitStep(victim_id=str(victim_id))]
+                is_finished=True,
+                new_steps=[DefeatUnitStep(victim_id=str(victim_id), killer_id=killer_id)],
             )
 
         # Has cards -> Force Discard
@@ -459,6 +552,7 @@ class ResolveCardStep(GameStep):
 
                 if is_primary:
                     steps_list.append(ResolvePreActionMovementStep(hero_id=self.hero_id))
+                    steps_list.append(ResolvePreActionDiscardStep(hero_id=self.hero_id))
                     steps_list.append(ResolveCardTextStep(card_id=card.id, hero_id=self.hero_id))
                 else:
                     # Secondary: Standard Primitives

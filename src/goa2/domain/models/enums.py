@@ -24,6 +24,7 @@ class TokenType(StrEnum):
     MINE_DUD = "mine_dud"
     ZOMBIE = "zombie"
     PYRO = "pyro"
+    BARRIER = "barrier"
 
 
 class CardTier(StrEnum):
@@ -193,7 +194,9 @@ class StepType(StrEnum):
     CHECK_DISTANCE = "check_distance"
     COMPUTE_DISTANCE = "compute_distance"
     CHECK_UNIT_ON_BOARD = "check_unit_on_board"
+    CHECK_UNIT_FILTERS = "check_unit_filters"
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
+    RESOLVE_PRE_ACTION_DISCARD = "resolve_pre_action_discard"
     CO_DIRECTIONAL_DRAG = "co_directional_drag"
 
 

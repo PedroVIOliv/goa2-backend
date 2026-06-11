@@ -74,6 +74,13 @@ class EffectType(StrEnum):
     # nudges via MoveUnitStep do NOT consult this aura.
     MOVEMENT_AURA_ZONE = "movement_aura_zone"
 
+    # Pre-primary-action forced discard (Trinkets - Disruptor family)
+    # Before an enemy hero in scope performs a primary action, that hero
+    # discards a card (or is defeated, if discard_or_defeat is set). The
+    # effect deactivates once a card is actually discarded. Checked by
+    # ResolvePreActionDiscardStep, scheduled by ResolveCardStep.
+    PRE_ACTION_DISCARD = "pre_action_discard"
+
 
 class AffectsFilter(StrEnum):
     """Who is affected by this effect."""
@@ -183,6 +190,9 @@ class ActiveEffect(BaseModel):
 
     # Allowed discard colors for MINION_PROTECTION effects (Brogan)
     allowed_discard_colors: list[CardColor] = Field(default_factory=list)
+
+    # PRE_ACTION_DISCARD: defeat the hero instead when they cannot discard
+    discard_or_defeat: bool = False
 
     # Steps to push onto the execution stack when this effect expires
     # (for DELAYED_TRIGGER effects). Patched to List[AnyStep] in step_types.py.

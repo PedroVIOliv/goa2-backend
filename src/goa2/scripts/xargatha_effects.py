@@ -543,6 +543,7 @@ class FinalEmbraceEffect(CardEffect):
                     ),
                     DefeatUnitStep(
                         victim_key="final_embrace_victim",
+                        killer_id=str(hero.id),
                         active_if_key="final_embrace_victim",
                     ),
                 ],
@@ -583,6 +584,7 @@ class ConstrictEffect(CardEffect):
                     ),
                     DefeatUnitStep(
                         victim_key="constrict_victim",
+                        killer_id=str(hero.id),
                         active_if_key="constrict_victim",
                     ),
                 ],

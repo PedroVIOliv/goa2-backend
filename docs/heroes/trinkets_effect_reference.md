@@ -1,6 +1,15 @@
 # Trinkets Effect Reference
 
-Use this as the quick implementation map for `src/goa2/scripts/trinkets_effects.py`. Trinkets has no registered scripts yet; every `effect_id` currently appears only in `src/goa2/data/heroes/trinkets.py`.
+Use this as the quick implementation map for `src/goa2/scripts/trinkets_effects.py`. All 18 effects (17 deck cards + ultimate) are implemented and registered; tests live in `tests/engine/effects/cases/test_trinkets_effects.py`.
+
+Implementation notes for what was actually built:
+
+- Turret: unique `Turret` BoardEntity (`trinkets_turret`) placed/removed via `PlaceTurretStep`/`RemoveTurretStep` (`engine/steps/markers.py`).
+- Cannons: `CheckUnitFiltersStep` (new generic step) tests the selected target against `InStraightLineFilter` from both origins, then `AttackSequenceStep(damage_bonus_key=...)` applies the conditional bonus.
+- Barriers: new `TokenType.BARRIER` (supply 3); each placed token carries a token-bound `AREA_STAT_MODIFIER` effect (ADJACENT, `SELF_AND_FRIENDLY_HEROES`, +1 DEFENSE) so the bonus stacks per adjacent token and dies with the token.
+- Disruptors: new `EffectType.PRE_ACTION_DISCARD` (+ `discard_or_defeat` payload on `ActiveEffect`), resolved by `ResolvePreActionDiscardStep`, which `ResolveCardStep` schedules before every primary action.
+- Design family: gated at runtime via `CheckDistanceStep` against the Turret; swaps use `TargetType.UNIT_OR_TOKEN` (the Turret is not a unit/token, so it is never selectable).
+- Ultimate: flat `StatAura` bonuses (+1 RANGE / +1 RADIUS) via `get_stat_auras()`.
 
 ## Shape of the Character
 

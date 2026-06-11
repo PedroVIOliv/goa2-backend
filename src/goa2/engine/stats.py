@@ -106,6 +106,11 @@ def _matches_affects_filter(effect: ActiveEffect, target_id: str, state: GameSta
         return source_team == target_team
 
     if affects == AffectsFilter.FRIENDLY_HEROES:
+        # "Friendly heroes" in card text means OTHER friendly heroes;
+        # SELF_AND_FRIENDLY_HEROES is the self-inclusive variant.
+        return source_team == target_team and is_hero and effect.source_id != target_id
+
+    if affects == AffectsFilter.SELF_AND_FRIENDLY_HEROES:
         return source_team == target_team and is_hero
 
     if affects == AffectsFilter.ENEMY_UNITS:

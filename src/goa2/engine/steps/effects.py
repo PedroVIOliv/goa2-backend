@@ -73,6 +73,9 @@ class CreateEffectStep(GameStep):
     # MOVEMENT_AURA_ZONE payload (Silverarrow - Trailblazer)
     grants_pass_through_obstacles: bool = False
 
+    # PRE_ACTION_DISCARD payload (Trinkets - Disruptor family)
+    discard_or_defeat: bool = False
+
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -130,6 +133,7 @@ class CreateEffectStep(GameStep):
             finishing_steps=self.finishing_steps,
             allowed_discard_colors=self.allowed_discard_colors,
             grants_pass_through_obstacles=self.grants_pass_through_obstacles,
+            discard_or_defeat=self.discard_or_defeat,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"

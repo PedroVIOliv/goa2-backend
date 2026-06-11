@@ -1036,6 +1036,7 @@ class LesserEvilEffect(CardEffect):
             ),
             DefeatUnitStep(
                 victim_key="le_minion_target",
+                killer_id=str(hero.id),
                 active_if_key="le_minion_target",
             ),
         ]
@@ -1121,7 +1122,7 @@ class GreaterGoodEffect(CardEffect):
                 item_key="gg_current_minion",
                 active_if_key="gg_chose_defeat",
                 steps_template=[
-                    DefeatUnitStep(victim_key="gg_current_minion"),
+                    DefeatUnitStep(victim_key="gg_current_minion", killer_id=str(hero.id)),
                 ],
             ),
         ]

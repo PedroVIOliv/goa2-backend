@@ -309,6 +309,56 @@ class TestGetComputedStatWithActiveEffects:
         result = get_computed_stat(state, "hero_1", StatType.ATTACK, base_value=5)
         assert result == 2
 
+    @staticmethod
+    def _hero_aura(affects: AffectsFilter) -> ActiveEffect:
+        """GLOBAL +1 Defense aura sourced by hero_1, scoped by `affects`."""
+        return ActiveEffect(
+            id="eff_aura",
+            source_id="hero_1",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=affects),
+            stat_type=StatType.DEFENSE,
+            stat_value=1,
+            duration=DurationType.THIS_ROUND,
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+
+    def test_friendly_heroes_excludes_source(self, stat_effect_state):
+        """FRIENDLY_HEROES means OTHER friendly heroes — not the source itself."""
+        state = stat_effect_state
+        teammate = Hero(id="hero_3", name="Hero3", team=TeamColor.RED, deck=[])
+        state.teams[TeamColor.RED].heroes.append(teammate)
+        hex3 = Hex(q=-1, r=0, s=1)
+        from goa2.domain.tile import Tile
+
+        state.board.tiles[hex3] = Tile(hex=hex3)
+        state.place_entity("hero_3", hex3)
+
+        state.add_effect(self._hero_aura(AffectsFilter.FRIENDLY_HEROES))
+
+        assert get_computed_stat(state, "hero_3", StatType.DEFENSE, base_value=0) == 1
+        assert get_computed_stat(state, "hero_1", StatType.DEFENSE, base_value=0) == 0
+        assert get_computed_stat(state, "hero_2", StatType.DEFENSE, base_value=0) == 0
+
+    def test_self_and_friendly_heroes_includes_source(self, stat_effect_state):
+        """SELF_AND_FRIENDLY_HEROES includes the source hero (e.g. Trinkets barriers)."""
+        state = stat_effect_state
+        teammate = Hero(id="hero_3", name="Hero3", team=TeamColor.RED, deck=[])
+        state.teams[TeamColor.RED].heroes.append(teammate)
+        hex3 = Hex(q=-1, r=0, s=1)
+        from goa2.domain.tile import Tile
+
+        state.board.tiles[hex3] = Tile(hex=hex3)
+        state.place_entity("hero_3", hex3)
+
+        state.add_effect(self._hero_aura(AffectsFilter.SELF_AND_FRIENDLY_HEROES))
+
+        assert get_computed_stat(state, "hero_1", StatType.DEFENSE, base_value=0) == 1
+        assert get_computed_stat(state, "hero_3", StatType.DEFENSE, base_value=0) == 1
+        assert get_computed_stat(state, "hero_2", StatType.DEFENSE, base_value=0) == 0
+
 
 class TestGetComputedStatWithMarkers:
     """Tests for get_computed_stat reading marker effects."""

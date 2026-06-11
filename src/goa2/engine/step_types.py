@@ -169,6 +169,7 @@ def rebuild_serialization_models() -> None:
     steps_mod.MultiSelectStep.model_fields["filters"].annotation = list[AnyFilter]
     steps_mod.AttackSequenceStep.model_fields["target_filters"].annotation = list[AnyFilter]
     steps_mod.CountStep.model_fields["filters"].annotation = list[AnyFilter]
+    steps_mod.CheckUnitFiltersStep.model_fields["filters"].annotation = list[AnyFilter]
     steps_mod.MayRepeatNTimesStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.ForEachStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = list[AnyStep]
@@ -188,6 +189,7 @@ def rebuild_serialization_models() -> None:
         steps_mod.MultiSelectStep,
         steps_mod.AttackSequenceStep,
         steps_mod.CountStep,
+        steps_mod.CheckUnitFiltersStep,
         steps_mod.MayRepeatNTimesStep,
         steps_mod.ForEachStep,
         steps_mod.CreateEffectStep,
