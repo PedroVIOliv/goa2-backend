@@ -929,15 +929,12 @@ class DarkestRitualEffect(CardEffect):
     ) -> list[GameStep]:
         count = _count_empty_spawn_points(state, hero.id, stats.radius or 0)
         should_gain_coins = count >= 2
-        steps: list[GameStep] = []
+        # Both clauses below resolve the actor via context["self"], so seed it
+        # unconditionally — the Ultimate item clause is independent of coins.
+        steps: list[GameStep] = [SetContextFlagStep(key="self", value=hero.id)]
 
         if should_gain_coins:
-            steps.extend(
-                [
-                    SetContextFlagStep(key="self", value=hero.id),
-                    GainCoinsStep(hero_key="self", amount=2),
-                ]
-            )
+            steps.append(GainCoinsStep(hero_key="self", amount=2))
 
         # "If you have your Ultimate" = hero has reached level 8
         if hero.level >= 8:

@@ -193,14 +193,19 @@ class TestDarkestRitualItem:
 
         assert hero.items.get(StatType.ATTACK, 0) == 0
 
-    def test_no_item_when_not_enough_spawns(self):
-        """Even at level 8, no item if the spawn condition isn't met."""
+    def test_item_granted_even_when_not_enough_spawns(self):
+        """The Ultimate item clause is independent of the coin/spawn condition.
+
+        Card text: "...gain 2 coins. If you have your Ultimate, gain an Attack
+        item." With <2 empty spawns a level-8 Dodger gets no coins but must
+        still gain the item.
+        """
         state = _make_state(num_empty_spawns=1, hero_level=8)
         hero = state.get_hero("hero_dodger")
 
         _run_effect(state)
 
-        assert hero.items.get(StatType.ATTACK, 0) == 0
+        assert hero.items.get(StatType.ATTACK, 0) == 1
         assert hero.gold == 0
 
 
