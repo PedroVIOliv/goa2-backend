@@ -339,7 +339,10 @@ class DeathTrapEffect(CardEffect):
                     target_type=TargetType.UNIT,
                     prompt="Select an enemy hero to discard a card (Death Trap)",
                     output_key="death_trap_victim",
-                    is_mandatory=False,
+                    # Imperative ("discards a card, if able") and only built when
+                    # >=1 valid target exists, so the selection is mandatory —
+                    # the player cannot decline the forced discard.
+                    is_mandatory=True,
                     filters=[
                         UnitTypeFilter(unit_type="HERO"),
                         TeamFilter(relation="ENEMY"),
