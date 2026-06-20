@@ -439,3 +439,39 @@ class TestAComplicatedProfession:
 
         # No crash, no discard
         assert len(enemy.hand) == 0
+
+    def test_marker_placed_by_other_actor_does_not_trigger_bains_passive(self, board):
+        """The "you" in the card text is enforced by current-actor scoping.
+
+        CheckPassiveAbilitiesStep scans the current actor's passives. During a
+        defense the current actor is the attacker, not Bain, so when Close Call
+        places the Bounty on Bain himself the scan looks at the attacker's
+        passives and Bain's ultimate never fires. Confirm a Bounty placed while
+        someone else is the actor does NOT force Bain to discard, even with the
+        ultimate active and cards in hand.
+        """
+        state = _build_passive_state(board)
+        bain = state.get_hero(HeroID("hero_bain"))
+        bain.hand = [_make_filler_card("bain_h1"), _make_filler_card("bain_h2")]
+        # Simulate the Close Call defense: the attacker is the current actor.
+        state.current_actor_id = "hero_enemy"
+
+        push_steps(
+            state,
+            [
+                PlaceMarkerStep(
+                    marker_type=MarkerType.BOUNTY,
+                    target_id="hero_bain",  # Bounty lands on Bain himself
+                    value=0,
+                ),
+            ],
+        )
+
+        result = process_stack(state).input_request
+        while result is not None:
+            assert result.get("type") != "SELECT_CARD"
+            result = process_stack(state).input_request
+
+        # Bain's passive did not fire: hand untouched, nothing discarded.
+        assert len(bain.hand) == 2
+        assert bain.discard_pile == []
