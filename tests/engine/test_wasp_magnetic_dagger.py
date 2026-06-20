@@ -10,6 +10,8 @@ from goa2.domain.models import (
     CardTier,
     EffectType,
     Hero,
+    Minion,
+    MinionType,
     Team,
     TeamColor,
 )
@@ -162,6 +164,41 @@ def test_magnetic_dagger_blocks_placement_in_radius(wasp_magnetic_state):
     assert (
         res_allowed.abort_action is False
     ), "Placement of enemy hero outside radius should be allowed"
+
+
+def test_magnetic_dagger_blocks_enemy_minion_placement(wasp_magnetic_state):
+    """Card text says "Enemy units" — minions, not just heroes, are protected.
+
+    Regression for the effect using AffectsFilter.ENEMY_HEROES, which let enemy
+    minions in radius still be freely placed/swapped.
+    """
+    # Add an enemy minion inside radius 3 (distance 2 from Wasp).
+    minion = Minion(id="em1", name="EM1", team=TeamColor.BLUE, type=MinionType.MELEE)
+    wasp_magnetic_state.teams[TeamColor.BLUE].minions.append(minion)
+    wasp_magnetic_state.place_entity("em1", Hex(q=2, r=0, s=-2))
+
+    step = ResolveCardStep(hero_id="wasp")
+    push_steps(wasp_magnetic_state, [step])
+
+    # Attack e1 (gets defeated, freeing (1,0,-1) as a placement destination)
+    _ = process_stack(wasp_magnetic_state).input_request
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
+    _ = process_stack(wasp_magnetic_state).input_request
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "e1"}
+    _ = process_stack(wasp_magnetic_state).input_request
+    wasp_magnetic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
+    _ = process_stack(wasp_magnetic_state).input_request
+
+    hero = wasp_magnetic_state.get_hero("wasp")
+    card_id = hero.current_turn_card.id
+    hero.resolve_current_card()
+    EffectManager.activate_effects_by_card(wasp_magnetic_state, card_id)
+
+    # Enemy tries to place the in-radius minion - should be blocked.
+    wasp_magnetic_state.current_actor_id = "e2"
+    place_step = PlaceUnitStep(unit_id="em1", target_hex_arg=Hex(q=1, r=0, s=-1), is_mandatory=True)
+    res = place_step.resolve(wasp_magnetic_state, {})
+    assert res.abort_action is True, "Placement of enemy minion in radius should be blocked"
 
 
 def test_magnetic_dagger_blocks_self_placement(wasp_magnetic_state):

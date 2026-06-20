@@ -90,8 +90,9 @@ class StopProjectilesEffect(CardEffect):
 @register_effect("magnetic_dagger")
 class MagneticDaggerEffect(CardEffect):
     """
-    Card Text: "Attack. This Turn: Enemy heroes in Radius 3 cannot be
-    placed or swapped by enemy actions."
+    Card Text: "Target a unit adjacent to you. After the attack: This turn:
+    Enemy units in radius cannot be swapped or placed by themselves or by
+    enemy heroes."
     """
 
     def build_steps(
@@ -100,14 +101,14 @@ class MagneticDaggerEffect(CardEffect):
         return [
             # 1. Standard attack
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
-            # 2. Create placement prevention effect
+            # 2. Create placement prevention effect (all enemy units, not just heroes)
             CreateEffectStep(
                 effect_type=EffectType.PLACEMENT_PREVENTION,
                 scope=EffectScope(
                     shape=Shape.RADIUS,
                     range=stats.radius or 0,
                     origin_id=hero.id,
-                    affects=AffectsFilter.ENEMY_HEROES,
+                    affects=AffectsFilter.ENEMY_UNITS,
                 ),
                 duration=DurationType.THIS_TURN,
                 displacement_blocks=[DisplacementType.PLACE, DisplacementType.SWAP],
