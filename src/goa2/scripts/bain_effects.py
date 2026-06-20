@@ -576,9 +576,10 @@ def _build_guess_steps(
             output_key=f"{p}chosen_card",
             is_mandatory=True,
         ),
-        # 3. Actor guesses the card's color
+        # 3. Actor guesses the card's color (only colors that could be in hand)
         GuessCardColorStep(
             output_key=f"{p}guessed_color",
+            victim_key=f"{p}guess_victim",
         ),
         # 4. Reveal and resolve
         RevealAndResolveGuessStep(
@@ -724,8 +725,8 @@ class GetOverHereEffect(CardEffect):
             SetContextFlagStep(key="goh_actor", value=str(hero.id)),
             # 1. Select target: in range, straight line, no obstacles between
             SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Target a unit in range and in a straight line with no obstacles between you",
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Target a unit or a token in range and in a straight line with no obstacles between you",
                 output_key="goh_target",
                 is_mandatory=True,
                 filters=[

@@ -202,7 +202,7 @@ class TestGetOverHere:
 
         # Select enemy unit
         req = process_stack(state).input_request
-        assert req["type"] == "SELECT_UNIT"
+        assert req["type"] == "SELECT_UNIT_OR_TOKEN"  # "a unit or a token"
         state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
 
         # Process remaining steps (ComputeHexStep auto + MoveUnitStep)
@@ -271,7 +271,7 @@ class TestGetOverHere:
         # blocker IS adjacent in straight line with clear path, so it's offered
         req = process_stack(state).input_request
         assert req is not None
-        assert req["type"] == "SELECT_UNIT"
+        assert req["type"] == "SELECT_UNIT_OR_TOKEN"  # "a unit or a token"
         option_ids = set(req["valid_options"])
         assert "hero_enemy" not in option_ids
         assert "blocker" in option_ids

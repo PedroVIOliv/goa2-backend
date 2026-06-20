@@ -671,7 +671,10 @@ class ResolveTieBreakerStep(GameStep):
 class GuessCardColorStep(GameStep):
     """Prompts the actor to guess a card color.
 
-    Always offers the 5 standard card colors: BLUE, GOLD, GREEN, RED, SILVER.
+    Offers the 5 standard card colors: BLUE, GOLD, GREEN, RED, SILVER. If
+    ``victim_key`` is set, the options are restricted to colors that could be
+    in that hero's hand (i.e. colors actually present in their hand), per the
+    "You can only guess colors that could be in that player's hand" rule.
     The actor picks one via SELECT_OPTION.
     """
 
@@ -679,6 +682,19 @@ class GuessCardColorStep(GameStep):
 
     type: StepType = StepType.GUESS_CARD_COLOR
     output_key: str  # where to store the guessed color string
+    victim_key: str = ""  # context key → hero ID whose hand restricts the options
+
+    def _valid_colors(self, state: GameState, context: dict[str, Any]) -> list[str]:
+        if self.victim_key:
+            victim_id = context.get(self.victim_key)
+            if victim_id:
+                victim = state.get_hero(HeroID(str(victim_id)))
+                if victim:
+                    hand_colors = {c.color.value for c in victim.hand if c.color}
+                    restricted = [c for c in self.VALID_COLORS if c in hand_colors]
+                    if restricted:
+                        return restricted
+        return list(self.VALID_COLORS)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -689,7 +705,9 @@ class GuessCardColorStep(GameStep):
             context[self.output_key] = selection
             return StepResult(is_finished=True)
 
-        options = [InputOption(id=color, text=color) for color in self.VALID_COLORS]
+        options = [
+            InputOption(id=color, text=color) for color in self._valid_colors(state, context)
+        ]
 
         return StepResult(
             is_finished=False,
