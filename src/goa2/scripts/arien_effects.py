@@ -452,7 +452,11 @@ class RogueWaveEffect(CardEffect):
     ) -> list[GameStep]:
         return [
             # 1. Attack Sequence (selects target, reaction, damage)
-            AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=card.is_ranged,
+            ),
             # 2. Optional: Select enemy adjacent to push
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -495,7 +499,11 @@ class TidalBlastEffect(CardEffect):
     ) -> list[GameStep]:
         return [
             # 1. Attack Sequence
-            AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=card.is_ranged,
+            ),
             # 2. Select adjacent enemy to push
             SelectStep(
                 target_type=TargetType.UNIT,

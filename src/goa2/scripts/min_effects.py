@@ -464,7 +464,11 @@ class FastAsLightningEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         steps: list[GameStep] = [
-            AttackSequenceStep(damage=stats.primary_value, range_val=stats.range),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=card.is_ranged,
+            ),
         ]
 
         red_card = _find_red_card(hero)
