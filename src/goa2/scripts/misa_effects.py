@@ -219,6 +219,7 @@ class ThunderShotEffect(CardEffect):
                 output_key="ts_push_dest",
                 filters=[
                     RelativeDistanceFilter(reference_key="defender_id", operator=">"),
+                    AdjacencyToContextFilter(target_key="defender_id"),
                     ObstacleFilter(is_obstacle=False),
                 ],
                 active_if_key="ts_can_push",
