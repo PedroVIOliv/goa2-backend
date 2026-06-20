@@ -1374,6 +1374,7 @@ class SwiftJusticeEffect(CardEffect):
                     AttackSequenceStep(
                         damage=stats.primary_value,
                         range_val=stats.range,
+                        is_ranged=True,
                         target_id_key="sj_ult_victim_a",
                         target_filters=[
                             UnitTypeFilter(unit_type="HERO"),
