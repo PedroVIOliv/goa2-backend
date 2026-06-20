@@ -932,12 +932,14 @@ class PoisonedDaggerEffect(CardEffect):
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select enemy hero in range to poison",
+                prompt="Select a hero in range to poison",
                 output_key="poison_target",
                 is_mandatory=True,
+                # Poison may target any hero (allies included) — unlike attack/
+                # defeat effects, friendly heroes are legal targets per the
+                # rules. Self is excluded by SelectStep's default self-filter.
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range),
                 ],
             ),
@@ -967,12 +969,14 @@ class PoisonedDartEffect(CardEffect):
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select enemy hero in range to poison",
+                prompt="Select a hero in range to poison",
                 output_key="poison_target",
                 is_mandatory=True,
+                # Poison may target any hero (allies included) — unlike attack/
+                # defeat effects, friendly heroes are legal targets per the
+                # rules. Self is excluded by SelectStep's default self-filter.
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range),
                 ],
             ),

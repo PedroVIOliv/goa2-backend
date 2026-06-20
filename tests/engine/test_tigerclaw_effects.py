@@ -1772,7 +1772,7 @@ class TestPoisonedDaggerEffect:
         assert steps[0].__class__.__name__ == "SelectStep"
         assert steps[1].__class__.__name__ == "PlaceMarkerStep"
 
-    def test_poisoned_dagger_select_enemy_hero_in_range(self, tigerclaw_state):
+    def test_poisoned_dagger_select_any_hero_in_range(self, tigerclaw_state):
         effect = CardEffectRegistry.get("poisoned_dagger")
         tc = tigerclaw_state.get_hero("tigerclaw")
         card = make_poisoned_dagger_card()
@@ -1786,6 +1786,8 @@ class TestPoisonedDaggerEffect:
             f.__class__.__name__ == "UnitTypeFilter" and f.unit_type == "HERO"
             for f in select.filters
         )
+        # Poison may target any hero, including friendly ones — there must be
+        # NO enemy-only team filter. (Self is excluded by SelectStep's default.)
         has_enemy = any(
             f.__class__.__name__ == "TeamFilter" and f.relation == "ENEMY" for f in select.filters
         )
@@ -1793,7 +1795,7 @@ class TestPoisonedDaggerEffect:
             f.__class__.__name__ == "RangeFilter" and f.max_range == 3 for f in select.filters
         )
         assert has_hero
-        assert has_enemy
+        assert not has_enemy
         assert has_range
 
     def test_poisoned_dagger_marker_value_minus_1(self, tigerclaw_state):
@@ -1854,7 +1856,7 @@ class TestPoisonedDaggerEffect:
         assert init == 4
 
     def test_poisoned_dagger_no_valid_target_aborts(self):
-        """No enemy hero in range → mandatory abort."""
+        """No other hero in range (self excluded) → mandatory abort."""
         board = Board()
         hexes = set()
         for q in range(-3, 4):
