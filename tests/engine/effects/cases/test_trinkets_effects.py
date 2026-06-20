@@ -509,6 +509,56 @@ def test_deployable_barrier_skipping_first_token_places_nothing() -> None:
     assert not state.active_effects
 
 
+@pytest.mark.effect_flow
+def test_deployable_barrier_in_radius_is_measured_from_trinkets_not_turret() -> None:
+    """ "In radius" (bare) means in radius of Trinkets, not the Turret.
+
+    The card text says "Place ... Barrier tokens in radius, with at least one
+    of them adjacent to the Turret." Only the explicit "adjacent to the Turret"
+    is Turret-anchored; the bare "in radius" is measured from Trinkets (the
+    acting hero). This separates the two origins by placing the Turret far from
+    Trinkets and checking the second (non-first) token placement options.
+    """
+    # Radius-5 hex disk so distances equal cube distance (fully connected).
+    disk = [
+        (q, r, -q - r)
+        for q in range(-5, 6)
+        for r in range(-5, 6)
+        if max(abs(q), abs(r), abs(q + r)) <= 5
+    ]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(disk)
+        .red_hero(
+            "hero_trinkets",
+            at=(0, 0, 0),
+            current_card=hero_card("Trinkets", "deployable_barrier"),  # radius 3
+        )
+        .with_actor("hero_trinkets")
+        .build()
+    )
+    _place_turret(state, Hex(q=4, r=0, s=-4))
+    _add_barrier_pool(state)
+
+    run = run_card(state, "hero_trinkets")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    # First token: must be adjacent to the Turret AND within Trinkets' radius 3.
+    run.expect_input(InputRequestType.SELECT_HEX)
+    first = Hex(q=3, r=0, s=-3)  # dist 1 from Turret, dist 3 from Trinkets
+    assert first in _option_set(run)
+    run.choose(first)
+
+    # Second token: only "in radius" of Trinkets applies.
+    run.expect_input(InputRequestType.SELECT_HEX)
+    options = _option_set(run)
+    # In Trinkets' radius 3 but OUTSIDE the Turret's radius 3 → must be allowed.
+    hero_only = Hex(q=0, r=3, s=-3)  # dist 3 from Trinkets, dist 4 from Turret
+    assert hero_only in options
+    # In the Turret's radius but OUTSIDE Trinkets' radius 3 → must NOT be allowed.
+    turret_only = Hex(q=5, r=0, s=-5)  # dist 1 from Turret, dist 5 from Trinkets
+    assert turret_only not in options
+
+
 # =============================================================================
 # Disruptor family
 # =============================================================================
