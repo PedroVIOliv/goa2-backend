@@ -550,7 +550,8 @@ class _GiftRetrieveEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Select a friendly hero in radius
+            # 1. Select a friendly hero in radius (the gift is a benefit, so it
+            #    cannot be given to an enemy hero)
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select a friendly hero in radius to gift a card retrieval",
@@ -558,6 +559,7 @@ class _GiftRetrieveEffect(CardEffect):
                 is_mandatory=False,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.radius or 0),
                 ],
             ),

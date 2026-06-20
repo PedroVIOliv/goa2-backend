@@ -32,6 +32,7 @@ from goa2.engine.filters import (
     OrFilter,
     RangeFilter,
     StraightLinePathFilter,
+    TeamFilter,
     UnitTypeFilter,
 )
 from goa2.engine.handler import process_stack, push_steps
@@ -501,7 +502,11 @@ class TestNaturesBlessing:
         assert gain_step.amount == 1
 
     def test_hero_selection_filters(self, silver_state):
-        """Hero select uses HERO + radius range (any team, per card text)."""
+        """Hero select uses HERO + radius range, restricted to friendly heroes.
+
+        The gift (retrieve + coins) is a benefit, so it cannot target an enemy
+        hero; the SelectStep includes a FRIENDLY TeamFilter.
+        """
         effect = CardEffectRegistry.get("natures_blessing")
         hero = silver_state.get_hero("hero_silverarrow")
         card = _card_by_id("natures_blessing")
@@ -510,6 +515,9 @@ class TestNaturesBlessing:
         filter_types = {type(f) for f in hero_select.filters}
         assert UnitTypeFilter in filter_types
         assert RangeFilter in filter_types
+        assert TeamFilter in filter_types
+        team_filter = next(f for f in hero_select.filters if isinstance(f, TeamFilter))
+        assert team_filter.relation == "FRIENDLY"
 
 
 class TestNaturesBlessingIntegration:
