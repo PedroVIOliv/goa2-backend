@@ -12,7 +12,7 @@ if __name__ == "__main__":
     is_prod = os.environ.get("GOA2_ENV", "development") == "production"
     uvicorn.run(
         "goa2.main:app",
-        host="0.0.0.0",
+        host=os.environ.get("GOA2_HOST", "127.0.0.1"),
         port=int(os.environ.get("GOA2_PORT", "8000")),
         reload=not is_prod,
     )
