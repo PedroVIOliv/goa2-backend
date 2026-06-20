@@ -46,12 +46,19 @@ register_all_effects()
 
 
 async def _cleanup_loop(registry: GameRegistry):
-    """Periodically remove games not updated in 24 hours."""
+    """Periodically remove stale game saves (24h) and old replay logs (30d)."""
+    from goa2.server.replay import cleanup_old_replays
+
     while True:
         await asyncio.sleep(3600)  # Check every hour
         removed = registry.cleanup_stale_games(max_age_seconds=86400)
         if removed:
             logger.info("Cleanup: removed %d stale game(s)", removed)
+        # Replays outlive game saves: retained for their own TTL (default 30d)
+        # so bugs reported after a game ends can still be reproduced.
+        purged = cleanup_old_replays()
+        if purged:
+            logger.info("Cleanup: removed %d old replay log(s)", purged)
 
 
 @asynccontextmanager

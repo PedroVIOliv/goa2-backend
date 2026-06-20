@@ -107,6 +107,10 @@ async def _handle_submit_input(
     )
     if game.game_logger:
         game.game_logger.log_input_response(hero_id, data.get("selection"))
+    if game.replay_recorder:
+        game.replay_recorder.record_input(
+            hero_id, data.get("selection"), game.session.state.round, game.session.state.turn
+        )
     result = game.session.advance(response)
     game.last_result = result
     _log_ws_result(game, result)
@@ -137,6 +141,10 @@ async def _handle_commit_card(
     if card is None:
         raise CardNotInHandError(card_id, hero_id)
 
+    if game.replay_recorder:
+        game.replay_recorder.record_commit(
+            hero_id, card_id, session.state.round, session.state.turn
+        )
     result = session.commit_card(HeroID(hero_id), card)
     game.last_result = result
     if game.game_logger:
@@ -158,6 +166,8 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     if session.current_phase != GamePhase.PLANNING:
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
+    if game.replay_recorder:
+        game.replay_recorder.record_pass(hero_id, session.state.round, session.state.turn)
     result = session.pass_turn(HeroID(hero_id))
     game.last_result = result
     if game.game_logger:

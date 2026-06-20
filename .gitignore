@@ -34,6 +34,9 @@ logs/
 # Game saves (created during testing)
 data/games/
 
+# Replay logs (created during testing)
+data/replays/
+
 extracted_assets/images
 Guards of Atlantis II - 2nd Printing_web-2.pdf
 .gitignore

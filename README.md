@@ -285,6 +285,29 @@ Use behavior assertions rather than checking only that setup wiring happened. Fo
 
 - `GOA2_SAVE_DIR` - save-game directory for the server. Defaults to `data/games`.
 - `GOA2_LOG_DIR` - game log directory. Defaults to `logs/games`.
+- `GOA2_REPLAY_DIR` - minimal replay-log directory. Defaults to `data/replays`.
+- `GOA2_REPLAY_TTL_DAYS` - how long replay logs are retained, in days. Defaults to `30`.
+
+### Replay logs
+
+Every server game writes a compact, append-only replay log
+(`data/replays/<game_id>.jsonl`) capturing only the setup parameters (including
+the RNG seed) and the ordered player decisions (card commits, passes, inputs).
+Because gameplay is deterministic, this is enough to reconstruct a game exactly.
+Replays are retained for 30 days — independent of the 24h save-game cleanup —
+so a bug reported after a game ends can still be reproduced. Reconstruct one
+with the CLI:
+
+```bash
+# Replay the whole game
+PYTHONPATH=src uv run python -m goa2.scripts.replay data/replays/<game_id>.jsonl
+
+# Stop at the start of round 3, turn 2 (the moment a bug was reported)
+PYTHONPATH=src uv run python -m goa2.scripts.replay data/replays/<game_id>.jsonl --round 3 --turn 2
+
+# Or by decision index, and dump a player-scoped view at the stop point
+PYTHONPATH=src uv run python -m goa2.scripts.replay data/replays/<game_id>.jsonl --decision 47 --view hero_arien
+```
 
 ## Status
 

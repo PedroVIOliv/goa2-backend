@@ -15,6 +15,7 @@ from fastapi import WebSocket
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
+from goa2.server.replay import ReplayRecorder, create_replay_recorder
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class ManagedGame:
     last_result: SessionResult | None = None
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None
+    replay_recorder: ReplayRecorder | None = None
 
 
 class GameRegistry:
@@ -61,6 +63,7 @@ class GameRegistry:
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
             game_logger=create_game_logger(game_id),
+            replay_recorder=create_replay_recorder(game_id),
         )
         self._games[game_id] = game
 
@@ -140,6 +143,7 @@ class GameRegistry:
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
+                replay_recorder=create_replay_recorder(data["game_id"]),
             )
             self._games[game.game_id] = game
             count += 1

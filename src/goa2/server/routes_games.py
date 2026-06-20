@@ -89,13 +89,14 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
         )
     game_seed_id = uuid.uuid4().hex
     game_id = game_seed_id[:12]
+    seed = int(game_seed_id, 16)
     state = GameSetup.create_game(
         map_path,
         body.red_heroes,
         body.blue_heroes,
         body.cheats_enabled,
         body.game_type,
-        seed=int(game_seed_id, 16),
+        seed=seed,
     )
     session = GameSession(state)
 
@@ -108,6 +109,15 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
 
     if game.game_logger:
         game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
+    if game.replay_recorder:
+        game.replay_recorder.record_setup(
+            map_name=body.map_name,
+            red_heroes=body.red_heroes,
+            blue_heroes=body.blue_heroes,
+            game_type=body.game_type,
+            cheats=body.cheats_enabled,
+            seed=seed,
+        )
 
     return CreateGameResponse(
         game_id=game.game_id,
@@ -164,6 +174,10 @@ async def commit_card(
         if player.hero_id in session.state.pending_inputs:
             raise AlreadyCommittedError(player.hero_id)
 
+        if game.replay_recorder:
+            game.replay_recorder.record_commit(
+                player.hero_id, body.card_id, session.state.round, session.state.turn
+            )
         result = session.commit_card(HeroID(player.hero_id), card)
         game.last_result = result
         if game.game_logger:
@@ -188,6 +202,10 @@ async def pass_turn(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
+        if game.replay_recorder:
+            game.replay_recorder.record_pass(
+                player.hero_id, session.state.round, session.state.turn
+            )
         result = session.pass_turn(HeroID(player.hero_id))
         game.last_result = result
         if game.game_logger:
@@ -220,6 +238,13 @@ async def submit_input(
         )
         if game.game_logger:
             game.game_logger.log_input_response(player.hero_id, body.selection)
+        if game.replay_recorder:
+            game.replay_recorder.record_input(
+                player.hero_id,
+                body.selection,
+                game.session.state.round,
+                game.session.state.turn,
+            )
         result = game.session.advance(response)
         game.last_result = result
         _log_result(game, result)
