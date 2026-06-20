@@ -136,13 +136,17 @@ class SpawnPointFilter(FilterCondition):
 
     type: FilterType = FilterType.SPAWN_POINT
     has_spawn_point: bool = False
+    minion_only: bool = False  # when True, only MINION spawn points qualify
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if isinstance(candidate, Hex):
             tile = state.board.get_tile(candidate)
             if not tile:
                 return False
-            return (tile.spawn_point is not None) == self.has_spawn_point
+            spawn = tile.spawn_point
+            if self.minion_only and spawn is not None and not spawn.is_minion_spawn:
+                spawn = None
+            return (spawn is not None) == self.has_spawn_point
         return False
 
 
@@ -155,6 +159,7 @@ class AdjacentSpawnPointFilter(FilterCondition):
     is_empty: bool = True
     must_not_have: bool = True  # True means "not adjacent to", False means "must be adjacent to"
     battle_zone_only: bool = False
+    minion_only: bool = False  # when True, only MINION spawn points count as adjacent
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         cand_hex = None
@@ -173,6 +178,8 @@ class AdjacentSpawnPointFilter(FilterCondition):
         for n in neighbors:
             tile = state.board.get_tile(n)
             if tile and tile.spawn_point:
+                if self.minion_only and not tile.spawn_point.is_minion_spawn:
+                    continue
                 if self.battle_zone_only:
                     from goa2.scripts.dodger_effects import _has_tide_of_darkness
 

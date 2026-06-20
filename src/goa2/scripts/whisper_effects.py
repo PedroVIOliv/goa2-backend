@@ -555,7 +555,7 @@ class _ShadowTeleportEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=stats.range),
                     ObstacleFilter(is_obstacle=False),
-                    SpawnPointFilter(has_spawn_point=True),
+                    SpawnPointFilter(has_spawn_point=True, minion_only=True),
                     BattleZoneFilter(),
                 ],
                 is_mandatory=True,
@@ -593,7 +593,7 @@ class CreepingShadowEffect(CardEffect):
                         filters=[
                             AndFilter(
                                 filters=[
-                                    SpawnPointFilter(has_spawn_point=True),
+                                    SpawnPointFilter(has_spawn_point=True, minion_only=True),
                                     BattleZoneFilter(),
                                 ]
                             ),
@@ -601,6 +601,7 @@ class CreepingShadowEffect(CardEffect):
                                 is_empty=True,
                                 must_not_have=False,
                                 battle_zone_only=True,
+                                minion_only=True,
                             ),
                         ]
                     ),
@@ -700,7 +701,7 @@ class CrimsonTrailEffect(CardEffect):
     def _compute_move_distance(self, state: GameState, hero: Hero, radius: int) -> int:
         from goa2.scripts.dodger_effects import _count_empty_spawn_points
 
-        count = _count_empty_spawn_points(state, hero.id, radius)
+        count = _count_empty_spawn_points(state, hero.id, radius, minion_only=True)
         return min(count, self.max_move)
 
     def build_steps(

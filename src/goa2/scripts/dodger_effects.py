@@ -69,10 +69,13 @@ def _has_tide_of_darkness(state: GameState) -> bool:
     return ult.effect_id == "tide_of_darkness"
 
 
-def _count_empty_spawn_points(state: GameState, hero_id: str, radius: int) -> int:
+def _count_empty_spawn_points(
+    state: GameState, hero_id: str, radius: int, *, minion_only: bool = False
+) -> int:
     """Count empty spawn points within radius of hero, in the active battle zone.
 
     With Tide of Darkness active, all non-terrain unoccupied hexes count.
+    When minion_only is True, hero spawn points are not counted.
     """
     from goa2.domain.types import BoardEntityID
     from goa2.engine.topology import get_topology_service
@@ -92,6 +95,8 @@ def _count_empty_spawn_points(state: GameState, hero_id: str, radius: int) -> in
     for h, tile in state.board.tiles.items():
         if not override:
             if not tile.spawn_point:
+                continue
+            if minion_only and not tile.spawn_point.is_minion_spawn:
                 continue
             if tile.zone_id != active_zone_id:
                 continue

@@ -168,12 +168,14 @@ class EffectScenarioBuilder:
         *,
         team: TeamColor = TeamColor.RED,
         spawn_type: SpawnType = SpawnType.HERO,
+        minion_type: MinionType = MinionType.MELEE,
     ) -> Self:
         location = hex_at(at)
         self._board.tiles[location].spawn_point = SpawnPoint(
             location=location,
             team=team,
             type=spawn_type,
+            minion_type=minion_type if spawn_type == SpawnType.MINION else None,
         )
         return self
 
