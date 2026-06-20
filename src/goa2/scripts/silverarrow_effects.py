@@ -481,7 +481,7 @@ class DisorientEffect(CardEffect):
                 target_type=TargetType.UNIT,
                 prompt="Select an adjacent enemy unit to move 1 space",
                 output_key="disorient_target",
-                is_mandatory=False,
+                is_mandatory=True,
                 filters=[
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=1),
@@ -492,7 +492,7 @@ class DisorientEffect(CardEffect):
                 target_type=TargetType.HEX,
                 prompt="Select destination for the enemy unit",
                 output_key="disorient_dest",
-                is_mandatory=False,
+                is_mandatory=True,
                 active_if_key="disorient_target",
                 filters=[
                     RangeFilter(max_range=1, origin_key="disorient_target"),
