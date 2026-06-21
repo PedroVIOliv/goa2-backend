@@ -18,7 +18,9 @@ from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 
 
-def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str, Any]:
+def build_view(
+    state: GameState, for_hero_id: HeroID | None = None, *, reveal_all: bool = False
+) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
 
@@ -32,6 +34,12 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
         state: The current game state
         for_hero_id: Hero ID to scope the view to. If None, returns public view
                      (no facedown cards visible to anyone, like a spectator)
+        reveal_all: Omniscient mode. If True, every hero is treated as "own" — all
+                    hands and facedown cards are revealed. This MUST NEVER be set
+                    from live play; it exists only for the offline replay debugger
+                    (see server/routes_replays.py), which reconstructs games from
+                    disk. Keyword-only and defaulting False so no client-controlled
+                    value can ever reach it.
 
     Returns:
         Serializable dict representation of the game state with filtered cards
@@ -39,7 +47,7 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
     # Build teams view
     teams_view: dict[str, Any] = {}
     for team_color, team in state.teams.items():
-        teams_view[team_color.value] = _build_team_view(team, for_hero_id)
+        teams_view[team_color.value] = _build_team_view(team, for_hero_id, reveal_all)
 
     # Build board view (public info)
     board_view = _build_board_view(state)
@@ -51,13 +59,13 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
     markers_view = _build_markers_view(state)
 
     # Build tokens view (public info, with facedown hiding)
-    tokens_view = _build_tokens_view(state, for_hero_id)
+    tokens_view = _build_tokens_view(state, for_hero_id, reveal_all)
 
     # Build other public board entities view
     board_entities_view = _build_board_entities_view(state)
 
     # Build unresolved cards view (resolution order for frontend)
-    unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id)
+    unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
 
     return {
         "phase": state.phase.value,
@@ -79,7 +87,7 @@ def build_view(state: GameState, for_hero_id: HeroID | None = None) -> dict[str,
 
 
 def _build_unresolved_cards_view(
-    state: GameState, for_hero_id: HeroID | None = None
+    state: GameState, for_hero_id: HeroID | None = None, reveal_all: bool = False
 ) -> list[dict[str, Any]]:
     """
     Build an ordered list of unresolved cards for frontend visualization.
@@ -114,7 +122,7 @@ def _build_unresolved_cards_view(
                 "hero_id": h_id,
                 "initiative": computed_init,
                 "team": hero.team,
-                "card": _build_card_view(card, is_own_hero=(h_id == for_hero_id)),
+                "card": _build_card_view(card, is_own_hero=(reveal_all or h_id == for_hero_id)),
             }
         )
 
@@ -129,26 +137,28 @@ def _build_unresolved_cards_view(
     return entries
 
 
-def _build_team_view(team, for_hero_id: HeroID | None) -> dict[str, Any]:
+def _build_team_view(team, for_hero_id: HeroID | None, reveal_all: bool = False) -> dict[str, Any]:
     """Build a view for a single team."""
     return {
         "color": team.color.value,
         "life_counters": team.life_counters,
-        "heroes": [_build_hero_view(hero, for_hero_id) for hero in team.heroes],
+        "heroes": [_build_hero_view(hero, for_hero_id, reveal_all) for hero in team.heroes],
         "minions": [_build_minion_view(minion) for minion in team.minions],
     }
 
 
-def _build_hero_view(hero: Hero, for_hero_id: HeroID | None) -> dict[str, Any]:
+def _build_hero_view(
+    hero: Hero, for_hero_id: HeroID | None, reveal_all: bool = False
+) -> dict[str, Any]:
     """
     Build a view for a single hero.
 
     Visibility:
-    - If hero.id == for_hero_id: Show all cards (hand, deck, played, current_turn)
+    - If hero.id == for_hero_id (or reveal_all): Show all cards (hand, deck, played, current_turn)
     - Otherwise: Hand is empty, other card arrays show faceup cards, facedown cards hide sensitive fields
     - Discard pile: Always visible (public info)
     """
-    is_own_hero = hero.id == for_hero_id
+    is_own_hero = reveal_all or hero.id == for_hero_id
 
     return {
         "id": hero.id,
@@ -351,7 +361,9 @@ def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
     return effects_view
 
 
-def _build_tokens_view(state: GameState, for_hero_id: HeroID | None = None) -> list[dict[str, Any]]:
+def _build_tokens_view(
+    state: GameState, for_hero_id: HeroID | None = None, reveal_all: bool = False
+) -> list[dict[str, Any]]:
     """Build a view of tokens on the board with facedown hiding."""
     viewer_team = None
     if for_hero_id:
@@ -365,7 +377,7 @@ def _build_tokens_view(state: GameState, for_hero_id: HeroID | None = None) -> l
             loc = state.entity_locations.get(BoardEntityID(str(token.id)))
 
             visible_type = token.token_type.value
-            if token.is_facedown:
+            if token.is_facedown and not reveal_all:
                 owner_team = None
                 if token.owner_id:
                     owner = state.get_hero(token.owner_id)

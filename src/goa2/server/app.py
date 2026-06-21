@@ -87,6 +87,15 @@ def create_app() -> FastAPI:
     app.include_router(games_router)
     app.include_router(ws_router)
 
+    # Replay-debugger router (omniscient view): only mounted when explicitly
+    # enabled, so reveal-all data is never reachable from a default/production
+    # server. See routes_replays for the full rationale.
+    from goa2.server.routes_replays import replay_api_enabled
+    from goa2.server.routes_replays import router as replays_router
+
+    if replay_api_enabled():
+        app.include_router(replays_router)
+
     # CORS
     allowed_origins = os.environ.get("GOA2_CORS_ORIGINS", "").split(",")
     allowed_origins = [o.strip() for o in allowed_origins if o.strip()]

@@ -180,6 +180,19 @@ def load_replay(path: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return setup, decisions
 
 
+def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
+    """Create a fresh GameSession from a replay setup header (seeded, no decisions)."""
+    state = GameSetup.create_game(
+        _resolve_map_path(setup["map"]),
+        setup["red"],
+        setup["blue"],
+        setup.get("cheats", False),
+        setup.get("game_type", "LONG"),
+        seed=setup["seed"],
+    )
+    return GameSession(state)
+
+
 def replay_game(
     path: str,
     *,
@@ -200,16 +213,7 @@ def replay_game(
     advanced further one decision at a time.
     """
     setup, decisions = load_replay(path)
-
-    state = GameSetup.create_game(
-        _resolve_map_path(setup["map"]),
-        setup["red"],
-        setup["blue"],
-        setup.get("cheats", False),
-        setup.get("game_type", "LONG"),
-        seed=setup["seed"],
-    )
-    session = GameSession(state)
+    session = build_session_from_setup(setup)
 
     for i, decision in enumerate(decisions):
         if until_decision is not None and i >= until_decision:
@@ -221,6 +225,54 @@ def replay_game(
         _apply_decision(session, decision)
 
     return session
+
+
+def index_for_round_turn(
+    decisions: list[dict[str, Any]], until_round: int, until_turn: int | None = None
+) -> int:
+    """Decision index that positions the game at the start of round R (and turn T).
+
+    Returns the index of the first decision at/after the target round/turn — i.e.
+    the number of decisions to apply to land at that moment — or len(decisions)
+    if the target is past the end of the game. Mirrors replay_game()'s stop logic.
+    """
+    for i, decision in enumerate(decisions):
+        if _decision_at_or_after(decision, until_round, until_turn):
+            return i
+    return len(decisions)
+
+
+class ReplayCursor:
+    """A reconstructed game positioned at a decision index, advanceable forward.
+
+    Holds a live GameSession plus a cursor = number of decisions applied. Seeking
+    forward applies only the intervening decisions (so stepping N -> N+1 applies
+    exactly one); seeking backward rebuilds from the seed (the engine is
+    forward-only). This makes action-by-action playback cheap while keeping any
+    position reproducible.
+    """
+
+    def __init__(self, setup: dict[str, Any], decisions: list[dict[str, Any]]) -> None:
+        self.setup = setup
+        self.decisions = decisions
+        self.session = build_session_from_setup(setup)
+        self.cursor = 0  # number of decisions applied
+
+    @property
+    def total(self) -> int:
+        return len(self.decisions)
+
+    def seek(self, target_index: int) -> GameSession:
+        """Position the session so exactly `target_index` decisions are applied."""
+        target = max(0, min(target_index, len(self.decisions)))
+        if target < self.cursor:
+            # Backward move: no cheap un-apply, so rebuild from the seed.
+            self.session = build_session_from_setup(self.setup)
+            self.cursor = 0
+        while self.cursor < target:
+            _apply_decision(self.session, self.decisions[self.cursor])
+            self.cursor += 1
+        return self.session
 
 
 def _decision_at_or_after(
