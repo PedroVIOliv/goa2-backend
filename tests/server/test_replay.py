@@ -6,8 +6,9 @@ import json
 
 import pytest
 
+from goa2.domain.input import InputResponse
 from goa2.domain.types import HeroID
-from goa2.engine.session import GameSession
+from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.setup import GameSetup
 from goa2.server.replay import (
     ReplayRecorder,
@@ -219,3 +220,88 @@ def test_end_to_end_record_via_server_then_replay(tmp_path, monkeypatch):
         )
 
     assert os.path.exists(replay_dir)
+
+
+def _pick(req: dict):
+    """First legal selection for an input request (test auto-player)."""
+    if req.get("valid_options"):
+        return req["valid_options"][0]
+    if req.get("valid_hexes"):
+        return req["valid_hexes"][0]
+    if req.get("options"):
+        opt = req["options"][0]
+        return opt["id"] if isinstance(opt, dict) else opt
+    return "SKIP"
+
+
+def test_replay_roundtrip_with_cheat_gold(tmp_path):
+    """A recorded gold cheat reconstructs the same gold (was previously lost)."""
+    seed = 11
+    state = GameSetup.create_game(_resolve_map_path(MAP), RED, BLUE, True, "QUICK", seed=seed)
+    live = GameSession(state)
+
+    rec = ReplayRecorder("ch", str(tmp_path))
+    rec.record_setup(
+        map_name=MAP, red_heroes=RED, blue_heroes=BLUE, game_type="QUICK", cheats=True, seed=seed
+    )
+
+    hero_id = _hero_ids(live.state)[0]
+    # Apply a cheat the way the server does, and record it.
+    live.state.get_hero(HeroID(hero_id)).gold += 7
+    rec.record_cheat_gold(hero_id, 7, live.state.round, live.state.turn)
+    # Plus a normal commit so the log isn't cheat-only.
+    card = live.state.get_hero(HeroID(hero_id)).hand[0]
+    rec.record_commit(hero_id, card.id, live.state.round, live.state.turn)
+    live.commit_card(HeroID(hero_id), card)
+
+    replayed = replay_game(str(tmp_path / "ch.jsonl"))
+    assert replayed.state.get_hero(HeroID(hero_id)).gold == 7
+    assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
+        live.state.model_dump(mode="json")
+    )
+
+
+def test_replay_roundtrip_with_rollback(tmp_path):
+    """A game where the actor rolls back mid-turn reconstructs faithfully."""
+    seed = 7
+    live = _live_game(seed)
+
+    rec = ReplayRecorder("rb", str(tmp_path))
+    _record_setup(rec, seed)
+
+    # Commit every hero (enters resolution); keep the last result to drive from.
+    result = None
+    for hero_id in _hero_ids(live.state):
+        card = live.state.get_hero(HeroID(hero_id)).hand[0]
+        rec.record_commit(hero_id, card.id, live.state.round, live.state.turn)
+        result = live.commit_card(HeroID(hero_id), card)
+
+    did_rollback = False
+    for _ in range(300):
+        if live.state.phase.value == "GAME_OVER":
+            break
+        if result.result_type == SessionResultType.INPUT_NEEDED and result.input_request:
+            req = result.input_request.to_dict()
+            sel = _pick(req)
+            r, t = live.state.round, live.state.turn
+            rec.record_input("", sel, r, t)
+            result = live.advance(InputResponse(request_id="", selection=sel))
+
+            # The first rollback-able input: undo and re-answer it.
+            if req.get("can_rollback") and not did_rollback:
+                rr, rt = live.state.round, live.state.turn
+                rec.record_rollback("", rr, rt)
+                result = live.rollback()
+                did_rollback = True
+        elif live.state.phase.value == "PLANNING":
+            # Resolution (including our rollback) finished; stop at this boundary.
+            break
+        else:
+            result = live.advance()
+
+    assert did_rollback, "expected a rollback-able resolution input in this game"
+
+    replayed = replay_game(str(tmp_path / "rb.jsonl"))
+    assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
+        live.state.model_dump(mode="json")
+    )

@@ -107,11 +107,12 @@ async def _handle_submit_input(
     )
     if game.game_logger:
         game.game_logger.log_input_response(hero_id, data.get("selection"))
-    if game.replay_recorder:
-        game.replay_recorder.record_input(
-            hero_id, data.get("selection"), game.session.state.round, game.session.state.turn
-        )
+    # Record only after the engine accepts the input, tagged with the pre-advance
+    # round/turn, so a rejected selection leaves no phantom decision in the log.
+    rec_round, rec_turn = game.session.state.round, game.session.state.turn
     result = game.session.advance(response)
+    if game.replay_recorder:
+        game.replay_recorder.record_input(hero_id, data.get("selection"), rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
     return {
@@ -190,7 +191,10 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         raise NotYourTurnError(hero_id, "(no active actor)")
     if str(session.state.current_actor_id) != hero_id:
         raise NotYourTurnError(hero_id, str(session.state.current_actor_id))
+    rec_round, rec_turn = session.state.round, session.state.turn
     result = session.rollback()
+    if game.replay_recorder:
+        game.replay_recorder.record_rollback(hero_id, rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
     return {
@@ -225,6 +229,10 @@ async def _handle_cheats_gold(
         return {"type": "ERROR", "detail": "Amount must be a positive integer"}
 
     hero.gold += amount
+    if game.replay_recorder:
+        game.replay_recorder.record_cheat_gold(
+            target_hero_id, amount, session.state.round, session.state.turn
+        )
 
     event = GameEvent(
         event_type=GameEventType.GOLD_GAINED,

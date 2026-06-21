@@ -17,6 +17,14 @@ Format: one JSON object per line (JSONL).
     {"type":"commit","r":1,"t":1,"hero":"hero_arien","card":"arien_basic_1"}
     {"type":"pass","r":1,"t":1,"hero":"hero_wasp"}
     {"type":"input","r":3,"t":2,"hero":"hero_arien","sel":"minion_4"}
+    {"type":"rollback","r":3,"t":2,"hero":"hero_arien"}
+    {"type":"cheat_gold","r":1,"t":1,"hero":"hero_arien","amount":5}
+
+Every state-changing client operation is recorded: commits, passes, input
+responses, rollbacks (restore the current actor's turn-start snapshot), and the
+gold cheat. Bare ``advance`` is not recorded — it only drives deterministic
+engine processing between decisions. Records are written *after* the engine
+accepts the operation, so a rejected one never leaves a phantom in the log.
 
 Replays are durable: they live in their own directory with their own
 retention (default 30 days) and are NOT deleted when a game's save is removed.
@@ -143,6 +151,14 @@ class ReplayRecorder:
     def record_input(self, hero_id: str, selection: Any, round_num: int, turn: int) -> None:
         self._append(
             {"type": "input", "r": round_num, "t": turn, "hero": hero_id, "sel": selection}
+        )
+
+    def record_rollback(self, hero_id: str, round_num: int, turn: int) -> None:
+        self._append({"type": "rollback", "r": round_num, "t": turn, "hero": hero_id})
+
+    def record_cheat_gold(self, hero_id: str, amount: int, round_num: int, turn: int) -> None:
+        self._append(
+            {"type": "cheat_gold", "r": round_num, "t": turn, "hero": hero_id, "amount": amount}
         )
 
 
@@ -307,6 +323,16 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         session.pass_turn(hero_id)
     elif kind == "input":
         session.advance(InputResponse(request_id="", selection=decision["sel"]))
+    elif kind == "rollback":
+        # Restores the current actor's turn-start snapshot, exactly as live play
+        # did. The reconstruction session took the same snapshot deterministically
+        # while applying the preceding inputs, so this reproduces it faithfully.
+        session.rollback()
+    elif kind == "cheat_gold":
+        hero = session.state.get_hero(hero_id)
+        if hero is None:
+            raise ValueError(f"Replay: hero {hero_id} not found for cheat_gold")
+        hero.gold += int(decision["amount"])
     else:
         raise ValueError(f"Replay: unknown decision type {kind!r}")
 

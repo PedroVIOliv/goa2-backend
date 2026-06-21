@@ -238,14 +238,12 @@ async def submit_input(
         )
         if game.game_logger:
             game.game_logger.log_input_response(player.hero_id, body.selection)
-        if game.replay_recorder:
-            game.replay_recorder.record_input(
-                player.hero_id,
-                body.selection,
-                game.session.state.round,
-                game.session.state.turn,
-            )
+        # Record only after the engine accepts the input, tagged with the
+        # pre-advance round/turn, so a rejected selection leaves no phantom decision.
+        rec_round, rec_turn = game.session.state.round, game.session.state.turn
         result = game.session.advance(response)
+        if game.replay_recorder:
+            game.replay_recorder.record_input(player.hero_id, body.selection, rec_round, rec_turn)
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
@@ -286,10 +284,13 @@ async def rollback_action(
             raise HTTPException(status_code=400, detail="No active resolution to rollback")
         if str(session.state.current_actor_id) != player.hero_id:
             raise HTTPException(status_code=403, detail="Only the current actor can rollback")
+        rec_round, rec_turn = session.state.round, session.state.turn
         try:
             result = session.rollback()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if game.replay_recorder:
+            game.replay_recorder.record_rollback(player.hero_id, rec_round, rec_turn)
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
@@ -324,6 +325,10 @@ async def give_gold_cheat(
             raise HTTPException(status_code=400, detail="Amount must be a positive integer")
 
         hero.gold += body.amount
+        if game.replay_recorder:
+            game.replay_recorder.record_cheat_gold(
+                body.hero_id, body.amount, session.state.round, session.state.turn
+            )
 
         event = GameEvent(
             event_type=GameEventType.GOLD_GAINED,
