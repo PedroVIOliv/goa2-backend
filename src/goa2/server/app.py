@@ -24,6 +24,7 @@ from goa2.server.errors import (
     NotYourTurnError,
 )
 from goa2.server.registry import GameRegistry
+from goa2.server.routes_draft import router as draft_router
 from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.ws import router as ws_router
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(heroes_router)
     app.include_router(games_router)
+    app.include_router(draft_router)
     app.include_router(ws_router)
 
     # Replay-debugger router (omniscient view): only mounted when explicitly
