@@ -315,6 +315,14 @@ class DefeatUnitStep(GameStep):
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
 
+        if hasattr(victim, "value") and self._has_token_sacrifice_protection(
+            state, actual_victim_id, victim
+        ):
+            return StepResult(
+                is_finished=True,
+                new_steps=[CheckMinionProtectionStep(minion_id=actual_victim_id)],
+            )
+
         events: list[GameEvent] = [
             GameEvent(
                 event_type=GameEventType.UNIT_DEFEATED,
@@ -480,6 +488,10 @@ class DefeatUnitStep(GameStep):
                 e.effect_type == EffectType.MINION_PROTECTION
                 and _is_effect_active(e, state)
                 and is_unit_in_effect_scope(e, actual_victim_id, state)
+                and (
+                    not e.protected_minion_types
+                    or getattr(victim, "type", None) in e.protected_minion_types
+                )
                 for e in state.active_effects
             )
             if has_protection:
@@ -494,6 +506,39 @@ class DefeatUnitStep(GameStep):
             new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
             events=events,
         )
+
+    def _has_token_sacrifice_protection(
+        self, state: GameState, minion_id: str, minion: Any
+    ) -> bool:
+        """Totem-style protection cancels the defeat before rewards/bookkeeping."""
+        from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.MINION_PROTECTION:
+                continue
+            if not effect.sacrifice_origin_token:
+                continue
+            if not _is_effect_active(effect, state):
+                continue
+            if not is_unit_in_effect_scope(effect, minion_id, state):
+                continue
+            if (
+                effect.protected_minion_types
+                and getattr(minion, "type", None) not in effect.protected_minion_types
+            ):
+                continue
+
+            token_id = effect.scope.origin_id
+            if not token_id:
+                continue
+            token = state.misc_entities.get(BoardEntityID(token_id))
+            if not isinstance(token, Token):
+                continue
+            if BoardEntityID(token_id) not in state.entity_locations:
+                continue
+            return True
+
+        return False
 
 
 class CheckMinionProtectionStep(GameStep):
@@ -511,6 +556,10 @@ class CheckMinionProtectionStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
 
+        minion = state.get_unit(UnitID(self.minion_id))
+        if not minion:
+            return StepResult(is_finished=True)
+
         # Find an untried active MINION_PROTECTION effect covering this minion
         protection = None
         for e in state.active_effects:
@@ -521,6 +570,11 @@ class CheckMinionProtectionStep(GameStep):
             if not _is_effect_active(e, state):
                 continue
             if not is_unit_in_effect_scope(e, self.minion_id, state):
+                continue
+            if (
+                e.protected_minion_types
+                and getattr(minion, "type", None) not in e.protected_minion_types
+            ):
                 continue
             protection = e
             break
@@ -536,6 +590,45 @@ class CheckMinionProtectionStep(GameStep):
         protector = state.get_hero(HeroID(protection.source_id))
         if not protector:
             return self._try_next(protection.id)
+
+        if protection.sacrifice_origin_token:
+            token_id = protection.scope.origin_id
+            if not token_id:
+                return self._try_next(protection.id)
+            token = state.misc_entities.get(BoardEntityID(token_id))
+            if not isinstance(token, Token):
+                return self._try_next(protection.id)
+
+            from goa2.engine.steps.markers import _remove_token_from_board
+
+            from_hex, removed_effects = _remove_token_from_board(state, token_id)
+            if not from_hex:
+                return self._try_next(protection.id)
+
+            logger.debug(
+                f"   [PROTECT] {protector.id}'s Totem protects {self.minion_id} and is removed."
+            )
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.TOKEN_REMOVED,
+                        actor_id=protector.id,
+                        target_id=token_id,
+                        from_hex=_hex_dict(from_hex),
+                        metadata={"effects_removed": removed_effects},
+                    ),
+                    GameEvent(
+                        event_type=GameEventType.MINION_PROTECTED,
+                        actor_id=protector.id,
+                        target_id=self.minion_id,
+                        metadata={
+                            "sacrificed_token_id": token_id,
+                            "effect_id": protection.id,
+                        },
+                    ),
+                ],
+            )
 
         qualifying_cards = [
             c for c in protector.hand if c.color in protection.allowed_discard_colors

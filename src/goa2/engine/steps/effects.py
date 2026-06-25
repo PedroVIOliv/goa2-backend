@@ -10,7 +10,15 @@ from pydantic import Field
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.models import ActionType, Card, CardColor, CardState, StepType, TeamColor
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    MinionType,
+    StepType,
+    TeamColor,
+)
 from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType
 from goa2.domain.models.enums import DisplacementType, StatType
 from goa2.domain.state import GameState
@@ -65,6 +73,8 @@ class CreateEffectStep(GameStep):
 
     # Allowed discard colors for MINION_PROTECTION effects (Brogan)
     allowed_discard_colors: list[CardColor] = Field(default_factory=list)
+    protected_minion_types: list[MinionType] = Field(default_factory=list)
+    sacrifice_origin_token: bool = False
 
     # Steps to execute when this effect expires (for DELAYED_TRIGGER effects)
     # Patched to List[AnyStep] in step_types.py.
@@ -132,6 +142,8 @@ class CreateEffectStep(GameStep):
             barrier_origin_id=self.barrier_origin_id,
             finishing_steps=self.finishing_steps,
             allowed_discard_colors=self.allowed_discard_colors,
+            protected_minion_types=self.protected_minion_types,
+            sacrifice_origin_token=self.sacrifice_origin_token,
             grants_pass_through_obstacles=self.grants_pass_through_obstacles,
             discard_or_defeat=self.discard_or_defeat,
         )

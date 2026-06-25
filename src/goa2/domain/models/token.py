@@ -14,6 +14,8 @@ TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.ZOMBIE: 4,
     TokenType.PYRO: 1,
     TokenType.BARRIER: 3,
+    TokenType.ICE: 3,
+    TokenType.TOTEM: 1,
 }
 
 
@@ -29,3 +31,4 @@ class Token(BoardEntity):
     is_passable: bool = False
     is_facedown: bool = False
     persists_end_of_round: bool = False
+    is_immune_to_enemy_actions: bool = False

@@ -204,6 +204,16 @@ class ImmunityFilter(FilterCondition):
         if not target:
             return False
 
+        if isinstance(target, Token) and target.is_immune_to_enemy_actions:
+            actor_id = state.current_actor_id
+            owner_id = target.owner_id
+            actor = state.get_entity(BoardEntityID(str(actor_id))) if actor_id else None
+            owner = state.get_hero(owner_id) if owner_id else None
+            actor_team = getattr(actor, "team", None)
+            owner_team = getattr(owner, "team", None)
+            if actor_team is not None and owner_team is not None and actor_team != owner_team:
+                return False
+
         # Check 1: Standard minion immunity (Heavy with support)
         if isinstance(target, Unit) and rules.is_immune(target, state):
             return False  # Immune = fails filter

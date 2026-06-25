@@ -11,6 +11,7 @@ import goa2.data.heroes.mortimer
 import goa2.data.heroes.rowenna
 import goa2.data.heroes.sabina
 import goa2.data.heroes.silverarrow
+import goa2.data.heroes.tali
 import goa2.data.heroes.tigerclaw
 import goa2.data.heroes.trinkets
 import goa2.data.heroes.ursafar

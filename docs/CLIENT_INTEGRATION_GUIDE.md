@@ -746,13 +746,13 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 |-------|------|-------------|
 | `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
 | `name` | string | Display name |
-| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
 | `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
 | `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |
 | `hex` | hex/null | Current position on the board. `null` if the token exists but is not placed |
 
-Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect.
+Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect. Some effects can make specific tokens unselectable by enemy actions, such as Tali's Venerated Totem.
 
 When a token is removed from the board, any effects anchored to it (via `scope.origin_id`) are automatically removed.
 

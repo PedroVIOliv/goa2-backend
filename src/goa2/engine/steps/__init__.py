@@ -5,6 +5,7 @@ from goa2.engine.steps.cards import (  # noqa: F401
     ConvertCardToItemStep,
     CountCardsStep,
     DiscardCardStep,
+    ForceDiscardByColorStep,
     ForceDiscardOrDefeatStep,
     ForceDiscardStep,
     GainCoinsStep,
@@ -56,6 +57,7 @@ from goa2.engine.steps.markers import (  # noqa: F401
 )
 from goa2.engine.steps.movement import (  # noqa: F401
     CoDirectionalDragStep,
+    DirectionalMoveUnitsStep,
     FastTravelSequenceStep,
     FastTravelStep,
     ForceDefenseCardMovementStep,
@@ -85,6 +87,7 @@ from goa2.engine.steps.reactions import (  # noqa: F401
 )
 from goa2.engine.steps.selection import (  # noqa: F401
     AskConfirmationStep,
+    ChooseCardColorStep,
     ChooseMinionRemovalStep,
     GuessCardColorStep,
     MultiSelectStep,

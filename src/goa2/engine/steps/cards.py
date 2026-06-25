@@ -25,7 +25,7 @@ from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.filters_hex import RangeFilter
-from goa2.engine.filters_units import ExcludeIdentityFilter, UnitTypeFilter
+from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter, UnitTypeFilter
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -232,6 +232,62 @@ class ForceDiscardStep(GameStep):
                     is_mandatory=True,
                 ),
                 DiscardCardStep(card_key="card_to_discard", hero_key=self.victim_key),
+            ],
+        )
+
+
+class ForceDiscardByColorStep(GameStep):
+    """
+    Forces a hero to discard a card matching a named color, if able.
+
+    The victim chooses which matching card to discard. If their hand has no
+    card of that color, the step completes without penalty.
+    """
+
+    type: StepType = StepType.FORCE_DISCARD_BY_COLOR
+    victim_key: str
+    color: CardColor | None = None
+    color_key: str | None = None
+    output_key: str = "card_to_discard"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.steps.selection import SelectStep
+
+        victim_id = context.get(self.victim_key)
+        if not victim_id:
+            return StepResult(is_finished=True)
+
+        victim = state.get_hero(HeroID(str(victim_id)))
+        if not victim:
+            return StepResult(is_finished=True)
+
+        color = self.color
+        if color is None and self.color_key:
+            color_val = context.get(self.color_key)
+            if color_val:
+                color = CardColor(str(color_val))
+
+        if color is None:
+            return StepResult(is_finished=True)
+
+        if not any(c.color == color for c in victim.hand):
+            logger.debug(f"   [EFFECT] {victim_id} has no {color.value} card to discard.")
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                SelectStep(
+                    target_type=TargetType.CARD,
+                    prompt=f"{victim_id}, select a {color.value} card to discard.",
+                    output_key=self.output_key,
+                    card_container=CardContainerType.HAND,
+                    context_hero_id_key=self.victim_key,
+                    override_player_id_key=self.victim_key,
+                    card_colors=[color],
+                    is_mandatory=True,
+                ),
+                DiscardCardStep(card_key=self.output_key, hero_key=self.victim_key),
             ],
         )
 
@@ -598,6 +654,7 @@ class ResolveCardStep(GameStep):
                                         filters=[
                                             UnitTypeFilter(unit_type="TOKEN"),
                                             RangeFilter(max_range=1),
+                                            ImmunityFilter(),
                                         ],
                                         output_key="clear_targets",
                                         target_type=TargetType.UNIT_OR_TOKEN,

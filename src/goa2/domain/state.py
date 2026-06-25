@@ -215,6 +215,28 @@ class GameState(BaseModel):
             logger.debug("Registered hero %s to team %s", entity.id, entity.team)
 
     @model_validator(mode="after")
+    def unify_token_references(self) -> GameState:
+        """
+        Re-link `misc_entities` token entries to the same object held in
+        `token_pool`.
+
+        At setup a Token is stored in BOTH `misc_entities` (the lookup registry
+        used by `get_entity`) and `token_pool` (the supply). In a live session
+        these are the same object, so mutations made during placement (owner_id,
+        is_immune_to_enemy_actions, ...) are visible through `get_entity`.
+
+        After a JSON reload they deserialize into two SEPARATE objects, and
+        placement only mutates the `token_pool` copy. That left `get_entity`
+        returning a stale token — e.g. an enemy-immune Totem appearing clearable
+        to enemies. Unify them here so `token_pool` (where placement writes)
+        stays authoritative.
+        """
+        for tokens in self.token_pool.values():
+            for token in tokens:
+                self.misc_entities[token.id] = token
+        return self
+
+    @model_validator(mode="after")
     def rebuild_occupancy_cache(self) -> GameState:
         """
         Synchronizes board.tiles.occupant_id based on entity_locations.

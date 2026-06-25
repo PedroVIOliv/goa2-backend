@@ -25,6 +25,8 @@ class TokenType(StrEnum):
     ZOMBIE = "zombie"
     PYRO = "pyro"
     BARRIER = "barrier"
+    ICE = "ice"
+    TOTEM = "totem"
 
 
 class CardTier(StrEnum):
@@ -184,7 +186,9 @@ class StepType(StrEnum):
     COMPUTE_HEX = "compute_hex"
     CONFIRM_RESOLUTION = "confirm_resolution"
     GUESS_CARD_COLOR = "guess_card_color"
+    CHOOSE_CARD_COLOR = "choose_card_color"
     REVEAL_AND_RESOLVE_GUESS = "reveal_and_resolve_guess"
+    FORCE_DISCARD_BY_COLOR = "force_discard_by_color"
     FORCE_DEFENSE_CARD_MOVEMENT = "force_defense_card_movement"
     SPEND_ADDITIONAL_LIFE_COUNTER = "spend_additional_life_counter"
     PERFORM_PRIMARY_ACTION = "perform_primary_action"
@@ -198,6 +202,7 @@ class StepType(StrEnum):
     RESOLVE_PRE_ACTION_MOVEMENT = "resolve_pre_action_movement"
     RESOLVE_PRE_ACTION_DISCARD = "resolve_pre_action_discard"
     CO_DIRECTIONAL_DRAG = "co_directional_drag"
+    DIRECTIONAL_MOVE_UNITS = "directional_move_units"
 
 
 class FilterType(StrEnum):

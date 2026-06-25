@@ -21,6 +21,7 @@ HERO_DIFFICULTY_STARS = {
     "Mortimer": 3,
     "Widget": 3,
     "Trinkets": 3,
+    "Tali": 3,
 }
 
 

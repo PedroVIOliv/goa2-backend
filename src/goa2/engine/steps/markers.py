@@ -80,6 +80,7 @@ class PlaceTokenStep(GameStep):
     owner_id_key: str | None = None
     output_key: str | None = None
     overflow_selection_key: str = "overflow_token_to_remove"
+    is_immune_to_enemy_actions: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
@@ -135,12 +136,14 @@ class PlaceTokenStep(GameStep):
                         owner_id_key=self.owner_id_key,
                         output_key=self.output_key,
                         overflow_selection_key=self.overflow_selection_key,
+                        is_immune_to_enemy_actions=self.is_immune_to_enemy_actions,
                     ),
                 ],
             )
 
         if owner_id is not None:
             available.owner_id = HeroID(str(owner_id))
+        available.is_immune_to_enemy_actions = self.is_immune_to_enemy_actions
 
         state.place_entity(BoardEntityID(str(available.id)), dest_hex)
         if self.output_key:

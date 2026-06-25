@@ -10,7 +10,14 @@ from pydantic import Field
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.models import ActionType, CardContainerType, StepType, TargetType, TeamColor
+from goa2.domain.models import (
+    ActionType,
+    CardColor,
+    CardContainerType,
+    StepType,
+    TargetType,
+    TeamColor,
+)
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.filters_base import FilterCondition
@@ -54,6 +61,8 @@ class SelectStep(GameStep):
     card_action_types: list[ActionType] | None = (
         None  # Only include cards with primary_action in this list
     )
+    card_colors: list[CardColor] | None = None  # Only include cards with these colors
+    card_color_key: str | None = None  # Context key containing a CardColor/string to match
     card_is_basic: bool | None = None  # Only include basic (True) or non-basic (False)
     card_is_active: bool | None = None  # Only include active (True) or inactive (False) cards
     allowed_card_ids: list[str] | None = None  # Whitelist: only include cards with these IDs
@@ -139,6 +148,13 @@ class SelectStep(GameStep):
                     source_list = [
                         c for c in source_list if c.primary_action in self.card_action_types
                     ]
+                selected_colors = list(self.card_colors or [])
+                if self.card_color_key:
+                    color_val = context.get(self.card_color_key)
+                    if color_val:
+                        selected_colors.append(CardColor(str(color_val)))
+                if selected_colors:
+                    source_list = [c for c in source_list if c.color in selected_colors]
                 if self.card_is_basic is not None:
                     source_list = [c for c in source_list if c.is_basic == self.card_is_basic]
                 if self.card_is_active is not None:
@@ -717,6 +733,49 @@ class GuessCardColorStep(GameStep):
                 player_id=str(state.current_actor_id),
                 prompt="Guess the card's color",
                 options=options,
+            ),
+        )
+
+
+class ChooseCardColorStep(GameStep):
+    """Prompts a player to name one of the five standard card colors."""
+
+    VALID_COLORS: ClassVar[list[str]] = ["BLUE", "GOLD", "GREEN", "RED", "SILVER"]
+
+    type: StepType = StepType.CHOOSE_CARD_COLOR
+    output_key: str
+    player_id_key: str | None = None
+    prompt: str = "Name a card color"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        player_id = str(state.current_actor_id) if state.current_actor_id else ""
+        if self.player_id_key:
+            selected_player = context.get(self.player_id_key)
+            if selected_player:
+                player_id = str(selected_player)
+
+        if not player_id:
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            if selection in self.VALID_COLORS:
+                context[self.output_key] = selection
+                logger.debug(f"   [INPUT] Player {player_id} named color {selection}")
+                return StepResult(is_finished=True)
+            self.pending_input = None
+
+        return StepResult(
+            is_finished=False,
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=player_id,
+                prompt=self.prompt,
+                options=[InputOption(id=color, text=color) for color in self.VALID_COLORS],
             ),
         )
 

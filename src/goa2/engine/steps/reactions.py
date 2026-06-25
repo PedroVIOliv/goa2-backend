@@ -42,6 +42,7 @@ class ReactionWindowStep(GameStep):
             logger.debug(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
             context["defense_value"] = None
             context["defense_card_id"] = None
+            context["defense_card_color"] = None
             context["defender_id"] = str(target_id)
             context["is_primary_defense"] = False
             return StepResult(is_finished=True)
@@ -87,6 +88,7 @@ class ReactionWindowStep(GameStep):
                 logger.debug(f"   [REACTION] Player {target_id} Passed (No Defense).")
                 context["defense_value"] = None
                 context["defense_card_id"] = None
+                context["defense_card_color"] = None
                 context["defender_id"] = str(target_id)
                 context["is_primary_defense"] = False
                 return StepResult(is_finished=True)
@@ -123,6 +125,9 @@ class ReactionWindowStep(GameStep):
                 # Store context for defense effect resolution
                 context["defense_value"] = total_def
                 context["defense_card_id"] = card_id
+                context["defense_card_color"] = (
+                    selected_card.color.value if selected_card.color else None
+                )
                 context["defender_id"] = str(target_id)
                 context["is_primary_defense"] = is_primary
 

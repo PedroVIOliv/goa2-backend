@@ -26,7 +26,7 @@ from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine import rules
 from goa2.engine.filters_base import FilterCondition
 from goa2.engine.steps.base import GameStep, StepResult
-from goa2.engine.topology import are_connected
+from goa2.engine.topology import are_connected, topology_distance
 
 logger = logging.getLogger(__name__)
 
@@ -1121,6 +1121,139 @@ class CoDirectionalDragStep(GameStep):
             ordered = [anchor_move, partner_move]
 
         return StepResult(is_finished=True, new_steps=ordered)
+
+
+class DirectionalMoveUnitsStep(GameStep):
+    """
+    Moves enemy units in a radius one hex in a chosen direction, if able.
+
+    All moves are resolved from a pre-move snapshot: units moved by this step do
+    not block each other, but units that cannot move remain blockers.
+    """
+
+    type: StepType = StepType.DIRECTIONAL_MOVE_UNITS
+    direction_key: str = "direction"
+    origin_id: str | None = None
+    radius: int = 1
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        direction_val = context.get(self.direction_key)
+        if direction_val is None:
+            return StepResult(is_finished=True)
+        direction = int(direction_val)
+
+        origin_id = self.origin_id or (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
+        if not origin_id:
+            return StepResult(is_finished=True)
+
+        origin = state.get_entity(BoardEntityID(origin_id))
+        origin_hex = state.entity_locations.get(BoardEntityID(origin_id))
+        origin_team = getattr(origin, "team", None)
+        if not origin or not origin_hex or origin_team is None:
+            return StepResult(is_finished=True)
+
+        starts: dict[str, Hex] = {}
+        from goa2.engine.filters_units import ImmunityFilter
+
+        immunity_filter = ImmunityFilter()
+        for entity_id, loc in list(state.entity_locations.items()):
+            unit_id = str(entity_id)
+            unit = state.get_unit(UnitID(unit_id))
+            if not unit:
+                continue
+            if getattr(unit, "team", None) == origin_team:
+                continue
+            if topology_distance(origin_hex, loc, state) > self.radius:
+                continue
+            if not immunity_filter.apply(unit_id, state, context):
+                continue
+
+            validation = state.validator.can_be_moved(
+                state=state,
+                unit_id=unit_id,
+                actor_id=origin_id,
+                context=context,
+            )
+            if not validation.allowed:
+                continue
+            move_validation = state.validator.can_move(
+                state=state,
+                unit_id=unit_id,
+                distance=1,
+                context=context,
+                is_movement_action=False,
+            )
+            if not move_validation.allowed:
+                continue
+            starts[unit_id] = loc
+
+        candidate_dests: dict[str, Hex] = {}
+        for unit_id, start_hex in starts.items():
+            dest = start_hex.neighbor(direction)
+            if not state.board.is_on_map(dest):
+                continue
+            if not are_connected(start_hex, dest, state):
+                continue
+            tile = state.board.get_tile(dest)
+            if tile.is_terrain:
+                continue
+            if not tile.occupant_id and state.validator.is_obstacle_for_actor(
+                state,
+                dest,
+                origin_id,
+                context,
+            ):
+                continue
+            if tile.occupant_id and str(tile.occupant_id) not in starts:
+                continue
+            candidate_dests[unit_id] = dest
+
+        movable_ids = set(candidate_dests)
+        changed = True
+        while changed:
+            changed = False
+            for unit_id in list(movable_ids):
+                dest = candidate_dests[unit_id]
+                occupant_id = state.board.get_tile(dest).occupant_id
+                if (
+                    occupant_id
+                    and str(occupant_id) in starts
+                    and str(occupant_id) not in movable_ids
+                ):
+                    movable_ids.remove(unit_id)
+                    changed = True
+
+        if not movable_ids:
+            return StepResult(is_finished=True)
+
+        events: list[GameEvent] = []
+        moves = [
+            (unit_id, starts[unit_id], candidate_dests[unit_id])
+            for unit_id in starts
+            if unit_id in movable_ids
+        ]
+
+        for unit_id, _, _ in moves:
+            state.remove_entity(BoardEntityID(unit_id))
+
+        for unit_id, from_hex, to_hex in moves:
+            state.place_entity(BoardEntityID(unit_id), to_hex)
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.UNIT_MOVED,
+                    actor_id=unit_id,
+                    from_hex=_hex_dict(from_hex),
+                    to_hex=_hex_dict(to_hex),
+                    metadata={"direction": direction, "simultaneous": True},
+                )
+            )
+
+        return StepResult(is_finished=True, events=events)
 
 
 class ResolveDisplacementStep(GameStep):

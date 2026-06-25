@@ -8,7 +8,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models.enums import ActionType, CardColor, DisplacementType, StatType
+from goa2.domain.models.enums import (
+    ActionType,
+    CardColor,
+    DisplacementType,
+    MinionType,
+    StatType,
+)
 from goa2.domain.models.marker import MarkerType
 
 
@@ -190,6 +196,10 @@ class ActiveEffect(BaseModel):
 
     # Allowed discard colors for MINION_PROTECTION effects (Brogan)
     allowed_discard_colors: list[CardColor] = Field(default_factory=list)
+
+    # MINION_PROTECTION payload. Empty means any minion type.
+    protected_minion_types: list[MinionType] = Field(default_factory=list)
+    sacrifice_origin_token: bool = False
 
     # PRE_ACTION_DISCARD: defeat the hero instead when they cannot discard
     discard_or_defeat: bool = False
