@@ -7,6 +7,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from fastapi import WebSocket
+
 from goa2.draft.errors import DraftNotFoundError
 from goa2.draft.models import DraftState
 
@@ -22,6 +24,7 @@ class ManagedDraft:
     player_game_tokens: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    ws_connections: dict[str, WebSocket] = field(default_factory=dict)
 
 
 class DraftRegistry:

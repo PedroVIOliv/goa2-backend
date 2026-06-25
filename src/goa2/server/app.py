@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from goa2.draft.errors import DraftError
 from goa2.server.draft_registry import DraftRegistry
+from goa2.server.draft_ws import router as draft_ws_router
 from goa2.server.errors import (
     AlreadyCommittedError,
     CardNotInHandError,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(games_router)
     app.include_router(draft_router)
     app.include_router(ws_router)
+    app.include_router(draft_ws_router)
 
     # Replay-debugger router (omniscient view): only mounted when explicitly
     # enabled, so reveal-all data is never reachable from a default/production

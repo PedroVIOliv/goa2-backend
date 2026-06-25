@@ -20,6 +20,7 @@ from goa2.draft.modes import DRAFT_MODES
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
 from goa2.server.draft_registry import DraftRegistry, ManagedDraft
+from goa2.server.draft_ws import broadcast_draft, draft_view_payload
 from goa2.server.models import (
     ClaimHeroRequest,
     CreateDraftRequest,
@@ -78,18 +79,7 @@ def _map_path(map_name: str) -> str:
 
 
 def _draft_view(md: ManagedDraft, player_id: str, is_spectator: bool) -> DraftViewResponse:
-    you = None
-    if not is_spectator:
-        you = next(
-            (p.model_dump(mode="json") for p in md.state.players if p.id == player_id),
-            None,
-        )
-    return DraftViewResponse(
-        draft=md.state.model_dump(mode="json"),
-        you=you,
-        game_id=md.state.game_id,
-        game_token=md.player_game_tokens.get(player_id),
-    )
+    return DraftViewResponse(**draft_view_payload(md, player_id, is_spectator))
 
 
 def _reject_spectator(player: DraftContext) -> None:
@@ -180,6 +170,7 @@ async def join_draft(
     async with md.lock:
         player = service.join(md.state, body.display_name)
         token = registry.add_player_token(draft_id, player.id)
+    await broadcast_draft(md, registry)
     return JoinDraftResponse(draft_id=draft_id, player_id=player.id, player_token=token)
 
 
@@ -206,6 +197,7 @@ async def set_team(
         raise InvalidTeamError(f"Invalid team '{body.team}'") from exc
     async with md.lock:
         service.set_team(md.state, player.player_id, team)
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
@@ -218,6 +210,7 @@ async def randomize_teams(
     md = registry.get(draft_id)
     async with md.lock:
         service.randomize_teams(md.state, random.Random())
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
@@ -233,6 +226,7 @@ async def set_captain(
     md = registry.get(draft_id)
     async with md.lock:
         service.set_captain(md.state, body.player_id)
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
@@ -245,6 +239,7 @@ async def start_draft(
     md = registry.get(draft_id)
     async with md.lock:
         service.start_draft(md.state, HeroRegistry.list_heroes(), random.Random())
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
@@ -259,6 +254,7 @@ async def draft_action(
     md = registry.get(draft_id)
     async with md.lock:
         service.apply_action(md.state, player.player_id, body.hero)
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
@@ -275,4 +271,5 @@ async def claim_hero(
     async with md.lock:
         service.claim_hero(md.state, player.player_id, body.hero)
         _maybe_create_game(request, md)
+    await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)

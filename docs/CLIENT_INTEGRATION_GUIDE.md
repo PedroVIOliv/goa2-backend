@@ -1040,8 +1040,8 @@ is `sequential_ban_pick` (alternating bans, then alternating picks; the captain 
 whole team).
 
 > **Note:** Draft lobbies are **in-memory only** — they do not survive a server restart and are
-> not persisted to disk. Clients obtain updates by **polling** `GET /drafts/{id}`; a live
-> WebSocket push for drafts is planned but not yet available.
+> not persisted to disk. For live updates, connect the draft WebSocket (see
+> [Draft WebSocket](#draft-websocket) below); polling `GET /drafts/{id}` also works as a fallback.
 
 ### Lifecycle
 
@@ -1142,6 +1142,41 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
 To know whose turn it is during `DRAFTING`, read `sequence[current_index]`: the `team` field
 tells you which team acts, and its captain (the player with `is_captain: true` on that team)
 must submit the next `action`.
+
+### Draft WebSocket
+
+For live updates, connect:
+
+```
+ws://<host>/drafts/{draft_id}/ws?token=<bearer_token>
+```
+
+Any token works (host, player, or spectator). The channel is **read-only** — you still perform
+every action through the REST endpoints. On connect, and after **every** REST mutation by any
+participant (join, team change, randomize, captain change, start, ban/pick, claim, and the final
+game creation), the server pushes a player-scoped `STATE_UPDATE`:
+
+```json
+{
+  "type": "STATE_UPDATE",
+  "draft": { "...": "same shape as GET /drafts/{id} -> draft" },
+  "you": { "id": "p1", "...": "your player record, or null for spectators" },
+  "game_id": null,
+  "game_token": null
+}
+```
+
+`STATE_UPDATE` carries the same player-scoping as the REST view, so once the draft is
+`COMPLETE` each player's socket receives their own `game_id` and `game_token`.
+
+Inbound messages:
+
+| Send | Effect |
+|------|--------|
+| `{"type": "GET_VIEW"}` | Server replies with a fresh `STATE_UPDATE` |
+| anything else | Server replies `{"type": "ERROR", ...}` (the channel is read-only) |
+
+Close codes: `4001` invalid token, `4003` token does not match draft, `4004` draft not found.
 
 ### Draft errors
 
