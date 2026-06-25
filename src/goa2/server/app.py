@@ -14,6 +14,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from goa2.draft.errors import DraftError
+from goa2.server.draft_registry import DraftRegistry
 from goa2.server.errors import (
     AlreadyCommittedError,
     CardNotInHandError,
@@ -69,6 +71,7 @@ async def lifespan(app: FastAPI):
     if count:
         logger.info("Restored %d game(s) from %s", count, save_dir)
     app.state.registry = registry
+    app.state.draft_registry = DraftRegistry()
 
     cleanup_task = asyncio.create_task(_cleanup_loop(registry))
     try:
@@ -132,6 +135,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(NotYourTurnError)
     async def _not_your_turn(request: Request, exc: NotYourTurnError):
         return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(DraftError)
+    async def _draft_error(request: Request, exc: DraftError):
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
     @app.exception_handler(ValueError)
     async def _value_error(request: Request, exc: ValueError):

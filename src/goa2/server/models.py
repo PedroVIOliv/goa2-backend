@@ -68,3 +68,64 @@ class ActionResultResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# -- Draft requests --
+
+
+class CreateDraftRequest(BaseModel):
+    host_name: str
+    red_size: int
+    blue_size: int
+    map_name: str = "forgotten_island"
+    game_type: str = "LONG"
+    draft_mode: str = "sequential_ban_pick"
+    cheats_enabled: bool = False
+
+
+class JoinDraftRequest(BaseModel):
+    display_name: str
+
+
+class SetTeamRequest(BaseModel):
+    team: str  # "RED" | "BLUE"
+
+
+class SetCaptainRequest(BaseModel):
+    player_id: str
+
+
+class DraftActionRequest(BaseModel):
+    hero: str
+
+
+class ClaimHeroRequest(BaseModel):
+    hero: str
+
+
+# -- Draft responses --
+
+
+class DraftModeInfo(BaseModel):
+    name: str
+    description: str
+
+
+class CreateDraftResponse(BaseModel):
+    draft_id: str
+    player_id: str
+    player_token: str
+    spectator_token: str
+
+
+class JoinDraftResponse(BaseModel):
+    draft_id: str
+    player_id: str
+    player_token: str
+
+
+class DraftViewResponse(BaseModel):
+    draft: dict[str, Any]
+    you: dict[str, Any] | None = None
+    game_id: str | None = None
+    game_token: str | None = None
