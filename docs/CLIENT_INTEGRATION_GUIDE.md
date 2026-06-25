@@ -13,7 +13,8 @@ This guide covers everything a frontend developer needs to connect to the GoA2 b
 7. [Handling Input Requests](#handling-input-requests)
 8. [Events](#events)
 9. [Persistence & Reconnection](#persistence--reconnection)
-10. [Error Handling](#error-handling)
+10. [Character Draft Lobby](#character-draft-lobby)
+11. [Error Handling](#error-handling)
 
 ---
 
@@ -1023,6 +1024,135 @@ Tokens are not rotated on restart — the original tokens remain valid for the l
 
 - Games are stored in-memory with file-based persistence — there is no database
 - If the save file is deleted while the server is running, the game continues in memory but won't survive a restart
+
+---
+
+## Character Draft Lobby
+
+An alternative way to start a game. Instead of one player choosing every hero up front via
+`POST /games`, a **host** opens a draft lobby and shares a link. Friends join, pick (or are
+randomized into) teams, each team's **captain** runs a ban/pick draft, players then **claim**
+which drafted hero they will play, and the backend automatically creates the game. From there
+clients switch to the normal `/games/{id}` flow.
+
+The draft engine is **pluggable** — `GET /drafts/modes` lists available modes. The launch mode
+is `sequential_ban_pick` (alternating bans, then alternating picks; the captain drafts for the
+whole team).
+
+> **Note:** Draft lobbies are **in-memory only** — they do not survive a server restart and are
+> not persisted to disk. Clients obtain updates by **polling** `GET /drafts/{id}`; a live
+> WebSocket push for drafts is planned but not yet available.
+
+### Lifecycle
+
+```
+LOBBY  →  DRAFTING  →  CLAIMING  →  COMPLETE
+```
+
+- **LOBBY** — players join, choose teams (or host randomizes), host may reassign captains.
+- **DRAFTING** — captains alternate bans/picks following the resolved `sequence`.
+- **CLAIMING** — each player claims one of their team's drafted heroes.
+- **COMPLETE** — once everyone has claimed, the game is created; `game_id` and each player's
+  `game_token` become available on their scoped view.
+
+### Tokens
+
+| Token | Source | Powers |
+|-------|--------|--------|
+| Host/player token (admin) | `POST /drafts` response (`player_token`, always player `p1`) | Full player rights **plus** host-only actions (start, randomize, set captain) |
+| Player token | `POST /drafts/{id}/join` response | Join a team, draft (if captain), claim a hero |
+| Spectator token | `POST /drafts` response (`spectator_token`) | Read-only `GET /drafts/{id}` |
+
+Send as `Authorization: Bearer <token>`, the same scheme as the game API.
+
+### Endpoints
+
+| Method & path | Auth | Body | Purpose |
+|---------------|------|------|---------|
+| `GET /drafts/modes` | none | — | List available draft modes (`name`, `description`) |
+| `POST /drafts` | none | `CreateDraftRequest` | Create a lobby; host becomes player `p1` |
+| `POST /drafts/{id}/join` | none | `{ "display_name": "Bob" }` | Add a player; returns their token |
+| `GET /drafts/{id}` | player/spectator | — | Player-scoped draft view |
+| `POST /drafts/{id}/team` | player | `{ "team": "RED" }` | Self-select team (LOBBY only) |
+| `POST /drafts/{id}/randomize-teams` | host | — | Shuffle players into teams (LOBBY only) |
+| `POST /drafts/{id}/captain` | host | `{ "player_id": "p3" }` | Make that player their team's captain (LOBBY only) |
+| `POST /drafts/{id}/start` | host | — | Validate & begin drafting |
+| `POST /drafts/{id}/action` | acting captain | `{ "hero": "Arien" }` | Submit the current ban or pick |
+| `POST /drafts/{id}/claim` | player | `{ "hero": "Arien" }` | Claim a drafted hero (CLAIMING) |
+
+`CreateDraftRequest`:
+
+```json
+{
+  "host_name": "Alice",
+  "red_size": 2,
+  "blue_size": 2,
+  "map_name": "forgotten_island",
+  "game_type": "LONG",
+  "draft_mode": "sequential_ban_pick",
+  "cheats_enabled": false
+}
+```
+
+`red_size + blue_size` must be a supported player count (2, 4, 5, or 6).
+
+### Draft view shape
+
+Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
+
+```json
+{
+  "draft": {
+    "draft_id": "ab12cd34ef56",
+    "status": "DRAFTING",
+    "map_name": "forgotten_island",
+    "game_type": "LONG",
+    "draft_mode": "sequential_ban_pick",
+    "red_size": 2,
+    "blue_size": 2,
+    "players": [
+      {"id": "p1", "display_name": "Alice", "team": "RED",
+       "is_host": true, "is_captain": true, "claimed_hero": null}
+    ],
+    "hero_pool": ["Arien", "Wasp", "..."],
+    "sequence": [
+      {"index": 0, "action": "BAN", "team": "RED"},
+      {"index": 1, "action": "BAN", "team": "BLUE"},
+      {"index": 2, "action": "PICK", "team": "RED"}
+    ],
+    "current_index": 2,
+    "bans": {"RED": ["Mortimer"], "BLUE": ["Widget"]},
+    "picks": {"RED": [], "BLUE": []},
+    "first_team": "RED",
+    "game_id": null
+  },
+  "you": {"id": "p1", "display_name": "Alice", "team": "RED",
+          "is_host": true, "is_captain": true, "claimed_hero": null},
+  "game_id": null,
+  "game_token": null
+}
+```
+
+- `draft` is public (identical for all callers) — all bans/picks are visible to everyone.
+- `you` is the caller's own player record (omitted/`null` for spectators).
+- Once `status` is `COMPLETE`, `game_id` is set, and a player calling `GET /drafts/{id}` with
+  their own token also receives their `game_token`. Use these to switch to the normal game flow:
+  `GET /games/{game_id}` with `Authorization: Bearer <game_token>`.
+
+To know whose turn it is during `DRAFTING`, read `sequence[current_index]`: the `team` field
+tells you which team acts, and its captain (the player with `is_captain: true` on that team)
+must submit the next `action`.
+
+### Draft errors
+
+In addition to the standard error shape (`{"detail": "..."}`), draft endpoints can return:
+
+| Status | Cause |
+|--------|-------|
+| `403` | Non-host called a host-only action; wrong captain called `action`; spectator attempted a mutation |
+| `404` | Unknown `draft_id` or `player_id` |
+| `409` | Lobby full; wrong draft phase; hero already banned/picked; hero not claimable |
+| `400` | Invalid team; unsupported player count; unknown map or draft mode |
 
 ---
 
