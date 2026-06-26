@@ -394,11 +394,24 @@ class _DirectionalShiftEffect(CardEffect):
     ) -> list[GameStep]:
         steps = _directional_shift_steps(card.id, stats.radius or 0)
         if card.id == "blizzard" and card.state == CardState.DISCARD:
+            # "End of turn: May repeat once." Defer the optional repeat to a
+            # THIS_TURN delayed trigger so the second shift resolves against the
+            # end-of-turn board state, not inline during this resolution.
             steps.append(
-                MayRepeatNTimesStep(
-                    max_repeats=1,
-                    prompt="Repeat Blizzard?",
-                    steps_template=_directional_shift_steps(f"{card.id}_repeat", stats.radius or 0),
+                CreateEffectStep(
+                    effect_type=EffectType.DELAYED_TRIGGER,
+                    duration=DurationType.THIS_TURN,
+                    scope=EffectScope(shape=Shape.POINT),
+                    is_active=True,
+                    finishing_steps=[
+                        MayRepeatNTimesStep(
+                            max_repeats=1,
+                            prompt="Repeat Blizzard?",
+                            steps_template=_directional_shift_steps(
+                                f"{card.id}_repeat", stats.radius or 0
+                            ),
+                        )
+                    ],
                 )
             )
         return steps
@@ -626,6 +639,10 @@ class ReignOfWinterEffect(CardEffect):
 
         target_id = context.get("last_combat_target")
         if not target_id:
+            return False
+        # Only a genuine defeat counts: a minion saved by a Totem/protection is
+        # still on the board (get_unit keeps returning it, but it was not removed).
+        if target_id in state.entity_locations:
             return False
         target = state.get_unit(target_id)
         return target is not None and hasattr(target, "value")

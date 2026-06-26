@@ -4,6 +4,7 @@ import pytest
 
 import goa2.scripts.brogan_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
@@ -15,6 +16,8 @@ from goa2.domain.models import (
     MinionType,
     Team,
     TeamColor,
+    Token,
+    TokenType,
 )
 from goa2.domain.models.effect import (
     AffectsFilter,
@@ -162,6 +165,109 @@ def _create_protection_effect(state, allowed_colors=None, radius=2):
     )
 
 
+def _add_sacrifice_totem(state, *, owner_id="brogan", token_id="totem_1", totem_hex=None):
+    """Place a Tali-style Totem (sacrifice protection) adjacent to the minion."""
+    if totem_hex is None:
+        totem_hex = Hex(q=1, r=-1, s=0)  # adjacent to minion at (1,0,-1)
+    totem = Token(id=token_id, name="Totem", token_type=TokenType.TOTEM)
+    state.register_entity(totem)
+    state.place_entity(token_id, totem_hex)
+    EffectManager.create_effect(
+        state=state,
+        source_id=owner_id,
+        effect_type=EffectType.MINION_PROTECTION,
+        scope=EffectScope(
+            shape=Shape.ADJACENT,
+            origin_id=token_id,
+            affects=AffectsFilter.FRIENDLY_UNITS,
+        ),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+        sacrifice_origin_token=True,
+    )
+    return totem
+
+
+def _drain(state, events):
+    res = process_stack(state)
+    events.extend(res.events)
+    while res.input_request is not None:
+        res = process_stack(state)
+        events.extend(res.events)
+    return res
+
+
+def test_brogan_offered_before_totem_and_killer_still_gets_coins(protection_state):
+    """Totem + Brogan cover the same minion. Brogan (optional) is offered before
+    the totem (mandatory). When Brogan fires: enemy keeps the kill coins, the
+    totem is NOT consumed, and UNIT_DEFEATED still fires."""
+    state = protection_state
+    # Totem created FIRST — the scan must still offer Brogan's card-discard first.
+    _add_sacrifice_totem(state)
+    _create_protection_effect(state)
+    enemy = state.get_hero("enemy")
+    brogan = state.get_hero("brogan")
+
+    events = []
+    push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
+    res = process_stack(state)
+    events.extend(res.events)
+    req = res.input_request
+    assert req is not None
+    assert req["type"] == "SELECT_CARD"
+    assert req["player_id"] == "brogan"
+    assert enemy.gold == 0  # coins not yet awarded — deferred to the outcome
+
+    state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
+    _drain(state, events)
+
+    assert state.entity_locations.get("minion_red_1") is not None  # saved
+    assert state.entity_locations.get("totem_1") is not None  # totem NOT consumed
+    assert enemy.gold == 2  # Brogan III: enemy still gains the coins
+    assert any(e.event_type == GameEventType.UNIT_DEFEATED for e in events)
+    assert len(brogan.hand) == 1  # silver1 discarded
+
+
+def test_totem_is_fallback_when_brogan_declines(protection_state):
+    """If Brogan declines, the totem sacrifices itself as a fallback: minion
+    saved, totem consumed, NO coins, NO UNIT_DEFEATED."""
+    state = protection_state
+    _add_sacrifice_totem(state)
+    _create_protection_effect(state)
+    enemy = state.get_hero("enemy")
+
+    events = []
+    push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
+    res = process_stack(state)
+    events.extend(res.events)
+    assert res.input_request is not None
+    assert res.input_request["type"] == "SELECT_CARD"
+
+    state.execution_stack[-1].pending_input = {"selected_card_id": "SKIP"}
+    _drain(state, events)
+
+    assert state.entity_locations.get("minion_red_1") is not None  # saved by totem
+    assert state.entity_locations.get("totem_1") is None  # totem sacrificed
+    assert enemy.gold == 0  # no coins for a totem save
+    assert not any(e.event_type == GameEventType.UNIT_DEFEATED for e in events)
+
+
+def test_totem_only_saves_minion_without_coins(protection_state):
+    """Totem alone (no Brogan): minion saved, totem consumed, no coins, no UNIT_DEFEATED."""
+    state = protection_state
+    _add_sacrifice_totem(state)
+    enemy = state.get_hero("enemy")
+
+    events = []
+    push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
+    _drain(state, events)
+
+    assert state.entity_locations.get("minion_red_1") is not None
+    assert state.entity_locations.get("totem_1") is None
+    assert enemy.gold == 0
+    assert not any(e.event_type == GameEventType.UNIT_DEFEATED for e in events)
+
+
 def test_basic_protection_saves_minion(protection_state):
     """Minion in radius defeated, Brogan discards silver, minion stays."""
     state = protection_state
@@ -202,16 +308,18 @@ def test_gold_awarded_even_when_protected(protection_state):
     push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
     _ = process_stack(state).input_request
 
-    # Gold was awarded in DefeatUnitStep before protection check
-    assert enemy.gold == gold_before + 2  # MELEE minion value = 2
+    # Coins are awarded by outcome — not yet, while Brogan is still deciding.
+    assert enemy.gold == gold_before
 
-    # Protect the minion
+    # Protect the minion (Brogan discards a qualifying card)
     state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
-    _ = process_stack(state).input_request
+    result = process_stack(state).input_request
+    while result is not None:
+        result = process_stack(state).input_request
 
-    # Minion stays, gold stays
+    # Minion stays, and the enemy still gains the kill coins (Brogan III rule).
     assert state.entity_locations.get("minion_red_1") is not None
-    assert enemy.gold == gold_before + 2
+    assert enemy.gold == gold_before + 2  # MELEE minion value = 2
 
 
 def test_decline_protection_removes_minion(protection_state):

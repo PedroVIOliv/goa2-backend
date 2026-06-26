@@ -17,8 +17,17 @@ from goa2.domain.models import (
     Token,
     TokenType,
 )
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.domain.models.enums import PassiveTrigger, TargetType
 from goa2.domain.state import GameState
+from goa2.domain.types import UnitID
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.engine.handler import process_stack, push_steps
@@ -97,6 +106,29 @@ def _filler_card(card_id: str, color: CardColor, *, defense: int = 1) -> Card:
 
 def _combat_events(run) -> list:
     return [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+
+
+def _add_sacrifice_totem(
+    state: GameState, *, owner_id: str, totem_hex: Hex, token_id: str = "enemy_totem"
+) -> Token:
+    """Place a Totem owned by ``owner_id`` with an adjacent sacrifice-protection effect."""
+    totem = Token(id=token_id, name="Totem", token_type=TokenType.TOTEM)
+    state.register_entity(totem)
+    state.place_entity(token_id, totem_hex)
+    EffectManager.create_effect(
+        state=state,
+        source_id=owner_id,
+        effect_type=EffectType.MINION_PROTECTION,
+        scope=EffectScope(
+            shape=Shape.ADJACENT,
+            origin_id=token_id,
+            affects=AffectsFilter.FRIENDLY_UNITS,
+        ),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+        sacrifice_origin_token=True,
+    )
+    return totem
 
 
 @pytest.mark.effect_contract
@@ -570,6 +602,38 @@ def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat(
 
 
 @pytest.mark.effect_flow
+def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion() -> None:
+    # A totem-saved minion is NOT defeated — Reign must not force an enemy discard.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "ice_blast"))
+        .blue_minion("target_minion", at=(1, 0, -1))
+        .blue_hero("enemy", at=(2, 0, -2))
+        .with_actor("hero_tali")
+        .build()
+    )
+    tali = state.get_hero("hero_tali")
+    enemy = state.get_hero("enemy")
+    assert tali is not None and enemy is not None
+    tali.level = 8
+    tali.ultimate_card = hero_card("Tali", "reign_of_winter")
+    tali.ultimate_card.state = CardState.PASSIVE
+    enemy.hand = [_filler_card("enemy_green", CardColor.GREEN)]
+    # The blue minion is shielded by an adjacent blue Totem.
+    _add_sacrifice_totem(state, owner_id="enemy", totem_hex=Hex(q=1, r=-1, s=0))
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
+    run.finish()  # no Reign color prompt — the minion was saved, not defeated
+
+    assert "target_minion" in state.entity_locations  # minion survived
+    assert "enemy_totem" not in state.entity_locations  # totem sacrificed
+    assert len(enemy.hand) == 1  # Reign did not force a discard
+
+
+@pytest.mark.effect_flow
 def test_spirit_wolf_attacks_a_single_target_in_range_without_repeat() -> None:
     # Spirit Wolf uses can_choose_both=False: it resolves exactly one attack and
     # never offers the "resolve the other attack" repeat that Spirit Bear does.
@@ -664,7 +728,11 @@ def test_warrior_spirit_from_discard_can_skip_self_card_retrieval() -> None:
 
 
 @pytest.mark.effect_flow
-def test_blizzard_from_discard_may_repeat_the_directional_shift() -> None:
+def test_blizzard_from_discard_defers_the_repeat_to_end_of_turn() -> None:
+    # "End of turn: May repeat once" — the second shift must be a deferred
+    # end-of-turn trigger, not run inline during Blizzard's own resolution.
+    from goa2.engine.phases import end_turn
+
     state = (
         EffectScenarioBuilder()
         .with_hexes(_arena())
@@ -683,14 +751,33 @@ def test_blizzard_from_discard_may_repeat_the_directional_shift() -> None:
     state.execution_context["perform_card"] = "blizzard"
     push_steps(state, [PerformPrimaryActionStep(card_key="perform_card", hero_id="hero_tali")])
     run = EffectRun(state=state, hero_id="hero_tali")
+    # First (inline) shift only — no inline repeat prompt.
     run.expect_input(InputRequestType.SELECT_NUMBER).choose(0)
-    # The discard version may repeat the shift a second time.
+    run.finish()
+
+    # One shift happened; the repeat is parked as a THIS_TURN delayed trigger.
+    first_pos = state.entity_locations["mover"]
+    assert first_pos == Hex(q=2, r=0, s=-2)
+    delayed = [
+        e
+        for e in state.active_effects
+        if e.effect_type == EffectType.DELAYED_TRIGGER and e.duration == DurationType.THIS_TURN
+    ]
+    assert len(delayed) == 1
+    assert delayed[0].finishing_steps
+
+    # Intervening board change between the two shifts: the deferred repeat must
+    # act on the CURRENT board state, not the position captured earlier.
+    state.move_unit(UnitID("mover"), Hex(q=0, r=1, s=-1))
+
+    # End of turn fires the deferred repeat (may-confirm, then direction).
+    end_turn(state)
     run.expect_input(InputRequestType.SELECT_OPTION).confirm()
     run.expect_input(InputRequestType.SELECT_NUMBER).choose(0)
     run.finish()
 
-    # Two shifts of one space in the same direction.
-    assert state.entity_locations["mover"] == Hex(q=3, r=0, s=-3)
+    # Second shift starts from the relocated hex, not (2,0,-2).
+    assert state.entity_locations["mover"] == Hex(q=1, r=1, s=-2)
 
 
 @pytest.mark.effect_flow
@@ -794,7 +881,13 @@ def test_reign_of_winter_passive_guards_reject_non_matching_contexts() -> None:
         "last_combat_target": "target",
     }
 
-    # Positive control: an unblocked Ice Blast against a minion offers the passive.
+    # A minion that is still on the board was NOT defeated (e.g. saved by a
+    # totem) — even with block_succeeded False, the passive must not fire.
+    assert effect.should_offer_passive(state, tali, card, after, base) is False
+
+    # Positive control: once the minion is genuinely defeated (off the board),
+    # an unblocked Ice Blast offers the passive.
+    state.remove_unit(UnitID("target"))
     assert effect.should_offer_passive(state, tali, card, after, base) is True
 
     # Each guard clause rejects independently.

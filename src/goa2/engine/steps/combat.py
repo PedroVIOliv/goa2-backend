@@ -315,12 +315,17 @@ class DefeatUnitStep(GameStep):
 
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
 
-        if hasattr(victim, "value") and self._has_token_sacrifice_protection(
+        if hasattr(victim, "value") and self._has_minion_protection(
             state, actual_victim_id, victim
         ):
+            # The minion is under at least one protection. Defer the outcome
+            # (kill coins, UNIT_DEFEATED, removal) to CheckMinionProtectionStep,
+            # which awards by which protection actually fires.
             return StepResult(
                 is_finished=True,
-                new_steps=[CheckMinionProtectionStep(minion_id=actual_victim_id)],
+                new_steps=[
+                    CheckMinionProtectionStep(minion_id=actual_victim_id, killer_id=self.killer_id)
+                ],
             )
 
         events: list[GameEvent] = [
@@ -468,7 +473,8 @@ class DefeatUnitStep(GameStep):
                                 events=events,
                             )
 
-        elif hasattr(victim, "value"):  # Is Minion
+        elif hasattr(victim, "value"):  # Is Minion (unprotected — protected ones
+            # are routed to CheckMinionProtectionStep above before reaching here)
             reward = victim.value
             logger.debug(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
             if killer and hasattr(killer, "gold"):
@@ -481,42 +487,20 @@ class DefeatUnitStep(GameStep):
                     )
                 )
 
-            # Check for active MINION_PROTECTION effects covering this minion
-            from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
-
-            has_protection = any(
-                e.effect_type == EffectType.MINION_PROTECTION
-                and _is_effect_active(e, state)
-                and is_unit_in_effect_scope(e, actual_victim_id, state)
-                and (
-                    not e.protected_minion_types
-                    or getattr(victim, "type", None) in e.protected_minion_types
-                )
-                for e in state.active_effects
-            )
-            if has_protection:
-                return StepResult(
-                    is_finished=True,
-                    new_steps=[CheckMinionProtectionStep(minion_id=actual_victim_id)],
-                    events=events,
-                )
-
         return StepResult(
             is_finished=True,
             new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
             events=events,
         )
 
-    def _has_token_sacrifice_protection(
-        self, state: GameState, minion_id: str, minion: Any
-    ) -> bool:
-        """Totem-style protection cancels the defeat before rewards/bookkeeping."""
+    def _has_minion_protection(self, state: GameState, minion_id: str, minion: Any) -> bool:
+        """Any active MINION_PROTECTION (totem sacrifice or card-discard) covering
+        this minion. Such a minion defers its defeat outcome to
+        CheckMinionProtectionStep."""
         from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
 
         for effect in state.active_effects:
             if effect.effect_type != EffectType.MINION_PROTECTION:
-                continue
-            if not effect.sacrifice_origin_token:
                 continue
             if not _is_effect_active(effect, state):
                 continue
@@ -526,15 +510,6 @@ class DefeatUnitStep(GameStep):
                 effect.protected_minion_types
                 and getattr(minion, "type", None) not in effect.protected_minion_types
             ):
-                continue
-
-            token_id = effect.scope.origin_id
-            if not token_id:
-                continue
-            token = state.misc_entities.get(BoardEntityID(token_id))
-            if not isinstance(token, Token):
-                continue
-            if BoardEntityID(token_id) not in state.entity_locations:
                 continue
             return True
 
@@ -551,6 +526,7 @@ class CheckMinionProtectionStep(GameStep):
 
     type: StepType = StepType.CHECK_MINION_PROTECTION
     minion_id: str
+    killer_id: str | None = None
     tried_effect_ids: list[str] = Field(default_factory=list)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -560,30 +536,31 @@ class CheckMinionProtectionStep(GameStep):
         if not minion:
             return StepResult(is_finished=True)
 
-        # Find an untried active MINION_PROTECTION effect covering this minion
-        protection = None
-        for e in state.active_effects:
-            if e.effect_type != EffectType.MINION_PROTECTION:
-                continue
-            if e.id in self.tried_effect_ids:
-                continue
-            if not _is_effect_active(e, state):
-                continue
-            if not is_unit_in_effect_scope(e, self.minion_id, state):
-                continue
-            if (
-                e.protected_minion_types
-                and getattr(minion, "type", None) not in e.protected_minion_types
-            ):
-                continue
-            protection = e
-            break
+        # Collect untried active MINION_PROTECTION effects covering this minion.
+        # Offer optional (card-discard) protections BEFORE the mandatory totem
+        # sacrifice, so a totem only fires as a fallback.
+        candidates = [
+            e
+            for e in state.active_effects
+            if e.effect_type == EffectType.MINION_PROTECTION
+            and e.id not in self.tried_effect_ids
+            and _is_effect_active(e, state)
+            and is_unit_in_effect_scope(e, self.minion_id, state)
+            and (
+                not e.protected_minion_types
+                or getattr(minion, "type", None) in e.protected_minion_types
+            )
+        ]
+        candidates.sort(key=lambda e: e.sacrifice_origin_token)
+        protection = candidates[0] if candidates else None
 
         if not protection:
-            # No more protection effects - remove the minion
+            # No protection fired — a genuine defeat. Award the kill coins,
+            # emit UNIT_DEFEATED, and remove the minion.
             return StepResult(
                 is_finished=True,
                 new_steps=[RemoveUnitStep(unit_id=self.minion_id)],
+                events=self._defeat_events(state, minion),
             )
 
         # Check if protector has qualifying cards in hand
@@ -679,9 +656,13 @@ class CheckMinionProtectionStep(GameStep):
             f"   [PROTECT] {protector.id} discards {card_to_discard.name} to protect {self.minion_id}!"
         )
 
+        # Card-discard protection (e.g. Brogan): the minion is still defeated for
+        # scoring purposes — the killer keeps the coins and UNIT_DEFEATED fires —
+        # it simply isn't removed from the board.
         return StepResult(
             is_finished=True,
             events=[
+                *self._defeat_events(state, minion),
                 GameEvent(
                     event_type=GameEventType.MINION_PROTECTED,
                     actor_id=protector.id,
@@ -690,9 +671,32 @@ class CheckMinionProtectionStep(GameStep):
                         "discarded_card_id": card_to_discard.id,
                         "effect_id": protection.id,
                     },
-                )
+                ),
             ],
         )
+
+    def _defeat_events(self, state: GameState, minion: Any) -> list[GameEvent]:
+        """UNIT_DEFEATED plus the killer's kill coins, for a genuine defeat or a
+        card-discard save (totem sacrifices deliberately do NOT call this)."""
+        events: list[GameEvent] = [
+            GameEvent(
+                event_type=GameEventType.UNIT_DEFEATED,
+                actor_id=self.killer_id,
+                target_id=self.minion_id,
+            )
+        ]
+        killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
+        if killer and hasattr(killer, "gold"):
+            reward = minion.value
+            killer.gold += reward
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.GOLD_GAINED,
+                    actor_id=killer.id,
+                    metadata={"amount": reward, "reason": "minion_kill"},
+                )
+            )
+        return events
 
     def _try_next(self, effect_id: str) -> StepResult:
         """Try the next protection effect."""
@@ -701,6 +705,7 @@ class CheckMinionProtectionStep(GameStep):
             new_steps=[
                 CheckMinionProtectionStep(
                     minion_id=self.minion_id,
+                    killer_id=self.killer_id,
                     tried_effect_ids=[*self.tried_effect_ids, effect_id],
                 )
             ],
