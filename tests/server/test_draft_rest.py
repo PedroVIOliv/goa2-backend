@@ -77,7 +77,9 @@ def test_full_draft_creates_playable_game(client):
 def test_modes_endpoint(client):
     r = client.get("/drafts/modes")
     assert r.status_code == 200
-    assert any(m["name"] == "sequential_ban_pick" for m in r.json())
+    mode_names = {m["name"] for m in r.json()}
+    assert "sequential_ban_pick" in mode_names
+    assert "simple_draft" in mode_names
 
 
 def test_non_host_cannot_start(client):

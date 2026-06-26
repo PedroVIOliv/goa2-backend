@@ -8,8 +8,50 @@ def test_registry_has_sequential_mode():
     assert get_mode("sequential_ban_pick").name == "sequential_ban_pick"
 
 
-def test_sequence_2v2_one_ban_each():
-    mode = SequentialBanPickMode(bans_per_team=1)
+def test_registry_has_simple_draft_mode():
+    assert "simple_draft" in DRAFT_MODES
+    assert get_mode("simple_draft").name == "simple_draft"
+
+
+def test_simple_draft_2v2_snake_order():
+    seq = get_mode("simple_draft").build_sequence(2, 2, TeamColor.RED)
+    kinds = [(s.action, s.team) for s in seq]
+    assert kinds == [
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
+    ]
+    assert [s.index for s in seq] == list(range(len(seq)))
+
+
+def test_simple_draft_3v3_snake_order():
+    seq = get_mode("simple_draft").build_sequence(3, 3, TeamColor.RED)
+    kinds = [(s.action, s.team) for s in seq]
+    assert kinds == [
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+    ]
+
+
+def test_simple_draft_uneven_3v2_fills_each_team():
+    seq = get_mode("simple_draft").build_sequence(3, 2, TeamColor.RED)
+    kinds = [(s.action, s.team) for s in seq]
+    assert kinds == [
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.RED),
+    ]
+
+
+def test_sequence_2v2_bans_before_each_pick_round():
+    mode = SequentialBanPickMode()
     seq = mode.build_sequence(2, 2, TeamColor.RED)
     kinds = [(s.action, s.team) for s in seq]
     assert kinds == [
@@ -17,14 +59,35 @@ def test_sequence_2v2_one_ban_each():
         (DraftActionType.BAN, TeamColor.BLUE),
         (DraftActionType.PICK, TeamColor.RED),
         (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.BAN, TeamColor.BLUE),
+        (DraftActionType.BAN, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
+    ]
+    assert [s.index for s in seq] == list(range(len(seq)))
+
+
+def test_sequence_3v3_uses_requested_pick_ban_order():
+    seq = SequentialBanPickMode().build_sequence(3, 3, TeamColor.RED)
+    kinds = [(s.action, s.team) for s in seq]
+    assert kinds == [
+        (DraftActionType.BAN, TeamColor.RED),
+        (DraftActionType.BAN, TeamColor.BLUE),
         (DraftActionType.PICK, TeamColor.RED),
         (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.BAN, TeamColor.BLUE),
+        (DraftActionType.BAN, TeamColor.RED),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
+        (DraftActionType.BAN, TeamColor.RED),
+        (DraftActionType.BAN, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.BLUE),
+        (DraftActionType.PICK, TeamColor.RED),
     ]
-    assert [s.index for s in seq] == [0, 1, 2, 3, 4, 5]
 
 
 def test_sequence_uneven_3v2_fills_each_team():
-    seq = SequentialBanPickMode(bans_per_team=1).build_sequence(3, 2, TeamColor.RED)
+    seq = SequentialBanPickMode().build_sequence(3, 2, TeamColor.RED)
     picks = [s.team for s in seq if s.action is DraftActionType.PICK]
     assert picks.count(TeamColor.RED) == 3
     assert picks.count(TeamColor.BLUE) == 2

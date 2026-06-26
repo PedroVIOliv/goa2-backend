@@ -1035,9 +1035,8 @@ randomized into) teams, each team's **captain** runs a ban/pick draft, players t
 which drafted hero they will play, and the backend automatically creates the game. From there
 clients switch to the normal `/games/{id}` flow.
 
-The draft engine is **pluggable** — `GET /drafts/modes` lists available modes. The launch mode
-is `sequential_ban_pick` (alternating bans, then alternating picks; the captain drafts for the
-whole team).
+The draft engine is **pluggable** — `GET /drafts/modes` lists available modes. The default mode is
+`sequential_ban_pick`; `simple_draft` is a no-ban snake-pick alternative.
 
 > **Note:** Draft lobbies are **in-memory only** — they do not survive a server restart and are
 > not persisted to disk. For live updates, connect the draft WebSocket (see
@@ -1050,7 +1049,7 @@ LOBBY  →  DRAFTING  →  CLAIMING  →  COMPLETE
 ```
 
 - **LOBBY** — players join, choose teams (or host randomizes), host may reassign captains.
-- **DRAFTING** — captains alternate bans/picks following the resolved `sequence`.
+- **DRAFTING** — captains follow the resolved `sequence` of ban/pick actions.
 - **CLAIMING** — each player claims one of their team's drafted heroes.
 - **COMPLETE** — once everyone has claimed, the game is created; `game_id` and each player's
   `game_token` become available on their scoped view.
@@ -1115,6 +1114,25 @@ At `start`, the number of **assigned** players (those on a team) must be a suppo
 (2, 4, 5, or 6) — otherwise `start` returns `400`. Each team must have at least one player and a
 captain. Team sizes may be uneven (e.g. 2 vs 3 for a 5-player game).
 
+Available draft modes:
+
+| Mode | Order |
+|------|-------|
+| `sequential_ban_pick` | Ban pair before each pick pair; see the table below. |
+| `simple_draft` | No bans. Team A picks 1, Team B picks 2, then teams alternate up to 2 picks until both rosters are full. |
+
+`sequential_ban_pick` resolves draft rounds relative to `first_team` (Team A) and the other team
+(Team B):
+
+| Round | Ban order | Pick order |
+|-------|-----------|------------|
+| 1 | Team A, Team B | Team A, Team B |
+| 2 | Team B, Team A | Team B, Team A |
+| 3 | Team A, Team B | Team B, Team A |
+
+Only the rounds needed to fill the larger team are emitted. In uneven drafts, both teams still
+make the round's bans, but a team that already has enough picked heroes skips that round's pick.
+
 ### Draft view shape
 
 Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
@@ -1138,7 +1156,12 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
     "sequence": [
       {"index": 0, "action": "BAN", "team": "RED"},
       {"index": 1, "action": "BAN", "team": "BLUE"},
-      {"index": 2, "action": "PICK", "team": "RED"}
+      {"index": 2, "action": "PICK", "team": "RED"},
+      {"index": 3, "action": "PICK", "team": "BLUE"},
+      {"index": 4, "action": "BAN", "team": "BLUE"},
+      {"index": 5, "action": "BAN", "team": "RED"},
+      {"index": 6, "action": "PICK", "team": "BLUE"},
+      {"index": 7, "action": "PICK", "team": "RED"}
     ],
     "current_index": 2,
     "bans": {"RED": ["Mortimer"], "BLUE": ["Widget"]},

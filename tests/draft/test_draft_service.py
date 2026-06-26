@@ -13,7 +13,20 @@ from goa2.draft.errors import (
 )
 from goa2.draft.models import DraftStatus
 
-HEROES = ["Arien", "Wasp", "Brogan", "Sabina", "Bain", "Min"]
+HEROES = [
+    "Arien",
+    "Wasp",
+    "Brogan",
+    "Sabina",
+    "Bain",
+    "Min",
+    "Mortimer",
+    "Widget",
+    "Dodger",
+    "Tigerclaw",
+    "Silverarrow",
+    "Garrus",
+]
 
 
 def _new_draft(host="Alice"):
