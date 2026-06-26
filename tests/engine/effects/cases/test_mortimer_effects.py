@@ -717,7 +717,7 @@ def test_macabre_mayhem_prompts_for_three_choices_without_ultimate() -> None:
 
 
 @pytest.mark.effect_flow
-def test_braaaaaaaaains_can_move_zombie_before_attack() -> None:
+def test_braaaaaaaains_can_move_zombie_before_attack() -> None:
     zombie_start = Hex(q=2, r=0, s=-2)
     zombie_dest = Hex(q=2, r=1, s=-3)
     state = (
@@ -726,7 +726,7 @@ def test_braaaaaaaaains_can_move_zombie_before_attack() -> None:
         .red_hero(
             "hero_mortimer",
             at=(0, 0, 0),
-            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+            current_card=hero_card("Mortimer", "braaaaaaaains"),
         )
         .blue_minion("blue_minion", at=(1, 0, -1))
         .with_actor("hero_mortimer")
@@ -761,7 +761,7 @@ def test_braaaaaaaaains_can_move_zombie_before_attack() -> None:
 
 
 @pytest.mark.effect_flow
-def test_braaaaaaaaains_retrieves_discarded_card_when_zombie_pins_enemy_hero() -> None:
+def test_braaaaaaaains_retrieves_discarded_card_when_zombie_pins_enemy_hero() -> None:
     target_hex = Hex(q=1, r=0, s=-1)
     zombie_hex = Hex(q=2, r=0, s=-2)
     enemy_hero_hex = Hex(q=3, r=0, s=-3)
@@ -771,7 +771,7 @@ def test_braaaaaaaaains_retrieves_discarded_card_when_zombie_pins_enemy_hero() -
         .red_hero(
             "hero_mortimer",
             at=(0, 0, 0),
-            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+            current_card=hero_card("Mortimer", "braaaaaaaains"),
         )
         .blue_hero("hero_enemy", at=enemy_hero_hex)
         .blue_minion("blue_minion", at=target_hex)
@@ -803,14 +803,14 @@ def test_braaaaaaaaains_retrieves_discarded_card_when_zombie_pins_enemy_hero() -
 
 
 @pytest.mark.effect_flow
-def test_braaaaaaaaains_skips_retrieve_when_no_enemy_hero_pinned() -> None:
+def test_braaaaaaaains_skips_retrieve_when_no_enemy_hero_pinned() -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2)])
         .red_hero(
             "hero_mortimer",
             at=(0, 0, 0),
-            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+            current_card=hero_card("Mortimer", "braaaaaaaains"),
         )
         .blue_minion("blue_minion", at=(1, 0, -1))
         .with_actor("hero_mortimer")
@@ -841,14 +841,14 @@ def test_braaaaaaaaains_skips_retrieve_when_no_enemy_hero_pinned() -> None:
 
 
 @pytest.mark.effect_flow
-def test_braaains_prompts_for_two_choices() -> None:
+def test_braains_prompts_for_two_choices() -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes([(0, 0, 0), (1, 0, -1)])
         .red_hero(
             "hero_mortimer",
             at=(0, 0, 0),
-            current_card=hero_card("Mortimer", "braaains"),
+            current_card=hero_card("Mortimer", "braains"),
         )
         .blue_minion("blue_minion", at=(1, 0, -1))
         .with_actor("hero_mortimer")
@@ -865,14 +865,14 @@ def test_braaains_prompts_for_two_choices() -> None:
 
 
 @pytest.mark.effect_flow
-def test_braaaaaaaaains_prompts_for_five_choices_with_master_of_puppets() -> None:
+def test_braaaaaaaains_prompts_for_five_choices_with_master_of_puppets() -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes([(0, 0, 0), (1, 0, -1)])
         .red_hero(
             "hero_mortimer",
             at=(0, 0, 0),
-            current_card=hero_card("Mortimer", "braaaaaaaaains"),
+            current_card=hero_card("Mortimer", "braaaaaaaains"),
         )
         .blue_minion("blue_minion", at=(1, 0, -1))
         .with_actor("hero_mortimer")

@@ -944,25 +944,25 @@ class KnifeOfTheLivingDeadEffect(CardEffect):
         return _knife_living_dead_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
 
 
-@register_effect("braaains")
-class BraaainsEffect(CardEffect):
+@register_effect("braains")
+class BraainsEffect(CardEffect):
     """Adjacent attack; before it, move Zombies or retrieve a card if a Zombie pins an enemy hero."""
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        assert stats.radius is not None, "braaains card requires a radius"
+        assert stats.radius is not None, "braains card requires a radius"
         return _brains_steps(stats.primary_value, stats.radius, _choice_limit(hero, 2))
 
 
-@register_effect("braaaaaaaaains")
-class BraaaaaaaaainsEffect(CardEffect):
+@register_effect("braaaaaaaains")
+class BraaaaaaaainsEffect(CardEffect):
     """Tier III Brains: up to three choices (five with Master of Puppets)."""
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        assert stats.radius is not None, "braaaaaaaaains card requires a radius"
+        assert stats.radius is not None, "braaaaaaaains card requires a radius"
         return _brains_steps(stats.primary_value, stats.radius, _choice_limit(hero, 3))
 
 

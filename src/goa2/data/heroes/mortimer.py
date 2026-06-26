@@ -41,8 +41,8 @@ def create_mortimer() -> Hero:
         # TIER III
         # =========================================================================
         Card(
-            id="braaaaaaaaains",
-            name="Braaaaaaaaains...!",
+            id="braaaaaaaains",
+            name="Braaaaaaaains...!",
             image_id="RedIIIB",
             tier=CardTier.III,
             color=CardColor.RED,
@@ -52,7 +52,7 @@ def create_mortimer() -> Hero:
             secondary_actions={ActionType.DEFENSE: 8, ActionType.MOVEMENT: 3},
             radius_value=4,
             item=StatType.MOVEMENT,
-            effect_id="braaaaaaaaains",
+            effect_id="braaaaaaaains",
             effect_text="Target a unit adjacent to you. Before the attack: Choose up to three times —\n• Move a :zombie_token: Zombie token in radius 1 space.\n• If an enemy hero in radius is adjacent to a Zombie token, retrieve a discarded card.",
         ),
         Card(
@@ -138,8 +138,8 @@ def create_mortimer() -> Hero:
         # TIER II
         # =========================================================================
         Card(
-            id="braaains",
-            name="Braaains...!",
+            id="braains",
+            name="Braains...!",
             image_id="RedIIB",
             tier=CardTier.II,
             color=CardColor.RED,
@@ -149,7 +149,7 @@ def create_mortimer() -> Hero:
             secondary_actions={ActionType.DEFENSE: 7, ActionType.MOVEMENT: 3},
             radius_value=4,
             item=StatType.INITIATIVE,
-            effect_id="braaains",
+            effect_id="braains",
             effect_text="Target a unit adjacent to you. Before the attack: Choose up to two times —\n• Move a :zombie_token: Zombie token in radius 1 space.\n• If an enemy hero in radius is adjacent to a Zombie token, retrieve a discarded card.",
         ),
         Card(
