@@ -74,13 +74,23 @@ class ErrorResponse(BaseModel):
 
 
 class CreateDraftRequest(BaseModel):
+    """Open a lobby. All match settings (map, game type, draft mode, cheats) and team
+    sizes are decided inside the lobby, not here. The optional fields seed the defaults."""
+
     host_name: str
-    red_size: int
-    blue_size: int
     map_name: str = "forgotten_island"
     game_type: str = "LONG"
     draft_mode: str = "sequential_ban_pick"
     cheats_enabled: bool = False
+
+
+class UpdateDraftSettingsRequest(BaseModel):
+    """Host-only, LOBBY-only. Any omitted field is left unchanged."""
+
+    map_name: str | None = None
+    game_type: str | None = None
+    draft_mode: str | None = None
+    cheats_enabled: bool | None = None
 
 
 class JoinDraftRequest(BaseModel):

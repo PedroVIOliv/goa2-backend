@@ -6,7 +6,7 @@ from goa2.server.draft_registry import DraftRegistry
 
 
 def _state():
-    return service.create_draft("d1", "m", "LONG", "sequential_ban_pick", 2, 2, "Alice", now=0.0)
+    return service.create_draft("d1", "m", "LONG", "sequential_ban_pick", "Alice", now=0.0)
 
 
 def test_create_issues_host_and_spectator_tokens():

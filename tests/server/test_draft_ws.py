@@ -13,7 +13,7 @@ def client():
 
 
 def _create(client):
-    r = client.post("/drafts", json={"host_name": "Alice", "red_size": 2, "blue_size": 2})
+    r = client.post("/drafts", json={"host_name": "Alice"})
     assert r.status_code == 201
     return r.json()
 

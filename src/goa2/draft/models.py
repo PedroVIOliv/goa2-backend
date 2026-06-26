@@ -44,8 +44,10 @@ class DraftState(BaseModel):
     map_name: str
     game_type: str
     draft_mode: str
-    red_size: int
-    blue_size: int
+    cheats: bool = False
+    # Team sizes are derived from membership at start_draft (no preset; 0 in LOBBY).
+    red_size: int = 0
+    blue_size: int = 0
     players: list[DraftPlayer] = Field(default_factory=list)
     hero_pool: list[str] = Field(default_factory=list)
     sequence: list[DraftStep] = Field(default_factory=list)

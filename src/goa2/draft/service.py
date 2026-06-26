@@ -15,6 +15,10 @@ from goa2.draft.errors import (
 from goa2.draft.models import DraftActionType, DraftPlayer, DraftState, DraftStatus
 from goa2.draft.modes import get_mode
 
+# Hard cap on lobby size — the engine's largest supported bracket is 6 players.
+# Team sizes are not preset; they emerge from who joins each side.
+MAX_PLAYERS = 6
+
 
 def get_player(state: DraftState, player_id: str) -> DraftPlayer:
     for p in state.players:
@@ -28,10 +32,6 @@ def _require_phase(state: DraftState, expected: DraftStatus) -> None:
         raise InvalidDraftPhaseError(
             f"Expected draft phase {expected.value}, but draft is {state.status.value}"
         )
-
-
-def _team_size(state: DraftState, team: TeamColor) -> int:
-    return state.red_size if team is TeamColor.RED else state.blue_size
 
 
 def _members(state: DraftState, team: TeamColor) -> list[DraftPlayer]:
@@ -59,10 +59,9 @@ def create_draft(
     map_name: str,
     game_type: str,
     draft_mode: str,
-    red_size: int,
-    blue_size: int,
     host_name: str,
     now: float,
+    cheats: bool = False,
 ) -> DraftState:
     get_mode(draft_mode)  # validate mode name early (raises KeyError -> caller maps)
     state = DraftState(
@@ -70,18 +69,39 @@ def create_draft(
         map_name=map_name,
         game_type=game_type,
         draft_mode=draft_mode,
-        red_size=red_size,
-        blue_size=blue_size,
+        cheats=cheats,
         created_at=now,
     )
     state.players.append(DraftPlayer(id="p1", display_name=host_name, is_host=True))
     return state
 
 
+def update_settings(
+    state: DraftState,
+    *,
+    map_name: str | None = None,
+    game_type: str | None = None,
+    draft_mode: str | None = None,
+    cheats: bool | None = None,
+) -> None:
+    """Host-editable lobby settings. LOBBY-only. Only validates the draft mode name;
+    map and game_type are validated by the route layer against the engine."""
+    _require_phase(state, DraftStatus.LOBBY)
+    if draft_mode is not None:
+        get_mode(draft_mode)  # raises KeyError -> caller maps to 400
+        state.draft_mode = draft_mode
+    if map_name is not None:
+        state.map_name = map_name
+    if game_type is not None:
+        state.game_type = game_type
+    if cheats is not None:
+        state.cheats = cheats
+
+
 def join(state: DraftState, display_name: str) -> DraftPlayer:
     _require_phase(state, DraftStatus.LOBBY)
-    if len(state.players) >= state.red_size + state.blue_size:
-        raise DraftFullError("Lobby is full")
+    if len(state.players) >= MAX_PLAYERS:
+        raise DraftFullError(f"Lobby is full ({MAX_PLAYERS} players max)")
     player = DraftPlayer(id=f"p{len(state.players) + 1}", display_name=display_name)
     state.players.append(player)
     return player
@@ -90,22 +110,31 @@ def join(state: DraftState, display_name: str) -> DraftPlayer:
 def set_team(state: DraftState, player_id: str, team: TeamColor) -> None:
     _require_phase(state, DraftStatus.LOBBY)
     player = get_player(state, player_id)
-    if player.team is not team and len(_members(state, team)) >= _team_size(state, team):
-        raise InvalidTeamError(f"Team {team.value} is full")
     player.team = team
     player.is_captain = False
     _ensure_captains(state)
 
 
+def leave_team(state: DraftState, player_id: str) -> None:
+    """Drop a player back to unassigned (a lobby spectator). LOBBY only."""
+    _require_phase(state, DraftStatus.LOBBY)
+    player = get_player(state, player_id)
+    player.team = None
+    player.is_captain = False
+    _ensure_captains(state)  # promote a new captain on the team they left, if needed
+
+
 def randomize_teams(state: DraftState, rng: random.Random) -> None:
+    """Split current players as evenly as possible across the two teams."""
     _require_phase(state, DraftStatus.LOBBY)
     shuffled = list(state.players)
     rng.shuffle(shuffled)
     for p in state.players:
         p.team = None
         p.is_captain = False
+    half = len(shuffled) // 2
     for i, p in enumerate(shuffled):
-        p.team = TeamColor.RED if i < state.red_size else TeamColor.BLUE
+        p.team = TeamColor.RED if i < half else TeamColor.BLUE
     _ensure_captains(state)
 
 
@@ -122,10 +151,19 @@ def start_draft(state: DraftState, all_heroes: list[str], rng: random.Random) ->
     _require_phase(state, DraftStatus.LOBBY)
     for team in (TeamColor.RED, TeamColor.BLUE):
         members = _members(state, team)
-        if len(members) != _team_size(state, team):
-            raise InvalidDraftPhaseError(f"Team {team.value} is not full")
+        if not members:
+            raise InvalidDraftPhaseError(f"Team {team.value} has no players")
         if not any(p.is_captain for p in members):
             raise InvalidDraftPhaseError(f"Team {team.value} has no captain")
+    # Team sizes emerge from who joined each side; teams must be balanced (diff <= 1).
+    red = len(_members(state, TeamColor.RED))
+    blue = len(_members(state, TeamColor.BLUE))
+    if abs(red - blue) > 1:
+        raise InvalidDraftPhaseError(
+            f"Teams must be balanced (size difference <= 1); got {red} vs {blue}"
+        )
+    state.red_size = red
+    state.blue_size = blue
     mode = get_mode(state.draft_mode)
     state.hero_pool = mode.hero_pool(all_heroes)
     state.first_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
@@ -170,8 +208,13 @@ def claim_hero(state: DraftState, player_id: str, hero: str) -> None:
 
 
 def is_ready_to_create_game(state: DraftState) -> bool:
-    return state.status is DraftStatus.CLAIMING and all(
-        p.claimed_hero is not None for p in state.players
+    # Only players on a team are participants; unassigned players are lobby spectators
+    # and never claim, so they must not gate game creation.
+    participants = [p for p in state.players if p.team is not None]
+    return (
+        state.status is DraftStatus.CLAIMING
+        and bool(participants)
+        and all(p.claimed_hero is not None for p in participants)
     )
 
 

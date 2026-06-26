@@ -32,9 +32,13 @@ from goa2.server.models import (
     JoinDraftResponse,
     SetCaptainRequest,
     SetTeamRequest,
+    UpdateDraftSettingsRequest,
 )
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])
+
+# Exact total player counts the engine supports as match brackets.
+VALID_TOTALS = frozenset({2, 4, 5, 6})
 
 
 def get_draft_registry(request: Request) -> DraftRegistry:
@@ -70,12 +74,22 @@ def get_draft_player(request: Request, registry: DraftRegistryDep) -> DraftConte
 DraftPlayerDep = Annotated[DraftContext, Depends(get_draft_player)]
 
 
+def _maps_dir() -> str:
+    return os.path.join(os.path.dirname(__file__), "..", "data", "maps")
+
+
 def _map_path(map_name: str) -> str:
-    base = os.path.join(os.path.dirname(__file__), "..", "data", "maps")
-    path = os.path.normpath(os.path.join(base, f"{map_name}.json"))
+    path = os.path.normpath(os.path.join(_maps_dir(), f"{map_name}.json"))
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
     return path
+
+
+def _list_maps() -> list[str]:
+    base = _maps_dir()
+    if not os.path.isdir(base):
+        return []
+    return sorted(f[:-5] for f in os.listdir(base) if f.endswith(".json"))
 
 
 def _draft_view(md: ManagedDraft, player_id: str, is_spectator: bool) -> DraftViewResponse:
@@ -99,7 +113,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         _map_path(state.map_name),
         red_heroes,
         blue_heroes,
-        False,
+        state.cheats,
         state.game_type,
         seed=seed,
     )
@@ -113,7 +127,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             red_heroes=red_heroes,
             blue_heroes=blue_heroes,
             game_type=state.game_type,
-            cheats=False,
+            cheats=state.cheats,
             seed=seed,
         )
     name_to_id = {h.name: h.id for team in game_state.teams.values() for h in team.heroes}
@@ -133,14 +147,19 @@ async def list_modes() -> list[DraftModeInfo]:
     return [DraftModeInfo(name=m.name, description=m.description) for m in DRAFT_MODES.values()]
 
 
+@router.get("/maps", response_model=list[str])
+async def list_maps() -> list[str]:
+    """Available map names for the in-lobby map picker."""
+    return _list_maps()
+
+
 @router.post("", response_model=CreateDraftResponse, status_code=201)
 async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> CreateDraftResponse:
+    # Match settings can be tweaked in the lobby, but seed/validate the initial values now.
     if body.game_type not in ("QUICK", "LONG"):
         raise HTTPException(status_code=400, detail="game_type must be QUICK or LONG")
     if body.draft_mode not in DRAFT_MODES:
         raise HTTPException(status_code=400, detail=f"Unknown draft_mode '{body.draft_mode}'")
-    # Validate the resulting player count against the engine's brackets.
-    GameSetup.get_game_config(body.game_type, body.red_size + body.blue_size)
     _map_path(body.map_name)
     draft_id = uuid.uuid4().hex[:12]
     state = service.create_draft(
@@ -148,10 +167,9 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         body.map_name,
         body.game_type,
         body.draft_mode,
-        body.red_size,
-        body.blue_size,
         body.host_name,
         now=time.time(),
+        cheats=body.cheats_enabled,
     )
     md = registry.create(state)
     return CreateDraftResponse(
@@ -160,6 +178,34 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         player_token=md.host_token,
         spectator_token=md.spectator_token,
     )
+
+
+@router.patch("/{draft_id}/settings", response_model=DraftViewResponse)
+async def update_settings(
+    draft_id: str,
+    body: UpdateDraftSettingsRequest,
+    player: DraftPlayerDep,
+    registry: DraftRegistryDep,
+) -> DraftViewResponse:
+    if not player.is_host:
+        raise NotHostError("Only the host may change draft settings")
+    if body.game_type is not None and body.game_type not in ("QUICK", "LONG"):
+        raise HTTPException(status_code=400, detail="game_type must be QUICK or LONG")
+    if body.draft_mode is not None and body.draft_mode not in DRAFT_MODES:
+        raise HTTPException(status_code=400, detail=f"Unknown draft_mode '{body.draft_mode}'")
+    if body.map_name is not None:
+        _map_path(body.map_name)  # 404 if missing
+    md = registry.get(draft_id)
+    async with md.lock:
+        service.update_settings(
+            md.state,
+            map_name=body.map_name,
+            game_type=body.game_type,
+            draft_mode=body.draft_mode,
+            cheats=body.cheats_enabled,
+        )
+    await broadcast_draft(md, registry)
+    return _draft_view(md, player.player_id, player.is_spectator)
 
 
 @router.post("/{draft_id}/join", response_model=JoinDraftResponse)
@@ -201,6 +247,20 @@ async def set_team(
     return _draft_view(md, player.player_id, player.is_spectator)
 
 
+@router.post("/{draft_id}/leave-team", response_model=DraftViewResponse)
+async def leave_team(
+    draft_id: str,
+    player: DraftPlayerDep,
+    registry: DraftRegistryDep,
+) -> DraftViewResponse:
+    _reject_spectator(player)
+    md = registry.get(draft_id)
+    async with md.lock:
+        service.leave_team(md.state, player.player_id)
+    await broadcast_draft(md, registry)
+    return _draft_view(md, player.player_id, player.is_spectator)
+
+
 @router.post("/{draft_id}/randomize-teams", response_model=DraftViewResponse)
 async def randomize_teams(
     draft_id: str, player: DraftPlayerDep, registry: DraftRegistryDep
@@ -238,6 +298,14 @@ async def start_draft(
         raise NotHostError("Only the host may start the draft")
     md = registry.get(draft_id)
     async with md.lock:
+        # Team sizes emerge from membership; the total must be an exact engine bracket.
+        total = sum(1 for p in md.state.players if p.team is not None)
+        if total not in VALID_TOTALS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{total} assigned players is not a valid match size "
+                f"(must be one of {sorted(VALID_TOTALS)}).",
+            )
         service.start_draft(md.state, HeroRegistry.list_heroes(), random.Random())
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)

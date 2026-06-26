@@ -6,7 +6,7 @@ from goa2.server.models import (
 
 
 def test_create_request_defaults():
-    req = CreateDraftRequest(host_name="Alice", red_size=2, blue_size=2)
+    req = CreateDraftRequest(host_name="Alice")
     assert req.map_name == "forgotten_island"
     assert req.game_type == "LONG"
     assert req.draft_mode == "sequential_ban_pick"

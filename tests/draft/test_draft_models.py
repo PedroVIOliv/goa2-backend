@@ -14,12 +14,11 @@ def test_draft_state_defaults_and_roundtrip():
         map_name="forgotten_island",
         game_type="LONG",
         draft_mode="sequential_ban_pick",
-        red_size=2,
-        blue_size=2,
         created_at=1.0,
     )
     assert state.status is DraftStatus.LOBBY
     assert state.players == []
+    assert state.red_size == 0 and state.blue_size == 0 and state.cheats is False
     assert state.bans == {TeamColor.RED: [], TeamColor.BLUE: []}
     assert state.picks == {TeamColor.RED: [], TeamColor.BLUE: []}
     assert state.current_index == 0

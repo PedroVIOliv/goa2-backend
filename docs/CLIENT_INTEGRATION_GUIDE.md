@@ -1070,23 +1070,28 @@ Send as `Authorization: Bearer <token>`, the same scheme as the game API.
 | Method & path | Auth | Body | Purpose |
 |---------------|------|------|---------|
 | `GET /drafts/modes` | none | — | List available draft modes (`name`, `description`) |
+| `GET /drafts/maps` | none | — | List available map names (`["forgotten_island", ...]`) for the lobby picker |
 | `POST /drafts` | none | `CreateDraftRequest` | Create a lobby; host becomes player `p1` |
+| `PATCH /drafts/{id}/settings` | host | `UpdateDraftSettingsRequest` | Change match settings while in LOBBY |
 | `POST /drafts/{id}/join` | none | `{ "display_name": "Bob" }` | Add a player; returns their token |
 | `GET /drafts/{id}` | player/spectator | — | Player-scoped draft view |
 | `POST /drafts/{id}/team` | player | `{ "team": "RED" }` | Self-select team (LOBBY only) |
-| `POST /drafts/{id}/randomize-teams` | host | — | Shuffle players into teams (LOBBY only) |
+| `POST /drafts/{id}/randomize-teams` | host | — | Shuffle players evenly into teams (LOBBY only) |
 | `POST /drafts/{id}/captain` | host | `{ "player_id": "p3" }` | Make that player their team's captain (LOBBY only) |
 | `POST /drafts/{id}/start` | host | — | Validate & begin drafting |
 | `POST /drafts/{id}/action` | acting captain | `{ "hero": "Arien" }` | Submit the current ban or pick |
 | `POST /drafts/{id}/claim` | player | `{ "hero": "Arien" }` | Claim a drafted hero (CLAIMING) |
 
-`CreateDraftRequest`:
+**Team sizes are not chosen up front.** Players join and self-select RED/BLUE freely (up to 6
+players total); the per-team sizes are simply however many landed on each side, fixed at `start`.
+All match settings (map, game type, draft mode, cheats) default at creation but are
+**host-editable inside the lobby** via `PATCH /drafts/{id}/settings`.
+
+`CreateDraftRequest` — only `host_name` is required; the rest seed the lobby defaults:
 
 ```json
 {
   "host_name": "Alice",
-  "red_size": 2,
-  "blue_size": 2,
   "map_name": "forgotten_island",
   "game_type": "LONG",
   "draft_mode": "sequential_ban_pick",
@@ -1094,7 +1099,21 @@ Send as `Authorization: Bearer <token>`, the same scheme as the game API.
 }
 ```
 
-`red_size + blue_size` must be a supported player count (2, 4, 5, or 6).
+`UpdateDraftSettingsRequest` (host-only, LOBBY only) — every field is optional; omitted fields
+are left unchanged. Broadcasts a `STATE_UPDATE` like any other mutation:
+
+```json
+{
+  "map_name": "forgotten_island",
+  "game_type": "QUICK",
+  "draft_mode": "sequential_ban_pick",
+  "cheats_enabled": true
+}
+```
+
+At `start`, the number of **assigned** players (those on a team) must be a supported match size
+(2, 4, 5, or 6) — otherwise `start` returns `400`. Each team must have at least one player and a
+captain. Team sizes may be uneven (e.g. 2 vs 3 for a 5-player game).
 
 ### Draft view shape
 
@@ -1108,6 +1127,7 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
     "map_name": "forgotten_island",
     "game_type": "LONG",
     "draft_mode": "sequential_ban_pick",
+    "cheats": false,
     "red_size": 2,
     "blue_size": 2,
     "players": [
@@ -1134,6 +1154,9 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
 ```
 
 - `draft` is public (identical for all callers) — all bans/picks are visible to everyone.
+- `red_size`/`blue_size` are `0` during `LOBBY` (sizes aren't decided yet); they are set from
+  team membership when the draft starts. During `LOBBY`, derive the live counts from `players`.
+- `cheats` reflects the current (host-editable) cheat setting; it flows into the created game.
 - `you` is the caller's own player record (omitted/`null` for spectators).
 - Once `status` is `COMPLETE`, `game_id` is set, and a player calling `GET /drafts/{id}` with
   their own token also receives their `game_token`. Use these to switch to the normal game flow:
