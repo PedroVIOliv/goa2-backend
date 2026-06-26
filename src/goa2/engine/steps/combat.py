@@ -475,6 +475,9 @@ class DefeatUnitStep(GameStep):
 
         elif hasattr(victim, "value"):  # Is Minion (unprotected — protected ones
             # are routed to CheckMinionProtectionStep above before reaching here)
+            # Record the genuine defeat so post-attack passives (e.g. Reign of
+            # Winter) can distinguish a real defeat from a totem save.
+            context["last_defeated_minion_id"] = actual_victim_id
             reward = victim.value
             logger.debug(f"   [DEATH] Minion Defeated! Killer gains {reward} Gold.")
             if killer and hasattr(killer, "gold"):
@@ -560,7 +563,7 @@ class CheckMinionProtectionStep(GameStep):
             return StepResult(
                 is_finished=True,
                 new_steps=[RemoveUnitStep(unit_id=self.minion_id)],
-                events=self._defeat_events(state, minion),
+                events=self._defeat_events(state, minion, context),
             )
 
         # Check if protector has qualifying cards in hand
@@ -662,7 +665,7 @@ class CheckMinionProtectionStep(GameStep):
         return StepResult(
             is_finished=True,
             events=[
-                *self._defeat_events(state, minion),
+                *self._defeat_events(state, minion, context),
                 GameEvent(
                     event_type=GameEventType.MINION_PROTECTED,
                     actor_id=protector.id,
@@ -675,9 +678,15 @@ class CheckMinionProtectionStep(GameStep):
             ],
         )
 
-    def _defeat_events(self, state: GameState, minion: Any) -> list[GameEvent]:
+    def _defeat_events(
+        self, state: GameState, minion: Any, context: dict[str, Any]
+    ) -> list[GameEvent]:
         """UNIT_DEFEATED plus the killer's kill coins, for a genuine defeat or a
-        card-discard save (totem sacrifices deliberately do NOT call this)."""
+        card-discard save (totem sacrifices deliberately do NOT call this).
+
+        Records the defeat in context so post-attack passives (Reign of Winter)
+        fire for a defeated-but-not-removed minion as well as a real kill."""
+        context["last_defeated_minion_id"] = self.minion_id
         events: list[GameEvent] = [
             GameEvent(
                 event_type=GameEventType.UNIT_DEFEATED,

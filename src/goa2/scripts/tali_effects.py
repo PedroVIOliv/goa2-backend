@@ -640,9 +640,11 @@ class ReignOfWinterEffect(CardEffect):
         target_id = context.get("last_combat_target")
         if not target_id:
             return False
-        # Only a genuine defeat counts: a minion saved by a Totem/protection is
-        # still on the board (get_unit keeps returning it, but it was not removed).
-        if target_id in state.entity_locations:
+        # Only a genuine defeat counts. A totem save does NOT defeat the minion
+        # (no signal), but a card-discard save (Brogan) DOES — the minion is
+        # "defeated but not removed" — so key off the defeat signal, not whether
+        # the minion is still on the board.
+        if context.get("last_defeated_minion_id") != target_id:
             return False
         target = state.get_unit(target_id)
         return target is not None and hasattr(target, "value")

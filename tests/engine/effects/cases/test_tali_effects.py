@@ -131,6 +131,24 @@ def _add_sacrifice_totem(
     return totem
 
 
+def _add_card_discard_protection(state, *, owner_id, allowed_colors, radius=3):
+    """Brogan-style card-discard protection: the minion is defeated-but-not-removed."""
+    EffectManager.create_effect(
+        state=state,
+        source_id=owner_id,
+        effect_type=EffectType.MINION_PROTECTION,
+        scope=EffectScope(
+            shape=Shape.RADIUS,
+            range=radius,
+            origin_id=owner_id,
+            affects=AffectsFilter.FRIENDLY_UNITS,
+        ),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+        allowed_discard_colors=allowed_colors,
+    )
+
+
 @pytest.mark.effect_contract
 @pytest.mark.parametrize(
     "effect_id",
@@ -634,6 +652,47 @@ def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion() -> None:
 
 
 @pytest.mark.effect_flow
+def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minion() -> None:
+    # Ruling: a minion saved by a card-discard (Brogan-style) protection is
+    # DEFEATED but not removed — so Reign must still fire.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "ice_blast"))
+        .blue_minion("target_minion", at=(1, 0, -1))
+        .blue_hero("protector", at=(2, 0, -2))
+        .with_actor("hero_tali")
+        .build()
+    )
+    tali = state.get_hero("hero_tali")
+    protector = state.get_hero("protector")
+    assert tali is not None and protector is not None
+    tali.level = 8
+    tali.ultimate_card = hero_card("Tali", "reign_of_winter")
+    tali.ultimate_card.state = CardState.PASSIVE
+    # One silver card to spend on protection, one green for Reign to take.
+    protector.hand = [
+        _filler_card("protector_silver", CardColor.SILVER),
+        _filler_card("protector_green", CardColor.GREEN),
+    ]
+    _add_card_discard_protection(state, owner_id="protector", allowed_colors=[CardColor.SILVER])
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
+    # Protector discards a card to save (but not un-defeat) the minion.
+    run.expect_input(InputRequestType.SELECT_CARD).choose("protector_silver")
+    # Reign of Winter still fires on the defeated minion.
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("protector")
+    run.expect_input(InputRequestType.SELECT_CARD).choose("protector_green")
+    run.finish()
+
+    assert "target_minion" in state.entity_locations  # saved, not removed
+    assert {c.id for c in protector.hand} == set()  # both cards gone: protect + Reign
+
+
+@pytest.mark.effect_flow
 def test_spirit_wolf_attacks_a_single_target_in_range_without_repeat() -> None:
     # Spirit Wolf uses can_choose_both=False: it resolves exactly one attack and
     # never offers the "resolve the other attack" repeat that Spirit Bear does.
@@ -881,14 +940,14 @@ def test_reign_of_winter_passive_guards_reject_non_matching_contexts() -> None:
         "last_combat_target": "target",
     }
 
-    # A minion that is still on the board was NOT defeated (e.g. saved by a
-    # totem) — even with block_succeeded False, the passive must not fire.
+    # Without a recorded defeat (e.g. a totem save), the passive must not fire
+    # even with block_succeeded False.
     assert effect.should_offer_passive(state, tali, card, after, base) is False
 
-    # Positive control: once the minion is genuinely defeated (off the board),
-    # an unblocked Ice Blast offers the passive.
-    state.remove_unit(UnitID("target"))
-    assert effect.should_offer_passive(state, tali, card, after, base) is True
+    # Positive control: a genuine defeat is recorded via last_defeated_minion_id
+    # (this fires even for a defeated-but-not-removed minion, per the ruling).
+    defeated = {**base, "last_defeated_minion_id": "target"}
+    assert effect.should_offer_passive(state, tali, card, after, defeated) is True
 
     # Each guard clause rejects independently.
     assert (
