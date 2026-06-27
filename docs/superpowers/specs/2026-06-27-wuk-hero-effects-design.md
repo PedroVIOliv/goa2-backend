@@ -45,9 +45,11 @@ This spec covers all 9 groups, including **Trample / Angry Stampede** (Group I).
   2. Count **enemy-of-Wuk minions adjacent to Wuk that are inside the active zone**
      (regardless of immunity).
   3. Reduce that enemy team's count by `min(N, that count)`.
-- **Multiple effects same round** (Claim + Assert): de-duplicate the set of excluded
-  adjacent minions across effects; total reduction is capped by the number of distinct
-  adjacent enemy minions, each effect contributing up to its own `max_value`.
+- **Multiple effects same round:** cannot happen in normal play — each hero commits one
+  card per round, so only one Dominance effect is ever active. Defensive rule: if more than
+  one exclusion effect is somehow active, apply the **single largest** reduction (max over
+  effects), never the sum, so the enemy total can never be over-reduced below the number of
+  distinct adjacent enemy minions.
 
 ### 3. `AFTER_RESOLVE_CARD` passive trigger (March of Nature)
 - Add `AFTER_RESOLVE_CARD = "after_resolve_card"` to `PassiveTrigger` in
@@ -185,10 +187,11 @@ through discards a card, or is defeated; defeat up to N minions you moved throug
      zone-aware destination list mixing normal and straight-line-through-obstacle hexes
      (Infra #6). No separate number/mode prompt.
   3. **Crossed enemy heroes (all, mandatory):** collect every enemy hero matching
-     `BetweenHexesFilter(move_origin → move_dest)` and apply `ForceDiscardOrDefeatStep` to
-     each. (No immunity interaction for heroes, so a collect-all + `ForEachStep` is fine.
-     Exact collect mechanism — `MultiSelectStep` auto-all vs repeat loop — settled at plan
-     time.)
+     `BetweenHexesFilter(move_origin → move_dest)`, `TeamFilter(ENEMY)`,
+     `UnitTypeFilter(HERO)`, **and `ImmunityFilter()`** (so an immune hero — e.g.
+     `IMMUNITY_ENEMY_ACTIONS` / active attack-immunity — is skipped), then apply
+     `ForceDiscardOrDefeatStep` to each. Either collect mechanism is acceptable
+     (`MultiSelectStep` auto-all vs repeat-until-none loop) — settled at plan time.
   4. **Crossed minions (up to N, sequential — NOT a single MultiSelect):** for `trample`
      one `SelectStep`+`DefeatUnitStep` pair; for `angry_stampede` two pairs. Each
      `SelectStep` filters `BetweenHexesFilter`, `TeamFilter(ENEMY)`, `UnitTypeFilter(MINION)`,
