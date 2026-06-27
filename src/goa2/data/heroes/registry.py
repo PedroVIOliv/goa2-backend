@@ -3,6 +3,7 @@ from typing import ClassVar
 from goa2.domain.models import Hero
 
 HERO_DIFFICULTY_STARS = {
+    # 1 Star
     "Arien": 1,
     "Xargatha": 1,
     "Wasp": 1,
@@ -10,6 +11,7 @@ HERO_DIFFICULTY_STARS = {
     "Tigerclaw": 1,
     "Sabina": 1,
     "Dodger": 1,
+    # 2 Stars
     "Bain": 2,
     "Whisper": 2,
     "Rowenna": 2,
@@ -18,10 +20,25 @@ HERO_DIFFICULTY_STARS = {
     "Misa": 2,
     "Garrus": 2,
     "Silverarrow": 2,
+    # 3 Stars
     "Mortimer": 3,
     "Widget": 3,
     "Trinkets": 3,
     "Tali": 3,
+    "Brynn": 3,
+    "Cutter": 3,
+    "Hanu": 3,
+    "Mrak": 3,
+    "Swift": 3,
+    "Wuk": 3,
+    # 4 Stars
+    "Emmitt": 4,
+    "Gydion": 4,
+    "Ignatia": 4,
+    "NebKher": 4,
+    "Razzle": 4,
+    "Snorri": 4,
+    "Takahide": 4,
 }
 
 
