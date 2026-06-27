@@ -436,16 +436,38 @@ def test_trample_crosses_hero_and_minion() -> None:
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
     run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
-    # crossed heroes (multi-select): pick eh, then DONE
-    run.expect_input(InputRequestType.SELECT_UNIT).choose("eh")
-    run.expect_input(InputRequestType.SELECT_UNIT).choose("DONE")
-    # crossed minion (up to 1): pick em
+    # crossed heroes are auto-affected (no player choice); only the optional
+    # minion defeat prompts.
     run.expect_input(InputRequestType.SELECT_UNIT).choose("em")
     run.finish()
 
     assert state.entity_locations.get("hero_wuk") == Hex(q=3, r=0, s=-3)
     assert state.entity_locations.get("eh") is None  # defeated (no cards)
     assert state.entity_locations.get("em") is None  # defeated minion
+
+
+@pytest.mark.effect_flow
+def test_trample_affects_all_crossed_heroes_without_choice() -> None:
+    # Two enemy heroes crossed (no cards); both must be defeated with NO
+    # selection prompt — the player cannot choose which heroes are affected.
+    state = (
+        EffectScenarioBuilder()
+        .line_board(6)
+        .red_hero("hero_wuk", at=(0, 0, 0), current_card=hero_card("Wuk", "trample"))
+        .with_actor("hero_wuk")
+        .blue_hero("eh1", at=(1, 0, -1))
+        .blue_hero("eh2", at=(2, 0, -2))
+        .build()
+    )
+
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
+    # no hero prompt, no minion candidates -> resolves with no further input
+    run.finish()
+
+    assert state.entity_locations.get("eh1") is None
+    assert state.entity_locations.get("eh2") is None
 
 
 @pytest.mark.effect_flow

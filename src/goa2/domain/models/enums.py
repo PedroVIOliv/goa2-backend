@@ -175,6 +175,7 @@ class StepType(StrEnum):
     ADVANCE_TURN = "advance_turn"
     FINISHED_EXPIRING_EFFECT = "finished_expiring_effect"
     COUNT = "count"
+    COLLECT_UNITS = "collect_units"
     CHECK_CONTEXT_CONDITION = "check_context_condition"
     RETRIEVE_CARD = "retrieve_card"
     COUNT_CARDS = "count_cards"

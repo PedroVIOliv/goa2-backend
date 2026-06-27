@@ -45,6 +45,7 @@ EXPECTED_STEP_CLASSES = {
     "ComputeHexStep",
     "ConfirmResolutionStep",
     "ConvertCardToItemStep",
+    "CollectUnitsStep",
     "CountAdjacentEnemiesStep",
     "CountCardsStep",
     "CountStep",

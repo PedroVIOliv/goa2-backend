@@ -622,6 +622,58 @@ class CountStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CollectUnitsStep(GameStep):
+    """
+    Collects ALL entities matching filters and stores their IDs (a list) in
+    context. Same target_type + filters system as CountStep/SelectStep, but no
+    input prompt and no player choice — used for mandatory "each unit ..."
+    effects (e.g. Wuk's Trample: every enemy hero moved through must act).
+
+    ImmunityFilter is auto-added (respecting immunity) unless
+    skip_immunity_filter=True.
+    """
+
+    type: StepType = StepType.COLLECT_UNITS
+    target_type: TargetType = TargetType.UNIT
+    filters: list[FilterCondition] = Field(default_factory=list)
+    output_key: str = "collected_units"
+    skip_immunity_filter: bool = False
+    skip_self_filter: bool = False
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        candidates: list[Any] = []
+        if self.target_type == TargetType.UNIT:
+            candidates = [eid for eid in state.entity_locations if state.get_unit(UnitID(str(eid)))]
+        elif self.target_type == TargetType.UNIT_OR_TOKEN:
+            candidates = state.get_units_and_tokens()
+
+        from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter
+
+        effective_filters = list(self.filters)
+        if self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN):
+            if not self.skip_self_filter and not any(
+                isinstance(f, ExcludeIdentityFilter) and f.exclude_self for f in effective_filters
+            ):
+                effective_filters.append(ExcludeIdentityFilter(exclude_self=True))
+            if not self.skip_immunity_filter and not any(
+                isinstance(f, ImmunityFilter) for f in effective_filters
+            ):
+                effective_filters.append(ImmunityFilter())
+
+        matching: list[str] = []
+        for c in candidates:
+            if all(f.apply(c, state, context) for f in effective_filters):
+                matching.append(str(c))
+
+        context[self.output_key] = matching
+        logger.debug(f"   [COLLECT] {self.target_type.value} matching filters: {matching}")
+        return StepResult(is_finished=True)
+
+
 class CheckContextConditionStep(GameStep):
     """
     Evaluates context[input_key] against a threshold using an operator.

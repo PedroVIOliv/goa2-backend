@@ -26,6 +26,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CollectUnitsStep,
     CreateEffectStep,
     DefeatUnitStep,
     ForceDiscardOrDefeatStep,
@@ -34,7 +35,6 @@ from goa2.engine.steps import (
     MayRepeatNTimesStep,
     MayRepeatOnceStep,
     MoveSequenceStep,
-    MultiSelectStep,
     PlaceTokenStep,
     PlaceUnitStep,
     RecordHexStep,
@@ -661,15 +661,13 @@ def _trample_steps(hero_id: str, move_range: int, max_minions: int) -> list[Game
             destination_key="move_dest",
             allow_straight_line_through_obstacles=True,
         ),
-        # Each enemy hero moved through discards a card, or is defeated. Immune
-        # heroes are skipped (ImmunityFilter auto-added by MultiSelectStep).
-        MultiSelectStep(
+        # Each enemy hero moved through discards a card, or is defeated — this is
+        # mandatory for ALL of them, not a player choice, so collect the whole
+        # set automatically. Immune heroes are skipped (ImmunityFilter
+        # auto-added by CollectUnitsStep).
+        CollectUnitsStep(
             target_type=TargetType.UNIT,
-            prompt="Select each enemy hero you moved through",
             output_key="trample_heroes",
-            min_selections=0,
-            max_selections=6,
-            is_mandatory=False,
             filters=[
                 _crossed_filter(),
                 TeamFilter(relation="ENEMY"),

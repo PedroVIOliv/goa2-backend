@@ -104,6 +104,7 @@ from goa2.engine.steps.utility import (  # noqa: F401
     CheckUnitFiltersStep,
     CheckUnitOnBoardStep,
     CheckUnitTypeStep,
+    CollectUnitsStep,
     CombineBooleanContextStep,
     ComputeDistanceStep,
     ComputeHexStep,
