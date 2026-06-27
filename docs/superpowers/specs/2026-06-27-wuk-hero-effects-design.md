@@ -40,16 +40,26 @@ This spec covers all 9 groups, including **Trample / Angry Stampede** (Group I).
 - Created via `CreateEffectStep` anchored on Wuk, `duration=THIS_ROUND`, `max_value=N`
   (1 for Claim Dominance, 2 for Assert Dominance). **No targeting at cast time.**
 - Modify `_resolve_minion_battle` (`engine/steps/combat.py:~1132`): after computing
-  `red_count` / `blue_count`, for each active `MINION_BATTLE_EXCLUSION` effect:
-  1. Resolve the effect's origin hero (Wuk) and his hex + team.
-  2. Count **enemy-of-Wuk minions adjacent to Wuk that are inside the active zone**
-     (regardless of immunity).
-  3. Reduce that enemy team's count by `min(N, that count)`.
-- **Multiple effects same round:** cannot happen in normal play — each hero commits one
-  card per round, so only one Dominance effect is ever active. Defensive rule: if more than
-  one exclusion effect is somehow active, apply the **single largest** reduction (max over
-  effects), never the sum, so the enemy total can never be over-reduced below the number of
-  distinct adjacent enemy minions.
+  `red_count` / `blue_count`, **group active `MINION_BATTLE_EXCLUSION` effects by origin
+  hero**. For each origin hero H:
+  1. Resolve H's hex and team; `enemy_team` = the opposing team.
+  2. Build the **set** of `enemy_team` minions adjacent to H that are inside the active zone
+     (**regardless of immunity** — heavy/immune minions are still counted as adjacent).
+  3. `cap = sum(effect.max_value for that hero's exclusion effects)`.
+  4. `reduction = min(cap, len(adjacent_set))`.
+  5. Subtract `reduction` from `enemy_team`'s count.
+- **Why sum the caps but use a set of minions:** each card grants an independent "up to N"
+  allowance (allowances **add**: Claim 1 + Assert 2 = 3 slots), but a single minion can only
+  be excluded once (minions are a **set**, so dedup is automatic). The final reduction is
+  therefore `min(Σ caps, distinct adjacent enemy minions)`. Worked examples:
+  - 3 adjacent, Assert(2) only → `min(2, 3) = 2`.
+  - 2 adjacent, Claim(1) + Assert(2) → `min(3, 2) = 2` (no phantom 3rd minion).
+  - 5 adjacent, Claim(1) + Assert(2) → `min(3, 5) = 3` (both allowances usable).
+- **Multiple effects same round CAN occur** (a future effect may let Wuk resolve a second
+  card). The per-origin grouping + summed caps + minion set handles any number of stacked
+  exclusion effects. If two *different* origin heroes ever held exclusion effects (not
+  possible with a single Wuk), dedup the adjacent set across origins so no minion on a given
+  enemy team is excluded more than once.
 
 ### 3. `AFTER_RESOLVE_CARD` passive trigger (March of Nature)
 - Add `AFTER_RESOLVE_CARD = "after_resolve_card"` to `PassiveTrigger` in
@@ -231,8 +241,9 @@ through discards a card, or is defeated; defeat up to N minions you moved throug
   `goa2-card-effect-tests` skill (EffectScenarioBuilder + `run_card`, raw-stack fallback
   for step isolation).
 - Dedicated unit tests for new infrastructure:
-  - `MINION_BATTLE_EXCLUSION`: minion battle count reduction with/without Wuk adjacency,
-    cap at N, multiple-effect dedupe, immune minions counted.
+  - `MINION_BATTLE_EXCLUSION`: count reduction with/without Wuk adjacency, single-effect
+    `min(N, adjacent)`, stacked Claim+Assert `min(Σ caps, distinct adjacent)` across the
+    three worked examples, immune minions still counted as adjacent.
   - `AFTER_RESOLVE_CARD` trigger + March passive: tree placed after a played card; offer
     suppressed on defense reactions; overflow removal at 3 trees.
   - Tree token setup: supply 3, persists end-of-round, blocks movement, doesn't block
