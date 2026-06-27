@@ -29,6 +29,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckLanePushStep,
     ComputeHexStep,
     CountStep,
     CreateEffectStep,
@@ -1053,11 +1054,12 @@ class CloakAndDaggersEffect(CardEffect):
                             step.filters.append(
                                 ExcludeIdentityFilter(exclude_keys=["last_combat_target"])
                             )
-                    return steps
+                    return [CheckLanePushStep(), *steps]
 
             # Fallback: secondary/generic attack
             action_range = context.get("basic_action_range", 1)
             return [
+                CheckLanePushStep(),
                 AttackSequenceStep(
                     damage=action_value,
                     range_val=action_range,
@@ -1066,6 +1068,7 @@ class CloakAndDaggersEffect(CardEffect):
             ]
         elif action_type == ActionType.MOVEMENT.value:
             return [
+                CheckLanePushStep(),
                 MoveSequenceStep(
                     unit_id=hero.id,
                     range_val=action_value,
@@ -1077,7 +1080,7 @@ class CloakAndDaggersEffect(CardEffect):
                 effect = CardEffectRegistry.get(effect_id)
                 basic_card = hero.current_turn_card
                 if effect and basic_card:
-                    return effect.get_steps(state, hero, basic_card)
+                    return [CheckLanePushStep(), *effect.get_steps(state, hero, basic_card)]
             return []
 
         return []

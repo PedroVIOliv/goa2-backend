@@ -2,14 +2,35 @@ import pytest
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
-from goa2.domain.models import GamePhase, Minion, MinionType, Team, TeamColor
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    GamePhase,
+    Hero,
+    Minion,
+    MinionType,
+    PassiveTrigger,
+    Team,
+    TeamColor,
+)
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.state import GameState
 from goa2.domain.types import UnitID
-from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.map_logic import get_push_target_zone_id
 from goa2.engine.session import GameSession, SessionResultType
-from goa2.engine.steps import DefeatUnitStep, EndPhaseStep
+from goa2.engine.steps import (
+    CheckLanePushStep,
+    DefeatUnitStep,
+    EndPhaseStep,
+    FinalizeHeroTurnStep,
+    FindNextActorStep,
+    MayRepeatNTimesStep,
+    PlaceUnitStep,
+    ReturnMinionToZoneStep,
+)
 
 
 def create_minion(id_str, team):
@@ -75,10 +96,10 @@ def test_end_phase_push_trigger(push_state):
     assert m_blue.id not in push_state.unit_locations
 
 
-def test_combat_push_trigger(push_state):
+def test_combat_defeat_waits_until_post_action_cleanup_to_push_lane(push_state):
     """
-    Combat at Mid: Red kills last Blue minion.
-    Blue Loses. Push towards Blue Beach.
+    Defeating the last enemy minion removes it immediately but does not push
+    the lane until the action boundary cleanup runs.
     """
     m_red = create_minion("r1", TeamColor.RED)
     m_blue = create_minion("b1", TeamColor.BLUE)
@@ -93,9 +114,149 @@ def test_combat_push_trigger(push_state):
     push_steps(push_state, [step])
     _ = process_stack(push_state).input_request
 
+    assert m_blue.id not in push_state.unit_locations
+    assert push_state.active_zone_id == "z_mid"
+    assert push_state.wave_counter == 5
+
+
+def test_finalize_queues_lane_push_check_after_return_minions(push_state):
+    result = FinalizeHeroTurnStep(hero_id="missing_hero").resolve(
+        push_state, push_state.execution_context
+    )
+
+    assert [type(step) for step in result.new_steps] == [
+        ReturnMinionToZoneStep,
+        CheckLanePushStep,
+        FindNextActorStep,
+    ]
+
+
+def test_repeat_prompt_checks_lane_push_before_offering_repeat(push_state):
+    m_red = create_minion("r1", TeamColor.RED)
+    push_state.teams[TeamColor.RED].minions.append(m_red)
+    push_state.move_unit(m_red.id, Hex(q=0, r=0, s=0))
+
+    push_state.current_actor_id = "hero_actor"
+    repeat = MayRepeatNTimesStep(steps_template=[], max_repeats=1)
+    push_steps(push_state, [repeat])
+
+    result = process_stack(push_state)
+
+    assert result.input_request is not None
     assert push_state.active_zone_id == "z_blue_beach"
     assert push_state.wave_counter == 4
-    assert m_red.id not in push_state.unit_locations
+
+
+def test_repeat_n_checks_lane_push_before_each_iteration(push_state):
+    m_red = create_minion("r1", TeamColor.RED)
+    push_state.teams[TeamColor.RED].minions.append(m_red)
+    push_state.move_unit(m_red.id, Hex(q=0, r=0, s=0))
+
+    push_state.current_actor_id = "hero_actor"
+    repeat = MayRepeatNTimesStep(
+        steps_template=[PlaceUnitStep(unit_id=str(m_red.id), target_hex_arg=Hex(q=2, r=-1, s=-1))],
+        max_repeats=2,
+    )
+    push_steps(push_state, [repeat])
+
+    first_prompt = process_stack(push_state)
+    assert first_prompt.input_request is not None
+    assert push_state.active_zone_id == "z_blue_beach"
+
+    submit_input(push_state, {"selection": "YES"})
+    second_result = process_stack(push_state)
+
+    assert second_result.input_request is None
+    assert push_state.phase == GamePhase.GAME_OVER
+    assert push_state.winner == TeamColor.RED
+
+
+def _test_card(
+    card_id: str,
+    effect_id: str,
+    *,
+    primary_action: ActionType = ActionType.ATTACK,
+    primary_action_value: int | None = 2,
+    tier: CardTier = CardTier.I,
+    color: CardColor = CardColor.RED,
+) -> Card:
+    return Card(
+        id=card_id,
+        name=card_id,
+        tier=tier,
+        color=color,
+        primary_action=primary_action,
+        primary_action_value=primary_action_value,
+        secondary_actions={},
+        effect_id=effect_id,
+        effect_text="",
+        initiative=10,
+        is_facedown=False,
+    )
+
+
+def test_flurry_of_blows_repeat_starts_with_lane_push_check(push_state):
+    from goa2.scripts.min_effects import FlurryOfBlowsEffect
+
+    source_card = _test_card("crane", "crane_stance")
+    hero = Hero(
+        id="hero_min",
+        name="Min",
+        team=TeamColor.RED,
+        deck=[],
+        current_turn_card=source_card,
+        level=8,
+    )
+    ultimate = _test_card(
+        "flurry",
+        "flurry_of_blows",
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        tier=CardTier.IV,
+        color=CardColor.PURPLE,
+    )
+
+    steps = FlurryOfBlowsEffect().get_passive_steps(
+        push_state,
+        hero,
+        ultimate,
+        PassiveTrigger.AFTER_ATTACK,
+        {
+            "attack_effect_id": "crane_stance",
+            "attack_card_id": source_card.id,
+            "defender_id": "b1",
+        },
+    )
+
+    assert isinstance(steps[0], CheckLanePushStep)
+
+
+def test_cloak_and_daggers_repeat_starts_with_lane_push_check(push_state):
+    from goa2.scripts.tigerclaw_effects import CloakAndDaggersEffect
+
+    hero = Hero(id="hero_tigerclaw", name="Tigerclaw", team=TeamColor.RED, deck=[], level=8)
+    ultimate = _test_card(
+        "cloak",
+        "cloak_and_daggers",
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        tier=CardTier.IV,
+        color=CardColor.PURPLE,
+    )
+
+    steps = CloakAndDaggersEffect().get_passive_steps(
+        push_state,
+        hero,
+        ultimate,
+        PassiveTrigger.AFTER_BASIC_ACTION,
+        {
+            "basic_action_type": ActionType.ATTACK.value,
+            "basic_action_value": 2,
+            "last_combat_target": "b1",
+        },
+    )
+
+    assert isinstance(steps[0], CheckLanePushStep)
 
 
 def test_last_push_victory(push_state):

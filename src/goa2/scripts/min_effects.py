@@ -39,6 +39,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckLanePushStep,
     ConvertCardToItemStep,
     CountStep,
     CreateEffectStep,
@@ -931,6 +932,7 @@ class FlurryOfBlowsEffect(CardEffect):
                     step.is_mandatory = True
 
         total_steps = [
+            CheckLanePushStep(),
             SetContextFlagStep(key="last_flurry_target", value=last_target),
             SetContextFlagStep(key="is_flurry_repeat", value=True),
             SetContextFlagStep(key="victim_id", value=None),  # Clear previous target

@@ -282,6 +282,7 @@ class MayRepeatNTimesStep(GameStep):
 
     # Internal state, preserved when pushed back to stack
     repeats_done: int = 0
+    lane_push_checked: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         # Check if we've hit the limit
@@ -294,6 +295,12 @@ class MayRepeatNTimesStep(GameStep):
         actor_id = state.current_actor_id
         if not actor_id:
             return StepResult(is_finished=True)
+
+        if state.active_zone_id and not self.lane_push_checked:
+            self.lane_push_checked = True
+            from goa2.engine.steps.combat import CheckLanePushStep
+
+            return StepResult(is_finished=False, new_steps=[CheckLanePushStep()])
 
         # 1. Validation Check (Early exit if blocked)
         res = state.validator.can_repeat_action(state, str(actor_id), context)
@@ -314,8 +321,10 @@ class MayRepeatNTimesStep(GameStep):
                 new_steps = [copy.deepcopy(s) for s in self.steps_template]
 
                 # Push ourselves back onto the stack to handle potential subsequent repeats
-                # BUT only if we haven't reached the max yet
+                # BUT only if we haven't reached the max yet. Reset the action-boundary
+                # check so each repeat iteration performs its own lane-push check.
                 if self.repeats_done < self.max_repeats:
+                    self.lane_push_checked = False
                     return StepResult(is_finished=False, new_steps=new_steps)
                 else:
                     return StepResult(is_finished=True, new_steps=new_steps)

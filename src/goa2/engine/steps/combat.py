@@ -269,7 +269,6 @@ class RemoveUnitStep(GameStep):
         state.remove_unit(UnitID(target_id))
         return StepResult(
             is_finished=True,
-            new_steps=[CheckLanePushStep()],
             events=[
                 GameEvent(
                     event_type=GameEventType.UNIT_REMOVED,

@@ -672,14 +672,15 @@ class TestFlurryOfBlows:
             context,
         )
 
-        # Should have: SetContextFlag x2 (flurry_target, is_flurry_repeat),
-        #              then rebuilt attack steps, then clear is_flurry_repeat
+        # Should have: lane-push check, SetContextFlag x2
+        # (flurry_target, is_flurry_repeat), then rebuilt attack steps,
+        # then clear is_flurry_repeat.
         assert len(steps) > 3
-        # First two are context flags
-        assert steps[0].key == "last_flurry_target"
-        assert steps[0].value == "enemy1"
-        assert steps[1].key == "is_flurry_repeat"
-        assert steps[1].value is True
+        assert steps[0].type == StepType.CHECK_LANE_PUSH
+        assert steps[1].key == "last_flurry_target"
+        assert steps[1].value == "enemy1"
+        assert steps[2].key == "is_flurry_repeat"
+        assert steps[2].value is True
         # Last step clears the flurry flag
         assert steps[-1].key == "is_flurry_repeat"
         assert steps[-1].value is None

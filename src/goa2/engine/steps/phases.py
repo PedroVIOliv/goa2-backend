@@ -43,7 +43,7 @@ class FinalizeHeroTurnStep(GameStep):
     hero_id: str
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        from goa2.engine.steps.combat import ReturnMinionToZoneStep
+        from goa2.engine.steps.combat import CheckLanePushStep, ReturnMinionToZoneStep
 
         hero = state.get_hero(HeroID(self.hero_id))
         if hero and hero.current_turn_card:
@@ -71,6 +71,7 @@ class FinalizeHeroTurnStep(GameStep):
             is_finished=True,
             new_steps=[
                 ReturnMinionToZoneStep(),
+                CheckLanePushStep(),
                 FindNextActorStep(),
             ],
             events=[
