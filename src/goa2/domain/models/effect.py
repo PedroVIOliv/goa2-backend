@@ -55,6 +55,11 @@ class EffectType(StrEnum):
     # Minion protection (Brogan Shield/Bolster/Fortify)
     MINION_PROTECTION = "minion_protection"
 
+    # Minion battle exclusion (Wuk - Claim/Assert Dominance). Enemy minions
+    # adjacent to the origin hero do not count toward the minion total during
+    # minion battle. `max_value` caps how many; counts regardless of immunity.
+    MINION_BATTLE_EXCLUSION = "minion_battle_exclusion"
+
     # Repeat prevention (Enfeeblement) - blocks action repeats
     REPEAT_PREVENTION = "repeat_prevention"
 

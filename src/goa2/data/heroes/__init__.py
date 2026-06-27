@@ -18,6 +18,7 @@ import goa2.data.heroes.ursafar
 import goa2.data.heroes.wasp
 import goa2.data.heroes.whisper
 import goa2.data.heroes.widget
+import goa2.data.heroes.wuk
 import goa2.data.heroes.xargatha
 
 from .registry import HeroRegistry

@@ -746,6 +746,12 @@ class ResolveCardStep(GameStep):
                         CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_ACTION.value)
                     )
 
+                # Fires after the card's action fully resolves (Wuk - March of
+                # Nature). Must be last so it runs after the AFTER_* checks above.
+                steps_list.append(
+                    CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_RESOLVE_CARD.value)
+                )
+
                 return StepResult(is_finished=True, new_steps=steps_list)
 
         return StepResult(

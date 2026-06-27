@@ -1157,6 +1157,13 @@ class MinionBattleStep(GameStep):
         red_count += bonus[TeamColor.RED]
         blue_count += bonus[TeamColor.BLUE]
 
+        # Minion battle exclusion (Wuk - Claim/Assert Dominance): enemy minions
+        # adjacent to the origin hero do not count, capped by the summed
+        # max_value of that hero's exclusion effects (minions deduped via a set).
+        exclusion = self._battle_exclusion_reductions(state, zone)
+        red_count -= exclusion[TeamColor.RED]
+        blue_count -= exclusion[TeamColor.BLUE]
+
         diff = abs(red_count - blue_count)
 
         if diff == 0:
@@ -1173,6 +1180,68 @@ class MinionBattleStep(GameStep):
                 zone_id=state.active_zone_id,
             )
         ]
+
+    def _battle_exclusion_reductions(self, state: GameState, zone) -> dict[TeamColor, int]:
+        """How many minions to subtract from each team's battle count due to
+        active MINION_BATTLE_EXCLUSION effects (Wuk's Dominance cards).
+
+        Per origin hero: reduction = min(sum of that hero's exclusion caps,
+        distinct enemy minions adjacent to the hero inside the zone), counting
+        adjacent minions regardless of immunity. Minions are deduped per enemy
+        team so overlapping origins never exclude the same minion twice.
+        """
+        from collections import defaultdict
+
+        from goa2.domain.models import Minion
+        from goa2.engine.topology import get_topology_service
+
+        reductions = {TeamColor.RED: 0, TeamColor.BLUE: 0}
+        effects = [
+            e
+            for e in state.active_effects
+            if e.effect_type == EffectType.MINION_BATTLE_EXCLUSION and e.is_active
+        ]
+        if not effects:
+            return reductions
+
+        caps_by_origin: dict[str, int] = defaultdict(int)
+        for e in effects:
+            caps_by_origin[e.source_id] += e.max_value or 0
+
+        topology = get_topology_service()
+        excluded: dict[TeamColor, set[str]] = {TeamColor.RED: set(), TeamColor.BLUE: set()}
+
+        for origin_id, cap in caps_by_origin.items():
+            if cap <= 0:
+                continue
+            origin = state.get_entity(BoardEntityID(origin_id))
+            origin_team = getattr(origin, "team", None)
+            origin_loc = state.entity_locations.get(BoardEntityID(origin_id))
+            if origin is None or origin_team is None or origin_loc is None:
+                continue
+            enemy_team = TeamColor.BLUE if origin_team == TeamColor.RED else TeamColor.RED
+
+            adjacent: list[str] = []
+            for n in topology.get_connected_neighbors(origin_loc, state):
+                if n not in zone.hexes:
+                    continue
+                tile = state.board.get_tile(n)
+                if not tile or not tile.occupant_id:
+                    continue
+                occ = state.get_entity(tile.occupant_id)
+                if (
+                    isinstance(occ, Minion)
+                    and occ.team == enemy_team
+                    and str(occ.id) not in excluded[enemy_team]
+                ):
+                    adjacent.append(str(occ.id))
+
+            take = min(cap, len(adjacent))
+            for mid in adjacent[:take]:
+                excluded[enemy_team].add(mid)
+            reductions[enemy_team] += take
+
+        return reductions
 
 
 class ReturnMinionToZoneStep(GameStep):

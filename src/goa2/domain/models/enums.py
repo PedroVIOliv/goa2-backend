@@ -27,6 +27,7 @@ class TokenType(StrEnum):
     BARRIER = "barrier"
     ICE = "ice"
     TOTEM = "totem"
+    TREE = "tree"
 
 
 class CardTier(StrEnum):
@@ -274,3 +275,6 @@ class PassiveTrigger(StrEnum):
     AFTER_PUSH = "after_push"
     AFTER_PLACE_MARKER = "after_place_marker"
     AFTER_CARD_DISCARD = "after_card_discard"
+    # Fires after a hero fully resolves a card they played as their action
+    # (Wuk - March of Nature). Does not fire on defense reactions.
+    AFTER_RESOLVE_CARD = "after_resolve_card"
