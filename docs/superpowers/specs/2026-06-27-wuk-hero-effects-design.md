@@ -10,8 +10,7 @@ Wuk is a Tree-token-centric hero. The deck has 16 cards + 1 ultimate, organized 
 9 mechanical groups. The central new mechanic is the **Tree token**: a standard board
 token Wuk places, swaps with, removes (as a cost), and uses as a targeting anchor.
 
-This spec covers all groups except **Trample / Angry Stampede**, which is explicitly
-deferred (see Open Items).
+This spec covers all 9 groups, including **Trample / Angry Stampede** (Group I).
 
 ### Confirmed rules (from designer)
 
@@ -72,11 +71,38 @@ deferred (see Open Items).
   ```
   Candidate enemy unit resolves to its hex; passes if ≥1 Tree token sits adjacent.
 
-### 5. Throw placement helper (resolve at plan time)
+### 5. Throw placement
 - Throw places a selected token **or** enemy unit into an empty hex within range (a
-  teleport, not pathed movement). Confirm whether `PlaceUnitStep` works on a token id, or
-  add a teleport mode to `MoveTokenStep` / a small generic place step. Decide during
-  implementation planning.
+  teleport, not pathed movement). Use `PlaceUnitStep` for both. If `PlaceUnitStep` does
+  not currently handle a token id, extend it so it does (designer-approved).
+
+### 6. `MoveSequenceStep.allow_straight_line_through_obstacles` (Trample)
+- New flag `allow_straight_line_through_obstacles: bool = False` on `MoveSequenceStep`
+  (`engine/steps/movement.py`).
+- When set, replace the destination filter with a single `OrFilter`:
+  ```python
+  OrFilter([
+      AndFilter([
+          ObstacleFilter(is_obstacle=False, exclude_id=actor),
+          MovementPathFilter(range_val=effective_range, unit_id=actor,
+                             pass_through_obstacles=False),
+      ]),  # normal reachable destinations
+      AndFilter([
+          ObstacleFilter(is_obstacle=False, exclude_id=actor),
+          InStraightLineFilter(origin_id=actor),
+          StraightLinePathFilter(origin_id=actor, pass_through_obstacles=True),
+          MovementPathFilter(range_val=effective_range, unit_id=actor,
+                             pass_through_obstacles=True),
+      ]),  # straight-line, ignoring obstacles
+  ])
+  ```
+- `effective_range` keeps the existing MOVEMENT_ZONE capping, so the offered list is
+  zone-correct. The spawned `MoveUnitStep` runs with `pass_through_obstacles=True`; it only
+  ever receives filter-approved hexes, so this is safe.
+- No "trample mode" declaration: the through-effects (Group I) key off
+  `BetweenHexesFilter(move_origin → move_dest)`, which is empty for any non-straight move.
+  A straight-line destination crossing enemies triggers trample; a bendy/normal one does
+  not. This matches "if you move in a straight line" exactly.
 
 ## Per-Card Design
 
@@ -149,6 +175,31 @@ Target a unit in range."
   → `PlaceTokenStep(TREE)`. Overflow (all 3 trees placed) handled by existing
   `PlaceTokenStep` (prompts to remove an existing tree first).
 
+### Group I — Trample: `trample` (minions N=1), `angry_stampede` (minions N=2)
+"If you move in a straight line: You may ignore obstacles; each enemy hero you moved
+through discards a card, or is defeated; defeat up to N minions you moved through."
+- Primary MOVEMENT action (value 4). Steps:
+  1. `RecordHexStep(unit_id=hero.id, output_key="move_origin")`.
+  2. `MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value,
+     destination_key="move_dest", allow_straight_line_through_obstacles=True)` — single
+     zone-aware destination list mixing normal and straight-line-through-obstacle hexes
+     (Infra #6). No separate number/mode prompt.
+  3. **Crossed enemy heroes (all, mandatory):** collect every enemy hero matching
+     `BetweenHexesFilter(move_origin → move_dest)` and apply `ForceDiscardOrDefeatStep` to
+     each. (No immunity interaction for heroes, so a collect-all + `ForEachStep` is fine.
+     Exact collect mechanism — `MultiSelectStep` auto-all vs repeat loop — settled at plan
+     time.)
+  4. **Crossed minions (up to N, sequential — NOT a single MultiSelect):** for `trample`
+     one `SelectStep`+`DefeatUnitStep` pair; for `angry_stampede` two pairs. Each
+     `SelectStep` filters `BetweenHexesFilter`, `TeamFilter(ENEMY)`, `UnitTypeFilter(MINION)`,
+     `ImmunityFilter()`, `ExcludeIdentityFilter([already-defeated keys])`, `is_mandatory=False`,
+     followed by `DefeatUnitStep` + `RecordTargetStep`. Sequential selects re-evaluate
+     `ImmunityFilter` each time, so defeating a normal minion that was supporting a heavy
+     strips the heavy's immunity and makes it selectable in the next pair. **This ordering
+     freedom is the reason for separate steps.**
+- For non-straight moves, step 2 still works as a normal move and `BetweenHexesFilter`
+  returns empty in steps 3–4, so no trample effects occur.
+
 ## Edge Cases
 
 - **Supply exhausted (3 placed):** `PlaceTokenStep` already prompts the owner to remove an
@@ -161,14 +212,15 @@ Target a unit in range."
   filter, so heavy/immune minions are still excluded from the count.
 - **Champion both-on-different-targets:** second target uses `ExcludeIdentityFilter` on the
   first target's key.
+- **Trample, heavy + supporting minion both crossed:** sequential minion select+defeat
+  pairs let the player defeat the support first, stripping the heavy's immunity before the
+  next selection (see Group I).
+- **Trample, non-straight move:** `allow_straight_line_through_obstacles` still permits a
+  normal move; `BetweenHexesFilter` yields nothing, so no through-effects fire.
 
-## Open Items (deferred — not in this implementation pass)
+## Open Items
 
-- **Trample / Angry Stampede** ("If you move in a straight line: may ignore obstacles; each
-  enemy hero moved through discards/defeated; defeat up to N minions moved through").
-  Designer wants to revisit the interaction model (optional straight line + opt-in ignore
-  obstacles + through-effects). Misa's `BetweenHexesFilter` + `MoveSequenceStep` is the
-  likely toolkit. Tracked here; spec to be extended before implementing these two cards.
+- None outstanding. (Trample / Angry Stampede now specced as Group I.)
 
 ## Testing
 
@@ -182,6 +234,11 @@ Target a unit in range."
     suppressed on defense reactions; overflow removal at 3 trees.
   - Tree token setup: supply 3, persists end-of-round, blocks movement, doesn't block
     ranged targeting.
+  - `MoveSequenceStep.allow_straight_line_through_obstacles`: destination list includes
+    straight-line-through-obstacle hexes AND normal hexes, both capped by MOVEMENT_ZONE.
+  - Trample / Angry Stampede: straight move crosses heroes (all discard-or-defeat) and
+    minions (up to N); heavy+support ordering case (defeat support first, then heavy);
+    non-straight move triggers no through-effects.
 - Full suite green before merge: `PYTHONPATH=src uv run pytest tests/ -q`.
 
 ## Client-Contract Touchpoints (per CLAUDE.md)
