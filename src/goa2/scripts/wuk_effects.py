@@ -225,7 +225,12 @@ def _dominance_steps(hero_id: str, cap: int) -> list[GameStep]:
         CreateEffectStep(
             effect_type=EffectType.MINION_BATTLE_EXCLUSION,
             scope=EffectScope(shape=Shape.POINT, origin_id=hero_id),
-            duration=DurationType.THIS_ROUND,
+            # PASSIVE, not THIS_ROUND: EndPhaseStep expires THIS_ROUND effects
+            # *before* the minion battle, which would make the exclusion a no-op.
+            # The effect is card-bound, so it is cleaned up when the card is
+            # retrieved in EndPhaseCleanupStep (which runs after the battle) —
+            # giving it exactly a one-round lifetime that covers the battle.
+            duration=DurationType.PASSIVE,
             max_value=cap,
             is_active=True,
         )

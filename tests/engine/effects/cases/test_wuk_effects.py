@@ -12,6 +12,8 @@ from goa2.domain.models import MinionType, Token, TokenType
 from goa2.domain.models.effect import EffectType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID
+from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.steps import EndPhaseStep
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -183,6 +185,42 @@ def test_assert_dominance_creates_exclusion_cap_2() -> None:
     effects = _exclusion_effects(state)
     assert len(effects) == 1
     assert effects[0].max_value == 2
+
+
+@pytest.mark.effect_flow
+def test_claim_dominance_excludes_minion_in_real_end_phase_battle() -> None:
+    # Wuk (RED) in the active battle zone, adjacent to one BLUE minion.
+    # Zone counts: RED 1 minion, BLUE 1 minion -> without dominance the battle
+    # is a tie (nobody removed). Claim Dominance makes the adjacent BLUE minion
+    # not count -> BLUE 0 -> BLUE loses its minion. This drives the REAL
+    # EndPhaseStep (THIS_ROUND expiry + lazy minion battle), so it catches the
+    # effect expiring before the battle.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (0, 1, -1), (2, 0, -2)])
+        .red_hero("hero_wuk", at=(0, 0, 0), current_card=hero_card("Wuk", "claim_dominance"))
+        .with_actor("hero_wuk")
+        .red_minion("r1", at=(2, 0, -2))
+        .blue_minion("b1", at=(1, 0, -1))  # adjacent to Wuk, in the zone
+        .build()
+    )
+    state.active_zone_id = "z1"
+
+    # Play the card (creates the exclusion effect).
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.finish()
+
+    # Resolve the real End Phase (battle included).
+    push_steps(state, [EndPhaseStep()])
+    result = process_stack(state)
+    assert result.input_request is None  # auto-resolves (no choice needed)
+
+    # BLUE minion excluded -> BLUE loses it; RED minion survives.
+    assert state.entity_locations.get("b1") is None
+    assert state.entity_locations.get("r1") is not None
+    # And the exclusion effect is cleaned up by end-of-round (no leak into next round).
+    assert not _exclusion_effects(state)
 
 
 @pytest.mark.effect_flow
