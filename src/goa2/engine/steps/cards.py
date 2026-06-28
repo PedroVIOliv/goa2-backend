@@ -1108,9 +1108,19 @@ class PerformPrimaryActionStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        # Find the card anywhere on the hero (played, discard, hand, deck)
+        # Find the card anywhere on the hero. The current turn card is checked
+        # first because a passive that re-performs the just-played basic card
+        # (e.g. Bullet Time) fires while that card is still current_turn_card —
+        # it only moves into played_cards in FinalizeHeroTurnStep.
         card = None
-        for c in hero.played_cards + hero.discard_pile + hero.hand + hero.deck:
+        search_cards = [
+            hero.current_turn_card,
+            *hero.played_cards,
+            *hero.discard_pile,
+            *hero.hand,
+            *hero.deck,
+        ]
+        for c in search_cards:
             if c is not None and c.id == card_id:
                 card = c
                 break
@@ -1128,6 +1138,12 @@ class PerformPrimaryActionStep(GameStep):
             return StepResult(is_finished=True)
 
         stats = compute_card_stats(state, UnitID(str(actor_id)), card)
+        # Signal that this is a re-performance of an already-resolved action (via
+        # Bullet Time, Reload, etc.). Some effects gate behaviour on this — e.g.
+        # Bounce only grants its "may repeat once" when re-performed. The card's
+        # own state lags (it stays current_turn_card until FinalizeHeroTurnStep),
+        # so build_steps can't rely on card.state alone.
+        context["reperforming_card_id"] = card.id
         steps = effect.build_steps(state, hero, card, stats)
         if self.exclude_target_key:
             self._inject_exclusion_filter(steps, self.exclude_target_key)
@@ -1158,6 +1174,11 @@ class PerformPrimaryActionStep(GameStep):
                 cls._inject_exclusion_filter(step.steps_template, exclude_key)
             elif isinstance(step, CreateEffectStep):
                 cls._inject_exclusion_filter(step.finishing_steps, exclude_key)
+            elif isinstance(step, PerformPrimaryActionStep) and not step.exclude_target_key:
+                # A nested copy (e.g. Reload performing another card's primary
+                # action) builds its steps at runtime, so push the exclusion down
+                # via the step's own key — it will inject it when it resolves.
+                step.exclude_target_key = exclude_key
 
 
 class ConvertCardToItemStep(GameStep):

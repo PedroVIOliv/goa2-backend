@@ -489,6 +489,10 @@ class DefeatUnitStep(GameStep):
                     )
                 )
 
+            # Swift's Mark for Death / Hunting Season: pay coin bounties for an
+            # enemy minion defeated in radius (minion still on the board here).
+            events.extend(EffectManager.award_minion_defeat_bounties(state, actual_victim_id))
+
         return StepResult(
             is_finished=True,
             new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
@@ -559,10 +563,14 @@ class CheckMinionProtectionStep(GameStep):
         if not protection:
             # No protection fired — a genuine defeat. Award the kill coins,
             # emit UNIT_DEFEATED, and remove the minion.
+            events = self._defeat_events(state, minion, context)
+            # Swift's Mark for Death / Hunting Season bounty (minion still on
+            # the board here; removal happens in the spawned RemoveUnitStep).
+            events.extend(EffectManager.award_minion_defeat_bounties(state, self.minion_id))
             return StepResult(
                 is_finished=True,
                 new_steps=[RemoveUnitStep(unit_id=self.minion_id)],
-                events=self._defeat_events(state, minion, context),
+                events=events,
             )
 
         # Check if protector has qualifying cards in hand

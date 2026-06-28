@@ -55,6 +55,49 @@ class TerrainFilter(FilterCondition):
         return self.is_terrain
 
 
+class AdjacentToTerrainFilter(FilterCondition):
+    """Filters units (or hexes) by whether they neighbour a terrain hex.
+
+    "Terrain" means an on-map impassable terrain tile only. The off-map board
+    edge is NOT terrain for this purpose, so units against the edge are not
+    treated as adjacent to terrain.
+
+    Set ``is_adjacent=False`` for "not adjacent to terrain" targeting.
+    """
+
+    type: FilterType = FilterType.ADJACENT_TO_TERRAIN
+    is_adjacent: bool = True
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if isinstance(candidate, Hex):
+            cand_hex: Hex | None = candidate
+        else:
+            cand_hex = state.entity_locations.get(BoardEntityID(str(candidate)))
+        if cand_hex is None:
+            return False
+
+        # Topology-aware neighbours (respects reality splits), consistent with
+        # AdjacencyFilter / AdjacencyToContextFilter. get_connected_neighbors
+        # does not filter obstacles or boundaries, so terrain hexes are still
+        # included for us to detect.
+        topology = get_topology_service()
+        has_terrain = False
+        for neighbor in topology.get_connected_neighbors(cand_hex, state):
+            # Off-map hexes are the board edge, not terrain — skip them.
+            if not state.board.is_on_map(neighbor):
+                continue
+            if state.validator is not None:
+                is_t = state.validator.is_terrain_hex(state, neighbor)
+            else:
+                tile = state.board.get_tile(neighbor)
+                is_t = bool(tile and tile.is_terrain)
+            if is_t:
+                has_terrain = True
+                break
+
+        return has_terrain == self.is_adjacent
+
+
 class RangeFilter(FilterCondition):
     """
     Checks distance from an origin.

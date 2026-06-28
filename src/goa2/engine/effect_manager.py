@@ -23,6 +23,58 @@ class EffectManager:
     """
 
     @staticmethod
+    def award_minion_defeat_bounties(state: GameState, minion_id: str) -> list:
+        """Pay out MINION_DEFEAT_BOUNTY effects (Swift's Mark for Death / Hunting
+        Season) when an enemy minion in radius is defeated.
+
+        Any player's defeat counts. The radius is measured from the
+        beneficiary's *current* hex (it moves with them), and each effect pays at
+        most ``max_value`` coins total (decremented per payout). Returns the
+        GameEvents for coins granted.
+        """
+        from goa2.domain.events import GameEvent, GameEventType
+        from goa2.domain.types import BoardEntityID, HeroID, UnitID
+        from goa2.engine.stats import _is_effect_active
+        from goa2.engine.topology import topology_distance
+
+        events: list = []
+        minion = state.get_unit(UnitID(minion_id))
+        minion_hex = state.entity_locations.get(BoardEntityID(minion_id))
+        if minion is None or minion_hex is None:
+            return events
+
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.MINION_DEFEAT_BOUNTY:
+                continue
+            if not _is_effect_active(effect, state):
+                continue
+            if (effect.max_value or 0) <= 0:
+                continue
+            beneficiary = state.get_hero(HeroID(effect.source_id))
+            if beneficiary is None:
+                continue
+            # Only enemy minions of the beneficiary count.
+            if getattr(minion, "team", None) == beneficiary.team:
+                continue
+            bene_hex = state.entity_locations.get(BoardEntityID(effect.source_id))
+            if bene_hex is None:
+                continue
+            if topology_distance(bene_hex, minion_hex, state) > (effect.scope.range or 0):
+                continue
+
+            beneficiary.gold += 1
+            effect.max_value = (effect.max_value or 0) - 1
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.GOLD_GAINED,
+                    actor_id=effect.source_id,
+                    target_id=minion_id,
+                    metadata={"amount": 1, "reason": "minion_defeat_bounty"},
+                )
+            )
+        return events
+
+    @staticmethod
     def create_effect(
         state: GameState,
         source_id: str,

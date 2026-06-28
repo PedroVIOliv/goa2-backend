@@ -210,6 +210,7 @@ class StepType(StrEnum):
 class FilterType(StrEnum):
     OCCUPIED = "occupied_filter"
     TERRAIN = "terrain_filter"
+    ADJACENT_TO_TERRAIN = "adjacent_to_terrain_filter"
     RANGE = "range_filter"
     TEAM = "team_filter"
     UNIT_TYPE = "unit_type_filter"

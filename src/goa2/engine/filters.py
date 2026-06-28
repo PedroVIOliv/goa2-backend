@@ -23,6 +23,7 @@ from goa2.engine.filters_geometry import (
 )
 from goa2.engine.filters_hex import (
     AdjacentSpawnPointFilter,
+    AdjacentToTerrainFilter,
     BattleZoneFilter,
     FastTravelDestinationFilter,
     HasEmptyNeighborFilter,
@@ -52,6 +53,7 @@ for _name in [
     "FilterCondition",
     "ObstacleFilter",
     "TerrainFilter",
+    "AdjacentToTerrainFilter",
     "RangeFilter",
     "SpawnPointFilter",
     "AdjacentSpawnPointFilter",
@@ -93,6 +95,7 @@ __all__ = [
     "AdjacencyFilter",
     "AdjacencyToContextFilter",
     "AdjacentSpawnPointFilter",
+    "AdjacentToTerrainFilter",
     "AndFilter",
     "BattleZoneFilter",
     "BetweenHexesFilter",

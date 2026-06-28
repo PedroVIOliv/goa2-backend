@@ -51,6 +51,9 @@ class EffectType(StrEnum):
 
     # Delayed trigger (carries finishing_steps, no spatial effect)
     DELAYED_TRIGGER = "delayed_trigger"
+    # Coin bounty when an enemy minion in radius is defeated (Swift Mark for
+    # Death / Hunting Season). max_value tracks remaining payouts.
+    MINION_DEFEAT_BOUNTY = "minion_defeat_bounty"
 
     # Minion protection (Brogan Shield/Bolster/Fortify)
     MINION_PROTECTION = "minion_protection"
