@@ -58,9 +58,10 @@ class TerrainFilter(FilterCondition):
 class AdjacentToTerrainFilter(FilterCondition):
     """Filters units (or hexes) by whether they neighbour a terrain hex.
 
-    "Terrain" means an on-map impassable terrain tile only. The off-map board
-    edge is NOT terrain for this purpose, so units against the edge are not
-    treated as adjacent to terrain.
+    "Terrain" means an impassable terrain tile OR the off-map board edge: the
+    board edge counts as terrain, matching the canonical board convention
+    (``Board.get_tile`` returns a virtual ``is_terrain=True`` tile off-map). A
+    unit against the board edge is therefore treated as adjacent to terrain.
 
     Set ``is_adjacent=False`` for "not adjacent to terrain" targeting.
     """
@@ -83,9 +84,10 @@ class AdjacentToTerrainFilter(FilterCondition):
         topology = get_topology_service()
         has_terrain = False
         for neighbor in topology.get_connected_neighbors(cand_hex, state):
-            # Off-map hexes are the board edge, not terrain — skip them.
+            # Off-map hexes are the board edge, which counts as terrain.
             if not state.board.is_on_map(neighbor):
-                continue
+                has_terrain = True
+                break
             if state.validator is not None:
                 is_t = state.validator.is_terrain_hex(state, neighbor)
             else:

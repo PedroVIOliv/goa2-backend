@@ -81,6 +81,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Tali": 3,
         "Wuk": 3,
         "Swift": 3,
+        "Mrak": 3,
     }
 
 

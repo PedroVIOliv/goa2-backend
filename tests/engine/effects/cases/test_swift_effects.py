@@ -284,11 +284,13 @@ def test_drop_trooper_pushes_up_to_two_adjacent_enemies() -> None:
 
 @pytest.mark.parametrize("card_id", ["suppress", "pin_down", "killing_ground"])
 def test_suppress_family_forces_discard_on_clear_enemy_hero(card_id: str) -> None:
+    # Radius-2 disk so the enemy hero can sit at a fully interior hex (1,0,-1):
+    # the board edge counts as terrain, so an edge hero would be skipped.
     state = (
         EffectScenarioBuilder()
-        .line_board(length=7)
+        .with_hexes(_hex_disk(2))
         .red_hero("hero_swift", at=(0, 0, 0), current_card=hero_card("Swift", card_id))
-        .blue_hero("hero_arien", at=(2, 0, -2))
+        .blue_hero("hero_arien", at=(1, 0, -1))
         .with_actor("hero_swift")
         .build()
     )
@@ -309,14 +311,14 @@ def test_suppress_family_forces_discard_on_clear_enemy_hero(card_id: str) -> Non
 def test_suppress_family_skips_enemy_hero_adjacent_to_terrain(card_id: str) -> None:
     state = (
         EffectScenarioBuilder()
-        .line_board(length=7)
+        .with_hexes(_hex_disk(2))
         .red_hero("hero_swift", at=(0, 0, 0), current_card=hero_card("Swift", card_id))
-        .blue_hero("hero_arien", at=(2, 0, -2))
+        .blue_hero("hero_arien", at=(1, 0, -1))
         .with_actor("hero_swift")
         .build()
     )
-    # Make a terrain tile adjacent to the enemy hero -> not a legal target.
-    state.board.tiles[Hex(q=3, r=0, s=-3)].is_terrain = True
+    # Make an on-map terrain tile adjacent to the interior enemy hero -> not a legal target.
+    state.board.tiles[Hex(q=2, r=0, s=-2)].is_terrain = True
     arien = state.get_hero("hero_arien")
     arien.hand = [hero_card("Swift", "snipe")]
 
@@ -331,9 +333,9 @@ def test_suppress_family_skips_enemy_hero_adjacent_to_terrain(card_id: str) -> N
 def test_killing_ground_defeats_clear_enemy_hero_with_no_cards() -> None:
     state = (
         EffectScenarioBuilder()
-        .line_board(length=7)
+        .with_hexes(_hex_disk(2))
         .red_hero("hero_swift", at=(0, 0, 0), current_card=hero_card("Swift", "killing_ground"))
-        .blue_hero("hero_arien", at=(2, 0, -2))
+        .blue_hero("hero_arien", at=(1, 0, -1))
         .with_actor("hero_swift")
         .build()
     )

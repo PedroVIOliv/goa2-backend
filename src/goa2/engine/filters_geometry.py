@@ -233,6 +233,139 @@ class StraightLinePathFilter(FilterCondition):
         return True
 
 
+class FarthestEmptyAdjacentFilter(FilterCondition):
+    """Passes only the empty hex(es) adjacent to an anchor that are farthest from
+    the origin (topology distance).
+
+    For Stone Grip: "place ... adjacent to an enemy hero ... as far away from you
+    as possible." Recomputed per call, so after each placement (which occupies a
+    hex) the next-farthest empties become eligible. Ties at the max distance all
+    pass (the actor picks among them).
+    """
+
+    type: FilterType = FilterType.FARTHEST_EMPTY_ADJACENT
+    origin_id: str | None = None
+    origin_key: str | None = None
+    anchor_key: str = "anchor_unit"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return False
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+
+        anchor_id = context.get(self.anchor_key)
+        anchor_hex = (
+            state.entity_locations.get(BoardEntityID(str(anchor_id))) if anchor_id else None
+        )
+        if not origin_hex or not anchor_hex:
+            return False
+
+        topology = get_topology_service()
+        empties = [
+            h
+            for h in topology.get_connected_ring(anchor_hex, 1, state)
+            if state.board.is_on_map(h) and not state.board.get_tile(h).is_obstacle
+        ]
+        if candidate not in empties:
+            return False
+        max_dist = max(topology.distance(origin_hex, h, state) for h in empties)
+        return topology.distance(origin_hex, candidate, state) == max_dist
+
+
+class SameDirectionFromOriginFilter(FilterCondition):
+    """Candidate hex is in the same direction from the origin as a reference hex.
+
+    Used for "move in the direction of the push": record the push target's
+    ORIGINAL hex, then offer the actor destinations along that exact ray (the
+    direction is one of the 6 axes). The origin hex itself never matches.
+    """
+
+    type: FilterType = FilterType.SAME_DIRECTION_FROM_ORIGIN
+    origin_id: str | None = None
+    origin_key: str | None = None
+    reference_key: str = "direction_reference_hex"
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return False
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex:
+            return False
+
+        ref = context.get(self.reference_key)
+        if ref is None:
+            return False
+        ref_hex = Hex(**ref) if isinstance(ref, dict) else ref
+
+        ref_dir = origin_hex.direction_to(ref_hex)
+        cand_dir = origin_hex.direction_to(candidate)
+        return ref_dir is not None and cand_dir == ref_dir
+
+
+class MaxEmptySpacesInLineFilter(FilterCondition):
+    """Caps the number of EMPTY hexes a straight-line move passes through.
+
+    For "Move any number of spaces in a straight line, ignoring obstacles,
+    without moving through more than N empty spaces." Only on-map empty interior
+    hexes (no terrain, no occupant) count toward the budget; obstacles passed
+    through do not. Start and destination hexes never count (line_to is
+    origin-exclusive, and we drop the destination). Pair with
+    StraightLinePathFilter(pass_through_obstacles=True), which already rejects
+    off-map interiors.
+    """
+
+    type: FilterType = FilterType.MAX_EMPTY_SPACES_IN_LINE
+    origin_id: str | None = None
+    origin_key: str | None = None
+    max_empty: int = 1
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        if not origin_uid:
+            return False
+
+        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        if not origin_hex or not origin_hex.is_straight_line(candidate):
+            return False
+
+        try:
+            path = origin_hex.line_to(candidate)
+        except ValueError:
+            return False
+
+        empties = 0
+        for hex_pos in path[:-1]:  # interior hexes only (destination dropped)
+            if not state.board.is_on_map(hex_pos):
+                continue
+            tile = state.board.get_tile(hex_pos)
+            if not tile.is_obstacle:  # on-map empty floor consumes the budget
+                empties += 1
+        return empties <= self.max_empty
+
+
 class SpaceBehindEmptyFilter(FilterCondition):
     """
     For unit targeting: validates that the hex directly behind the candidate

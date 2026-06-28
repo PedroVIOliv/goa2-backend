@@ -747,7 +747,7 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 |-------|------|-------------|
 | `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
 | `name` | string | Display name |
-| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
 | `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
 | `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |

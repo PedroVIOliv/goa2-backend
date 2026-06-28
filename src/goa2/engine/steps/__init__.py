@@ -47,7 +47,9 @@ from goa2.engine.steps.effects import (  # noqa: F401
 )
 from goa2.engine.steps.markers import (  # noqa: F401
     MoveTokenStep,
+    OfferRockUltimateStep,
     PlaceMarkerStep,
+    PlaceTokensInLineStep,
     PlaceTokenStep,
     PlaceTurretStep,
     RemoveMarkerStep,

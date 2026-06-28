@@ -17,6 +17,7 @@ TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.ICE: 3,
     TokenType.TOTEM: 1,
     TokenType.TREE: 3,
+    TokenType.ROCK: 3,
 }
 
 

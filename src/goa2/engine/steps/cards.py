@@ -70,23 +70,34 @@ class DiscardCardStep(GameStep):
         if not c_id:
             return StepResult(is_finished=True)
 
-        # Find card in the specified source container
-        if self.source == CardContainerType.HAND:
-            target_card = next((c for c in hero.hand if c.id == c_id), None)
-        elif self.source == CardContainerType.PLAYED:
-            target_card = next(
-                (c for c in hero.played_cards if c is not None and c.id == c_id), None
-            )
-        else:
-            logger.debug(f"   [DISCARD] Unsupported source container: {self.source}")
-            return StepResult(is_finished=True)
+        # Find card in the specified source container.
+        def _find(container: CardContainerType):
+            if container == CardContainerType.HAND:
+                return next((c for c in hero.hand if c.id == c_id), None)
+            if container == CardContainerType.PLAYED:
+                return next((c for c in hero.played_cards if c is not None and c.id == c_id), None)
+            return None
+
+        actual_source = self.source
+        target_card = _find(self.source)
+        if not target_card:
+            # Auto-detect across hand/played: a forced hand-discard may be
+            # redirected onto a played discard-shield card (Mrak), so the chosen
+            # card can live in the other container.
+            for alt in (CardContainerType.HAND, CardContainerType.PLAYED):
+                if alt == self.source:
+                    continue
+                target_card = _find(alt)
+                if target_card:
+                    actual_source = alt
+                    break
 
         if not target_card:
-            logger.debug(f"   [DISCARD] Card {c_id} not found in {h_id}'s {self.source.value}.")
+            logger.debug(f"   [DISCARD] Card {c_id} not found in {h_id}'s hand/played.")
             return StepResult(is_finished=True)
 
         logger.debug(f"   [DISCARD] {h_id} discards {target_card.name}")
-        hero.discard_card(target_card, from_hand=(self.source == CardContainerType.HAND))
+        hero.discard_card(target_card, from_hand=(actual_source == CardContainerType.HAND))
 
         # Changing a card's state cancels its active effect (premature end, so
         # finishing_steps do not run). Harmless no-op for hand cards.
@@ -101,7 +112,7 @@ class DiscardCardStep(GameStep):
 
         context["discarded_card_id"] = target_card.id
         context["discarded_card_owner_id"] = str(h_id)
-        context["discard_source"] = self.source.value
+        context["discard_source"] = actual_source.value
         return StepResult(
             is_finished=True,
             new_steps=[
@@ -218,19 +229,38 @@ class ForceDiscardStep(GameStep):
             logger.debug(f"   [EFFECT] {victim_id} has no cards to discard (Safe).")
             return StepResult(is_finished=True)
 
+        # Mrak's discard-shield: a forced HAND discard may be redirected onto a
+        # played shield card instead. Offer it alongside the hand.
+        from goa2.engine.effects import get_active_shield_cards
+
+        has_shield = bool(get_active_shield_cards(state, victim))
+        if has_shield:
+            select = SelectStep(
+                target_type=TargetType.CARD,
+                prompt=f"{victim_id}, select a card to discard (a shield card may be used instead).",
+                output_key="card_to_discard",
+                card_containers=[CardContainerType.HAND, CardContainerType.PLAYED],
+                restrict_played_to_shields=True,
+                context_hero_id_key=self.victim_key,
+                override_player_id_key=self.victim_key,
+                is_mandatory=True,
+            )
+        else:
+            select = SelectStep(
+                target_type=TargetType.CARD,
+                prompt=f"{victim_id}, select a card to discard.",
+                output_key="card_to_discard",
+                card_container=CardContainerType.HAND,
+                context_hero_id_key=self.victim_key,  # Look at victim's hand
+                override_player_id_key=self.victim_key,  # Victim chooses
+                is_mandatory=True,
+            )
+
         # Has cards -> Force Discard
         return StepResult(
             is_finished=True,
             new_steps=[
-                SelectStep(
-                    target_type=TargetType.CARD,
-                    prompt=f"{victim_id}, select a card to discard.",
-                    output_key="card_to_discard",
-                    card_container=CardContainerType.HAND,
-                    context_hero_id_key=self.victim_key,  # Look at victim's hand
-                    override_player_id_key=self.victim_key,  # Victim chooses
-                    is_mandatory=True,
-                ),
+                select,
                 DiscardCardStep(card_key="card_to_discard", hero_key=self.victim_key),
             ],
         )

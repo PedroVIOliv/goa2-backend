@@ -332,3 +332,35 @@ def get_active_aura_effects(state: GameState, hero: Hero) -> list[tuple[Card, Ca
             if effect:
                 results.append((card, effect))
     return results
+
+
+def get_active_shield_cards(state: GameState, hero: Hero) -> list[Card]:
+    """Played/resolved cards that carry an active DISCARD_SHIELD effect for `hero`.
+
+    These cards (Mrak's Stone Carapace / Rock Solid) may be discarded this round
+    as if they were in hand — to absorb a forced hand-discard or to perform their
+    Defense reaction. Returns the matching card objects (from played_cards or the
+    current turn card)."""
+    from goa2.domain.models.effect import EffectType
+
+    shield_ids = {
+        e.source_card_id
+        for e in state.active_effects
+        if e.effect_type == EffectType.DISCARD_SHIELD
+        and str(e.source_id) == str(hero.id)
+        and e.is_active
+        and e.source_card_id
+    }
+    if not shield_ids:
+        return []
+
+    cards: list[Card] = []
+    seen: set[str] = set()
+    candidates = list(hero.played_cards)
+    if hero.current_turn_card is not None:
+        candidates.append(hero.current_turn_card)
+    for card in candidates:
+        if card is not None and card.id in shield_ids and card.id not in seen:
+            cards.append(card)
+            seen.add(card.id)
+    return cards

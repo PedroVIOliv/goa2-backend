@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pydantic import Field
+
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.models import StepType, TargetType, Token, TokenType, Turret
@@ -159,6 +161,175 @@ class PlaceTokenStep(GameStep):
             )
         )
         return StepResult(is_finished=True, events=events)
+
+
+class PlaceTokensInLineStep(GameStep):
+    """Places up to ``count`` tokens in the first empty hexes along a straight
+    line from the origin toward a reference hex.
+
+    Scans indefinitely past obstacles (which are skipped, not landed on),
+    stopping only at the board edge. Used by Fissure: "Place a Rock token in
+    each of the first three empty spaces in the straight line from you in the
+    direction of the attack." Placement is delegated to PlaceTokenStep so supply
+    overflow and TOKEN_PLACED events are handled consistently.
+    """
+
+    type: StepType = StepType.PLACE_TOKENS_IN_LINE
+    token_type: TokenType
+    origin_id: str | None = None
+    origin_key: str | None = None
+    direction_ref_key: str = "line_direction_ref"
+    count: int = 3
+    owner_id_key: str | None = None
+    output_key: str | None = None  # stores the list of target hex dicts that get a token
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        origin_uid = self.origin_id
+        if not origin_uid and self.origin_key:
+            origin_uid = context.get(self.origin_key)
+        if not origin_uid:
+            origin_uid = state.current_actor_id
+        origin_hex = (
+            state.entity_locations.get(BoardEntityID(str(origin_uid))) if origin_uid else None
+        )
+
+        ref = context.get(self.direction_ref_key)
+        if origin_hex is None or ref is None:
+            return StepResult(is_finished=True)
+        ref_hex = Hex(**ref) if isinstance(ref, dict) else ref
+        if origin_hex == ref_hex or not origin_hex.is_straight_line(ref_hex):
+            return StepResult(is_finished=True)
+
+        dist = origin_hex.distance(ref_hex)
+        dq = (ref_hex.q - origin_hex.q) // dist
+        dr = (ref_hex.r - origin_hex.r) // dist
+        ds = (ref_hex.s - origin_hex.s) // dist
+
+        target_hexes: list[Hex] = []
+        current = origin_hex
+        for _ in range(50):  # safety bound; the board edge normally stops the scan
+            current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
+            if not state.board.is_on_map(current):
+                break  # board edge
+            if not state.board.get_tile(current).is_obstacle:
+                target_hexes.append(current)
+                if len(target_hexes) >= self.count:
+                    break
+
+        new_steps: list[GameStep] = []
+        for i, h in enumerate(target_hexes):
+            key = f"_line_rock_hex_{i}"
+            context[key] = h.model_dump()
+            new_steps.append(
+                PlaceTokenStep(
+                    token_type=self.token_type, hex_key=key, owner_id_key=self.owner_id_key
+                )
+            )
+        if self.output_key is not None:
+            context[self.output_key] = [h.model_dump() for h in target_hexes]
+        return StepResult(is_finished=True, new_steps=new_steps)
+
+
+class OfferRockUltimateStep(GameStep):
+    """Mrak's ultimate "Rock and a Hard Place" (active at level >= 8).
+
+    After a placement batch, each enemy hero adjacent to a rock placed in that
+    batch discards a card (if able). Optional and once per turn — the actor is
+    prompted, and a per-turn flag stops further offers once used. Offered per
+    placement group so Ground Shaker can save its single use for the repeat.
+
+    Batch hexes come from ``rock_hex_keys`` (fixed context keys, each a hex) and
+    ``rock_hexes_key`` (a key holding a list of hexes).
+    """
+
+    type: StepType = StepType.OFFER_ROCK_ULTIMATE
+    rock_hex_keys: list[str] = Field(default_factory=list)
+    rock_hexes_key: str | None = None
+    used_flag_key: str = "rock_ultimate_used"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+        actor = state.get_hero(actor_id) if actor_id else None
+        # Gate: ultimate unlocked (level >= 8), has an ultimate card, not yet used.
+        if not actor or actor.level < 8 or not actor.ultimate_card:
+            return StepResult(is_finished=True)
+        if context.get(self.used_flag_key):
+            return StepResult(is_finished=True)
+
+        # Gather the batch's rock hexes.
+        hexes: list[Hex] = []
+        for key in self.rock_hex_keys:
+            v = context.get(key)
+            if v:
+                hexes.append(Hex(**v) if isinstance(v, dict) else v)
+        if self.rock_hexes_key:
+            for v in context.get(self.rock_hexes_key) or []:
+                hexes.append(Hex(**v) if isinstance(v, dict) else v)
+        if not hexes:
+            return StepResult(is_finished=True)
+
+        # Enemy heroes adjacent to any batch hex (each affected once).
+        from goa2.engine.topology import get_topology_service
+
+        topology = get_topology_service()
+        affected: list[str] = []
+        for team_color, team in state.teams.items():
+            if team_color == actor.team:
+                continue
+            for enemy_hero in team.heroes:
+                hloc = state.entity_locations.get(BoardEntityID(str(enemy_hero.id)))
+                if hloc is None:
+                    continue
+                if any(topology.distance(hloc, rh, state) == 1 for rh in hexes):
+                    affected.append(str(enemy_hero.id))
+
+        if not affected:
+            return StepResult(is_finished=True)
+
+        context["_rock_ult_affected"] = affected
+
+        from goa2.engine.steps.cards import ForceDiscardStep
+        from goa2.engine.steps.selection import SelectStep
+        from goa2.engine.steps.utility import (
+            CheckContextConditionStep,
+            ForEachStep,
+            SetContextFlagStep,
+        )
+
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                SelectStep(
+                    target_type=TargetType.NUMBER,
+                    prompt="Rock and a Hard Place: each enemy hero adjacent to a "
+                    "placed Rock discards a card. Apply?",
+                    output_key="rock_ult_choice",
+                    number_options=[1, 0],
+                    number_labels={1: "Apply", 0: "Skip"},
+                ),
+                CheckContextConditionStep(
+                    input_key="rock_ult_choice",
+                    operator="==",
+                    threshold=1,
+                    output_key="rock_ult_yes",
+                ),
+                SetContextFlagStep(
+                    key=self.used_flag_key, value=True, active_if_key="rock_ult_yes"
+                ),
+                ForEachStep(
+                    list_key="_rock_ult_affected",
+                    item_key="_rock_ult_victim",
+                    steps_template=[ForceDiscardStep(victim_key="_rock_ult_victim")],
+                    active_if_key="rock_ult_yes",
+                ),
+            ],
+        )
 
 
 class PlaceTurretStep(GameStep):

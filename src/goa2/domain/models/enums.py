@@ -28,6 +28,7 @@ class TokenType(StrEnum):
     ICE = "ice"
     TOTEM = "totem"
     TREE = "tree"
+    ROCK = "rock"
 
 
 class CardTier(StrEnum):
@@ -125,6 +126,8 @@ class StepType(StrEnum):
     FINALIZE_HERO_TURN = "finalize_hero_turn"
     PLACE_UNIT = "place_unit"
     PLACE_TOKEN = "place_token"
+    PLACE_TOKENS_IN_LINE = "place_tokens_in_line"
+    OFFER_ROCK_ULTIMATE = "offer_rock_ultimate"
     PLACE_TURRET = "place_turret"
     SWAP_UNITS = "swap_units"
     SWAP_CARD = "swap_card"
@@ -245,6 +248,9 @@ class FilterType(StrEnum):
     BETWEEN_HEXES = "between_hexes_filter"
     COUNT_MATCH = "count_match_filter"
     CO_MOVER_VALID_HEX = "co_mover_valid_hex_filter"
+    MAX_EMPTY_SPACES_IN_LINE = "max_empty_spaces_in_line_filter"
+    SAME_DIRECTION_FROM_ORIGIN = "same_direction_from_origin_filter"
+    FARTHEST_EMPTY_ADJACENT = "farthest_empty_adjacent_filter"
 
 
 class TargetType(StrEnum):

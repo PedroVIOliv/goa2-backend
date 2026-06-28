@@ -95,6 +95,12 @@ class EffectType(StrEnum):
     # ResolvePreActionDiscardStep, scheduled by ResolveCardStep.
     PRE_ACTION_DISCARD = "pre_action_discard"
 
+    # Discard-shield (Mrak - Stone Carapace / Rock Solid). This round, the
+    # source card sits in the played/resolved area but may be discarded as if it
+    # were in hand: it can absorb a forced hand-discard, and it can be used for
+    # its Defense reaction. source_card_id ties the effect to the shield card.
+    DISCARD_SHIELD = "discard_shield"
+
 
 class AffectsFilter(StrEnum):
     """Who is affected by this effect."""

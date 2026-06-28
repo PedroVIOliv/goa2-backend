@@ -64,6 +64,21 @@ class ReactionWindowStep(GameStep):
             if is_primary_def or has_secondary_def:
                 valid_defense_cards.append(card)
 
+        # Mrak's discard-shield: a played card with an active DISCARD_SHIELD
+        # effect may be used for its Defense reaction as if it were in hand.
+        from goa2.engine.effects import get_active_shield_cards
+
+        for card in get_active_shield_cards(state, target_hero):
+            is_primary_def = card.current_primary_action in (
+                ActionType.DEFENSE,
+                ActionType.DEFENSE_SKILL,
+            )
+            has_secondary_def = ActionType.DEFENSE in card.current_secondary_actions
+            if block_primary and is_primary_def and not has_secondary_def:
+                continue
+            if (is_primary_def or has_secondary_def) and card not in valid_defense_cards:
+                valid_defense_cards.append(card)
+
         [c.id for c in valid_defense_cards]
 
         # Build InputOption objects with computed defense values
@@ -114,8 +129,11 @@ class ReactionWindowStep(GameStep):
                     ActionType.DEFENSE_SKILL,
                 )
 
-                # Discard the defense card from hand
-                target_hero.discard_card(selected_card, from_hand=True)
+                # Discard the defense card. A shield card lives in the played
+                # area, not the hand, so discard it from there.
+                target_hero.discard_card(
+                    selected_card, from_hand=(selected_card in target_hero.hand)
+                )
 
                 logger.debug(
                     f"   [REACTION] Player {target_id} defends with {card_id} "

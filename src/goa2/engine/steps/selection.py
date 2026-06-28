@@ -52,6 +52,9 @@ class SelectStep(GameStep):
     card_containers: list[CardContainerType] | None = (
         None  # When set, merges candidates from multiple containers
     )
+    restrict_played_to_shields: bool = (
+        False  # For the PLAYED container, only include active discard-shield cards (Mrak)
+    )
     number_options: list[int] = Field(default_factory=list)  # For NUMBER target type
     number_labels: dict[int, str] = Field(default_factory=dict)  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
@@ -137,7 +140,12 @@ class SelectStep(GameStep):
                     if container == CardContainerType.HAND:
                         source_list.extend(hero.hand)
                     elif container == CardContainerType.PLAYED:
-                        source_list.extend(c for c in hero.played_cards if c is not None)
+                        if self.restrict_played_to_shields:
+                            from goa2.engine.effects import get_active_shield_cards
+
+                            source_list.extend(get_active_shield_cards(state, hero))
+                        else:
+                            source_list.extend(c for c in hero.played_cards if c is not None)
                     elif container == CardContainerType.DISCARD:
                         source_list.extend(hero.discard_pile)
                     elif container == CardContainerType.DECK:
