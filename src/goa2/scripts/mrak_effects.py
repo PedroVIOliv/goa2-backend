@@ -339,7 +339,7 @@ def _boulder_steps(hero_id: str, max_n: int) -> list[GameStep]:
         ),
         SelectStep(
             target_type=TargetType.HEX,
-            prompt="You may move up to N spaces in the direction of the push",
+            prompt=f"You may move up to {max_n} spaces in the direction of the push",
             output_key="boulder_follow_dest",
             is_mandatory=False,
             filters=[
@@ -432,7 +432,6 @@ class StoneGripEffect(CardEffect):
                     output_key=hex_key,
                     is_mandatory=True,
                     active_if_key="grip_ok",
-                    auto_select_if_one=True,
                     filters=[
                         FarthestEmptyAdjacentFilter(origin_id=hero_id, anchor_key="grip_hero")
                     ],

@@ -594,7 +594,10 @@ def test_stone_grip_places_three_rocks_in_the_farthest_empty_hexes() -> None:
     run.choose("hero_arien").expect_input(InputRequestType.SELECT_HEX)
     # First placement offers only the two farthest (distance 3) hexes.
     assert _option_set(run) == {Hex(q=3, r=0, s=-3), Hex(q=2, r=1, s=-3)}
-    run.choose({"q": 3, "r": 0, "s": -3}).finish()
+    # Each single-option placement now prompts as well (no auto-select).
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": -1, "s": -1}).finish()
 
     assert _rock_at(state, 3, 0, -3)
     assert _rock_at(state, 2, 1, -3)
@@ -696,7 +699,9 @@ def test_ultimate_makes_rock_adjacent_hero_discard_exactly_one() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION)
     run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
     run.choose("hero_arien").expect_input(InputRequestType.SELECT_HEX)
-    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": -1, "s": -1}).expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(1).expect_input(InputRequestType.SELECT_CARD)  # apply ultimate
     run.choose("boulder_rush").finish()
 
@@ -712,7 +717,9 @@ def test_ultimate_is_optional_and_can_be_declined() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION)
     run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
     run.choose("hero_arien").expect_input(InputRequestType.SELECT_HEX)
-    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": -1, "s": -1}).expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(0).finish()  # decline
 
     assert len(arien.hand) == 1  # untouched
@@ -728,7 +735,9 @@ def test_ultimate_inactive_below_level_8_gives_no_offer() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION)
     run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
     run.choose("hero_arien").expect_input(InputRequestType.SELECT_HEX)
-    run.choose({"q": 3, "r": 0, "s": -3}).finish()  # no ultimate prompt
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": -1, "s": -1}).finish()  # no ultimate prompt
 
     assert len(arien.hand) == 1  # untouched
 
@@ -742,7 +751,9 @@ def test_ultimate_if_able_does_nothing_to_empty_handed_hero() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION)
     run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
     run.choose("hero_arien").expect_input(InputRequestType.SELECT_HEX)
-    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": -1, "s": -1}).expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(1).finish()  # apply, but hero has no cards
 
     assert state.entity_locations.get("hero_arien") is not None  # not defeated

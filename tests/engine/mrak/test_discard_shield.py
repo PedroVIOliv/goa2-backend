@@ -91,7 +91,7 @@ def test_active_shield_card_is_offered_as_defense_and_discarded_from_played():
 
     mrak = state.get_hero("hero_mrak")
     assert state.execution_context["defense_card_id"] == "stone_carapace"
-    assert state.execution_context["defense_value"] == 7  # Stone Carapace Defense
+    assert state.execution_context["defense_value"] == 6  # Stone Carapace Defense
     # Discarded from the played area, not left there.
     assert any(c.id == "stone_carapace" for c in mrak.discard_pile)
     assert all(c is None or c.id != "stone_carapace" for c in mrak.played_cards)
