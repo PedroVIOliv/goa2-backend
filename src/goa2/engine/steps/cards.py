@@ -261,7 +261,7 @@ class ForceDiscardStep(GameStep):
         if has_shield:
             select = SelectStep(
                 target_type=TargetType.CARD,
-                prompt=f"{victim_id}, select a card to discard (a shield card may be used instead).",
+                prompt=f"{victim_id}, select a card to discard.",
                 output_key="card_to_discard",
                 card_containers=[CardContainerType.HAND, CardContainerType.PLAYED],
                 restrict_played_to_shields=True,
