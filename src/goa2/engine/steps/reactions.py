@@ -129,12 +129,6 @@ class ReactionWindowStep(GameStep):
                     ActionType.DEFENSE_SKILL,
                 )
 
-                # Discard the defense card. A shield card lives in the played
-                # area, not the hand, so discard it from there.
-                target_hero.discard_card(
-                    selected_card, from_hand=(selected_card in target_hero.hand)
-                )
-
                 logger.debug(
                     f"   [REACTION] Player {target_id} defends with {card_id} "
                     f"(Value: {total_def} [Base: {def_val}], Primary: {is_primary})"
@@ -156,7 +150,18 @@ class ReactionWindowStep(GameStep):
                     action_stack.append(current_action)
                 context["current_action_type"] = ActionType.DEFENSE
 
-                return StepResult(is_finished=True)
+                # Discard the defense card through the single discard entry point.
+                # A defense IS a discard: routing it through DiscardCardStep expires
+                # any effect bound to the card (e.g. Mrak's DISCARD_SHIELD) and fires
+                # the AFTER_CARD_DISCARD trigger, consistent with every other discard.
+                # The card may live in hand or the played area (shield); DiscardCardStep
+                # auto-detects the container.
+                from goa2.engine.steps.cards import DiscardCardStep
+
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[DiscardCardStep(card_id=card_id, hero_id=str(target_id))],
+                )
 
         # Compute combat info for the input request
         from goa2.engine.stats import calculate_minion_defense_modifier

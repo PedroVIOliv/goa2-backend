@@ -75,7 +75,18 @@ class DiscardCardStep(GameStep):
             if container == CardContainerType.HAND:
                 return next((c for c in hero.hand if c.id == c_id), None)
             if container == CardContainerType.PLAYED:
-                return next((c for c in hero.played_cards if c is not None and c.id == c_id), None)
+                # The "played" area includes the current_turn_card (a card created
+                # this turn that has not yet resolved into played_cards). A
+                # discard-shield can be the current_turn_card during its own turn,
+                # so it must be findable here for the forced-discard redirect.
+                found = next((c for c in hero.played_cards if c is not None and c.id == c_id), None)
+                if (
+                    found is None
+                    and hero.current_turn_card is not None
+                    and hero.current_turn_card.id == c_id
+                ):
+                    found = hero.current_turn_card
+                return found
             return None
 
         actual_source = self.source
@@ -97,6 +108,19 @@ class DiscardCardStep(GameStep):
             return StepResult(is_finished=True)
 
         logger.debug(f"   [DISCARD] {h_id} discards {target_card.name}")
+
+        # Determine the discard source BEFORE discarding (discard_card mutates the
+        # card state to DISCARD). A card found in the played area that is not yet
+        # RESOLVED is the current_turn_card — still being played this turn — so it
+        # is reported as "current_turn", NOT PLAYED. Resolved-card-discard passives
+        # (Garrus's Battle Fury) gate on PLAYED meaning a *resolved* card.
+        if actual_source == CardContainerType.HAND:
+            discard_source = CardContainerType.HAND.value
+        elif target_card.state == CardState.RESOLVED:
+            discard_source = CardContainerType.PLAYED.value
+        else:
+            discard_source = "current_turn"
+
         hero.discard_card(target_card, from_hand=(actual_source == CardContainerType.HAND))
 
         # Changing a card's state cancels its active effect (premature end, so
@@ -112,7 +136,7 @@ class DiscardCardStep(GameStep):
 
         context["discarded_card_id"] = target_card.id
         context["discarded_card_owner_id"] = str(h_id)
-        context["discard_source"] = actual_source.value
+        context["discard_source"] = discard_source
         return StepResult(
             is_finished=True,
             new_steps=[

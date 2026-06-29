@@ -297,6 +297,27 @@ def test_basic_protection_saves_minion(protection_state):
     assert brogan.hand[0].id == "silver2"
 
 
+def test_card_discard_protection_routes_through_discard_step(protection_state):
+    """The protection cost is a real discard, so it flows through the single
+    DiscardCardStep entry point (which records discard context and fires the
+    AFTER_CARD_DISCARD trigger) rather than an inline discard_card call."""
+    state = protection_state
+    _create_protection_effect(state)
+
+    push_steps(state, [DefeatUnitStep(victim_id="minion_red_1", killer_id="enemy")])
+    process_stack(state)
+    state.execution_stack[-1].pending_input = {"selected_card_id": "silver1"}
+    process_stack(state)
+
+    # Minion saved and the card was discarded...
+    assert state.entity_locations.get("minion_red_1") is not None
+    brogan = state.get_hero("brogan")
+    assert all(c.id != "silver1" for c in brogan.hand)
+    assert any(c.id == "silver1" for c in brogan.discard_pile)
+    # ...through the unified discard path, which records the discard in context.
+    assert state.execution_context.get("discarded_card_id") == "silver1"
+
+
 def test_gold_awarded_even_when_protected(protection_state):
     """Enemy killer still gets gold even when minion is saved."""
     state = protection_state

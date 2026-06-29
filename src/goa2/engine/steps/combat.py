@@ -656,21 +656,26 @@ class CheckMinionProtectionStep(GameStep):
             logger.debug(f"   [PROTECT] {protector.id} declined to protect {self.minion_id}.")
             return self._try_next(protection.id)
 
-        # Find and discard the selected card
+        # Find the selected card and discard it through the single discard entry
+        # point. The minion-protection cost IS a discard, so routing it through
+        # DiscardCardStep keeps discard handling (effect expiry, AFTER_CARD_DISCARD
+        # trigger) consistent with every other discard.
         card_to_discard = next((c for c in qualifying_cards if c.id == selection), None)
         if not card_to_discard:
             return self._try_next(protection.id)
 
-        protector.discard_card(card_to_discard, from_hand=True)
         logger.debug(
             f"   [PROTECT] {protector.id} discards {card_to_discard.name} to protect {self.minion_id}!"
         )
+
+        from goa2.engine.steps.cards import DiscardCardStep
 
         # Card-discard protection (e.g. Brogan): the minion is still defeated for
         # scoring purposes — the killer keeps the coins and UNIT_DEFEATED fires —
         # it simply isn't removed from the board.
         return StepResult(
             is_finished=True,
+            new_steps=[DiscardCardStep(card_id=card_to_discard.id, hero_id=protector.id)],
             events=[
                 *self._defeat_events(state, minion, context),
                 GameEvent(
