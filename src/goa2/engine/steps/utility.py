@@ -155,6 +155,41 @@ class RecordHexStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class CheckZoneChangeStep(GameStep):
+    """Stores True if a unit's current zone differs from a recorded earlier hex's
+    zone, else None (matching active_if_key semantics).
+
+    Used by Cutter's Walk the Plank ("if that hero is pushed into another zone").
+    Record the unit's hex before the push (RecordHexStep), push, then compare.
+    """
+
+    type: StepType = StepType.CHECK_ZONE_CHANGE
+    unit_key: str
+    before_hex_key: str
+    output_key: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        unit_id = context.get(self.unit_key)
+        raw_before = context.get(self.before_hex_key)
+        if not unit_id or raw_before is None:
+            context[self.output_key] = None
+            return StepResult(is_finished=True)
+
+        before_hex = Hex(**raw_before) if isinstance(raw_before, dict) else raw_before
+        after_hex = state.entity_locations.get(BoardEntityID(str(unit_id)))
+        if after_hex is None:
+            context[self.output_key] = None
+            return StepResult(is_finished=True)
+
+        before_zone = state.board.get_zone_for_hex(before_hex)
+        after_zone = state.board.get_zone_for_hex(after_hex)
+        context[self.output_key] = True if after_zone != before_zone else None
+        return StepResult(is_finished=True)
+
+
 class CheckDistanceStep(GameStep):
     """
     Checks topology-aware distance between two units and stores the result

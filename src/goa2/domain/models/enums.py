@@ -188,6 +188,9 @@ class StepType(StrEnum):
     GAIN_ITEM = "gain_item"
     CHECK_HERO_DEFEATED_THIS_ROUND = "check_hero_defeated_this_round"
     STEAL_COINS = "steal_coins"
+    CHECK_SOLO_WIN = "check_solo_win"
+    CHECK_ZONE_CHANGE = "check_zone_change"
+    MOVE_TOWARD_TARGET = "move_toward_target"
     COMPUTE_HEX = "compute_hex"
     CONFIRM_RESOLUTION = "confirm_resolution"
     GUESS_CARD_COLOR = "guess_card_color"
@@ -283,6 +286,10 @@ class PassiveTrigger(StrEnum):
     AFTER_PUSH = "after_push"
     AFTER_PLACE_MARKER = "after_place_marker"
     AFTER_CARD_DISCARD = "after_card_discard"
-    # Fires after a hero fully resolves a card they played as their action
-    # (Wuk - March of Nature). Does not fire on defense reactions.
+    # Fires only after a hero performs the PRIMARY action of a card they played
+    # (Cutter - Legend of the Skies). Does NOT fire on secondary actions.
+    AFTER_PRIMARY_ACTION = "after_primary_action"
+    # Fires after a hero fully resolves a card they played as their action,
+    # regardless of whether it was the primary or a secondary action (Wuk -
+    # March of Nature). Does not fire on defense reactions.
     AFTER_RESOLVE_CARD = "after_resolve_card"

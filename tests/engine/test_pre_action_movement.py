@@ -321,3 +321,59 @@ class TestPreActionMovementViaDefense:
         assert any(
             e.effect_type == EffectType.PRE_ACTION_MOVEMENT for e in basic_state.active_effects
         )
+
+    def test_no_pre_action_move_on_secondary_defense(self, basic_state):
+        # Defending with a card whose DEFENSE is a SECONDARY action is not
+        # "performing a primary action" -> no pre-action movement offered.
+        enemy = basic_state.get_hero("enemy")
+        sec_def_card = Card(
+            id="sec_def",
+            name="Sidestep",
+            tier=CardTier.I,
+            color=CardColor.GREEN,
+            initiative=10,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
+            is_ranged=False,
+            range_value=0,
+            effect_id="filler",
+            effect_text="Sidestep.",
+            is_facedown=False,
+        )
+        enemy.hand = [sec_def_card]
+
+        _add_pre_action_effect(basic_state, "enemy", 2)
+        basic_state.current_actor_id = "hero_misa"
+        basic_state.place_entity("enemy", Hex(q=1, r=0, s=-1))
+
+        push_steps(basic_state, [AttackSequenceStep(damage=3, range_val=3, target_id_key="victim")])
+
+        assert process_stack(basic_state).input_request["type"] == "SELECT_UNIT"
+        basic_state.execution_stack[-1].pending_input = {"selection": "enemy"}
+
+        assert process_stack(basic_state).input_request["type"] == "SELECT_CARD_OR_PASS"
+        basic_state.execution_stack[-1].pending_input = {"selection": sec_def_card.id}
+
+        result = process_stack(basic_state)
+        # No pre-action move prompt; combat resolves with no further input.
+        assert result.input_request is None
+        assert basic_state.entity_locations.get("enemy") == Hex(q=1, r=0, s=-1)
+
+    def test_no_pre_action_move_on_pass(self, basic_state):
+        # Taking the hit (PASS) is not an action at all -> no pre-action move.
+        _add_pre_action_effect(basic_state, "enemy", 2)
+        basic_state.current_actor_id = "hero_misa"
+        basic_state.place_entity("enemy", Hex(q=1, r=0, s=-1))
+
+        push_steps(basic_state, [AttackSequenceStep(damage=3, range_val=3, target_id_key="victim")])
+
+        assert process_stack(basic_state).input_request["type"] == "SELECT_UNIT"
+        basic_state.execution_stack[-1].pending_input = {"selection": "enemy"}
+
+        assert process_stack(basic_state).input_request["type"] == "SELECT_CARD_OR_PASS"
+        basic_state.execution_stack[-1].pending_input = {"selection": "PASS"}
+
+        result = process_stack(basic_state)
+        # No pre-action move prompt (SELECT_HEX); combat resolves the hit directly.
+        assert result.input_request is None

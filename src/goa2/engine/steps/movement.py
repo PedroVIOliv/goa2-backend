@@ -672,6 +672,9 @@ class ResolvePreActionMovementStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
         hero_id = self.hero_id
         if not hero_id and self.hero_key:
             hero_id = context.get(self.hero_key)
@@ -897,6 +900,64 @@ class SwapUnitsStep(GameStep):
                     target_id=actual_unit_b,
                     from_hex=_hex_dict(loc_a),
                     to_hex=_hex_dict(loc_b),
+                )
+            ],
+        )
+
+
+class MoveTowardTargetStep(GameStep):
+    """Pulls a unit in a straight line toward a target hex until adjacent to it.
+
+    Used by Cutter's Grappling Bolt ("Move in a straight line towards that
+    obstacle until you are adjacent to it"). The target is a HEX (the obstacle),
+    so terrain / tokens / units / turrets are all valid anchors and immunity is
+    irrelevant (we target the hex, not its occupant). The straight-line, clear
+    path is validated by the selection filters; this step just computes the hex
+    one step short of the target along the origin->target ray and moves there.
+    If the mover is already adjacent, not in a straight line, or the target is
+    disconnected by a reality split, it does nothing.
+    """
+
+    type: StepType = StepType.MOVE_TOWARD_TARGET
+    target_hex_key: str
+    unit_id: str | None = None  # mover; defaults to current actor
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        mover_id = self.unit_id or (str(state.current_actor_id) if state.current_actor_id else None)
+        if not mover_id:
+            return StepResult(is_finished=True)
+
+        origin = state.entity_locations.get(BoardEntityID(str(mover_id)))
+        raw_target = context.get(self.target_hex_key)
+        if origin is None or raw_target is None:
+            return StepResult(is_finished=True)
+        target = Hex(**raw_target) if isinstance(raw_target, dict) else raw_target
+
+        # Straight line AND same reality (topology split would block the pull).
+        if not origin.is_straight_line(target) or not are_connected(origin, target, state):
+            return StepResult(is_finished=True)
+
+        try:
+            path = origin.line_to(target)  # origin-exclusive, target-inclusive
+        except ValueError:
+            return StepResult(is_finished=True)
+
+        # Hex one step short of the target (already adjacent => no move).
+        if len(path) < 2:
+            return StepResult(is_finished=True)
+        dest = path[-2]
+
+        context["_toward_dest"] = dest
+        return StepResult(
+            is_finished=True,
+            new_steps=[
+                MoveUnitStep(
+                    unit_id=str(mover_id),
+                    destination_key="_toward_dest",
+                    range_val=99,
                 )
             ],
         )

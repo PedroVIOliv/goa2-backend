@@ -118,7 +118,11 @@ class AttackSequenceStep(GameStep):
                 ReactionWindowStep(target_player_key=key),
                 SetActorStep(actor_key="defender_id", save_key="_pre_pam_actor"),
                 CheckPassiveAbilitiesStep(trigger=_PT.BEFORE_ACTION.value),
-                ResolvePreActionMovementStep(hero_key="defender_id"),
+                # Pre-action movement (Misa) counts only as a primary action:
+                # a primary-DEFENSE block, not a secondary defense or a PASS.
+                ResolvePreActionMovementStep(
+                    hero_key="defender_id", active_if_key="is_primary_defense"
+                ),
                 SetActorStep(actor_key="_pre_pam_actor", save_key="_discard_pam"),
                 ResolveDefenseTextStep(),
                 ResolveCombatStep(damage=effective_damage, target_key=key),

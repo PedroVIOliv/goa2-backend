@@ -291,20 +291,38 @@ class SameDirectionFromOriginFilter(FilterCondition):
     type: FilterType = FilterType.SAME_DIRECTION_FROM_ORIGIN
     origin_id: str | None = None
     origin_key: str | None = None
+    origin_hex_key: str | None = None  # context key holding a Hex (or dict) origin
     reference_key: str = "direction_reference_hex"
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if not isinstance(candidate, Hex):
+        # Candidate may be a hex (destination selection) or a unit-id string
+        # (e.g. "a hero in the direction of the move").
+        if isinstance(candidate, Hex):
+            cand_hex: Hex | None = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+        else:
+            return False
+        if cand_hex is None:
             return False
 
-        origin_uid = self.origin_id
-        if not origin_uid and self.origin_key:
-            origin_uid = context.get(self.origin_key)
-        if not origin_uid:
-            origin_uid = state.current_actor_id
-        if not origin_uid:
-            return False
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        # Origin may be a recorded hex (e.g. a pre-move position that is no longer
+        # any unit's location) or resolved from a unit id.
+        origin_hex = None
+        if self.origin_hex_key:
+            raw_origin = context.get(self.origin_hex_key)
+            if raw_origin is None:
+                return False
+            origin_hex = Hex(**raw_origin) if isinstance(raw_origin, dict) else raw_origin
+        else:
+            origin_uid = self.origin_id
+            if not origin_uid and self.origin_key:
+                origin_uid = context.get(self.origin_key)
+            if not origin_uid:
+                origin_uid = state.current_actor_id
+            if not origin_uid:
+                return False
+            origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
         if not origin_hex:
             return False
 
@@ -313,8 +331,13 @@ class SameDirectionFromOriginFilter(FilterCondition):
             return False
         ref_hex = Hex(**ref) if isinstance(ref, dict) else ref
 
+        # Candidate must be in the same reality as the origin (a reality split
+        # blocks "the direction of the move" just like it blocks distance/line).
+        if not get_topology_service().are_connected(origin_hex, cand_hex, state):
+            return False
+
         ref_dir = origin_hex.direction_to(ref_hex)
-        cand_dir = origin_hex.direction_to(candidate)
+        cand_dir = origin_hex.direction_to(cand_hex)
         return ref_dir is not None and cand_dir == ref_dir
 
 

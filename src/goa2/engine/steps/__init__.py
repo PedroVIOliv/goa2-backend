@@ -2,6 +2,7 @@
 
 from goa2.engine.steps.base import GameStep, StepResult  # noqa: F401
 from goa2.engine.steps.cards import (  # noqa: F401
+    CheckSoloWinStep,
     ConvertCardToItemStep,
     CountCardsStep,
     DiscardCardStep,
@@ -65,6 +66,7 @@ from goa2.engine.steps.movement import (  # noqa: F401
     ForceDefenseCardMovementStep,
     MinePathChoiceStep,
     MoveSequenceStep,
+    MoveTowardTargetStep,
     MoveUnitStep,
     PlaceUnitStep,
     PushUnitStep,
@@ -106,6 +108,7 @@ from goa2.engine.steps.utility import (  # noqa: F401
     CheckUnitFiltersStep,
     CheckUnitOnBoardStep,
     CheckUnitTypeStep,
+    CheckZoneChangeStep,
     CollectUnitsStep,
     CombineBooleanContextStep,
     ComputeDistanceStep,

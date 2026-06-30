@@ -800,8 +800,16 @@ class ResolveCardStep(GameStep):
                         CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_ACTION.value)
                     )
 
-                # Fires after the card's action fully resolves (Wuk - March of
-                # Nature). Must be last so it runs after the AFTER_* checks above.
+                # Fires only after a PRIMARY action (Cutter - Legend of the
+                # Skies). Secondary actions must not trigger it.
+                if is_primary:
+                    steps_list.append(
+                        CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PRIMARY_ACTION.value)
+                    )
+
+                # Fires after the card's action fully resolves, primary or
+                # secondary (Wuk - March of Nature). Must be last so it runs
+                # after the AFTER_* checks above.
                 steps_list.append(
                     CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_RESOLVE_CARD.value)
                 )
@@ -1045,6 +1053,41 @@ class GainCoinsStep(GameStep):
                 )
             ],
         )
+
+
+class CheckSoloWinStep(GameStep):
+    """Cutter's "A Fistful of Coins" alternate victory check (STUBBED).
+
+    Card text: "If you have 13 or more coins, you alone win the game." The engine
+    only models team victories today (``state.winner`` is a ``TeamColor``), so we
+    do NOT end the game here. Instead, when the hero's gold reaches the threshold
+    we record it on ``state.solo_win_pending`` so the kit can ship and the real
+    individual-win path can be wired later. Below the threshold this is a no-op.
+    """
+
+    type: StepType = StepType.CHECK_SOLO_WIN
+    hero_key: str = ""  # context key → hero ID (falls back to current actor)
+    threshold: int = 13
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+        hero_id = context.get(self.hero_key) if self.hero_key else None
+        hero_id = hero_id or state.current_actor_id
+        if not hero_id:
+            return StepResult(is_finished=True)
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+        if hero.gold >= self.threshold:
+            # TODO: wire a real individual victory (TriggerGameOverStep with a
+            # single-hero winner). Stubbed: record the pending solo win only.
+            state.solo_win_pending = str(hero_id)
+            logger.debug(
+                f"   [SOLO WIN] {hero_id} reached {hero.gold} coins "
+                f"(>= {self.threshold}) — solo victory pending (stub)."
+            )
+        return StepResult(is_finished=True)
 
 
 class GainItemStep(GameStep):
