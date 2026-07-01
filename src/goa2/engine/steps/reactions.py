@@ -9,7 +9,7 @@ from goa2.domain.input import InputOption, InputRequestType, create_input_reques
 from goa2.domain.models import ActionType, StepType
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
-from goa2.domain.types import HeroID
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -222,6 +222,13 @@ class ResolveDefenseTextStep(GameStep):
 
         defender = state.get_hero(HeroID(str(defender_id)))
         if not defender:
+            return StepResult(is_finished=True)
+
+        # Defender left the board before the defense text resolves (e.g. a Trinkets
+        # disruptor defeated them after the block was played). A defeated hero
+        # applies no defense action text.
+        if BoardEntityID(str(defender_id)) not in state.entity_locations:
+            logger.debug(f"   [DEFENSE] {defender_id} is off-board — skipping defense text.")
             return StepResult(is_finished=True)
 
         # Find the card in defender's hand (defense cards are moved to discard after ReactionWindowStep)

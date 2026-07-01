@@ -166,7 +166,12 @@ class ResolvePreActionDiscardStep(GameStep):
     """
 
     type: StepType = StepType.RESOLVE_PRE_ACTION_DISCARD
-    hero_id: str
+    hero_id: str | None = None
+    hero_key: str | None = None
+    # When the victim is defeated by a disruptor (no cards to discard), abort the
+    # current action. Correct on the victim's OWN turn; must be False when the
+    # victim is a defender (aborting would wrongly cancel the attacker's turn).
+    abort_on_defeat: bool = True
     processed_effect_ids: list[str] = Field(default_factory=list)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -175,14 +180,26 @@ class ResolvePreActionDiscardStep(GameStep):
         from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
         from goa2.engine.steps.combat import DefeatUnitStep
 
-        hero = state.get_hero(HeroID(self.hero_id))
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        hero_id = self.hero_id
+        if not hero_id and self.hero_key:
+            hero_id = context.get(self.hero_key)
+        if not hero_id:
+            return StepResult(is_finished=True)
+        hero_id = str(hero_id)
+
+        hero = state.get_hero(HeroID(hero_id))
         if not hero:
             return StepResult(is_finished=True)
 
-        if BoardEntityID(self.hero_id) not in state.entity_locations:
-            # Hero was defeated by a previous disruptor trigger — cancel the action.
-            logger.debug(f"   [DISRUPTOR] {self.hero_id} left the board. Aborting action.")
-            return StepResult(is_finished=True, abort_action=True)
+        if BoardEntityID(hero_id) not in state.entity_locations:
+            # Hero left the board (defeated by a previous disruptor trigger).
+            if self.abort_on_defeat:
+                logger.debug(f"   [DISRUPTOR] {hero_id} left the board. Aborting action.")
+                return StepResult(is_finished=True, abort_action=True)
+            return StepResult(is_finished=True)
 
         for effect in state.active_effects:
             if effect.effect_type != EffectType.PRE_ACTION_DISCARD:
@@ -191,7 +208,7 @@ class ResolvePreActionDiscardStep(GameStep):
                 continue
             if not _is_effect_active(effect, state):
                 continue
-            if not is_unit_in_effect_scope(effect, self.hero_id, state):
+            if not is_unit_in_effect_scope(effect, hero_id, state):
                 continue
 
             self.processed_effect_ids.append(effect.id)
@@ -204,26 +221,26 @@ class ResolvePreActionDiscardStep(GameStep):
                 # the rest of the round. Removal untaps the card and also stops
                 # the disruptor from re-firing regardless of card linkage.
                 EffectManager.expire_effect_by_id(state, effect.id)
-                context["pre_action_discard_victim"] = self.hero_id
-                logger.debug(f"   [DISRUPTOR] {self.hero_id} must discard before primary action.")
+                context["pre_action_discard_victim"] = hero_id
+                logger.debug(f"   [DISRUPTOR] {hero_id} must discard before primary action.")
                 return StepResult(
                     is_finished=False,
                     new_steps=[ForceDiscardStep(victim_key="pre_action_discard_victim")],
                 )
 
             if effect.discard_or_defeat:
-                logger.debug(f"   [DISRUPTOR] {self.hero_id} has no cards to discard! DEFEATED!")
+                logger.debug(f"   [DISRUPTOR] {hero_id} has no cards to discard! DEFEATED!")
                 # Credit the defeat to the hero who created the disruptor
                 # (effect.source_id == Trinkets), NOT current_actor_id — the
                 # current actor here is the victim taking their own action.
                 return StepResult(
                     is_finished=False,
                     new_steps=[
-                        DefeatUnitStep(victim_id=self.hero_id, killer_id=effect.source_id),
+                        DefeatUnitStep(victim_id=hero_id, killer_id=effect.source_id),
                     ],
                 )
 
-            logger.debug(f"   [DISRUPTOR] {self.hero_id} has no cards to discard (Safe).")
+            logger.debug(f"   [DISRUPTOR] {hero_id} has no cards to discard (Safe).")
 
         return StepResult(is_finished=True)
 

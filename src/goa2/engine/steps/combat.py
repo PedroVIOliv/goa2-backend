@@ -48,6 +48,7 @@ class AttackSequenceStep(GameStep):
     range_bonus_key: str | None = None  # Add int from context to range_val
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.steps.cards import ResolvePreActionDiscardStep
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
         from goa2.engine.steps.movement import ResolvePreActionMovementStep
         from goa2.engine.steps.phases import RestoreActionTypeStep
@@ -118,10 +119,22 @@ class AttackSequenceStep(GameStep):
                 ReactionWindowStep(target_player_key=key),
                 SetActorStep(actor_key="defender_id", save_key="_pre_pam_actor"),
                 CheckPassiveAbilitiesStep(trigger=_PT.BEFORE_ACTION.value),
-                # Pre-action movement (Misa) counts only as a primary action:
-                # a primary-DEFENSE block, not a secondary defense or a PASS.
+                # "Before you perform a primary action" triggers. Blocking with a
+                # primary-DEFENSE card IS a primary action; a secondary defense or
+                # a PASS is not (gated on is_primary_defense). These fire after the
+                # defense card is discarded and before the defense action text.
+                # Pre-action movement (Misa).
                 ResolvePreActionMovementStep(
                     hero_key="defender_id", active_if_key="is_primary_defense"
+                ),
+                # Pre-action discard / disruptor (Trinkets). abort_on_defeat is
+                # False: a Grid defeat of the defender must not abort the ATTACKER's
+                # turn (the defeated defender is handled by the on-board guards in
+                # ResolveDefenseTextStep / ResolveCombatStep below).
+                ResolvePreActionDiscardStep(
+                    hero_key="defender_id",
+                    active_if_key="is_primary_defense",
+                    abort_on_defeat=False,
                 ),
                 SetActorStep(actor_key="_pre_pam_actor", save_key="_discard_pam"),
                 ResolveDefenseTextStep(),
@@ -155,6 +168,14 @@ class ResolveCombatStep(GameStep):
         target_id = context.get(self.target_key)
         if not target_id:
             logger.debug("[COMBAT] No target selected. Combat cancelled.")
+            context["block_succeeded"] = False
+            return StepResult(is_finished=True)
+
+        # Target already left the board (e.g. a Trinkets disruptor defeated the
+        # defender during the reaction window). There is no combat to resolve and
+        # defeating again would double-credit the kill.
+        if BoardEntityID(str(target_id)) not in state.entity_locations:
+            logger.debug(f"[COMBAT] Target {target_id} is off-board. Combat cancelled.")
             context["block_succeeded"] = False
             return StepResult(is_finished=True)
 

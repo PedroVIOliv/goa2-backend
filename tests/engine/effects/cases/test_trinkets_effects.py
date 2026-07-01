@@ -6,17 +6,73 @@ import goa2.scripts.trinkets_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import CardState, Token, TokenType, Turret
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Token,
+    TokenType,
+    Turret,
+)
 from goa2.domain.models.effect import EffectType
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import compute_card_stats, get_computed_stat
+from goa2.engine.steps import AttackSequenceStep
 
 from ..builders import EffectScenarioBuilder, hero_card, skill_card
 from ..runner import run_card
+
+
+def _defense_card(card_id: str, *, primary: bool, value: int = 9) -> Card:
+    """A hero card usable for defense — as its PRIMARY action (primary=True) or
+    only as a SECONDARY defense on an otherwise-ATTACK card (primary=False)."""
+    if primary:
+        return Card(
+            id=card_id,
+            name=card_id.replace("_", " ").title(),
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            initiative=10,
+            primary_action=ActionType.DEFENSE,
+            primary_action_value=value,
+            secondary_actions={},
+            effect_id="filler",
+            effect_text="",
+            is_facedown=False,
+        )
+    return Card(
+        id=card_id,
+        name=card_id.replace("_", " ").title(),
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=10,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=2,
+        secondary_actions={ActionType.DEFENSE: value},
+        is_ranged=False,
+        range_value=0,
+        effect_id="filler",
+        effect_text="",
+        is_facedown=False,
+    )
+
+
+def _attack_defender(state: GameState, *, damage: int = 3, range_val: int = 3) -> None:
+    """Push a Trinkets->hero_blue attack with hero_blue pre-selected as target."""
+    state.execution_context.clear()
+    state.execution_context["victim"] = "hero_blue"
+    push_steps(
+        state,
+        [AttackSequenceStep(damage=damage, range_val=range_val, target_id_key="victim")],
+    )
+
 
 TURRET_ID = BoardEntityID("trinkets_turret")
 
@@ -704,6 +760,104 @@ def test_disruptor_jolt_ignores_enemy_outside_turret_radius() -> None:
     run.finish()
 
     assert len(blue.hand) == 1
+
+
+# -----------------------------------------------------------------------------
+# Disruptor via a DEFENSE reaction: blocking with a primary-DEFENSE card is
+# "performing a primary action", so the disruptor must fire. A secondary defense
+# is not. (Order: after the defense card is discarded, before defense text.)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.effect_flow
+def test_disruptor_pulse_triggers_on_primary_defense_block() -> None:
+    state = _disruptor_state("disruptor_pulse", enemy_hand=False)
+    _play_disruptor(state, "disruptor_pulse")
+
+    blue = state.get_hero("hero_blue")
+    assert blue is not None
+    blue.hand = [_defense_card("blue_block", primary=True), skill_card("blue_filler", "Filler")]
+
+    _attack_defender(state)
+
+    # Reaction window: block with the primary-DEFENSE card.
+    assert process_stack(state).input_request["type"] == "SELECT_CARD_OR_PASS"
+    state.execution_stack[-1].pending_input = {"selection": "blue_block"}
+
+    # Disruptor fires (after the block was discarded): forced discard prompt.
+    req = process_stack(state).input_request
+    assert req is not None and req["type"] == "SELECT_CARD"
+    state.execution_stack[-1].pending_input = {"selection": "blue_filler"}
+
+    result = process_stack(state)
+    assert result.input_request is None
+
+    # Blue blocked (def 9 vs atk 3) and survives; the disruptor took the filler
+    # and, being a discard, deactivated the effect.
+    assert BoardEntityID("hero_blue") in state.entity_locations
+    assert any(c.id == "blue_filler" for c in blue.discard_pile)
+    # A discard consumes the disruptor: the effect is removed and its card untaps.
+    assert not any(e.effect_type == EffectType.PRE_ACTION_DISCARD for e in state.active_effects)
+    disruptor_card = state.get_card_by_id("disruptor_pulse")
+    assert disruptor_card is not None and disruptor_card.is_active is False
+
+
+@pytest.mark.effect_flow
+def test_disruptor_does_not_trigger_on_secondary_defense() -> None:
+    state = _disruptor_state("disruptor_pulse", enemy_hand=False)
+    _play_disruptor(state, "disruptor_pulse")
+    effect = next(e for e in state.active_effects if e.effect_type == EffectType.PRE_ACTION_DISCARD)
+
+    blue = state.get_hero("hero_blue")
+    assert blue is not None
+    blue.hand = [_defense_card("blue_sec", primary=False), skill_card("blue_filler", "Filler")]
+
+    _attack_defender(state)
+
+    assert process_stack(state).input_request["type"] == "SELECT_CARD_OR_PASS"
+    state.execution_stack[-1].pending_input = {"selection": "blue_sec"}
+
+    # A secondary defense is not a primary action: no disruptor discard prompt.
+    result = process_stack(state)
+    assert result.input_request is None
+    assert any(c.id == "blue_filler" for c in blue.hand)
+    assert effect.is_active is True
+
+
+@pytest.mark.effect_flow
+def test_disruptor_grid_defeats_defender_whose_only_card_was_the_block() -> None:
+    state = _disruptor_state("disruptor_grid", enemy_hand=False)
+    _play_disruptor(state, "disruptor_grid")
+    effect = next(e for e in state.active_effects if e.effect_type == EffectType.PRE_ACTION_DISCARD)
+
+    trinkets = state.get_hero("hero_trinkets")
+    blue = state.get_hero("hero_blue")
+    assert trinkets is not None and blue is not None
+    gold_before = trinkets.gold
+    blue.hand = [_defense_card("blue_block", primary=True)]  # last card
+
+    _attack_defender(state)
+
+    assert process_stack(state).input_request["type"] == "SELECT_CARD_OR_PASS"
+    state.execution_stack[-1].pending_input = {"selection": "blue_block"}
+
+    # No cards left after the block -> Grid defeats. The attacker's turn is NOT
+    # aborted, and the defender is defeated exactly once (no double-defeat from
+    # the follow-up combat step).
+    result = process_stack(state)
+    assert result.input_request is None
+    assert BoardEntityID("hero_blue") not in state.entity_locations
+
+    defeated = [
+        e
+        for e in result.events
+        if e.event_type == GameEventType.UNIT_DEFEATED and e.target_id == "hero_blue"
+    ]
+    assert len(defeated) == 1
+    assert defeated[0].actor_id == "hero_trinkets"
+    assert trinkets.gold == gold_before + 1
+    # Only a discard deactivates the effect; a defeat does not.
+    assert effect.is_active is True
 
 
 # =============================================================================
