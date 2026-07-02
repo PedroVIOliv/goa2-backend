@@ -933,10 +933,19 @@ The `selection` value must be one of the valid options provided in the input req
 
 ### Skippable inputs
 
-If `can_skip` is `true` in the input request, the player can skip by submitting `null` as the selection:
+If `can_skip` is `true` in the input request, the player skips by submitting the
+literal string `"SKIP"` as the selection (**not** `null` — a null selection is
+treated as an invalid choice and the step re-requests input):
 
 ```json
-{"selection": null}
+{"selection": "SKIP"}
+```
+
+For multi-select inputs, submit the literal string `"DONE"` to finish selecting
+once the minimum number of selections has been made.
+
+```json
+{"selection": "DONE"}
 ```
 
 ### Controlled actions (Hanu — The Ultimate Trick)

@@ -16,6 +16,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Selection sentinels — the literal string values a client submits to skip or
+# finish an input request. These are part of the client contract; both the
+# engine and CLIENT_INTEGRATION_GUIDE.md must agree on them. Do NOT use `null`
+# to skip: a null selection fails the skip check and the step re-requests input.
+SKIP = "SKIP"  # Skip an optional (non-mandatory) selection.
+DONE = "DONE"  # Finish a multi-select once its minimum is satisfied.
+
 
 class InputRequestType(StrEnum):
     """All possible input request types in the game engine."""

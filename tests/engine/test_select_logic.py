@@ -96,3 +96,40 @@ def test_optional_select_skip_input(select_state):
 
     assert result.is_finished is True
     assert "selection" not in context
+
+
+def test_optional_select_null_does_not_skip(select_state):
+    """
+    Contract guard (QW1): submitting `null` must NOT skip an optional step.
+
+    The client skip sentinel is the literal string "SKIP". A `null` selection
+    is an invalid choice, so the step re-requests input rather than skipping.
+    This pins the behavior the CLIENT_INTEGRATION_GUIDE documents.
+    """
+    state, _minion = select_state
+
+    step = SelectStep(
+        target_type="UNIT",
+        prompt="Select target (Optional)",
+        is_mandatory=False,
+        filters=[UnitTypeFilter(unit_type="MINION")],
+    )
+
+    context = {}
+
+    step.pending_input = {"selection": None}
+
+    result = step.resolve(state, context)
+
+    # Re-requests input (does not skip, does not record a selection).
+    assert result.requires_input is True
+    assert result.input_request is not None
+    assert "selection" not in context
+
+
+def test_skip_sentinel_constants_match_contract():
+    """The SKIP/DONE sentinels are exactly the strings the client submits."""
+    from goa2.domain.input import DONE, SKIP
+
+    assert SKIP == "SKIP"
+    assert DONE == "DONE"

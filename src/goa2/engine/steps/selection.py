@@ -9,7 +9,13 @@ from pydantic import Field
 
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputOption, InputRequestType, create_input_request
+from goa2.domain.input import (
+    DONE,
+    SKIP,
+    InputOption,
+    InputRequestType,
+    create_input_request,
+)
 from goa2.domain.models import (
     ActionType,
     CardColor,
@@ -217,7 +223,7 @@ class SelectStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
 
-            if selection == "SKIP" and not self.is_mandatory:
+            if selection == SKIP and not self.is_mandatory:
                 logger.debug("   [SKIP] Player chose to skip optional selection.")
                 return StepResult(is_finished=True)
 
@@ -374,7 +380,7 @@ class MultiSelectStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
 
-            if selection in ("DONE", "SKIP"):
+            if selection in (DONE, SKIP):
                 # Only honor an early finish once the minimum is satisfied.
                 # A client must not under-select a mandatory minimum via DONE.
                 if len(self.selections) >= self.min_selections:
