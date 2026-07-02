@@ -60,7 +60,7 @@ If new_steps: push onto stack (reversed for LIFO order)
 
 **Key locations:**
 - `src/goa2/engine/handler.py` - Main execution loop
-- `src/goa2/engine/steps.py` - 50+ GameStep subclasses
+- `src/goa2/engine/steps/` - GameStep subclasses (package: base/cards/combat/movement/selection/utility/markers/reactions/phases/effects)
 - `src/goa2/domain/state.py` - GameState (central mutable world)
 
 ### Step Types
@@ -92,13 +92,25 @@ SelectStep(
 
 ### Card Effect Registry
 
-Hero card logic in `src/goa2/data/heroes/` and `src/goa2/engine/effects.py`:
+Hero **effect logic** (the `@register_effect` classes) lives in
+`src/goa2/scripts/<hero>_effects.py` (one file per hero). `src/goa2/data/heroes/`
+holds only the static Card/Hero **data**; `src/goa2/engine/effects.py` is just the
+`CardEffect` base class + registry. To change a hero's behavior, edit its
+`scripts/<hero>_effects.py` file.
+
+Override `build_steps` (stats are pre-computed and passed in) — not the public
+`get_steps`, which computes stats and delegates to it:
 
 ```python
+# src/goa2/scripts/arien_effects.py
 @register_effect("liquid_leap")
 class LiquidLeapEffect(CardEffect):
-    def get_steps(self, state, hero, card) -> List[GameStep]: ...
+    def build_steps(self, state, hero, card, stats) -> list[GameStep]: ...
 ```
+
+Effect modules are discovered at startup by `server/app.py:register_all_effects()`,
+which globs `scripts/*_effects.py`. Registration is an import side effect of the
+`@register_effect` decorator.
 
 ## Writing Card Effects
 
@@ -152,9 +164,9 @@ These rules protect the contract between the backend and client applications. Br
 
 2. **Never expose `GameState` directly** — always use `build_view()` from `domain/views.py` to produce player-scoped views. Clients must never see another player's facedown cards.
 
-3. **New steps need a unique `StepType`** — add the enum value to `StepType` in `domain/models/enums.py`, then add the step to the `AnyStep` union in `engine/step_types.py`. Without this, the step cannot be serialized/deserialized (persistence breaks).
+3. **New steps need a unique `StepType`** — add the enum value to `StepType` in `domain/models/enums.py` and set it as the subclass's `type` default. The `AnyStep` serialization union is **auto-derived** from `GameStep` subclasses in `engine/step_types.py` (`_registered_union`), so you do NOT hand-edit a `Union[...]`. The real footgun: a concrete step left at the default `StepType.GENERIC` is silently excluded from the union — see `__init_subclass__` guard in `engine/steps/base.py`, which now raises at import if you forget.
 
-4. **New filters need a unique `FilterType`** — add the enum value to `FilterType` in `domain/models/enums.py`, then add the filter to the `AnyFilter` union in `engine/step_types.py`.
+4. **New filters need a unique `FilterType`** — add the enum value to `FilterType` in `domain/models/enums.py` and set it as the filter's `type` default. `AnyFilter` is auto-derived the same way; no manual union edit.
 
 5. **Don't change response model shapes** without updating the client integration guide (`docs/CLIENT_INTEGRATION_GUIDE.md`). The response models in `server/models.py` are the client contract.
 
@@ -229,24 +241,24 @@ The `CLIENT_INTEGRATION_GUIDE.md` is the frontend's source of truth for the API.
 Checklist:
 
 1. Add a unique `StepType` enum value in `domain/models/enums.py`
-2. Create the step class in `engine/steps.py` with `type: StepType = StepType.YOUR_TYPE`
-3. Add the step to the `AnyStep` union in `engine/step_types.py` (import + `Annotated[YourStep, Tag(...)]`)
-4. Emit `GameEvent`s for any observable state changes (movement, combat, defeat, etc.)
-5. Use `InputRequest` (via `create_input_request()`) if the step needs player input — never return raw dicts
-6. Write tests in `tests/engine/`
+2. Create the step class in the appropriate module under the `engine/steps/` package (e.g. `combat.py`, `movement.py`) with `type: StepType = StepType.YOUR_TYPE`, and re-export it from `engine/steps/__init__.py`
+3. Emit `GameEvent`s for any observable state changes (movement, combat, defeat, etc.)
+4. Use `InputRequest` (via `create_input_request()`) if the step needs player input — never return raw dicts
+5. Write tests in `tests/engine/`
 
-If any of steps 1-3 are skipped, **persistence will break** — the step cannot be serialized/deserialized from JSON.
+The `AnyStep` serialization union is auto-derived from `GameStep` subclasses, so there is **no union to hand-edit**. Two residual footguns:
+- **Forgetting the `type` default** → it stays `StepType.GENERIC` → the step is silently dropped from the union and can't round-trip. The `__init_subclass__` guard in `engine/steps/base.py` now catches this at import.
+- **Adding a nested `list[GameStep]` / `list[FilterCondition]` field** → you must patch it into `rebuild_serialization_models()` in `engine/step_types.py` (that patch list has no completeness test yet).
 
 ## Adding New Filters
 
 Checklist:
 
 1. Add a unique `FilterType` enum value in `domain/models/enums.py`
-2. Create the filter class in `engine/filters.py` with `type: FilterType = FilterType.YOUR_TYPE`
-3. Add the filter to the `AnyFilter` union in `engine/step_types.py` (import + `Annotated[YourFilter, Tag(...)]`)
-4. Write tests in `tests/engine/`
+2. Create the filter class in the appropriate `engine/filters_*.py` module with `type: FilterType = FilterType.YOUR_TYPE`, and re-export it from the `engine/filters.py` facade
+3. Write tests in `tests/engine/`
 
-Same persistence concern applies — missing from the union means it can't round-trip through JSON.
+`AnyFilter` is auto-derived from `FilterCondition` subclasses — no union to hand-edit. Just make sure the `type` default is set (otherwise the filter is excluded from the union and can't round-trip through JSON).
 
 ## Server Changes
 
@@ -261,8 +273,8 @@ When modifying the server layer (`src/goa2/server/`):
 
 ## Common Pitfalls
 
-- **Forgetting `step_types.py` unions** — The most common cause of persistence failures. Every new `GameStep` subclass needs to be in `AnyStep`, every new `FilterCondition` subclass needs to be in `AnyFilter`.
-- **Using `StepType.GENERIC`** — Don't. Every step needs its own unique `StepType` value for the discriminated union to work.
+- **Forgetting to set `type`** — The `AnyStep`/`AnyFilter` unions are auto-derived from subclasses, but a concrete step/filter left at the default `StepType.GENERIC` is excluded from the union and silently won't round-trip. Always set the `type` default (the `__init_subclass__` guard in `engine/steps/base.py` catches steps that forget).
+- **New `BoardEntity` subtypes** — Unlike steps/filters, the `AnyMiscEntity` union in `engine/step_types.py` is still hand-maintained. Adding a new non-Unit board entity (Turret, etc.) requires adding it there or persistence/rollback breaks.
 - **Not emitting events** — Steps that change observable state (move units, resolve combat, place markers, etc.) must emit `GameEvent`s. Without events, clients can't animate or log actions.
 - **Exposing `GameState` directly** — Never send `state.model_dump()` to a client. Always go through `build_view()` to enforce visibility rules (facedown cards, etc.).
 - **Modifying `board.tiles` directly for positions** — Use `state.entity_locations` for position tracking. The tile `occupant_id` is derived from entity_locations.
@@ -282,7 +294,7 @@ src/goa2/
 │   └── views.py       # build_view() player-scoped filtering
 ├── engine/
 │   ├── handler.py     # process_stack() / process_resolution_stack() main loop
-│   ├── steps.py       # GameStep subclasses
+│   ├── steps/         # GameStep subclasses (package: base/cards/combat/movement/…)
 │   ├── step_types.py  # AnyStep/AnyFilter unions for serialization
 │   ├── filters.py     # FilterCondition system
 │   ├── session.py     # GameSession client-facing interface
@@ -303,7 +315,7 @@ src/goa2/
 ├── data/
 │   ├── heroes/        # Hero definitions + registry
 │   └── maps/          # JSON map files
-├── scripts/           # Scripts for effects for hero effects
+├── scripts/           # Hero effect logic — @register_effect classes (<hero>_effects.py)
 ```
 
 ## Testing
