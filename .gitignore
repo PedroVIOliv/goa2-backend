@@ -37,6 +37,9 @@ data/games/
 # Replay logs (created during testing)
 data/replays/
 
+# Bug reports (created during testing / live servers)
+data/bug_reports/
+
 extracted_assets/images
 Guards of Atlantis II - 2nd Printing_web-2.pdf
 .gitignore

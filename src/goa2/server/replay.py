@@ -347,14 +347,21 @@ def cleanup_old_replays(replay_dir: str | None = None, ttl_days: int | None = No
 
     Independent of the game-save cleanup: a finished/removed game's replay is
     retained for the full TTL so bugs reported later can still be investigated.
+    Replays referenced by an *open* bug report are pinned and never deleted;
+    resolving or deleting the report releases the pin.
     """
+    from goa2.server.bug_reports import open_report_game_ids
+
     directory = Path(replay_dir or _replay_dir())
     if not directory.is_dir():
         return 0
     ttl = (ttl_days if ttl_days is not None else _replay_ttl_days()) * 86400
     now = time.time()
+    pinned = open_report_game_ids()
     removed = 0
     for f in directory.glob("*.jsonl"):
+        if f.stem in pinned:
+            continue
         try:
             if now - f.stat().st_mtime > ttl:
                 f.unlink()

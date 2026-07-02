@@ -285,6 +285,57 @@ Give gold to a hero (cheats must be enabled and game must be in PLANNING phase).
 - `404` — Hero not found
 - `400` — Amount is not a positive integer
 
+### `POST /games/{game_id}/bug-reports`
+
+Submit a bug report for this game. The server links the report to the game's
+replay log by recording the current decision index — the exact replay moment
+the report was filed — so nothing about the game position is sent by (or
+trusted from) the client.
+
+**Auth:** any of the game's tokens (player or spectator).
+
+**Request body:**
+
+```json
+{
+  "title": "Arien Silver did not block skill",
+  "description": "I played Sting and it let me hit a hero behind an obstacle."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Short summary, 1–120 characters after trimming (required) |
+| `description` | string | Details, up to 4000 characters (optional, may be empty) |
+
+**Response:** `201 Created`
+
+```json
+{
+  "id": "br_1a2b3c4d",
+  "game_id": "abc123",
+  "title": "Arien Silver did not block skill",
+  "description": "I played Sting and it let me hit a hero behind an obstacle.",
+  "reporter_hero": "hero_wasp",
+  "decision_index": 42,
+  "round": 3,
+  "turn": 2,
+  "status": "open",
+  "created_at": 1751470000.0,
+  "resolved_at": null
+}
+```
+
+`reporter_hero` is `null` when submitted with the spectator token.
+`decision_index` is `null` in the unlikely case the replay log is missing.
+
+**Error conditions:**
+- `401` — Missing/invalid token
+- `403` — Token belongs to a different game
+- `404` — Game not found
+- `422` — Title empty or too long, or description too long
+- `429` — Report limit for this game reached (10)
+
 ### ActionResultResponse shape
 
 All mutation endpoints return this shape:

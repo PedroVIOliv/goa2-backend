@@ -25,6 +25,7 @@ from goa2.server.errors import (
     NotYourTurnError,
 )
 from goa2.server.registry import GameRegistry
+from goa2.server.routes_bug_reports import public_router as bug_reports_router
 from goa2.server.routes_draft import router as draft_router
 from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
@@ -90,18 +91,22 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(heroes_router)
     app.include_router(games_router)
+    app.include_router(bug_reports_router)
     app.include_router(draft_router)
     app.include_router(ws_router)
     app.include_router(draft_ws_router)
 
-    # Replay-debugger router (omniscient view): only mounted when explicitly
-    # enabled, so reveal-all data is never reachable from a default/production
-    # server. See routes_replays for the full rationale.
-    from goa2.server.routes_replays import replay_api_enabled
+    # Admin routers (replay debugger's omniscient view + bug-report triage):
+    # only mounted when the dev flag or an admin token is configured, so
+    # reveal-all data is never reachable from a default server. With only the
+    # token configured, every request is bearer-authenticated (server/admin.py).
+    from goa2.server.admin import admin_api_enabled
+    from goa2.server.routes_bug_reports import admin_router as bug_reports_admin_router
     from goa2.server.routes_replays import router as replays_router
 
-    if replay_api_enabled():
+    if admin_api_enabled():
         app.include_router(replays_router)
+        app.include_router(bug_reports_admin_router)
 
     # CORS
     allowed_origins = os.environ.get("GOA2_CORS_ORIGINS", "").split(",")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 # -- Requests --
 
@@ -29,6 +29,29 @@ class SubmitInputRequest(BaseModel):
 class GiveGoldRequest(BaseModel):
     hero_id: str
     amount: int
+
+
+class SubmitBugReportRequest(BaseModel):
+    title: str
+    description: str = ""
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("title must not be empty")
+        if len(v) > 120:
+            raise ValueError("title must be at most 120 characters")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def _validate_description(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > 4000:
+            raise ValueError("description must be at most 4000 characters")
+        return v
 
 
 # -- Responses --
@@ -68,6 +91,20 @@ class ActionResultResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class BugReportResponse(BaseModel):
+    id: str
+    game_id: str
+    title: str
+    description: str
+    reporter_hero: str | None
+    decision_index: int | None
+    round: int
+    turn: int
+    status: str
+    created_at: float
+    resolved_at: float | None
 
 
 # -- Draft requests --

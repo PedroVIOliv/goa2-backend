@@ -5,25 +5,26 @@ serve an omniscient view (`build_view(reveal_all=True)`) so a developer can step
 through a game decision-by-decision to investigate a bug. They never touch the
 live games in the registry.
 
-SECURITY: because the view reveals every hand and facedown card, this router is
-only registered when the `GOA2_REPLAY_API` env flag is truthy (see
-server/app.py). When unset — the default, including production — the endpoints
-simply do not exist (404), so omniscient data can never be served from a
-deployed server. The flag is the *only* gate; no request value reaches
-`reveal_all`, which is hard-coded `True` here.
+SECURITY: because the view reveals every hand and facedown card, this router
+is only registered when admin access is configured (see server/admin.py and
+server/app.py): either the `GOA2_REPLAY_API` dev flag (no auth) or a
+`GOA2_ADMIN_TOKEN` (bearer auth on every request, enforced by the router-level
+`require_admin` dependency). When neither is set — the default — the endpoints
+simply do not exist (404). No request value ever reaches `reveal_all`, which
+is hard-coded `True` here.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from goa2.domain.views import build_view
+from goa2.server.admin import replay_api_enabled, require_admin
 from goa2.server.replay import (
     ReplayCursor,
     _replay_dir,
@@ -31,12 +32,9 @@ from goa2.server.replay import (
     load_replay,
 )
 
-router = APIRouter(prefix="/replays", tags=["replays"])
+__all__ = ["replay_api_enabled", "router"]
 
-
-def replay_api_enabled() -> bool:
-    """True when GOA2_REPLAY_API is set to a truthy value."""
-    return os.environ.get("GOA2_REPLAY_API", "").strip().lower() in ("1", "true", "yes", "on")
+router = APIRouter(prefix="/replays", tags=["replays"], dependencies=[Depends(require_admin)])
 
 
 # Tiny in-process LRU of reconstructed cursors. This is a single-user dev tool,
