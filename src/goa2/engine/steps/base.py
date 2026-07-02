@@ -38,6 +38,26 @@ class GameStep(BaseModel):
     active_if_key: str | None = None
     skip_if_key: str | None = None
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Fail loudly if a step subclass forgets to set a unique `type`.
+
+        The `AnyStep` serialization union is auto-derived from `GameStep`
+        subclasses but excludes `StepType.GENERIC`. A concrete step left at the
+        default GENERIC would run fine yet silently drop out of the union, so it
+        could never round-trip through JSON (persistence breaks). Turn that
+        silent failure into a loud import-time error.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        if cls.model_fields["type"].default == StepType.GENERIC:
+            raise TypeError(
+                f"{cls.__name__} must set a unique `type: StepType = StepType.X` "
+                f"default. Leaving it StepType.GENERIC excludes the step from the "
+                f"serialization union, so it cannot round-trip through JSON "
+                f"(persistence will silently break). Add a StepType enum value in "
+                f"domain/models/enums.py and set it as this class's `type` default."
+            )
+
     def should_skip(self, context: dict[str, Any]) -> bool:
         """Checks if the step should be skipped based on active_if_key or skip_if_key."""
         if self.active_if_key:

@@ -158,6 +158,20 @@ def test_all_step_classes_importable_from_package_root():
         assert issubclass(cls, GameStep), f"{name} is not a GameStep subclass"
 
 
+def test_generic_step_subclass_raises_at_definition():
+    """A concrete step that forgets to set `type` (stays GENERIC) must fail loudly.
+
+    Guards against silently dropping the step from the auto-derived AnyStep union
+    (which would break JSON round-trips). Enforced by GameStep.__pydantic_init_subclass__.
+    """
+    import pytest
+
+    with pytest.raises(TypeError, match=r"StepType\.GENERIC"):
+
+        class _ForgotToSetType(GameStep):
+            pass
+
+
 def test_key_non_step_exports():
     """Key non-step exports remain importable from goa2.engine.steps."""
     from goa2.engine.steps import GameStep, StepResult, apply_hero_upgrade
