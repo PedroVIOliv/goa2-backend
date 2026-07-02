@@ -76,6 +76,7 @@ Register `hero_razzle_2..4` as real `Hero` entries sharing hand/deck lists by re
 2. **Enemy target lock** — when a combat target key resolves to a proxy piece, swap and rewrite the context key to the hero ID. Hook at the top of `ReactionWindowStep.resolve()` (single choke point for all attack paths). Emergent correctness: "repeat, targeting a different unit" exclusion lists contain `hero_razzle` after the first attack, while the other pieces keep distinct proxy IDs — so attacking a *second* piece stays legal, exactly per the ruling.
 3. **Defeat cascade** — `DefeatUnitStep`: if the victim is a proxy piece (non-combat defeat paths: terrain crash during a push, disruptor defeats), swap first so the hero-defeat path runs normally; after any hero defeat where the hero owns pieces, remove all proxies. Kill rewards granted once (they key off the hero, unchanged).
 4. **Piece removal (not defeat)** — new `RemoveHeroPieceStep`: removing the anchor while proxies survive → swap anchor to a survivor first, then remove the proxy. Remove-all (Into Thin Air) → remove anchor + proxies with no defeat; existing off-board handling already covers the aftermath (`ResolveCardStep` skips actions for off-board heroes, `cards.py:615`; `RespawnHeroStep` respawns any off-board hero at round respawn).
+5. **Stable-binding rule (swap-away)** — a persistent by-ID binding (delayed trigger baking a unit ID, POINT-scope `ActiveEffect`, remove-then-return effect) must never attach to the **anchor** while proxies exist, because the anchor is the one ID whose physical referent changes across swaps. At binding-attach time, if the bound unit is the anchor and proxies survive, first `swap_anchor` **away** to a proxy so the binding lands on a stable proxy ID. Piece indistinguishability makes this swap free too. See §8 for the full analysis.
 
 ### 4.5 Spawn & supply
 
@@ -151,8 +152,40 @@ TDD throughout (`tests/engine/effects/` helpers, `effect_contract`/`effect_flow`
 9. Acting-piece prompt appears only with ≥2 pieces; chosen piece performs the action (adjacency checks from its hex).
 10. Minion battle / support counting includes pieces.
 11. Marker placed via a proxy piece attaches to the hero (`get_markers_on_hero` finds it; penalty applies to Razzle's turn).
+12. Stable-binding rule: a persistent by-ID binding attaching to the anchor while proxies exist triggers swap-away; end-to-end guard test using Hanu's journey against a Razzle piece, then Razzle acts with a different piece, then the end-of-turn swap-back returns the correct physical piece.
 
-## 8. Estimated footprint
+## 8. Adversarial stress test of the anchor swap
+
+Interaction classes checked against the current codebase.
+
+### Safe under the design as specified
+
+| Situation | Why it works |
+|---|---|
+| One AoE effect hits 2+ pieces (push/discard each) | Steps resolve sequentially on the LIFO stack; each piece is handled as an independent unit |
+| Attack piece A, then "repeat targeting a different unit" vs piece B | After attack 1, A holds the anchor ID; B keeps its distinct proxy ID → exclusion list (`hero_razzle`) doesn't block B. Emergent, but must be pinned by a test |
+| Defense effect computes radius at the attacked piece (Crowd Control) | Target-lock swap makes the attacked piece the anchor before defense text resolves |
+| Non-combat defeat of a proxy (pushed into terrain, disruptor) | `DefeatUnitStep` proxy reroute: swap first, then normal hero-defeat path + cascade |
+| Stat debuffs / buffs "on the hero" | Razzle has one stat sheet (cards + items + hero-keyed modifiers); hero-level by construction |
+| Markers | Hero-level per ruling (§5.1) |
+| Rollback / persistence / replay | Swaps are ordinary `entity_locations` state; snapshots capture them |
+| Remove-all then acting/respawn | Existing off-board handling (`cards.py:615`, `RespawnHeroStep`) |
+| Two simultaneous defenses | Impossible — attacks resolve one at a time |
+
+### Real residual risks and their mitigations
+
+1. **Persistent by-ID positional bindings** — the one genuinely dangerous class. Concrete instance today: Hanu's journey line — `ScheduleJourneyReturnStep` *bakes both hero IDs as literals* into end-of-turn finishing steps (`steps/effects.py:181`), and POINT-scope `ActiveEffect.source_id` binds by unit ID. If such a binding attaches to the anchor and a later swap moves the anchor, the binding's literal now denotes a *different physical piece* (observable bug: wrong piece swapped back at end of turn).
+   **Mitigation:** the stable-binding rule (§4.4.5). Note the window is already narrow: only *attacks* trigger swap-to-anchor, so non-attack targeting (journey's swap is not an attack) binds proxies' stable IDs directly; the rule only has to fire when the binding target happens to *be* the anchor.
+   **Maintenance tax:** every future effect that bakes a unit ID into a delayed trigger or persistent effect needs a one-line check ("could this attach to a multi-piece anchor?"). Add this to `docs/card_effects_guidelines.md`.
+2. **API observability of swaps** — the physical game can't see swaps, but an API client diffing successive `STATE_UPDATE` views sees two same-owner units exchange positions (ID teleport). Not a rules bug; an animation glitch.
+   **Mitigation:** clients animate from `GameEvent`s (per the client contract), and swaps emit **no** movement events; add a client-guide rule: "pieces of the same `owner_hero_id` are visually interchangeable — never animate position changes that are not backed by movement events."
+3. **Cross-turn "same target" trackers** (hypothetical: "mark the unit you attacked; +1 vs it next turn") — after target-lock swaps, a stored `hero_razzle` matches whichever piece was most recently promoted, arguably over- or under-matching "the same unit." **No such effect exists in the codebase today.** Flag as a review item in the guidelines for future heroes; the ruling for it is genuinely open even in the physical game (pieces are distinguishable by position but not identity).
+
+### Fallback if the maintenance tax proves unacceptable
+
+The escape hatch is not full Approach B; it is a **B-lite**: drop the target-lock swap on the defense path and instead resolve piece→hero at the hero-state choke points (`get_hero`, stats, markers, defeat) plus normalize `player_id` in input routing (`server/errors.py:validate_input_turn`, ws auth) so a defense prompt addressed to a piece reaches the Razzle player's token. That keeps bindings on stable proxy IDs *everywhere* and shrinks anchor instability to the acting-piece choice only — at the cost of auditing the input-routing surface (~103 `player_id` sites, though the fix concentrates in 2–3 routing helpers). Anchor swap's hooks are a strict subset of B-lite's, so migrating later loses no work.
+
+## 9. Estimated footprint
 
 - **New:** `engine/hero_pieces.py`, `HeroPiece` model, 2–3 new steps + StepTypes, 1 new filter + FilterType, `scripts/razzle_effects.py` (3 validation cards), tests.
 - **Modified:** `state.py` (`get_unit`/`get_hero`/`place_marker`), `steps/reactions.py` (target-lock hook), `steps/combat.py` (defeat cascade + battle counting), `steps/cards.py` (acting-piece hook), `domain/views.py`, `engine/step_types.py` (AnyMiscEntity), `docs/CLIENT_INTEGRATION_GUIDE.md`.
