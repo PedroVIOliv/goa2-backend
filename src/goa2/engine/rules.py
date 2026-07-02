@@ -202,7 +202,10 @@ def is_immune(target: Unit, state: GameState) -> bool:
                 if loc in zone.hexes:
                     return True
 
-    # Check IMMUNITY_ENEMY_ACTIONS effects (e.g., Death Seeker)
+    # Check IMMUNITY_ENEMY_ACTIONS effects. By default these block only the
+    # opposing team (e.g. Death Seeker). An effect with blocks_friendly_actors
+    # (Hanu's Journey line) grants full heavy-style immunity — the target's own
+    # allies cannot affect it either. You are never immune to your own actions.
     from goa2.domain.models.effect import EffectType
 
     actor_id = state.current_actor_id
@@ -210,13 +213,17 @@ def is_immune(target: Unit, state: GameState) -> bool:
         actor = state.get_entity(actor_id)
         target_team = getattr(target, "team", None)
         actor_team = getattr(actor, "team", None) if actor else None
-        if target_team is not None and actor_team is not None and target_team != actor_team:
+        is_self = str(actor_id) == str(target.id)
+        if not is_self and target_team is not None and actor_team is not None:
+            is_enemy_actor = target_team != actor_team
             for effect in state.active_effects:
                 if effect.effect_type != EffectType.IMMUNITY_ENEMY_ACTIONS:
                     continue
                 if not effect.is_active:
                     continue
-                if effect.source_id == str(target.id):
+                if effect.source_id != str(target.id):
+                    continue
+                if is_enemy_actor or effect.blocks_friendly_actors:
                     return True
 
     return False

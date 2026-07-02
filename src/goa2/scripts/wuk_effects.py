@@ -380,18 +380,27 @@ class AbundanceEffect(CardEffect):
 # targets] — Target a hero adjacent to you. / Target a unit in range adjacent
 # to a Tree token." Ranged ATTACK cards.
 # ---------------------------------------------------------------------------
-def _nw_mode1_select(output_key: str, *, mandatory: bool, active_if_key: str | None) -> SelectStep:
+def _nw_mode1_select(
+    output_key: str,
+    *,
+    mandatory: bool,
+    active_if_key: str | None,
+    exclude_keys: list[str] | None = None,
+) -> SelectStep:
+    filters: list = [
+        UnitTypeFilter(unit_type="HERO"),
+        TeamFilter(relation="ENEMY"),
+        RangeFilter(max_range=1),
+    ]
+    if exclude_keys:
+        filters.append(ExcludeIdentityFilter(exclude_keys=exclude_keys))
     return SelectStep(
         target_type=TargetType.UNIT,
         prompt="Target an adjacent enemy hero",
         output_key=output_key,
         is_mandatory=mandatory,
         active_if_key=active_if_key,
-        filters=[
-            UnitTypeFilter(unit_type="HERO"),
-            TeamFilter(relation="ENEMY"),
-            RangeFilter(max_range=1),
-        ],
+        filters=filters,
     )
 
 
@@ -471,7 +480,11 @@ class NaturesGuardianEffect(_NatureWeaponEffect):
 
 @register_effect("natures_champion")
 class NaturesChampionEffect(CardEffect):
-    """Choose one, or both, on different targets."""
+    """Choose one, or both, on different targets — in either order.
+
+    The player first picks which mode to resolve first, then each attack is
+    offered optionally (different targets enforced via ExcludeIdentityFilter),
+    so either mode's board effects can land first."""
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
@@ -479,16 +492,51 @@ class NaturesChampionEffect(CardEffect):
         damage = stats.primary_value
         range_val = stats.range
         return [
-            _nw_mode1_select("champ_target1", mandatory=False, active_if_key=None),
-            _nw_attack("champ_target1", damage, 1),
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose which attack to resolve first",
+                output_key="champ_order",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Adjacent enemy hero first",
+                    2: "Unit in range adjacent to a Tree token first",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key="champ_order", operator="==", threshold=1, output_key="champ_hero_first"
+            ),
+            CheckContextConditionStep(
+                input_key="champ_order", operator="==", threshold=2, output_key="champ_tree_first"
+            ),
+            # PATH hero first: mode 1 then mode 2 (different target). Uses
+            # path-local keys so the other path's attacks (which gate on their
+            # own target keys) never fire here.
+            _nw_mode1_select("champ_h1", mandatory=False, active_if_key="champ_hero_first"),
+            _nw_attack("champ_h1", damage, 1),
             _nw_mode2_select(
-                "champ_target2",
+                "champ_h2",
                 range_val,
                 mandatory=False,
-                active_if_key=None,
-                exclude_keys=["champ_target1"],
+                active_if_key="champ_hero_first",
+                exclude_keys=["champ_h1"],
             ),
-            _nw_attack("champ_target2", damage, range_val),
+            _nw_attack("champ_h2", damage, range_val),
+            # PATH tree first: mode 2 then mode 1 (different target).
+            _nw_mode2_select(
+                "champ_t2",
+                range_val,
+                mandatory=False,
+                active_if_key="champ_tree_first",
+            ),
+            _nw_attack("champ_t2", damage, range_val),
+            _nw_mode1_select(
+                "champ_t1",
+                mandatory=False,
+                active_if_key="champ_tree_first",
+                exclude_keys=["champ_t2"],
+            ),
+            _nw_attack("champ_t1", damage, 1),
         ]
 
 

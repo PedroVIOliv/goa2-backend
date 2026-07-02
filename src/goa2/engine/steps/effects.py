@@ -19,7 +19,7 @@ from goa2.domain.models import (
     StepType,
     TeamColor,
 )
-from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType
+from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType, Shape
 from goa2.domain.models.enums import DisplacementType, StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
@@ -160,6 +160,164 @@ class CreateEffectStep(GameStep):
                     metadata={
                         "effect_type": self.effect_type.value,
                         "duration": self.duration.value,
+                    },
+                )
+            ],
+        )
+
+
+class ScheduleJourneyReturnStep(GameStep):
+    """Hanu's Journey line (Unexpected Journey / There and Back Again / Safe
+    Travels). After Hanu swaps with an enemy hero, this step:
+
+    1. Makes that displaced hero immune (heavy-style, ``IMMUNITY_ENEMY_ACTIONS``)
+       to Hanu's team for the rest of the turn.
+    2. Schedules an end-of-turn forced swap-back (``DELAYED_TRIGGER`` whose
+       ``finishing_steps`` swap the two heroes back). ``SwapUnitsStep`` ignores
+       range and immunity, matching "regardless of radius and immunity".
+    3. For Safe Travels (``move_after``), appends an optional 1-space move after
+       the swap-back.
+
+    Both hero ids are baked into the finishing steps as literals so the
+    end-of-turn payload does not depend on the (by-then cleared) turn context.
+    """
+
+    type: StepType = StepType.SCHEDULE_JOURNEY_RETURN
+    enemy_key: str
+    move_after: bool = False
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        enemy_id = context.get(self.enemy_key)
+        actor_id = str(state.current_actor_id) if state.current_actor_id else None
+        if not enemy_id or not actor_id:
+            return StepResult(is_finished=True)
+        enemy_id = str(enemy_id)
+
+        from goa2.engine.steps.movement import MoveUnitStep, SwapUnitsStep
+
+        # (1) Displaced hero becomes immune to EVERYONE this turn (heavy-style):
+        # blocks_friendly_actors so even its own allies cannot affect it.
+        EffectManager.create_effect(
+            state=state,
+            source_id=enemy_id,
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            blocks_friendly_actors=True,
+        )
+
+        # (2) End-of-turn forced swap-back (regardless of range and immunity).
+        finishing: list[GameStep] = [SwapUnitsStep(unit_a_id=actor_id, unit_b_id=enemy_id)]
+        # (3) Safe Travels: optional 1-space move after the swap-back.
+        if self.move_after:
+            from goa2.domain.models import TargetType
+            from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter
+            from goa2.engine.steps.selection import SelectStep
+
+            finishing.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="You may move 1 space",
+                        output_key="journey_move_dest",
+                        is_mandatory=False,
+                        filters=[
+                            MovementPathFilter(range_val=1, unit_id=actor_id),
+                            ObstacleFilter(is_obstacle=False),
+                        ],
+                    ),
+                    MoveUnitStep(
+                        unit_id=actor_id,
+                        destination_key="journey_move_dest",
+                        range_val=1,
+                        is_movement_action=False,
+                        active_if_key="journey_move_dest",
+                    ),
+                ]
+            )
+
+        EffectManager.create_effect(
+            state=state,
+            source_id=actor_id,
+            effect_type=EffectType.DELAYED_TRIGGER,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            finishing_steps=finishing,
+        )
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.EFFECT_CREATED,
+                    actor_id=actor_id,
+                    target_id=enemy_id,
+                    metadata={"effect_type": EffectType.IMMUNITY_ENEMY_ACTIONS.value},
+                )
+            ],
+        )
+
+
+class ScheduleActionControlStep(GameStep):
+    """Hanu's ultimate (The Ultimate Trick): after Hurry Up! targets a hero,
+    record a CONTROL_NEXT_ACTION effect so that when that hero acts to resolve
+    the targeted card, every input addressed to them is answered by Hanu's
+    player instead (player_id remap in the handler). Only the decision-maker
+    changes — the actor, and therefore all legality, remains the controlled
+    hero. No-ops unless the acting hero's ultimate is unlocked (level >= 8
+    with an ultimate card). Control fizzles if the card leaves UNRESOLVED any
+    other way (controlled_card_id guard) or the round ends (THIS_ROUND)."""
+
+    type: StepType = StepType.SCHEDULE_ACTION_CONTROL
+    hero_key: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        if state.current_actor_id is None:
+            return StepResult(is_finished=True)
+        actor_id = str(state.current_actor_id)
+        actor = state.get_hero(HeroID(actor_id))
+        if not actor or actor.level < 8 or not actor.ultimate_card:
+            return StepResult(is_finished=True)
+
+        target_id = context.get(self.hero_key)
+        if not target_id:
+            return StepResult(is_finished=True)
+        target = state.get_hero(HeroID(str(target_id)))
+        if not target or target.current_turn_card is None:
+            return StepResult(is_finished=True)
+        card = target.current_turn_card
+        if card.state != CardState.UNRESOLVED:
+            return StepResult(is_finished=True)
+
+        EffectManager.create_effect(
+            state=state,
+            source_id=actor_id,
+            effect_type=EffectType.CONTROL_NEXT_ACTION,
+            scope=EffectScope(shape=Shape.POINT, origin_id=str(target_id)),
+            duration=DurationType.THIS_ROUND,
+            is_active=True,
+            controlled_card_id=card.id,
+        )
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.EFFECT_CREATED,
+                    actor_id=actor_id,
+                    target_id=str(target_id),
+                    metadata={
+                        "effect": "action_control",
+                        "controller_id": actor_id,
+                        "card_id": card.id,
                     },
                 )
             ],

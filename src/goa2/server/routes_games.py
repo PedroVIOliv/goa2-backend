@@ -282,7 +282,9 @@ async def rollback_action(
         session = game.session
         if session.state.current_actor_id is None:
             raise HTTPException(status_code=400, detail="No active resolution to rollback")
-        if str(session.state.current_actor_id) != player.hero_id:
+        # Authorize against whoever the pending input is addressed to — under
+        # Hanu's ultimate that is the controller, not the controlled actor.
+        if game.current_responder != player.hero_id:
             raise HTTPException(status_code=403, detail="Only the current actor can rollback")
         rec_round, rec_turn = session.state.round, session.state.turn
         try:

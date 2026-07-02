@@ -248,7 +248,7 @@ Advance the game state without submitting input. Used when the engine needs to c
 
 ### `POST /games/{game_id}/rollback`
 
-Rollback the current actor's resolution to the action choice step. Only the current actor can rollback, and only when `can_rollback` is `true` on the current `InputRequest`.
+Rollback the current actor's resolution to the action choice step. Only the player the current `InputRequest` is addressed to (its `player_id`) can rollback, and only when `can_rollback` is `true`. This is normally the current actor; under Hanu's ultimate (action control) the action's inputs are remapped to the controller, so the controller — not the controlled hero — owns the rollback.
 
 **Request body:** empty
 
@@ -256,7 +256,7 @@ Rollback the current actor's resolution to the action choice step. Only the curr
 
 **Error conditions:**
 - `400` — No active resolution or no rollback snapshot available
-- `403` — Not the current actor, or spectator token used
+- `403` — Not the player the current input is addressed to, or spectator token used
 
 **When rollback is disabled:** If another player was prompted during the current actor's resolution (e.g., for defense card selection), rollback is permanently disabled for that resolution. The `can_rollback` field on `InputRequest` will be `false`.
 
@@ -376,7 +376,7 @@ Request a fresh state update (available to both players and spectators):
 
 #### `ROLLBACK`
 
-Rollback the current actor's resolution to the action choice. Only the current actor can send this, and only when `can_rollback` is `true` on the current input request.
+Rollback the current actor's resolution to the action choice. Only the player the current input request is addressed to (its `player_id`) can send this, and only when `can_rollback` is `true`. Under Hanu's ultimate (action control) that is the controller, not the controlled hero.
 
 ```json
 {
@@ -888,11 +888,32 @@ If `can_skip` is `true` in the input request, the player can skip by submitting 
 {"selection": null}
 ```
 
+### Controlled actions (Hanu — The Ultimate Trick)
+
+When Hanu's ultimate is active and Hurry Up! targeted a hero, that hero's next
+action is decided by Hanu's player. During such an action, input requests for
+the acting hero carry:
+
+- `player_id`: the **controller's** hero id (e.g. `hero_hanu`) — this player
+  must answer, and only their token is accepted.
+- `controlled_hero_id`: the hero whose action is being performed.
+
+Everything else is unchanged: options are computed relative to the controlled
+hero (the controller can only pick choices that hero could legally make), and
+requests addressed to other players (defenders, team choices) are unaffected.
+Clients should render prompts as "*controller* is controlling *hero*" when
+`controlled_hero_id` is present. This field only appears during controlled
+actions; the change is additive. An `EFFECT_CREATED` event with
+`metadata.effect = "action_control"` announces the control when Hurry Up!
+resolves.
+
 ### Rollback
 
 If `can_rollback` is `true` in the input request, the client should show a rollback button. When clicked, send a `POST /games/{game_id}/rollback` request (REST) or a `{"type": "ROLLBACK"}` message (WebSocket). This restores the game state to the action choice moment so the player can choose a different action.
 
 Rollback is automatically disabled when another player is prompted during the current actor's turn (e.g., defense card selection). This prevents abuse of information gained from opponent choices. When rollback is disabled, the confirmation step at the end of resolution is also skipped.
+
+Under action control (Hanu's ultimate), a control remap does **not** disable rollback: because the controlled action's inputs are addressed to the controller, `can_rollback` is offered to the controller, who owns the confirm/rollback for that action. The controlled hero cannot rollback it.
 
 ### Defense card context
 

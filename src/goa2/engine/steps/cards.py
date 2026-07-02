@@ -32,6 +32,85 @@ from goa2.engine.steps.base import GameStep, StepResult
 logger = logging.getLogger(__name__)
 
 
+class SetCardInitiativeStep(GameStep):
+    """Hanu's Hurry Up!: set the printed Initiative of a target hero's unresolved
+    current_turn_card to ``value`` (11), overriding only the BASE value so items
+    and other Initiative modifiers still stack via ``get_computed_stat``. Records
+    the original and schedules an end-of-turn restore (THIS_TURN DELAYED_TRIGGER)
+    so the printed value returns "once it is resolved or otherwise changes
+    state".
+    """
+
+    type: StepType = StepType.SET_CARD_INITIATIVE
+    hero_key: str
+    value: int = 11
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        hero_id = context.get(self.hero_key)
+        if not hero_id:
+            return StepResult(is_finished=True)
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if not hero or hero.current_turn_card is None:
+            return StepResult(is_finished=True)
+
+        card = hero.current_turn_card
+        if card.state != CardState.UNRESOLVED:
+            return StepResult(is_finished=True)
+
+        original = card.initiative
+        card.initiative = self.value
+
+        from goa2.domain.models import DurationType
+        from goa2.domain.models.effect import EffectScope, EffectType, Shape
+        from goa2.engine.effect_manager import EffectManager
+
+        EffectManager.create_effect(
+            state=state,
+            source_id=str(state.current_actor_id) if state.current_actor_id else "system",
+            effect_type=EffectType.DELAYED_TRIGGER,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            finishing_steps=[
+                RestoreCardInitiativeStep(card_id=card.id, original_initiative=original)
+            ],
+        )
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.EFFECT_CREATED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(hero_id),
+                    metadata={
+                        "effect": "initiative_override",
+                        "card_id": card.id,
+                        "value": self.value,
+                    },
+                )
+            ],
+        )
+
+
+class RestoreCardInitiativeStep(GameStep):
+    """Restores a card's printed Initiative to its original value (end-of-turn
+    payload scheduled by ``SetCardInitiativeStep``)."""
+
+    type: StepType = StepType.RESTORE_CARD_INITIATIVE
+    card_id: str
+    original_initiative: int
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        card = state.get_card_by_id(self.card_id)
+        if card is not None:
+            card.initiative = self.original_initiative
+        return StepResult(is_finished=True)
+
+
 class DiscardCardStep(GameStep):
     """
     Forces a specific card to be discarded.

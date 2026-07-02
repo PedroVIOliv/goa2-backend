@@ -16,8 +16,10 @@ from goa2.engine.steps.cards import (  # noqa: F401
     ResolveCardTextStep,
     ResolvePreActionDiscardStep,
     ResolveUpgradesStep,
+    RestoreCardInitiativeStep,
     RetrieveCardStep,
     RoundResetStep,
+    SetCardInitiativeStep,
     StealCoinsStep,
     SwapCardStep,
     apply_hero_upgrade,
@@ -45,6 +47,8 @@ from goa2.engine.steps.effects import (  # noqa: F401
     FinishedExpiringEffectStep,
     MarkPassiveUsedStep,
     OfferPassiveStep,
+    ScheduleActionControlStep,
+    ScheduleJourneyReturnStep,
 )
 from goa2.engine.steps.markers import (  # noqa: F401
     MoveTokenStep,

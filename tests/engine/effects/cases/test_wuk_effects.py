@@ -356,11 +356,39 @@ def test_natures_champion_attacks_both_targets() -> None:
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)  # hero first
     # mode 1: adjacent hero (optional)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
     run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
     # mode 2: unit in range adjacent to tree (different target)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("victim")
+    run.finish()
+
+    assert state.entity_locations.get("victim") is None  # 6 dmg defeats value-2 minion
+    combat = [e for e in run.events if e.event_type.value == "COMBAT_RESOLVED"]
+    assert len(combat) >= 2
+
+
+@pytest.mark.effect_flow
+def test_natures_champion_can_attack_tree_unit_before_hero() -> None:
+    """ "In any order": the tree-anchored attack (mode 2) may resolve before the
+    adjacent-hero attack (mode 1)."""
+    state = (
+        _wuk_at_origin("natures_champion")
+        .blue_hero("enemy", at=(1, 0, -1))
+        .blue_minion("victim", at=(2, 0, -2))
+        .build()
+    )
+    _add_tree(state, "tree_1", Hex(q=3, r=0, s=-3))  # adjacent to victim
+
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)  # tree unit first
+    # mode 2: unit in range adjacent to tree
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("victim")
+    # mode 1: adjacent enemy hero (different target)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
     run.finish()
 
     assert state.entity_locations.get("victim") is None  # 6 dmg defeats value-2 minion

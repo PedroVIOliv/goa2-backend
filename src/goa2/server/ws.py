@@ -189,8 +189,11 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     session = game.session
     if session.state.current_actor_id is None:
         raise NotYourTurnError(hero_id, "(no active actor)")
-    if str(session.state.current_actor_id) != hero_id:
-        raise NotYourTurnError(hero_id, str(session.state.current_actor_id))
+    # Authorize against whoever the pending input is addressed to — under Hanu's
+    # ultimate that is the controller, not the controlled actor.
+    responder = game.current_responder
+    if responder != hero_id:
+        raise NotYourTurnError(hero_id, responder or "(no active actor)")
     rec_round, rec_turn = session.state.round, session.state.turn
     result = session.rollback()
     if game.replay_recorder:

@@ -1198,6 +1198,10 @@ class CoDirectionalDragStep(GameStep):
     anchor_dest_key: str = "anchor_dest"
     partner_dest_key: str = "co_drag_partner_dest"
     ignore_path_obstacles: bool = False
+    # When True the anchor is a token (default, e.g. Widget's Pyro). When False
+    # the anchor is a unit and is moved with a MoveUnitStep (e.g. Hanu's This
+    # Way!, where Hanu drags himself and a friendly hero co-directionally).
+    anchor_is_token: bool = True
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1221,14 +1225,24 @@ class CoDirectionalDragStep(GameStep):
 
         context[self.partner_dest_key] = partner_dest
 
-        from goa2.engine.steps.markers import MoveTokenStep
+        anchor_move: GameStep
+        if self.anchor_is_token:
+            from goa2.engine.steps.markers import MoveTokenStep
 
-        anchor_move = MoveTokenStep(
-            token_key=self.anchor_key,
-            destination_key=self.anchor_dest_key,
-            range_val=distance,
-            pass_through_obstacles=self.ignore_path_obstacles,
-        )
+            anchor_move = MoveTokenStep(
+                token_key=self.anchor_key,
+                destination_key=self.anchor_dest_key,
+                range_val=distance,
+                pass_through_obstacles=self.ignore_path_obstacles,
+            )
+        else:
+            anchor_move = MoveUnitStep(
+                unit_key=self.anchor_key,
+                destination_key=self.anchor_dest_key,
+                range_val=distance,
+                is_movement_action=False,
+                pass_through_obstacles=self.ignore_path_obstacles,
+            )
         partner_move = MoveUnitStep(
             unit_key=self.partner_key,
             destination_key=self.partner_dest_key,

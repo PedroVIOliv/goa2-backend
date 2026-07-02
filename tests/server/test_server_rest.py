@@ -83,6 +83,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Swift": 3,
         "Mrak": 3,
         "Cutter": 3,
+        "Hanu": 3,
     }
 
 
@@ -615,6 +616,43 @@ def test_rollback_not_current_actor(client, game_data):
             headers=_auth(non_actor_token),
         )
         assert resp.status_code == 403
+
+
+def test_rollback_authorizes_controller_during_action_control(client, game_data):
+    """Under Hanu's ultimate the action's inputs are remapped to the controller,
+    who owns the confirm/rollback — not the controlled actor."""
+    game_id = game_data["game_id"]
+    _advance_to_resolution(client, game_data)
+
+    registry = client.app.state.registry
+    game = registry.get(game_id)
+    session = game.session
+    ir = game.last_result.input_request if game.last_result else None
+    if ir is None or session.state.current_actor_id is None:
+        pytest.skip("no active resolution input to remap")
+
+    actor = str(session.state.current_actor_id)
+    controller = "hero_wasp" if actor == "hero_arien" else "hero_arien"
+
+    # Simulate the handler's control remap: the pending input is addressed to
+    # the controller, the original actor is preserved in context, and a snapshot
+    # was taken for the actor's action.
+    ir.player_id = controller
+    ir.context["controlled_hero_id"] = actor
+    session._rollback_snapshot = session._make_snapshot()
+    session._rollback_actor_id = actor
+
+    # The controlled actor may NOT rollback the controlled action.
+    resp_actor = client.post(
+        f"/games/{game_id}/rollback", headers=_auth(_token_for(game_data, actor))
+    )
+    assert resp_actor.status_code == 403
+
+    # The controller MAY rollback.
+    resp_ctrl = client.post(
+        f"/games/{game_id}/rollback", headers=_auth(_token_for(game_data, controller))
+    )
+    assert resp_ctrl.status_code == 200
 
 
 def test_give_gold_cheat_spectator_blocked(client):

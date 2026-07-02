@@ -7,6 +7,7 @@ from goa2.domain.models.enums import (
     ActionType,
     CardColor,
     CardContainerType,
+    CardState,
 )
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
@@ -15,6 +16,22 @@ from goa2.domain.types import HeroID
 # Base Filter
 # -----------------------------------------------------------------------------
 from goa2.engine.filters_base import FilterCondition
+
+
+class HasUnresolvedCardFilter(FilterCondition):
+    """Passes hero candidates whose current_turn_card is revealed and still
+    UNRESOLVED (i.e. they have "an unresolved card"). Used by Hanu's Hurry Up!."""
+
+    type: FilterType = FilterType.HAS_UNRESOLVED_CARD
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        hero = state.get_hero(HeroID(candidate))
+        if not hero:
+            return False
+        card = hero.current_turn_card
+        return card is not None and card.state == CardState.UNRESOLVED
 
 
 class CardsInContainerFilter(FilterCondition):

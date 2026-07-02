@@ -400,6 +400,86 @@ class TestRollbackPerActorIsolation:
         assert session.state.current_actor_id == "hero_b"
 
 
+# ---- Rollback during Hanu's ultimate action control ----
+
+
+def _control_state():
+    """blue_enemy is the actor resolving card_e, controlled by hero_hanu.
+
+    Mirrors Hanu's ultimate: a CONTROL_NEXT_ACTION effect reroutes the
+    controlled hero's inputs to Hanu, who confirms or rolls back the action.
+    """
+    from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+    from goa2.engine.effect_manager import EffectManager
+
+    hero_hanu = Hero(
+        id=HeroID("hero_hanu"), name="Hanu", team=TeamColor.RED, deck=[], hand=_filler_cards()
+    )
+    blue_enemy = Hero(
+        id=HeroID("blue_enemy"), name="E", team=TeamColor.BLUE, deck=[], hand=_filler_cards()
+    )
+    board = Board()
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[hero_hanu], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[blue_enemy], minions=[]),
+        },
+    )
+    state.place_entity("hero_hanu", Hex(q=0, r=0, s=0))
+    state.place_entity("blue_enemy", Hex(q=2, r=0, s=-2))
+
+    blue_enemy.current_turn_card = _make_card("card_e", 10)
+    state.unresolved_hero_ids = ["blue_enemy"]
+    start_resolution_phase(state)
+
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_hanu",
+        effect_type=EffectType.CONTROL_NEXT_ACTION,
+        scope=EffectScope(shape=Shape.POINT, origin_id="blue_enemy"),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+        controlled_card_id="card_e",
+    )
+    return state
+
+
+class TestRollbackDuringControl:
+    def test_controller_gets_rollback_snapshot_and_flag(self):
+        """During control, the remapped controller (Hanu) can roll back the
+        controlled action even though the actor is the controlled hero."""
+        state = _control_state()
+        session = GameSession(state)
+
+        result = session.advance()
+        assert result.result_type == SessionResultType.INPUT_NEEDED
+        assert result.input_request is not None
+        # Input is remapped to the controller.
+        assert result.input_request.player_id == "hero_hanu"
+        assert result.input_request.context.get("controlled_hero_id") == "blue_enemy"
+        # The controlled action must be rollback-able by the controller.
+        assert result.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+
+    def test_controller_can_actually_rollback(self):
+        """rollback() restores the controlled action's start state."""
+        state = _control_state()
+        session = GameSession(state)
+
+        session.advance()
+        # Controller chooses HOLD for the controlled hero.
+        result2 = session.advance(InputResponse(selection="HOLD"))
+        assert result2.input_request is not None
+        assert result2.input_request.can_rollback is True
+
+        result3 = session.rollback()
+        assert result3.result_type == SessionResultType.INPUT_NEEDED
+        assert result3.input_request is not None
+        assert result3.input_request.player_id == "hero_hanu"
+        assert result3.input_request.can_rollback is True
+
+
 # ---- Snapshot board exclusion & persistence ----
 
 

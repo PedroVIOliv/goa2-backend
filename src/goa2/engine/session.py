@@ -151,14 +151,22 @@ class GameSession:
             self._rollback_snapshot = None
             self._rollback_actor_id = None
 
-        # Take snapshot on the first input request targeting the current actor
-        if self._rollback_snapshot is None and stack_result.input_request.player_id == actor_id:
+        # The input belongs to the current actor's action when it is addressed
+        # to the actor directly, or — under Hanu's ultimate — remapped to the
+        # controller (the original actor is preserved in ``controlled_hero_id``).
+        request = stack_result.input_request
+        is_actor_action_input = request.player_id == actor_id or (
+            request.context.get("controlled_hero_id") == actor_id
+        )
+
+        # Take snapshot on the first input request for the current actor's action
+        if self._rollback_snapshot is None and is_actor_action_input:
             self._rollback_snapshot = self._make_snapshot()
             self._rollback_actor_id = actor_id
 
         # Set can_rollback flag when applicable
-        if self._rollback_snapshot is not None and stack_result.input_request.player_id == actor_id:
-            stack_result.input_request.can_rollback = True
+        if self._rollback_snapshot is not None and is_actor_action_input:
+            request.can_rollback = True
 
     def _check_after_planning(self) -> SessionResult:
         """After a planning action, check if phase transitioned."""

@@ -101,6 +101,13 @@ class EffectType(StrEnum):
     # its Defense reaction. source_card_id ties the effect to the shield card.
     DISCARD_SHIELD = "discard_shield"
 
+    # Action control (Hanu ultimate — The Ultimate Trick). While the hero at
+    # scope.origin_id is the current actor resolving the card with id
+    # controlled_card_id, the handler reroutes every InputRequest addressed to
+    # them to source_id (Hanu). Only the decision-maker changes: actor and all
+    # legality (teams, ranges, filters, stats) remain the controlled hero.
+    CONTROL_NEXT_ACTION = "control_next_action"
+
 
 class AffectsFilter(StrEnum):
     """Who is affected by this effect."""
@@ -226,3 +233,7 @@ class ActiveEffect(BaseModel):
     # a MOVEMENT action inside scope, their pathfinding call is invoked with
     # pass_through_obstacles=True.
     grants_pass_through_obstacles: bool = False
+
+    # CONTROL_NEXT_ACTION: id of the unresolved card whose resolution is
+    # controlled. Guards the remap so control fizzles if the card changes.
+    controlled_card_id: str | None = None

@@ -34,6 +34,23 @@ class ManagedGame:
     game_logger: GameLogger | None = None
     replay_recorder: ReplayRecorder | None = None
 
+    @property
+    def current_responder(self) -> str | None:
+        """The single source of truth for *who may act on the current input*.
+
+        This is the ``player_id`` of the pending ``InputRequest`` — which
+        already accounts for control remaps (under Hanu's ultimate the
+        controlled action's inputs are addressed to the controller). Falls back
+        to the current actor when there is no pending input. The submit-input
+        and rollback paths (REST and WebSocket) authorize against this so their
+        derivations cannot drift apart.
+        """
+        ir = self.last_result.input_request if self.last_result else None
+        if ir is not None:
+            return ir.player_id
+        actor = self.session.state.current_actor_id
+        return str(actor) if actor is not None else None
+
 
 class GameRegistry:
     """Thread-safe in-memory store for active games with optional file persistence."""

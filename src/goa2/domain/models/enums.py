@@ -211,6 +211,10 @@ class StepType(StrEnum):
     RESOLVE_PRE_ACTION_DISCARD = "resolve_pre_action_discard"
     CO_DIRECTIONAL_DRAG = "co_directional_drag"
     DIRECTIONAL_MOVE_UNITS = "directional_move_units"
+    SCHEDULE_JOURNEY_RETURN = "schedule_journey_return"
+    SET_CARD_INITIATIVE = "set_card_initiative"
+    RESTORE_CARD_INITIATIVE = "restore_card_initiative"
+    SCHEDULE_ACTION_CONTROL = "schedule_action_control"
 
 
 class FilterType(StrEnum):
@@ -254,6 +258,7 @@ class FilterType(StrEnum):
     MAX_EMPTY_SPACES_IN_LINE = "max_empty_spaces_in_line_filter"
     SAME_DIRECTION_FROM_ORIGIN = "same_direction_from_origin_filter"
     FARTHEST_EMPTY_ADJACENT = "farthest_empty_adjacent_filter"
+    HAS_UNRESOLVED_CARD = "has_unresolved_card_filter"
 
 
 class TargetType(StrEnum):
