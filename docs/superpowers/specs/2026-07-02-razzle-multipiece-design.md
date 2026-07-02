@@ -112,15 +112,15 @@ Classify each `team.heroes` iteration site:
 | Planning / initiative / turn order (`phases.py`) | player-level | exclude pieces (no change needed — they iterate `Hero` objects) |
 | Minion battle & lane push hero counting (`steps/combat.py`) | board-positional | **include pieces** (each piece counts — "separate heroes always") |
 | Respawn sweep (`phases.py:185`) | player-level | no change (anchor off-board ⇒ respawn) |
-| Marker sites (`steps/markers.py`) | mixed | see §5 open question |
+| Marker sites (`steps/markers.py`) | player-level | normalize piece→hero in `place_marker` (see §5.1) |
 | Views (`domain/views.py`) | both | hero cards player-level; board units include pieces |
 | `state.get_card_by_id`, `get_hero` | player-level | no change |
 
 The implementation plan must grep-audit all 12 sites individually.
 
-## 5. Open rules questions (defaults chosen, flagged for confirmation)
+## 5. Rules rulings and remaining assumptions
 
-1. **Markers** (asked; user was away): default = **piece-holds, hero-suffers** — the singleton marker's `target_id` is the targeted piece (positional interactions use that piece), but hero-level penalties (initiative, skip-turn) apply to Razzle's single card/turn. `get_markers_on_hero(hero_id)` extended to match owned pieces.
+1. **Markers (RULED, user-confirmed):** markers apply to the **hero**, never to a piece — a marker placed via any piece affects all Razzles. Implementation: normalize inside `state.place_marker()` — a piece ID passed as `target_id` resolves to the owning hero ID. `get_markers_on_hero(hero_id)` then works unchanged, and hero-level penalties (initiative, skip-turn) naturally hit Razzle's single card/turn. Effects that read the marked hero's *position* enumerate all pieces via `get_piece_ids()` (consistent with "separate heroes always").
 2. **Zone control / lane push / minion-battle presence:** design assumes each piece counts as a hero presence (consistent with "separate heroes always").
 3. **Support / minion-defense modifiers:** multiple adjacent pieces each grant their bonus independently (separate units).
 4. **Twin Strike (ultimate):** "another one of you may repeat it" requires a *different* piece to perform the repeat, targeting a different unit. Needs ≥2 pieces on board.
@@ -150,8 +150,9 @@ TDD throughout (`tests/engine/effects/` helpers, `effect_contract`/`effect_flow`
 8. Supply cap: spawn clamps at 4 total; removal frees supply.
 9. Acting-piece prompt appears only with ≥2 pieces; chosen piece performs the action (adjacency checks from its hex).
 10. Minion battle / support counting includes pieces.
+11. Marker placed via a proxy piece attaches to the hero (`get_markers_on_hero` finds it; penalty applies to Razzle's turn).
 
 ## 8. Estimated footprint
 
 - **New:** `engine/hero_pieces.py`, `HeroPiece` model, 2–3 new steps + StepTypes, 1 new filter + FilterType, `scripts/razzle_effects.py` (3 validation cards), tests.
-- **Modified:** `state.py` (`get_unit`/`get_hero`), `steps/reactions.py` (target-lock hook), `steps/combat.py` (defeat cascade + battle counting), `steps/cards.py` (acting-piece hook), `steps/markers.py` (owner matching), `domain/views.py`, `engine/step_types.py` (AnyMiscEntity), `docs/CLIENT_INTEGRATION_GUIDE.md`.
+- **Modified:** `state.py` (`get_unit`/`get_hero`/`place_marker`), `steps/reactions.py` (target-lock hook), `steps/combat.py` (defeat cascade + battle counting), `steps/cards.py` (acting-piece hook), `domain/views.py`, `engine/step_types.py` (AnyMiscEntity), `docs/CLIENT_INTEGRATION_GUIDE.md`.
