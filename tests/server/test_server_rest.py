@@ -84,6 +84,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Mrak": 3,
         "Cutter": 3,
         "Hanu": 3,
+        "Brynn": 3,
     }
 
 

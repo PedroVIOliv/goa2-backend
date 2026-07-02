@@ -1048,6 +1048,12 @@ class RetrieveCardStep(GameStep):
         if not target_card:
             target_card = next((c for c in hero.discard_pile if c.id == card_id), None)
             source = "discard"
+        # The card being resolved this turn lives in current_turn_card, not yet
+        # in played_cards, so "retrieve this card" (Brynn - Peak Precision) needs
+        # this fallback. return_card_to_hand clears current_turn_card.
+        if not target_card and hero.current_turn_card and hero.current_turn_card.id == card_id:
+            target_card = hero.current_turn_card
+            source = "current_turn"
         if not target_card:
             logger.debug(
                 f"   [RETRIEVE] Card {card_id} not found in {actor_id}'s played or discard."

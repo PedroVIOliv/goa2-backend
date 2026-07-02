@@ -100,6 +100,65 @@ class AdjacentToTerrainFilter(FilterCondition):
         return has_terrain == self.is_adjacent
 
 
+class AdjacentToObstaclesFilter(FilterCondition):
+    """Brynn's signature check: candidate is adjacent to `min_count`+ obstacles.
+
+    Counts the candidate's connected neighbour hexes that are obstacles per
+    ``is_obstacle_for_actor`` — terrain, board edge (off-map hexes report as
+    obstacles), and any hex occupied by a unit or token (including Brynn
+    herself). Passes when that count reaches ``min_count`` (default 3).
+
+    Brynn's ultimate "Over the Top" overrides the count: while she is the
+    acting hero (level >= 8 with the over_the_top ultimate face-up), every
+    enemy HERO counts as adjacent to 3+ obstacles regardless of the board.
+    The override never applies to minions.
+    """
+
+    type: FilterType = FilterType.ADJACENT_TO_OBSTACLES
+    min_count: int = 3
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if isinstance(candidate, Hex):
+            cand_hex: Hex | None = candidate
+        else:
+            cand_hex = state.entity_locations.get(BoardEntityID(str(candidate)))
+        if cand_hex is None:
+            return False
+
+        # Ultimate override: enemy heroes auto-qualify while Brynn acts.
+        if not isinstance(candidate, Hex) and self._over_the_top_applies(candidate, state):
+            return True
+
+        actor_id = str(state.current_actor_id) if state.current_actor_id else None
+        topology = get_topology_service()
+        count = 0
+        for neighbor in topology.get_connected_neighbors(cand_hex, state):
+            if state.validator is not None:
+                is_obs = state.validator.is_obstacle_for_actor(state, neighbor, actor_id, context)
+            else:
+                tile = state.board.get_tile(neighbor)
+                is_obs = bool(tile and tile.is_obstacle)
+            if is_obs:
+                count += 1
+                if count >= self.min_count:
+                    return True
+        return count >= self.min_count
+
+    def _over_the_top_applies(self, candidate: Any, state: GameState) -> bool:
+        actor = state.get_hero(state.current_actor_id) if state.current_actor_id else None
+        if actor is None or actor.level < 8:
+            return False
+        ult = actor.ultimate_card
+        if ult is None or ult.current_effect_id != "over_the_top":
+            return False
+        target = state.get_unit(UnitID(str(candidate)))
+        from goa2.domain.models import Hero
+
+        if not isinstance(target, Hero):
+            return False
+        return target.team != actor.team
+
+
 class RangeFilter(FilterCondition):
     """
     Checks distance from an origin.
