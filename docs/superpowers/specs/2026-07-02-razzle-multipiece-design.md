@@ -1,6 +1,6 @@
 # Razzle Multi-Piece Hero — Engine Scoping & Design
 
-**Date:** 2026-07-02
+**Date:** 2026-07-02 (rev 2 — architecture decision changed by user)
 **Status:** Draft — awaiting user review
 **Scope:** Core engine infrastructure for Razzle's "multiple identical hero pieces" gimmick. Individual card effects that merely *use* the infrastructure (swaps, pushes, extra moves) are out of scope and can be implemented by other contributors afterwards using the helpers this design provides.
 
@@ -16,176 +16,143 @@ Confirmed rulings (board game forum + user):
 - **Defense:** any piece being attacked → the Razzle player defends normally from the shared hand.
 - **Defeat:** if any piece is defeated, Razzle is defeated → *remove all of you*; killer rewarded once; respawn as one piece.
 - **Voluntary removal ≠ defeat** (Into Thin Air): removing all pieces does not defeat Razzle; she is off-board and "respawns as normal".
+- **Markers (RULED):** markers apply to the **hero**, never to a piece — a marker placed via any piece affects all Razzles.
 - **Spawn rule (official):** spawned pieces come from the supply only, never relocated from the board. Supply = 4 − pieces on board.
 
-## 2. Engine constraints discovered
+## 2. Architecture decision (user-made)
 
-| Constraint | Location | Consequence |
-|---|---|---|
-| The `Hero` object IS the board entity; `entity_locations: dict[BoardEntityID, Hex]` is strictly one-to-one | `domain/state.py:99` | One hero cannot natively occupy multiple hexes |
-| Defense window routes via `state.get_hero(target_id)` — target unit ID must literally be the hero ID | `engine/steps/reactions.py:38` | Attacking a non-hero-ID piece would silently skip defense and auto-defeat |
-| `SelectStep` UNIT candidates = `entity_locations` keys that resolve via `state.get_unit()`, which only searches team rosters | `engine/steps/selection.py:123`, `domain/state.py:302` | Extra pieces stored elsewhere are invisible to targeting |
-| Turn machinery compares `current_actor_id` / `defender_id` against `hero.id` by equality in many places | `handler.py`, `steps/cards.py`, `steps/phases.py` | Threading piece IDs through actor contexts is highly invasive |
-| `AnyMiscEntity` union is hand-maintained | `engine/step_types.py` | New board-entity type must be added or persistence breaks |
-| ~12 `team.heroes` enumeration sites in engine/domain | `phases.py`, `steps/combat.py`, `steps/cards.py`, `steps/markers.py`, `views.py`, `state.py` | Each must be classified: board-positional (must include pieces) vs player-level (must not) |
+**Chosen: hero/piece abstraction — all pieces are proxies, no "real one" on the board.**
 
-## 3. Approaches considered
+The `Hero` object becomes a purely player-level entity for Razzle: hand, deck, discard, level, gold, items, markers, turn slot. It **never appears in `entity_locations`**. Board presence is exclusively via 1–4 `HeroPiece` entities with **stable IDs** (`razzle_piece_1..4`).
 
-### A. Proxy pieces + anchor swap (recommended)
+Rationale (vs the previously drafted "anchor swap", kept in §10 for the record):
 
-`hero_razzle` remains a normal single-hex board entity — the **anchor**. Extra pieces are lightweight `HeroPiece` proxy units referencing the owner hero. Whenever a *specific* piece must behave as the hero (perform an action, defend an attack, be defeated), we **swap the anchor**: exchange the `entity_locations` entries of `hero_razzle` and that proxy.
+- **Stable identity everywhere.** Persistent by-ID bindings (Hanu's journey bakes unit-ID literals into end-of-turn steps, POINT-scope `ActiveEffect`s) attach to piece IDs that never change referent. The anchor-swap design's entire residual-risk class — and its "stable-binding rule" maintenance tax on every future effect — disappears.
+- **Truthful state.** No hidden identity-swap invariant for future maintainers; API clients never observe ID/position exchanges; "repeat targeting a different unit" and any future same-target trackers compare real unit IDs.
+- **Right long-term model.** Hero-as-player vs piece-as-board-presence is the honest decomposition; Razzle is just the first hero with piece count ≠ 1. The design keeps a path to migrating all heroes onto it later (§9).
 
-The load-bearing insight: **pieces are indistinguishable by rule**, so which hex holds the "real" `hero_razzle` ID is unobservable to players. Swapping is semantically free. After a swap, every existing code path — reaction window, defense effects, combat resolution, defeat, movement, adjacency, stats, actor-ID equality — works unchanged because the relevant piece literally *is* `hero_razzle`.
+### 2.1 The cost-control insight: two-tier identity, one interception point
 
-- **Pros:** identity equalities hold everywhere; defense/combat/defeat pipelines untouched in the common path; complexity concentrated in ~4 choke-point hooks + one new entity type.
-- **Cons:** the swap is a novel invariant future maintainers must know; a handful of edge paths (non-combat defeats of a proxy) need explicit rerouting.
+The expensive version of this refactor would put piece IDs into actor contexts, breaking ~132 `current_actor_id` usages, ~81 `get_hero` call sites, and ~103 `player_id` routing sites. We avoid nearly all of it by making identity explicitly two-tier and **only intercepting position resolution**:
 
-### B. Resolver indirection (no swap)
+- **Player-level identity (unchanged):** `current_actor_id`, `player_id` in input requests, `unresolved_hero_ids`, planning/initiative/finalize equality all keep holding `hero_razzle`. Turn machinery, auth, and WebSocket routing are untouched.
+- **Board-level identity (new, truthful):** selection outputs, `victim_id`/`defender_id`, push/move targets carry **piece IDs**. Pieces are real `Unit`s in `entity_locations`, so all *existing* positional code that receives a target ID already works on them.
+- **The one gap:** positional queries about the *hero* ID (`entity_locations.get(hero_id)` for the actor's own position, adjacency "to you", off-board checks). These migrate to a resolver (§3.2).
 
-Pieces get first-class IDs; `state.get_hero(piece_id)` resolves to the owning `Hero`; `current_actor_id`/`defender_id` carry piece IDs.
+## 3. Design
 
-- **Pros:** positions always "truthful"; no hidden identity switching.
-- **Cons:** breaks every `hero.id == actor_id` equality in turn machinery (`unresolved_hero_ids`, finalize, planning); every context key carrying a hero ID becomes ambiguous (piece or hero?). Blast radius across 20+ files. Rejected.
+### 3.1 `HeroPiece` entity
 
-### C. Clone Hero objects
-
-Register `hero_razzle_2..4` as real `Hero` entries sharing hand/deck lists by reference.
-
-- **Cons:** planning/initiative/turn order would treat them as separate heroes needing suppression everywhere; Pydantic JSON persistence duplicates the shared containers on reload, silently forking the hand. Rejected outright.
-
-## 4. Recommended design (Approach A)
-
-### 4.1 `HeroPiece` entity
-
-- New `HeroPiece(Unit)` in `domain/models/unit.py` (or `base.py`): `entity_kind: Literal["hero_piece"]`, `owner_hero_id: HeroID`, `team` copied from owner, `name` = owner's name.
-- Stored in `state.misc_entities`; IDs via `state.create_entity_id("razzle_piece")`.
+- `HeroPiece(Unit)` in `domain/models/unit.py`: `entity_kind: Literal["hero_piece"]`, `owner_hero_id: HeroID`, `team` copied from owner, `name` = owner's name.
+- Stored in `state.misc_entities`; stable IDs `razzle_piece_1..4` allocated once per game (supply slots), reused across respawns.
 - **Add to `AnyMiscEntity`** union in `engine/step_types.py` (hand-maintained — known footgun).
+- Unit-hood plumbing: extend `state.get_unit()` to also return `Unit` instances from `misc_entities`. This single change makes pieces enumerable by `SelectStep` UNIT targeting, matchable by `TeamFilter`/`RangeFilter`, blocking for pathfinding, and counted by adjacency/support logic.
+- Hero-resolution safety net: extend `state.get_hero()` to resolve a piece ID to its owning `Hero`. Covers hero-state operations (discards, gold, stats, markers) that receive a piece ID.
 
-### 4.2 Unit-hood plumbing
+### 3.2 Position resolver — the load-bearing new API
 
-- Extend `state.get_unit()` to also return `Unit` instances found in `misc_entities`. This single change makes pieces: enumerable by `SelectStep` UNIT targeting, matchable by `TeamFilter`/`RangeFilter`, blocking for pathfinding, and counted by adjacency/support logic — because those all flow through `get_unit`/`get_entity` + `entity_locations`.
-- Safety net: extend `state.get_hero()` to resolve a piece ID to its owning `Hero`. Covers hero-state operations (discard steps, gold steps, marker placement) that receive a piece ID from AoE enumerations without needing a swap.
+New methods on `GameState` (or `engine/hero_pieces.py`):
 
-### 4.3 Anchor-swap primitive
+- `get_position(entity_id) -> Hex | None` — piece/normal-unit ID → its `entity_locations` entry; multi-piece hero ID → **the acting piece's hex** if an action is in progress, else `None`.
+- `has_board_presence(hero_id) -> bool` — normal hero: in `entity_locations`; multi-piece hero: any piece on board. Replaces raw `hero_id in state.entity_locations` off-board checks (e.g. `ResolveCardStep`, `cards.py:616`; combat guards in `reactions.py:230`, `combat.py:177`).
+- `get_piece_ids(state, hero_id) -> list[str]` — on-board pieces (returns `[hero_id]` itself for normal heroes, making effect helpers uniform).
 
-`swap_anchor(state, hero_id, piece_id)` in a new `engine/hero_pieces.py`: swap the two `entity_locations` entries (and tile occupancy). No events emitted — the swap is unobservable by design (views render pieces identically).
+**Migration:** grep-audit direct `entity_locations` reads in shared engine code (filters, rules, validation, steps — ~20 files) and route hero-positional ones through `get_position`. Reads keyed by *target/victim* IDs already work (those are piece IDs). Writes (`place_entity`/`move_unit`/`remove_entity`) are untouched.
 
-### 4.4 Choke-point hooks
+### 3.3 Acting piece
 
-1. **Acting piece choice** — in `ResolveCardStep` (`steps/cards.py:590`), after the action is chosen and before action steps are built: if the actor owns on-board pieces (>1 total presence), prompt `SELECT_UNIT` among own pieces (anchor + proxies), then `swap_anchor` to the chosen one. Skipped when only one piece is on board. Same hook applies to re-perform machinery (`PerformPrimaryActionStep` — note existing invariants: re-perform searches `current_turn_card`; exclusions propagate).
-2. **Enemy target lock** — when a combat target key resolves to a proxy piece, swap and rewrite the context key to the hero ID. Hook at the top of `ReactionWindowStep.resolve()` (single choke point for all attack paths). Emergent correctness: "repeat, targeting a different unit" exclusion lists contain `hero_razzle` after the first attack, while the other pieces keep distinct proxy IDs — so attacking a *second* piece stays legal, exactly per the ruling.
-3. **Defeat cascade** — `DefeatUnitStep`: if the victim is a proxy piece (non-combat defeat paths: terrain crash during a push, disruptor defeats), swap first so the hero-defeat path runs normally; after any hero defeat where the hero owns pieces, remove all proxies. Kill rewards granted once (they key off the hero, unchanged).
-4. **Piece removal (not defeat)** — new `RemoveHeroPieceStep`: removing the anchor while proxies survive → swap anchor to a survivor first, then remove the proxy. Remove-all (Into Thin Air) → remove anchor + proxies with no defeat; existing off-board handling already covers the aftermath (`ResolveCardStep` skips actions for off-board heroes, `cards.py:615`; `RespawnHeroStep` respawns any off-board hero at round respawn).
-5. **Stable-binding rule (swap-away)** — a persistent by-ID binding (delayed trigger baking a unit ID, POINT-scope `ActiveEffect`, remove-then-return effect) must never attach to the **anchor** while proxies exist, because the anchor is the one ID whose physical referent changes across swaps. At binding-attach time, if the bound unit is the anchor and proxies survive, first `swap_anchor` **away** to a proxy so the binding lands on a stable proxy ID. Piece indistinguishability makes this swap free too. See §8 for the full analysis.
+- `state` gains `acting_piece_id: BoardEntityID | None` (serialized; cleared at `FinalizeHeroTurnStep` alongside context).
+- Hook in `ResolveCardStep` after the action is chosen: if the actor is a multi-piece hero with ≥2 pieces, prompt `SELECT_UNIT` among own pieces; with exactly 1, auto-bind it. `get_position(hero_razzle)` then resolves through it, so effect code, range/adjacency filters, and movement steps relative to "you" work unchanged.
+- Movement/attack steps that move "the hero" must operate on the acting piece ID — `MoveSequenceStep`/`AttackSequenceStep` resolve `current_actor_id` → acting piece via the resolver at the point they touch the board.
+- Effect texts "another one of you" select among `get_piece_ids()` minus the acting piece (new `HeroPieceFilter`, unique `FilterType`).
+- Interplay with Hanu's `CONTROL_NEXT_ACTION` (player_id remap): the acting-piece prompt is addressed via the same remap path, so a controlled Razzle turn has the controller choose the piece. No special-casing.
 
-### 4.5 Spawn & supply
+### 3.4 Defense & combat path
 
-- New `SpawnHeroPieceStep`: spawn up to N pieces into empty hexes matching filters, capped at `4 − pieces_on_board`. Per the official spawn rule, from supply only.
-- Supply is derived (never stored): `4 − (1 anchor + live proxies)`.
-- New `StepType` enum values for both new steps (union auto-derives; just set the `type` default).
+- Enemy attacks target a **piece ID** truthfully (`victim_id = razzle_piece_2`).
+- `ReactionWindowStep`: `get_hero(piece_id)` resolves the owner → defense prompt built from the shared hand; **`player_id` on the input request is normalized to the owner hero ID** so bearer-token auth and `validate_input_turn` work unchanged. `defender_id` in context stays the **piece ID** (positional truth — Crowd Control's "per other one of you in radius" counts from the attacked piece), while steps needing the player resolve via `get_hero`.
+- `get_computed_stat(state, piece_id, ...)` resolves items/modifiers via the owner.
+- `ResolveDefenseTextStep`/`ResolveOnBlockEffectStep`: already call `get_hero(defender_id)` — work via resolution; their off-board guards migrate to `has_board_presence`/piece-ID checks.
+- "Repeat targeting a different unit": exclusion lists hold real piece IDs — attacking a second piece is naturally legal, attacking the same piece naturally excluded. No emergent-behavior test needed; it's direct.
 
-### 4.6 Effect-author surface (unblocks other contributors)
+### 3.5 Defeat, removal, respawn, supply
 
-In `engine/hero_pieces.py` + filters:
+- `DefeatUnitStep` victim = piece → resolve owner → hero-defeat path (rewards once, `heroes_defeated_this_round` gets the hero ID) + **remove all owner pieces**.
+- `RemoveHeroPieceStep` (voluntary, not defeat): remove chosen piece(s); no anchor promotion needed — pieces are symmetric. Remove-all → hero off-board, not defeated; existing off-board handling covers turn skip; `RespawnHeroStep` migrates its "on board?" check to `has_board_presence` and spawns **one piece** at the chosen spawn hex.
+- `SpawnHeroPieceStep`: spawn up to N pieces into empty hexes matching filters, capped at `4 − pieces_on_board` (supply derived, never stored).
+- Markers: `state.place_marker()` normalizes a piece ID target to the owner hero ID (per ruling §1).
 
-- `get_piece_ids(state, hero_id)` → all on-board piece IDs (anchor + proxies).
-- `count_pieces_in_radius(state, hero_id, center, radius)` — for Crowd Control / Ransack / Rummage.
-- New filter `HeroPieceFilter(owner="SELF", exclude_acting=True)` (unique `FilterType`) — "another one of you" selections for team_spirit, wire_dancers, spectacle, tightrope-line cards.
-- Moving/pushing a proxy is just `MoveUnitStep`/`PushUnitStep` on the proxy ID — no new machinery.
+### 3.6 Enumeration audit
 
-### 4.7 Views, events, client contract
-
-- `build_view()` board/units output includes pieces as units with `owner_hero_id` so clients render them as Razzle. Facedown/hand visibility unaffected (pieces carry no cards).
-- New `GameEventType` values (or metadata conventions) for piece spawn/removal so clients can animate.
-- Update `docs/CLIENT_INTEGRATION_GUIDE.md`: piece entities in views, new events, and the fact that `SELECT_UNIT` options may include piece IDs.
-
-### 4.8 Persistence & rollback
-
-- Pieces live in `misc_entities` + `entity_locations` → round-trip via `AnyMiscEntity`. Add explicit save/load round-trip test with 3 proxies on board.
-- Rollback snapshots (`ConfirmResolutionStep` flow) serialize state — anchor swaps are part of state, so rollback restores them for free.
-
-### 4.9 Enumeration audit
-
-Classify each `team.heroes` iteration site:
+Classify each `team.heroes` iteration site (~12 in engine/domain):
 
 | Site | Class | Action |
 |---|---|---|
-| Planning / initiative / turn order (`phases.py`) | player-level | exclude pieces (no change needed — they iterate `Hero` objects) |
-| Minion battle & lane push hero counting (`steps/combat.py`) | board-positional | **include pieces** (each piece counts — "separate heroes always") |
-| Respawn sweep (`phases.py:185`) | player-level | no change (anchor off-board ⇒ respawn) |
-| Marker sites (`steps/markers.py`) | player-level | normalize piece→hero in `place_marker` (see §5.1) |
+| Planning / initiative / turn order (`phases.py`) | player-level | no change |
+| Minion battle & lane push hero counting (`steps/combat.py`) | board-positional | count **pieces** (each counts — "separate heroes always") |
+| Respawn sweep (`phases.py:185`) | player-level | uses `has_board_presence` |
+| Spawn-blocking displacement (`combat.py:1077` area) | board-positional | displace pieces |
 | Views (`domain/views.py`) | both | hero cards player-level; board units include pieces |
-| `state.get_card_by_id`, `get_hero` | player-level | no change |
+| `get_card_by_id`, `get_hero` | player-level | no change |
 
-The implementation plan must grep-audit all 12 sites individually.
+### 3.7 Views, events, client contract
 
-## 5. Rules rulings and remaining assumptions
+- `build_view()`: pieces appear in the board/units output with `owner_hero_id`; the hero's player-level block (hand, discard, gold) renders as today. Razzle's hero entry has no single board position — clients derive presence from pieces. **This is a client-contract change**: update `docs/CLIENT_INTEGRATION_GUIDE.md` (piece entities, piece IDs in `SELECT_UNIT` options, defense prompts arriving with `player_id = hero_razzle` while the attacked unit is a piece).
+- New `GameEventType` values (or metadata conventions) for piece spawn/removal; movement/push events already carry entity IDs and work for pieces.
 
-1. **Markers (RULED, user-confirmed):** markers apply to the **hero**, never to a piece — a marker placed via any piece affects all Razzles. Implementation: normalize inside `state.place_marker()` — a piece ID passed as `target_id` resolves to the owning hero ID. `get_markers_on_hero(hero_id)` then works unchanged, and hero-level penalties (initiative, skip-turn) naturally hit Razzle's single card/turn. Effects that read the marked hero's *position* enumerate all pieces via `get_piece_ids()` (consistent with "separate heroes always").
-2. **Zone control / lane push / minion-battle presence:** design assumes each piece counts as a hero presence (consistent with "separate heroes always").
-3. **Support / minion-defense modifiers:** multiple adjacent pieces each grant their bonus independently (separate units).
-4. **Twin Strike (ultimate):** "another one of you may repeat it" requires a *different* piece to perform the repeat, targeting a different unit. Needs ≥2 pieces on board.
-5. **Movement actions:** one chosen piece performs the entire movement action (no splitting spaces across pieces).
+### 3.8 Persistence & rollback
 
-## 6. In-scope vs out-of-scope cards
+- Pieces live in `misc_entities` + `entity_locations`; `acting_piece_id` serializes on state. Round-trip test with 3 pieces + mid-action save.
+- Rollback snapshots capture everything; stable IDs mean replays/diffs stay truthful.
 
-**In gimmick scope (they ARE the gimmick, used as validation):**
+## 4. Rules rulings and remaining assumptions
 
-- `stunt_doubles` (gold basic) — exercises `SpawnHeroPieceStep`, supply cap, defeat-cascade clause.
-- `crowd_control` (silver basic) — exercises defense-side radius counting *at the attacked piece* and remove-all-others.
-- `phantom_strike` (Tier I red) — simplest voluntary piece removal incl. anchor-promotion.
+1. **Markers (RULED):** hero-level, normalize in `place_marker` (§3.5).
+2. **Zone control / lane push / minion-battle presence:** each piece counts (consistent with "separate heroes always").
+3. **Support / minion-defense modifiers:** multiple adjacent pieces each grant their bonus independently.
+4. **Twin Strike (ultimate):** the repeat is performed by a *different* piece, targeting a different unit; needs ≥2 pieces.
+5. **Movement actions:** one chosen piece performs the entire movement action (no splitting).
 
-**Out of scope (normal card work using §4.6 helpers):** alleyoop/group_performance/team_spirit (hero swap + move another piece), tightrope/high_wire/wire_dancers (post-move piece move), theatrics/spectacle (minion swap ± repeat), magic_trick/aaaand_its_gone (push + counter-move), hit_and_gone/into_thin_air (removal family — into_thin_air's remove-all needs §4.4.4 verified), rummage/ransack (radius count + retrieve), `twin_strike` ultimate (repeat machinery + piece swap between repeats — depends on existing `PerformPrimaryActionStep` re-perform invariants).
+## 5. In-scope vs out-of-scope cards
 
-## 7. Testing strategy
+**In gimmick scope (validation cards):** `stunt_doubles` (spawn + supply cap + defeat clause), `crowd_control` (defense-side radius at attacked piece + remove-all-others), `phantom_strike` (voluntary removal).
+
+**Out of scope (normal card work via §3 helpers):** alleyoop/group_performance/team_spirit, tightrope/high_wire/wire_dancers, theatrics/spectacle, magic_trick/aaaand_its_gone, hit_and_gone/into_thin_air, rummage/ransack, `twin_strike` ultimate (depends on `PerformPrimaryActionStep` re-perform invariants + acting-piece rebind between repeats).
+
+## 6. Testing strategy
 
 TDD throughout (`tests/engine/effects/` helpers, `effect_contract`/`effect_flow` marks). Core invariant tests, roughly in build order:
 
-1. `HeroPiece` unit-hood: enumerable by enemy `SelectStep`, filterable by team/range, blocks pathfinding, persists through JSON round-trip.
-2. Anchor swap: unobservable (views byte-identical modulo IDs), positions exchanged, tile occupancy consistent.
-3. Attack a proxy → defense prompt appears for the Razzle player; defense-effect radius computed at the attacked piece.
+1. `HeroPiece` unit-hood: enumerable by enemy `SelectStep`, team/range filterable, blocks pathfinding, JSON round-trip (incl. `acting_piece_id`).
+2. Position resolver: `get_position(hero)` = acting piece mid-action / `None` otherwise; `has_board_presence` across 0/1/4 pieces.
+3. Attack a piece → defense prompt reaches the Razzle player (`player_id = hero_razzle`), defense value from shared hand, radius effects computed at the attacked piece.
 4. Defeat via any piece → all pieces removed, killer rewarded once, respawn as one piece.
-5. Attack piece A (blocked), repeat "different unit" → piece B still targetable.
-6. Non-combat proxy defeat (push into terrain) → full hero defeat.
+5. Attack piece 1 (blocked), repeat "different unit" → piece 2 targetable, piece 1 excluded (direct ID comparison).
+6. Non-combat piece defeat (push into terrain) → full hero defeat.
 7. Voluntary remove-all → not defeated, turn actions skipped, respawns at round respawn.
-8. Supply cap: spawn clamps at 4 total; removal frees supply.
-9. Acting-piece prompt appears only with ≥2 pieces; chosen piece performs the action (adjacency checks from its hex).
+8. Supply cap: spawn clamps at 4 total; removal frees supply; stable IDs reused.
+9. Acting-piece prompt only with ≥2 pieces; adjacency/range computed from the chosen piece; auto-bind with 1 piece (no prompt regression for the common case).
 10. Minion battle / support counting includes pieces.
-11. Marker placed via a proxy piece attaches to the hero (`get_markers_on_hero` finds it; penalty applies to Razzle's turn).
-12. Stable-binding rule: a persistent by-ID binding attaching to the anchor while proxies exist triggers swap-away; end-to-end guard test using Hanu's journey against a Razzle piece, then Razzle acts with a different piece, then the end-of-turn swap-back returns the correct physical piece.
+11. Marker placed via a piece attaches to the hero.
+12. Persistent-binding truthfulness: Hanu journeys a Razzle piece → Razzle acts with a different piece → end-of-turn swap-back returns the correct physical piece (passes by construction; guards regressions).
+13. Off-board-check migration guard: no remaining raw `hero_id in entity_locations` checks against multi-piece heroes (grep-based test or targeted flows).
 
-## 8. Adversarial stress test of the anchor swap
+## 7. Estimated effort & footprint
 
-Interaction classes checked against the current codebase.
+~1.5–2× the anchor-swap estimate: **3–5 focused sessions** for infrastructure, then validation cards.
 
-### Safe under the design as specified
+- **New:** `engine/hero_pieces.py` (resolver + helpers), `HeroPiece` model, `SpawnHeroPieceStep`/`RemoveHeroPieceStep` + StepTypes, `HeroPieceFilter` + FilterType, `acting_piece_id` on state, `scripts/razzle_effects.py` (3 validation cards), tests.
+- **Modified:** `state.py` (`get_unit`/`get_hero`/`place_marker`/resolver), `steps/reactions.py` (owner routing), `steps/combat.py` (defeat cascade, battle counting, respawn check), `steps/cards.py` (acting-piece hook, off-board checks), `steps/movement.py`/`AttackSequenceStep` (actor→piece resolution at board contact), positional `entity_locations` reads across filters/rules/validation (~20 files, mechanical), `domain/views.py`, `engine/step_types.py`, `docs/CLIENT_INTEGRATION_GUIDE.md`.
+- **Untouched by design:** turn machinery equality, planning/initiative, server auth/WS routing, the 26 existing hero effect scripts, existing tests (normal heroes keep hero-ID-as-board-entity).
 
-| Situation | Why it works |
-|---|---|
-| One AoE effect hits 2+ pieces (push/discard each) | Steps resolve sequentially on the LIFO stack; each piece is handled as an independent unit |
-| Attack piece A, then "repeat targeting a different unit" vs piece B | After attack 1, A holds the anchor ID; B keeps its distinct proxy ID → exclusion list (`hero_razzle`) doesn't block B. Emergent, but must be pinned by a test |
-| Defense effect computes radius at the attacked piece (Crowd Control) | Target-lock swap makes the attacked piece the anchor before defense text resolves |
-| Non-combat defeat of a proxy (pushed into terrain, disruptor) | `DefeatUnitStep` proxy reroute: swap first, then normal hero-defeat path + cascade |
-| Stat debuffs / buffs "on the hero" | Razzle has one stat sheet (cards + items + hero-keyed modifiers); hero-level by construction |
-| Markers | Hero-level per ruling (§5.1) |
-| Rollback / persistence / replay | Swaps are ordinary `entity_locations` state; snapshots capture them |
-| Remove-all then acting/respawn | Existing off-board handling (`cards.py:615`, `RespawnHeroStep`) |
-| Two simultaneous defenses | Impossible — attacks resolve one at a time |
+Main risk: an unmigrated hero-positional read treats Razzle as off-board → a *visible* failure (action skipped, effect fizzles), not a silent wrong-piece bug. Mitigation: the grep-audit is finite and test 13 guards it.
 
-### Real residual risks and their mitigations
+## 8. Future direction (not in scope): universal hero pieces
 
-1. **Persistent by-ID positional bindings** — the one genuinely dangerous class. Concrete instance today: Hanu's journey line — `ScheduleJourneyReturnStep` *bakes both hero IDs as literals* into end-of-turn finishing steps (`steps/effects.py:181`), and POINT-scope `ActiveEffect.source_id` binds by unit ID. If such a binding attaches to the anchor and a later swap moves the anchor, the binding's literal now denotes a *different physical piece* (observable bug: wrong piece swapped back at end of turn).
-   **Mitigation:** the stable-binding rule (§4.4.5). Note the window is already narrow: only *attacks* trigger swap-to-anchor, so non-attack targeting (journey's swap is not an attack) binds proxies' stable IDs directly; the rule only has to fire when the binding target happens to *be* the anchor.
-   **Maintenance tax:** every future effect that bakes a unit ID into a delayed trigger or persistent effect needs a one-line check ("could this attach to a multi-piece anchor?"). Add this to `docs/card_effects_guidelines.md`.
-2. **API observability of swaps** — the physical game can't see swaps, but an API client diffing successive `STATE_UPDATE` views sees two same-owner units exchange positions (ID teleport). Not a rules bug; an animation glitch.
-   **Mitigation:** clients animate from `GameEvent`s (per the client contract), and swaps emit **no** movement events; add a client-guide rule: "pieces of the same `owner_hero_id` are visually interchangeable — never animate position changes that are not backed by movement events."
-3. **Cross-turn "same target" trackers** (hypothetical: "mark the unit you attacked; +1 vs it next turn") — after target-lock swaps, a stored `hero_razzle` matches whichever piece was most recently promoted, arguably over- or under-matching "the same unit." **No such effect exists in the codebase today.** Flag as a review item in the guidelines for future heroes; the ruling for it is genuinely open even in the physical game (pieces are distinguishable by position but not identity).
+Migrating **all** heroes to piece-based presence (hero objects never in `entity_locations`) would eliminate the two-model split. The resolver API is designed so this is a mechanical follow-up: `get_position`/`has_board_presence`/`get_piece_ids` already behave uniformly for single-piece heroes. Defer until Razzle proves the model.
 
-### Fallback if the maintenance tax proves unacceptable
+## 9. Rejected alternatives (for the record)
 
-The escape hatch is not full Approach B; it is a **B-lite**: drop the target-lock swap on the defense path and instead resolve piece→hero at the hero-state choke points (`get_hero`, stats, markers, defeat) plus normalize `player_id` in input routing (`server/errors.py:validate_input_turn`, ws auth) so a defense prompt addressed to a piece reaches the Razzle player's token. That keeps bindings on stable proxy IDs *everywhere* and shrinks anchor instability to the acting-piece choice only — at the cost of auditing the input-routing surface (~103 `player_id` sites, though the fix concentrates in 2–3 routing helpers). Anchor swap's hooks are a strict subset of B-lite's, so migrating later loses no work.
-
-## 9. Estimated footprint
-
-- **New:** `engine/hero_pieces.py`, `HeroPiece` model, 2–3 new steps + StepTypes, 1 new filter + FilterType, `scripts/razzle_effects.py` (3 validation cards), tests.
-- **Modified:** `state.py` (`get_unit`/`get_hero`/`place_marker`), `steps/reactions.py` (target-lock hook), `steps/combat.py` (defeat cascade + battle counting), `steps/cards.py` (acting-piece hook), `domain/views.py`, `engine/step_types.py` (AnyMiscEntity), `docs/CLIENT_INTEGRATION_GUIDE.md`.
+- **Anchor swap** (rev 1 of this spec): `hero_razzle` always one of the pieces; swap `entity_locations` entries when a specific piece must be the hero. Cheapest option (~10 files, zero regression surface) and workable, but rejected by user decision: it relies on a hidden identity-swap invariant, leaks ID-teleports to API clients, and carries a permanent "stable-binding rule" maintenance tax — every future effect baking a unit ID into a delayed trigger (e.g. Hanu's journey literals, `steps/effects.py:181`) must check it never attaches to the anchor. The piece abstraction eliminates that class by construction.
+- **Piece IDs in actor contexts** (full "truthful" refactor): `current_actor_id`/`player_id` carry piece IDs — breaks ~132 actor-ID usages, ~103 input-routing sites, and hero-ID equality across turn machinery. The two-tier identity model (§2.1) achieves the same truthfulness where it matters (board state, bindings) without this cost.
+- **Clone Hero objects:** share hand/deck by reference across 4 `Hero` entries — planning/turn order would need suppression everywhere, and Pydantic JSON persistence forks the shared containers on reload. Rejected outright.
