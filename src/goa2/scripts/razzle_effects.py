@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from goa2.domain.types import BoardEntityID
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     AddContextValueStep,
@@ -78,7 +77,7 @@ class CrowdControlEffect(CardEffect):
         for pid in state.get_piece_ids(str(defender.id)):
             if pid == defender_piece:
                 continue
-            loc = state.entity_locations.get(BoardEntityID(pid))
+            loc = state.get_position(pid)
             if loc is not None and topology_distance(origin, loc, state) <= radius:
                 bonus += 2
 

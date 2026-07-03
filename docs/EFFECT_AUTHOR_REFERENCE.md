@@ -43,6 +43,7 @@ class MyCardEffect(CardEffect):
   - [Identity Filters](#identity-filters)
   - [Validation Filters](#validation-filters)
 - [C. Pattern Library](#c-pattern-library)
+- [D. Multi-Piece Heroes (Razzle)](#d-multi-piece-heroes-razzle)
 
 ---
 
@@ -1193,3 +1194,52 @@ MayRepeatOnceStep(
 ```
 
 **Example:** Wasp — Thunder Boomerang (`wasp_effects.py`)
+
+---
+
+## D. Multi-Piece Heroes (Razzle)
+
+A multi-piece hero exists on the board only as `HeroPiece` entities
+(`hero_razzle_piece_1..4`); the owner ID (`hero_razzle`) has **no board
+position**. Effects written with the safe primitives below work for every
+hero automatically — a conventions test
+(`tests/engine/test_multipiece_conventions.py`) fails the build if a script
+under `src/goa2/scripts/` reads raw location dicts or type-checks `Hero`
+directly.
+
+### Rules of thumb
+
+1. **Never read `state.entity_locations` / `state.unit_locations` directly.**
+   Use:
+   - `state.get_position(id)` — one position; resolves the acting piece for a
+     bound multi-piece hero, `None` when unbound.
+   - `state.get_positions(id)` — all board positions (each piece).
+   - `state.has_board_presence(id)` — replaces `id in entity_locations`.
+2. **Enumerate hero board presence with `state.get_piece_ids(hero_id)`** —
+   returns `[hero_id]` for a normal on-board hero, all piece IDs for a
+   multi-piece hero, `[]` if off-board. Required whenever you loop
+   `team.heroes` and care about positions/targeting (see Death Trap in
+   `dodger_effects.py` or the marker AoE in `steps/markers.py`).
+3. **Type checks: `is_hero_unit(entity)`** (from `goa2.domain.models`), never
+   `isinstance(entity, Hero)` — pieces must count as hero units.
+4. **Identity ("is this you?"): compare `state.hero_owner_id(a) ==
+   state.hero_owner_id(b)`.** Raw ID equality misses piece-vs-owner pairs.
+   `AffectsFilter.SELF` / `FRIENDLY_HEROES` and `blocks_self` already do this.
+5. **Targets and victims carry piece IDs.** Anything you store for later board
+   use (persistent effect origins, delayed returns/swaps) must keep the piece
+   ID. `EffectManager.create_effect` already binds implicit origins to the
+   acting piece. Player-level lookups (`state.get_hero(piece_id)`) resolve to
+   the owner automatically, and input prompts normalize `player_id` to the
+   owner.
+6. **Stats:** `compute_card_stats`/`get_computed_stat` handle everything —
+   acting-piece redirect for attack/defense/movement, owner-level initiative
+   aggregation (each positional effect/marker counted once across pieces).
+   Don't hand-roll positional stat reads.
+
+### What you get for free
+
+`SelectStep`/filters offer pieces as independent enemy hero units; the acting
+piece is excluded as "self" while her other pieces stay selectable; defense
+windows route to the owner with `defender_id` keeping the piece; markers stay
+piece-local for attack/defense and count once for initiative; piece defeat
+cascades to hero defeat.

@@ -282,6 +282,7 @@ When modifying the server layer (`src/goa2/server/`):
 - **Exposing `GameState` directly** — Never send `state.model_dump()` to a client. Always go through `build_view()` to enforce visibility rules (facedown cards, etc.).
 - **Modifying `board.tiles` directly for positions** — Use `state.entity_locations` for position tracking. The tile `occupant_id` is derived from entity_locations.
 - **Forgetting `model_rebuild()`** — If you add a step/filter that contains `List[GameStep]` or `List[FilterCondition]` fields, you need to patch those fields in `step_types.py` and call `model_rebuild(force=True)`.
+- **Multi-piece heroes (Razzle)** — `hero_razzle` has NO board position; only its `HeroPiece` entities do. In effect scripts, never read `entity_locations`/`unit_locations` directly and never `isinstance(x, Hero)` — use `state.get_position()/get_positions()/get_piece_ids()/has_board_presence()/hero_owner_id()` and `is_hero_unit()`. Enforced by `tests/engine/test_multipiece_conventions.py`; authoring rules in [docs/EFFECT_AUTHOR_REFERENCE.md](docs/EFFECT_AUTHOR_REFERENCE.md) §D.
 
 ## Directory Structure
 

@@ -100,6 +100,19 @@ def test_over_the_top_treats_enemy_piece_as_hero():
     assert f._over_the_top_applies(piece_id("hero_razzle", 2), state) is True
 
 
+def test_exclude_self_filter_excludes_acting_piece_only():
+    from goa2.engine.filters_units import ExcludeIdentityFilter
+
+    state = _state(actor="hero_razzle")
+    state.acting_piece_id = piece_id("hero_razzle", 1)
+    f = ExcludeIdentityFilter(exclude_self=True)
+    # The acting piece is "you" and must be excluded from unit selections...
+    assert f.apply(piece_id("hero_razzle", 1), state, {}) is False
+    # ...but the other piece and enemies remain selectable.
+    assert f.apply(piece_id("hero_razzle", 2), state, {}) is True
+    assert f.apply("hero_knight", state, {}) is True
+
+
 def test_friendly_filter_offers_other_piece_not_acting_piece():
     state = _state(actor="hero_razzle")
     state.acting_piece_id = piece_id("hero_razzle", 1)

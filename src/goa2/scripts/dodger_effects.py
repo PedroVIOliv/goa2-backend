@@ -77,10 +77,9 @@ def _count_empty_spawn_points(
     With Tide of Darkness active, all non-terrain unoccupied hexes count.
     When minion_only is True, hero spawn points are not counted.
     """
-    from goa2.domain.types import BoardEntityID
     from goa2.engine.topology import get_topology_service
 
-    hero_hex = state.entity_locations.get(BoardEntityID(str(hero_id)))
+    hero_hex = state.get_position(str(hero_id))
     if not hero_hex:
         return 0
 
@@ -288,7 +287,6 @@ class DeathTrapEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        from goa2.domain.types import BoardEntityID
         from goa2.engine.filters_units import ExcludeIdentityFilter
 
         radius = stats.radius or 0
@@ -296,7 +294,7 @@ class DeathTrapEffect(CardEffect):
         if not active_zone_id:
             return []
 
-        hero_hex = state.entity_locations.get(BoardEntityID(str(hero.id)))
+        hero_hex = state.get_position(str(hero.id))
         if not hero_hex:
             return []
 
@@ -304,32 +302,31 @@ class DeathTrapEffect(CardEffect):
 
         topology = get_topology_service()
 
-        # Find valid targets at build time: enemy heroes in radius adjacent
-        # to an empty spawn point in the battle zone
+        # Find valid targets at build time: enemy hero units in radius adjacent
+        # to an empty spawn point in the battle zone. get_piece_ids yields each
+        # board presence (multi-piece heroes contribute one entry per piece).
         valid_target_ids: list[str] = []
+        all_enemy_board_ids: list[str] = []
         for team in state.teams.values():
             for enemy_hero in team.heroes:
                 if enemy_hero.team == hero.team:
                     continue
-                enemy_hex = state.entity_locations.get(BoardEntityID(str(enemy_hero.id)))
-                if not enemy_hex:
-                    continue
-                dist = topology.distance(hero_hex, enemy_hex, state)
-                if dist > radius:
-                    continue
-                if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex, active_zone_id):
-                    valid_target_ids.append(str(enemy_hero.id))
+                for board_id in state.get_piece_ids(str(enemy_hero.id)):
+                    all_enemy_board_ids.append(board_id)
+                    enemy_hex = state.get_position(board_id)
+                    if not enemy_hex:
+                        continue
+                    dist = topology.distance(hero_hex, enemy_hex, state)
+                    if dist > radius:
+                        continue
+                    if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex, active_zone_id):
+                        valid_target_ids.append(board_id)
 
         if not valid_target_ids:
             return []
 
-        # Build exclude list: all enemy hero IDs NOT in valid_target_ids
-        all_enemy_hero_ids: list[str] = []
-        for team in state.teams.values():
-            for enemy_hero in team.heroes:
-                if enemy_hero.team != hero.team:
-                    all_enemy_hero_ids.append(str(enemy_hero.id))
-        exclude_ids = [eid for eid in all_enemy_hero_ids if eid not in valid_target_ids]
+        # Exclude every enemy hero unit that is NOT a valid target
+        exclude_ids = [eid for eid in all_enemy_board_ids if eid not in valid_target_ids]
 
         # Store exclude list in context so ExcludeIdentityFilter can use it
         steps: list[GameStep] = []
@@ -579,10 +576,9 @@ class DreadRazorEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        from goa2.domain.types import BoardEntityID
 
         active_zone_id = state.active_zone_id
-        hero_hex = state.entity_locations.get(BoardEntityID(str(hero.id)))
+        hero_hex = state.get_position(str(hero.id))
 
         can_ranged = False
         if hero_hex and active_zone_id:
@@ -827,7 +823,7 @@ def _build_respawn_steps(
     seen_types = set()
     limbo_minions = []
     for m in team_obj.minions:
-        if m.id not in state.entity_locations and m.type not in seen_types:
+        if not state.has_board_presence(str(m.id)) and m.type not in seen_types:
             seen_types.add(m.type)
             limbo_minions.append(m)
     if not limbo_minions:

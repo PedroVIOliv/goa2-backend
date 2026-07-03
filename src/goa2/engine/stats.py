@@ -101,8 +101,12 @@ def _matches_affects_filter(effect: ActiveEffect, target_id: str, state: GameSta
     is_hero = isinstance(target, (Hero, HeroPiece))
     is_minion = isinstance(target, Minion)
 
+    # "Self" is player-level identity: a multi-piece hero and her pieces are
+    # the same "you" for effects she creates.
+    is_self = state.hero_owner_id(target_id) == state.hero_owner_id(effect.source_id)
+
     if affects == AffectsFilter.SELF:
-        return effect.source_id == target_id
+        return is_self
 
     if affects == AffectsFilter.FRIENDLY_UNITS:
         return source_team == target_team
@@ -110,7 +114,7 @@ def _matches_affects_filter(effect: ActiveEffect, target_id: str, state: GameSta
     if affects == AffectsFilter.FRIENDLY_HEROES:
         # "Friendly heroes" in card text means OTHER friendly heroes;
         # SELF_AND_FRIENDLY_HEROES is the self-inclusive variant.
-        return source_team == target_team and is_hero and effect.source_id != target_id
+        return source_team == target_team and is_hero and not is_self
 
     if affects == AffectsFilter.SELF_AND_FRIENDLY_HEROES:
         return source_team == target_team and is_hero

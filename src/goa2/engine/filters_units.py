@@ -346,8 +346,17 @@ class ExcludeIdentityFilter(FilterCondition):
     exclude_keys: list[str] = Field(default_factory=list)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if self.exclude_self and isinstance(candidate, str) and candidate == state.current_actor_id:
-            return False
+        if self.exclude_self and isinstance(candidate, str):
+            if candidate == state.current_actor_id:
+                return False
+            # The acting piece of a multi-piece hero is "you" too; her other
+            # pieces stay selectable as distinct hero units.
+            if (
+                state.acting_piece_id
+                and candidate == str(state.acting_piece_id)
+                and state.hero_owner_id(candidate) == str(state.current_actor_id)
+            ):
+                return False
         for key in self.exclude_keys:
             val = context.get(key)
             if val is None:

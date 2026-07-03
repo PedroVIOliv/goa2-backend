@@ -138,7 +138,9 @@ class EffectValidationMixin:
             return affects == AffectsFilter.ALL_UNITS
 
         is_same_team = source_team == target_team
-        is_self = effect.source_id == target_id
+        # Player-level identity: a multi-piece hero and her pieces are the
+        # same "you" for effects she creates.
+        is_self = state.hero_owner_id(target_id) == state.hero_owner_id(effect.source_id)
 
         # Check unit type
         from goa2.domain.models import Minion, is_hero_unit
@@ -180,7 +182,7 @@ class EffectValidationMixin:
             return False
 
         is_actor_enemy_of_source = actor_team != source_team
-        is_actor_self = actor.id == effect.source_id
+        is_actor_self = state.hero_owner_id(str(actor.id)) == state.hero_owner_id(effect.source_id)
 
         if effect.blocks_self and is_actor_self:
             return True

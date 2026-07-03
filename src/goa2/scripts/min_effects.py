@@ -510,9 +510,8 @@ def _smoke_bomb_swap_defense_steps(
     stats: CardStats,
     allow_replacement: bool = False,
 ) -> list[GameStep]:
-    from goa2.domain.types import BoardEntityID
 
-    defender_hex = state.entity_locations.get(BoardEntityID(str(defender.id)))
+    defender_hex = state.get_position(str(defender.id))
     if not defender_hex:
         return [SetContextFlagStep(key="defense_invalid", value=True)]
 

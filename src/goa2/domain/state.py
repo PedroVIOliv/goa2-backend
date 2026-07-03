@@ -175,12 +175,20 @@ class GameState(BaseModel):
                 removed.append(marker)
         return removed
 
+    def hero_owner_id(self, entity_id: str) -> str:
+        """Player-level identity for an entity ID.
+
+        Hero-piece IDs normalize to their owning hero; hero IDs and anything
+        else (minions, tokens, "system") pass through unchanged. Use this for
+        "is this you?" comparisons — a multi-piece hero and her pieces are the
+        same player identity.
+        """
+        owner = self.get_hero(HeroID(str(entity_id)))
+        return str(owner.id) if owner else str(entity_id)
+
     def marker_target_belongs_to_hero(self, marker_target: str, hero_id: str) -> bool:
         """True if a marker target (hero ID or piece ID) belongs to hero_id."""
-        if str(marker_target) == str(hero_id):
-            return True
-        owner = self.get_hero(HeroID(str(marker_target)))
-        return owner is not None and str(owner.id) == str(hero_id)
+        return self.hero_owner_id(marker_target) == str(hero_id)
 
     def return_markers_by_source(self, source_id: str) -> list[Marker]:
         """
