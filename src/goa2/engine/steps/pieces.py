@@ -33,6 +33,23 @@ class ChooseActingPieceStep(GameStep):
         if not pieces:
             return StepResult(is_finished=True)
 
+        # Each piece is an independent actor: a piece that cannot legally perform
+        # the chosen action (e.g. one standing in an enemy Spell Break zone)
+        # cannot be bound to perform it. Filter to legal pieces when the action
+        # type is known; keep all if none qualify (defensive — the action menu
+        # only offers actions at least one piece can perform).
+        act_type = context.get("current_action_type")
+        if act_type is not None:
+            legal = [
+                pid
+                for pid in pieces
+                if state.validator.can_perform_action(
+                    state, pid, act_type, context={"card": hero.current_turn_card}
+                ).allowed
+            ]
+            if legal:
+                pieces = legal
+
         if len(pieces) == 1:
             state.acting_piece_id = BoardEntityID(pieces[0])
             logger.debug("   [PIECE] Auto-bound acting piece %s", pieces[0])
