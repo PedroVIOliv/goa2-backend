@@ -378,10 +378,14 @@ class DefeatUnitStep(GameStep):
             )
         ]
 
-        # Check for bounty marker BEFORE markers are returned
+        # Check for bounty marker BEFORE markers are returned. The marker may
+        # sit on a hero piece; it pays out for the owning hero's defeat.
         bounty = state.markers.get(MarkerType.BOUNTY)
         has_bounty = (
-            bounty is not None and bounty.is_placed and bounty.target_id == actual_victim_id
+            bounty is not None
+            and bounty.is_placed
+            and bounty.target_id is not None
+            and state.marker_target_belongs_to_hero(bounty.target_id, actual_victim_id)
         )
 
         # Return markers from the defeated hero

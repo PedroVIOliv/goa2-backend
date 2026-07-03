@@ -132,17 +132,12 @@ class GameState(BaseModel):
         self, marker_type: MarkerType, target_id: str, value: int, source_id: str
     ) -> Marker:
         """
-        Place a marker on a target hero.
-        Markers always attach to the HERO: a HeroPiece target resolves to its
-        owner (rules ruling — a marker on any Razzle affects all Razzles).
+        Place a marker on a target hero or hero piece.
+        A marker placed on a HeroPiece stays attached to that piece: its
+        attack/defense penalties are piece-local, while initiative aggregates
+        markers across all pieces at the owner level (stats.py).
         If marker was on another hero, it automatically leaves them (singleton).
         """
-        from goa2.domain.models.unit import HeroPiece
-
-        entity = self.misc_entities.get(BoardEntityID(str(target_id)))
-        if isinstance(entity, HeroPiece):
-            target_id = entity.owner_hero_id
-
         marker = self.get_marker(marker_type)
         marker.place(target_id=target_id, value=value, source_id=source_id)
         return marker
@@ -170,14 +165,22 @@ class GameState(BaseModel):
     def return_markers_from_hero(self, hero_id: str) -> list[Marker]:
         """
         Return all markers from a specific hero (e.g., on defeat).
+        Markers attached to any of the hero's pieces are returned too.
         Returns list of markers that were removed.
         """
         removed = []
         for marker in self.markers.values():
-            if marker.target_id == hero_id:
+            if marker.target_id and self.marker_target_belongs_to_hero(marker.target_id, hero_id):
                 marker.remove()
                 removed.append(marker)
         return removed
+
+    def marker_target_belongs_to_hero(self, marker_target: str, hero_id: str) -> bool:
+        """True if a marker target (hero ID or piece ID) belongs to hero_id."""
+        if str(marker_target) == str(hero_id):
+            return True
+        owner = self.get_hero(HeroID(str(marker_target)))
+        return owner is not None and str(owner.id) == str(hero_id)
 
     def return_markers_by_source(self, source_id: str) -> list[Marker]:
         """

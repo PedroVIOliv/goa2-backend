@@ -153,6 +153,27 @@ def get_computed_stat(
     if not unit:
         return base_value
 
+    # Initiative derives from the shared turn card, so for any piece of a
+    # multi-piece hero it is answered at the owner level (aggregation below).
+    from goa2.domain.models.unit import HeroPiece
+
+    if stat_type == StatType.INITIATIVE and isinstance(unit, HeroPiece):
+        return get_computed_stat(state, UnitID(str(unit.owner_hero_id)), stat_type, base_value)
+
+    # Multi-piece hero owner IDs carry no board position of their own.
+    # Non-initiative stats are piece-local: resolve through the bound acting
+    # piece when one exists. Initiative is an owner-level aggregate: each
+    # distinct positional effect counts once if any piece is in its scope.
+    scope_ids: list[str] = [str(unit_id)]
+    if isinstance(unit, Hero) and unit.is_multi_piece:
+        if stat_type != StatType.INITIATIVE:
+            board_id = state.resolve_board_actor(str(unit_id))
+            if board_id != str(unit_id):
+                return get_computed_stat(state, UnitID(board_id), stat_type, base_value)
+        pieces = state.get_piece_ids(str(unit_id))
+        if pieces:
+            scope_ids = pieces
+
     # A HeroPiece computes hero-level bonuses (items, auras, markers) from its
     # owning Hero, while positional checks below keep using the piece's own id.
     hero_owner: Hero | None = unit if isinstance(unit, Hero) else None
@@ -187,7 +208,7 @@ def get_computed_stat(
             continue
         if not _is_effect_active(effect, state):
             continue
-        if not is_unit_in_effect_scope(effect, str(unit_id), state):
+        if not any(is_unit_in_effect_scope(effect, sid, state) for sid in scope_ids):
             continue
         total += effect.stat_value
 
@@ -226,9 +247,17 @@ def get_computed_stat(
                         state.current_actor_id = saved_actor
                     total += count * aura.multiplier
 
-    # 4. Add Marker effects (for heroes with markers on them)
+    # 4. Add Marker effects (for heroes with markers on them).
+    # Attack/defense read markers on this board unit (piece-local) plus any
+    # marker attached directly to the owner; owner-level initiative counts
+    # each marker on any piece once (marker_ids covers owner + all pieces).
     if hero_owner is not None:
-        for marker in state.get_markers_on_hero(str(hero_owner.id)):
+        marker_ids = {str(hero_owner.id), str(unit_id)}
+        if stat_type == StatType.INITIATIVE and hero_owner.is_multi_piece:
+            marker_ids.update(state.get_piece_ids(str(hero_owner.id)))
+        for marker in state.markers.values():
+            if marker.target_id is None or str(marker.target_id) not in marker_ids:
+                continue
             for marker_stat_type, marker_value in marker.get_stat_effects():
                 if marker_stat_type == stat_type:
                     total += marker_value

@@ -56,10 +56,10 @@ class TerrainValidationMixin:
             return False  # No actor context, can't check barrier effects
 
         # Get actor entity and verify it's an enemy hero
-        from goa2.domain.models import Hero
+        from goa2.domain.models import is_hero_unit
 
         actor = state.get_entity(BoardEntityID(actor_id))
-        if not actor or not isinstance(actor, Hero):
+        if not actor or not is_hero_unit(actor):
             return False  # Static Barrier only affects enemy heroes as actors
 
         for effect in state.active_effects:

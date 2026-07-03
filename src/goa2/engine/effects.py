@@ -60,6 +60,23 @@ class PassiveConfig(BaseModel):
     prompt: str = ""
 
 
+def _defense_stats_unit_id(state: GameState, defender: Hero, context: dict[str, Any]):
+    """Board unit whose position drives defense stats.
+
+    The attacked piece from the combat context when it belongs to this
+    defender (multi-piece heroes defend with the piece that was hit);
+    otherwise the defender itself.
+    """
+    from goa2.domain.types import BoardEntityID
+
+    defender_board_id = context.get("defender_id")
+    if defender_board_id is not None:
+        owner = state.get_hero(BoardEntityID(str(defender_board_id)))
+        if owner is not None and str(owner.id) == str(defender.id):
+            return str(defender_board_id)
+    return defender.id
+
+
 class CardEffect:
     """
     Base class for custom card logic.
@@ -110,7 +127,7 @@ class CardEffect:
         """
         from goa2.engine.stats import compute_card_stats
 
-        stats = compute_card_stats(state, defender.id, card)
+        stats = compute_card_stats(state, _defense_stats_unit_id(state, defender, context), card)
         return self.build_defense_steps(state, defender, card, stats, context)
 
     def get_on_block_steps(
@@ -128,7 +145,7 @@ class CardEffect:
         """
         from goa2.engine.stats import compute_card_stats
 
-        stats = compute_card_stats(state, defender.id, card)
+        stats = compute_card_stats(state, _defense_stats_unit_id(state, defender, context), card)
         return self.build_on_block_steps(state, defender, card, stats, context)
 
     # -------------------------------------------------------------------------

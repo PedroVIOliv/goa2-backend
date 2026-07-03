@@ -9,6 +9,7 @@ from goa2.domain.models.effect import (
     DurationType,
     EffectScope,
     EffectType,
+    Shape,
 )
 from goa2.domain.models.enums import ActionType
 
@@ -88,7 +89,25 @@ class EffectManager:
         origin_action_type: ActionType | None = None,
         **kwargs,
     ) -> ActiveEffect:
-        """Create and register a new spatial effect."""
+        """Create and register a new spatial effect.
+
+        Positional origins bind to the physical board entity: a multi-piece
+        hero's implicit (or self-referencing) origin resolves to the acting
+        piece, because the owner hero ID has no board position once its turn
+        ends and the effect would silently lose its anchor.
+        """
+        if scope.shape != Shape.GLOBAL and scope.origin_hex is None:
+            origin_id = scope.origin_id or source_id
+            board_origin = state.resolve_board_actor(str(origin_id))
+            if board_origin != str(origin_id):
+                scope = scope.model_copy(update={"origin_id": board_origin})
+
+        if effect_type == EffectType.STATIC_BARRIER:
+            barrier_origin = kwargs.get("barrier_origin_id") or source_id
+            board_barrier_origin = state.resolve_board_actor(str(barrier_origin))
+            if board_barrier_origin != str(barrier_origin):
+                kwargs["barrier_origin_id"] = board_barrier_origin
+
         effect = ActiveEffect(
             id=f"eff_{state.create_entity_id('e')}",
             source_id=source_id,

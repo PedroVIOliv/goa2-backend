@@ -53,9 +53,13 @@ class Marker(BaseModel):
     - All markers return to supply at end of round
     - Markers on defeated heroes are returned
 
+    Multi-piece heroes: a marker placed on a HeroPiece stays attached to that
+    piece (piece-local attack/defense), while its initiative effect counts
+    once for the owning hero.
+
     Attributes:
         type: The marker type (VENOM, etc.)
-        target_id: Hero ID if placed, None if in supply
+        target_id: Hero or hero-piece ID if placed, None if in supply
         value: Effect magnitude when placed (e.g., -1 or -2 for stat debuffs)
         source_id: Hero ID who placed this marker (for cleanup on defeat)
     """

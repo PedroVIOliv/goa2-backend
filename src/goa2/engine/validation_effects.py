@@ -141,9 +141,9 @@ class EffectValidationMixin:
         is_self = effect.source_id == target_id
 
         # Check unit type
-        from goa2.domain.models import Hero, Minion
+        from goa2.domain.models import Minion, is_hero_unit
 
-        is_hero = isinstance(target, Hero)
+        is_hero = is_hero_unit(target)
         is_minion = isinstance(target, Minion)
 
         if affects == AffectsFilter.SELF:

@@ -152,9 +152,9 @@ class AdjacentToObstaclesFilter(FilterCondition):
         if ult is None or ult.current_effect_id != "over_the_top":
             return False
         target = state.get_unit(UnitID(str(candidate)))
-        from goa2.domain.models import Hero
+        from goa2.domain.models import is_hero_unit
 
-        if not isinstance(target, Hero):
+        if not is_hero_unit(target):
             return False
         return target.team != actor.team
 

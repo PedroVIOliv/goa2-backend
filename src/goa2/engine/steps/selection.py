@@ -32,6 +32,16 @@ from goa2.engine.steps.base import GameStep, StepResult
 logger = logging.getLogger(__name__)
 
 
+def normalize_prompt_player_id(state: GameState, raw_id: Any) -> str:
+    """Resolve an entity ID to the player who answers input prompts.
+
+    Hero-piece IDs (hero_razzle_piece_N) normalize to the owning hero;
+    anything else (hero IDs, team:XXX strings) passes through unchanged.
+    """
+    hero = state.get_hero(HeroID(str(raw_id)))
+    return str(hero.id) if hero else str(raw_id)
+
+
 class SelectStep(GameStep):
     """
     Unified selection step using the Filter System.
@@ -114,7 +124,7 @@ class SelectStep(GameStep):
         if self.override_player_id_key:
             found = context.get(self.override_player_id_key)
             if found:
-                actor_id = HeroID(str(found))
+                actor_id = HeroID(normalize_prompt_player_id(state, found))
 
         candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
@@ -557,6 +567,7 @@ class AskConfirmationStep(GameStep):
         actor_id = self.player_id or state.current_actor_id
         if not actor_id:
             return StepResult(is_finished=True)
+        actor_id = normalize_prompt_player_id(state, actor_id)
 
         if self.pending_input:
             selection = self.pending_input.get("selection")
@@ -768,6 +779,8 @@ class ChooseCardColorStep(GameStep):
         player_id = str(state.current_actor_id) if state.current_actor_id else ""
         if self.player_id_key:
             selected_player = context.get(self.player_id_key)
+            if selected_player:
+                selected_player = normalize_prompt_player_id(state, selected_player)
             if selected_player:
                 player_id = str(selected_player)
 

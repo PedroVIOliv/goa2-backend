@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import FilterType, Hero, Minion, Unit
+from goa2.domain.models import FilterType, Minion, Unit, is_hero_unit
 from goa2.domain.models.enums import (
     ActionType,
     MinionType,
@@ -57,7 +57,16 @@ class TeamFilter(FilterCondition):
         is_same_team = actor_team == target_team
 
         if self.relation == "FRIENDLY":
-            return is_same_team and (actor.id != target.id)
+            if not is_same_team or actor.id == target.id:
+                return False
+            # The acting piece of a multi-piece hero is "you", not "another
+            # hero"; her other pieces remain valid friendly heroes.
+            is_acting_piece = bool(
+                state.acting_piece_id
+                and str(target.id) == str(state.acting_piece_id)
+                and getattr(target, "owner_hero_id", None) == str(actor.id)
+            )
+            return not is_acting_piece
         elif self.relation == "ENEMY":
             return not is_same_team
 
@@ -74,9 +83,7 @@ class UnitTypeFilter(FilterCondition):
             return False
 
         if self.unit_type == "HERO":
-            from goa2.domain.models.unit import HeroPiece
-
-            return isinstance(entity, (Hero, HeroPiece))
+            return is_hero_unit(entity)
         elif self.unit_type == "MINION":
             return isinstance(entity, Minion)
         elif self.unit_type == "TOKEN":
@@ -193,7 +200,7 @@ class AdjacencyFilter(FilterCondition):
                     if occ_team is None or act_team is None or occ_team == act_team:
                         matches = False
                 elif tag == "HERO":
-                    if not isinstance(occupant, Hero):
+                    if not is_hero_unit(occupant):
                         matches = False
                 elif tag == "MINION":
                     if not isinstance(occupant, Minion):

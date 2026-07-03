@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeGuard
 
 from pydantic import Field
 
@@ -279,3 +279,13 @@ class Minion(Unit):
     @property
     def is_heavy(self) -> bool:
         return self.type == MinionType.HEAVY
+
+
+def is_hero_unit(entity: object) -> TypeGuard[Hero | HeroPiece]:
+    """True for a hero's board-level presence: a Hero or one of its HeroPieces.
+
+    Board-positional logic (targeting, auras, terrain rules, adjacency,
+    "each enemy hero" effects) must use this instead of isinstance(x, Hero)
+    so multi-piece heroes are treated as hero units on the board.
+    """
+    return isinstance(entity, (Hero, HeroPiece))

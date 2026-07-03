@@ -77,13 +77,13 @@ def test_resolve_board_actor():
     assert state.resolve_board_actor("hero_razzle") == piece_id("hero_razzle", 2)
 
 
-def test_place_marker_on_piece_attaches_to_hero():
+def test_place_marker_on_piece_stays_piece_local():
     state = _state()
     marker = state.place_marker(
         MarkerType.BOUNTY, target_id=piece_id("hero_razzle", 2), value=1, source_id="hero_knight"
     )
-    assert marker.target_id == "hero_razzle"
-    assert state.get_markers_on_hero("hero_razzle") == [marker]
+    assert marker.target_id == piece_id("hero_razzle", 2)
+    assert state.get_markers_on_hero(piece_id("hero_razzle", 2)) == [marker]
 
 
 def test_acting_piece_id_round_trips():
