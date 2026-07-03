@@ -820,8 +820,12 @@ class ResolveCardStep(GameStep):
                         )
 
                     elif act_type == ActionType.CLEAR:
-                        hero_loc = state.get_position(self.hero_id)
-                        if not hero_loc:
+                        # Gate on board presence, not the owner position: a
+                        # multi-piece hero has no owner-level position, and the
+                        # RangeFilter keys off the bound acting piece at
+                        # execution, so build the real selection whenever any
+                        # piece is on the board.
+                        if not state.has_board_presence(self.hero_id):
                             steps_list.append(
                                 LogMessageStep(
                                     message=f"{self.hero_id} attempted clear but is not on board."
