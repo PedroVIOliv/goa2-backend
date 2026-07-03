@@ -22,13 +22,11 @@ from goa2.engine.steps import (
     AddContextValueStep,
     AttackSequenceStep,
     CheckContextConditionStep,
-    ComputeDistanceStep,
     CountStep,
     GameStep,
     MoveSequenceStep,
     MoveUnitStep,
     RazzleMirroredPushStep,
-    RecordHexStep,
     RemoveHeroPieceStep,
     RetrieveCardStep,
     SelectStep,
@@ -71,7 +69,6 @@ def _move_another_piece_steps(
     *,
     distance: int,
     prefix: str,
-    active_if_key: str | None = None,
 ) -> list[GameStep]:
     piece_key = f"{prefix}_piece"
     dest_key = f"{prefix}_dest"
@@ -81,7 +78,6 @@ def _move_another_piece_steps(
             prompt="Select another one of you to move",
             output_key=piece_key,
             is_mandatory=False,
-            active_if_key=active_if_key,
             filters=_another_piece_filters(),
         ),
         SelectStep(
@@ -141,17 +137,11 @@ def _movement_then_move_another_steps(
     move_distance: int,
     prefix: str,
 ) -> list[GameStep]:
-    actor_piece = _acting_piece(state, hero)
-    start_key = f"{prefix}_start"
-    moved_key = f"{prefix}_moved"
     return [
-        RecordHexStep(unit_id=actor_piece, output_key=start_key),
         MoveSequenceStep(unit_id=str(hero.id), range_val=stats.primary_value),
-        ComputeDistanceStep(unit_id=actor_piece, hex_key=start_key, output_key=moved_key),
         *_move_another_piece_steps(
             distance=move_distance,
             prefix=f"{prefix}_move",
-            active_if_key=moved_key,
         ),
     ]
 
