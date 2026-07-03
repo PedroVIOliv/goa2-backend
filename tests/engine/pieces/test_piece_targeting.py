@@ -79,6 +79,25 @@ def test_computed_stat_applies_owner_items_to_piece():
     assert total == 3
 
 
+def test_double_items_applies_to_piece_via_owner():
+    state = _state()
+    razzle = state.get_hero("hero_razzle")
+    razzle.items[StatType.DEFENSE] = 2
+    effect = ActiveEffect(
+        id="double_items_test",
+        source_id="hero_razzle",
+        effect_type=EffectType.DOUBLE_ITEMS,
+        scope=EffectScope(shape=Shape.GLOBAL),
+        duration=DurationType.THIS_ROUND,
+        created_at_round=state.round,
+        created_at_turn=state.turn,
+        is_active=True,
+    )
+    state.add_effect(effect)
+    # 1 base + 2 items doubled to 4
+    assert get_computed_stat(state, piece_id("hero_razzle", 2), StatType.DEFENSE, 1) == 5
+
+
 def test_area_modifier_hits_piece_in_scope_only():
     state = _state()
     effect = ActiveEffect(

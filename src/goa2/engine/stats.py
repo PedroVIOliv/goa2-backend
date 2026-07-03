@@ -172,7 +172,7 @@ def get_computed_stat(
             for effect in state.active_effects:
                 if (
                     effect.effect_type == EffectType.DOUBLE_ITEMS
-                    and effect.source_id == str(unit_id)
+                    and effect.source_id == str(hero_owner.id)
                     and _is_effect_active(effect, state)
                 ):
                     item_bonus *= 2
