@@ -281,11 +281,17 @@ class GameState(BaseModel):
         return self.input_stack[-1].request_type
 
     def get_hero(self, hero_id: HeroID) -> Hero | None:
-        """Finds a Hero by ID."""
+        """Finds a Hero by ID. A HeroPiece ID resolves to its owning Hero."""
         for team in self.teams.values():
             for hero in team.heroes:
                 if hero.id == hero_id:
                     return hero
+        # Piece IDs resolve to the player-level Hero that owns them.
+        from goa2.domain.models.unit import HeroPiece
+
+        entity = self.misc_entities.get(BoardEntityID(str(hero_id)))
+        if isinstance(entity, HeroPiece):
+            return self.get_hero(HeroID(entity.owner_hero_id))
         return None
 
     def get_entity(self, entity_id: BoardEntityID) -> Any | None:
@@ -301,8 +307,8 @@ class GameState(BaseModel):
 
     def get_unit(self, unit_id: UnitID) -> Unit | None:
         """
-        Finds a Unit (Hero or Minion) by ID.
-        O(N) search across all teams.
+        Finds a Unit (Hero, Minion, or HeroPiece) by ID.
+        O(N) search across all teams, then misc-entity units (hero pieces).
         """
         for team in self.teams.values():
             for hero in team.heroes:
@@ -311,6 +317,9 @@ class GameState(BaseModel):
             for minion in team.minions:
                 if str(minion.id) == str(unit_id):
                     return minion
+        entity = self.misc_entities.get(BoardEntityID(str(unit_id)))
+        if isinstance(entity, Unit):
+            return entity
         return None
 
     def get_card_by_id(self, card_id: str) -> Card | None:

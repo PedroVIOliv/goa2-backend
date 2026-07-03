@@ -135,6 +135,7 @@ else:
 # ---------------------------------------------------------------------------
 from goa2.domain.models.base import Placeholder, Turret  # noqa: E402
 from goa2.domain.models.token import Token  # noqa: E402
+from goa2.domain.models.unit import HeroPiece  # noqa: E402
 
 
 def _misc_entity_discriminator(v: Any) -> str:
@@ -146,6 +147,7 @@ def _misc_entity_discriminator(v: Any) -> str:
 AnyMiscEntity = Annotated[
     Annotated[Token, Tag("token")]
     | Annotated[Turret, Tag("turret")]
+    | Annotated[HeroPiece, Tag("hero_piece")]
     | Annotated[Placeholder, Tag("placeholder")],
     Discriminator(_misc_entity_discriminator),
 ]

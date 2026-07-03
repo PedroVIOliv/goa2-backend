@@ -23,7 +23,7 @@ from .marker import MARKER_EFFECTS, Marker, MarkerStatEffect, MarkerType
 from .spawn import SpawnPoint, SpawnType
 from .team import Team
 from .token import TOKEN_SUPPLY, Token
-from .unit import Hero, Minion, Unit
+from .unit import Hero, HeroPiece, Minion, Unit
 
 __all__ = [
     "MARKER_EFFECTS",
@@ -45,6 +45,7 @@ __all__ = [
     "GamePhase",
     "GameType",
     "Hero",
+    "HeroPiece",
     "Marker",
     "MarkerStatEffect",
     "MarkerType",

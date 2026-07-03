@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
@@ -18,6 +18,18 @@ class Unit(BoardEntity):
 
     team: TeamColor | None = None
     markers: list[Marker] = Field(default_factory=list)
+
+
+class HeroPiece(Unit):
+    """One board piece of a multi-piece hero (e.g. Razzle).
+
+    Multi-piece heroes never appear in entity_locations themselves; only their
+    pieces do. Player-level state (hand, gold, markers, turn) stays on the
+    owning Hero — resolve it via state.get_hero(piece.id).
+    """
+
+    entity_kind: Literal["hero_piece"] = "hero_piece"
+    owner_hero_id: str
 
 
 class Hero(Unit):
@@ -53,6 +65,16 @@ class Hero(Unit):
         description="Ultimate (Purple/Tier IV) card. Active when level >= 8.",
     )
     team_obj: Team | None = Field(default=None, exclude=True)  # Circular reference to parent Team
+
+    piece_supply: int = Field(
+        default=0,
+        description="Total board pieces for multi-piece heroes (e.g. Razzle: 4). "
+        "0 = the hero itself is its board piece (all normal heroes).",
+    )
+
+    @property
+    def is_multi_piece(self) -> bool:
+        return self.piece_supply > 0
 
     def get_effective_initiative(self) -> int:
         """
