@@ -37,6 +37,11 @@ class ReactionWindowStep(GameStep):
 
         target_hero = state.get_hero(target_id)
 
+        # Multi-piece heroes: target_id may be a piece. All PLAYER-level uses
+        # (prompt routing, card ownership, stats-by-hero) go through the owner;
+        # defender_id keeps the piece id (positional truth).
+        owner_id = str(target_hero.id) if target_hero else str(target_id)
+
         # Optimization: Minions/Non-Heroes cannot react.
         if not target_hero:
             logger.debug(f"   [REACTION] Target {target_id} is not a hero. Skipping reaction.")
@@ -160,7 +165,7 @@ class ReactionWindowStep(GameStep):
 
                 return StepResult(
                     is_finished=True,
-                    new_steps=[DiscardCardStep(card_id=card_id, hero_id=str(target_id))],
+                    new_steps=[DiscardCardStep(card_id=card_id, hero_id=owner_id)],
                 )
 
         # Compute combat info for the input request
@@ -171,10 +176,10 @@ class ReactionWindowStep(GameStep):
         context["minion_defense_modifier"] = minion_modifier
         defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
 
-        prompt = f"Player {target_id}, select a Defense card."
+        prompt = f"Player {owner_id}, select a Defense card."
         if attack_value is not None:
             prompt = (
-                f"Player {target_id}, select a Defense card. "
+                f"Player {owner_id}, select a Defense card. "
                 f"Attack: {attack_value}, Defense needed: {defense_needed} "
                 f"(minion mod: {minion_modifier:+d})"
             )
@@ -183,7 +188,7 @@ class ReactionWindowStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_CARD_OR_PASS,
-                player_id=str(target_id),
+                player_id=owner_id,
                 prompt=prompt,
                 options=options,
                 attack_value=attack_value,
