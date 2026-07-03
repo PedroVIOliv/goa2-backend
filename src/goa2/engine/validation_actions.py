@@ -128,21 +128,56 @@ class ActionValidationMixin:
         Can actor repeat an action?
         Checks: PREVENT_ACTION_REPEAT effects.
         """
-        # Check for repeat prevention via ActiveEffects
-        actor_loc = state.get_position(actor_id)
-        if actor_loc:
-            actor_unit = state.get_unit(UnitID(actor_id))
+
+        # First repeat-prevention effect (if any) blocking the entity at
+        # check_hex. Uses check_id so a multi-piece hero can be evaluated
+        # per-piece (team + self identity resolve through the piece).
+        def blocking_effect(check_id: str, check_hex: Hex) -> ActiveEffect | None:
+            actor_unit = state.get_unit(UnitID(check_id))
             for effect in state.active_effects:
                 if effect.effect_type != EffectType.REPEAT_PREVENTION:
                     continue
                 if not self._is_effect_active(effect, state):
                     continue
-                if not self._is_in_scope(effect, actor_id, actor_loc, state):
+                if not self._is_in_scope(effect, check_id, check_hex, state):
                     continue
                 if self._actor_blocked_by_effect(effect, actor_unit, None, state):
-                    return ValidationResult.deny(
-                        reason="Action repeat prevented",
-                        effect_ids=[effect.id],
-                        source=effect.source_id,
-                    )
+                    return effect
+            return None
+
+        # Check for repeat prevention via ActiveEffects.
+        actor_loc = state.get_position(actor_id)
+        if actor_loc:
+            blocked = blocking_effect(actor_id, actor_loc)
+            if blocked:
+                return ValidationResult.deny(
+                    reason="Action repeat prevented",
+                    effect_ids=[blocked.id],
+                    source=blocked.source_id,
+                )
+            return ValidationResult.allow()
+
+        # Unbound multi-piece hero: each piece is an independent actor. The hero
+        # can repeat if ANY piece can; deny only if every on-board piece is
+        # blocked (the acting piece is chosen later, per-piece).
+        hero = state.get_hero(HeroID(actor_id))
+        if hero is not None and hero.is_multi_piece:
+            last_blocked: ActiveEffect | None = None
+            has_piece = False
+            for pid in state.get_piece_ids(actor_id):
+                piece_loc = state.get_position(pid)
+                if piece_loc is None:
+                    continue
+                has_piece = True
+                blocked = blocking_effect(pid, piece_loc)
+                if blocked is None:
+                    return ValidationResult.allow()
+                last_blocked = blocked
+            if has_piece and last_blocked is not None:
+                return ValidationResult.deny(
+                    reason="Action repeat prevented",
+                    effect_ids=[last_blocked.id],
+                    source=last_blocked.source_id,
+                )
+
         return ValidationResult.allow()

@@ -5,6 +5,14 @@ chosen to perform it."""
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import ActionType, Card, CardColor, CardTier
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.engine.hero_pieces import create_hero_pieces, piece_id
 from goa2.scripts.arien_effects import SpellBreakEffect
 from tests.engine.effects.builders import EffectScenarioBuilder
@@ -127,3 +135,46 @@ def test_choose_acting_piece_auto_binds_the_only_legal_piece():
     assert result.is_finished is True
     assert result.requires_input is False
     assert str(state.acting_piece_id) == piece_id("hero_razzle", 2)
+
+
+def _cast_repeat_prevention_from_knight(state, radius: int) -> None:
+    """Enemy knight emits a repeat-prevention zone (radius around the knight).
+    No shipped card produces this against a multi-piece hero yet; the guard is
+    defensive against the same unbound-owner bypass fixed for restrictions."""
+    state.add_effect(
+        ActiveEffect(
+            id="repeat_block",
+            source_id="hero_knight",
+            effect_type=EffectType.REPEAT_PREVENTION,
+            scope=EffectScope(
+                shape=Shape.RADIUS,
+                range=radius,
+                origin_id="hero_knight",
+                affects=AffectsFilter.ENEMY_HEROES,
+            ),
+            duration=DurationType.THIS_TURN,
+            created_at_round=state.round,
+            created_at_turn=state.turn,
+            is_active=True,
+        )
+    )
+
+
+def test_repeat_denied_when_all_pieces_inside_repeat_prevention():
+    state = _state()
+    # Radius 6 around knight@(6,0,-6) covers hexes 0..6, so both pieces are inside.
+    _place(state, (5, 0, -5), (4, 0, -4))
+    _cast_repeat_prevention_from_knight(state, radius=6)
+
+    res = state.validator.can_repeat_action(state, "hero_razzle")
+    assert res.allowed is False
+
+
+def test_repeat_allowed_when_one_piece_outside_repeat_prevention():
+    state = _state()
+    # Radius 2 around knight@(6,0,-6) covers hexes 4..6. piece_1 inside, piece_2 outside.
+    _place(state, (5, 0, -5), (0, 0, 0))
+    _cast_repeat_prevention_from_knight(state, radius=2)
+
+    res = state.validator.can_repeat_action(state, "hero_razzle")
+    assert res.allowed is True

@@ -1641,6 +1641,11 @@ def _one_man_army_bonus(state: GameState, zone) -> dict[TeamColor, int]:
                 continue
             if hero.ultimate_card.effect_id != "one_man_army":
                 continue
+            # Owner-level get_position returns None for an unbound multi-piece
+            # hero (its pieces hold the positions), which would silently drop
+            # the bonus. Safe today because no hero is both multi-piece and
+            # one_man_army; if that ever changes, iterate get_positions() and
+            # count per-piece zone membership instead.
             hero_loc = state.get_position(str(hero.id))
             if hero_loc and hero_loc in zone.hexes and hero.team is not None:
                 bonus[hero.team] += 1
