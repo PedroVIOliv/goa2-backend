@@ -165,9 +165,10 @@ def get_computed_stat(
         return get_computed_stat(state, UnitID(str(unit.owner_hero_id)), stat_type, base_value)
 
     # Multi-piece hero owner IDs carry no board position of their own.
-    # Non-initiative stats are piece-local: resolve through the bound acting
-    # piece when one exists. Initiative is an owner-level aggregate: each
+    # Non-initiative positional stats are piece-local: resolve through the bound
+    # acting piece when one exists. Initiative is an owner-level aggregate: each
     # distinct positional effect counts once if any piece is in its scope.
+    # (Markers are the exception — shared across pieces; see section 4 below.)
     scope_ids: list[str] = [str(unit_id)]
     if isinstance(unit, Hero) and unit.is_multi_piece:
         if stat_type != StatType.INITIATIVE:
@@ -253,12 +254,12 @@ def get_computed_stat(
                     total += len(counted_ids) * aura.multiplier
 
     # 4. Add Marker effects (for heroes with markers on them).
-    # Attack/defense read markers on this board unit (piece-local) plus any
-    # marker attached directly to the owner; owner-level initiative counts
-    # each marker on any piece once (marker_ids covers owner + all pieces).
+    # Markers are a shared hero inventory (like the hand of cards): a marker on
+    # any piece of a multi-piece hero applies to the whole hero, so it counts
+    # for every stat type on any piece — not just the piece it was placed on.
     if hero_owner is not None:
         marker_ids = {str(hero_owner.id), str(unit_id)}
-        if stat_type == StatType.INITIATIVE and hero_owner.is_multi_piece:
+        if hero_owner.is_multi_piece:
             marker_ids.update(state.get_piece_ids(str(hero_owner.id)))
         for marker in state.markers.values():
             if marker.target_id is None or str(marker.target_id) not in marker_ids:

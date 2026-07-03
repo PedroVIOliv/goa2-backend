@@ -1,5 +1,6 @@
-"""Fix 4 guards: stat markers stay piece-local for action/defense stats,
-aggregate once at owner level for initiative, and clean up on defeat."""
+"""Multi-piece marker guards: markers are a shared hero inventory, so a marker
+on any piece affects every piece's attack/defense and counts once at owner
+level for initiative; markers clean up on defeat."""
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import StatType, TeamColor
@@ -38,7 +39,7 @@ def test_place_marker_on_piece_stays_on_piece():
     assert marker.target_id == piece_id("hero_razzle", 2)
 
 
-def test_poison_on_piece_is_piece_local_for_attack_and_defense():
+def test_poison_on_piece_is_shared_across_pieces_for_attack_and_defense():
     state = _state()
     state.place_marker(
         MarkerType.POISON, piece_id("hero_razzle", 2), value=-2, source_id="hero_knight"
@@ -46,9 +47,9 @@ def test_poison_on_piece_is_piece_local_for_attack_and_defense():
 
     assert get_computed_stat(state, piece_id("hero_razzle", 2), StatType.ATTACK, 4) == 2
     assert get_computed_stat(state, piece_id("hero_razzle", 2), StatType.DEFENSE, 4) == 2
-    # The unpoisoned piece does not inherit the penalty.
-    assert get_computed_stat(state, piece_id("hero_razzle", 1), StatType.ATTACK, 4) == 4
-    assert get_computed_stat(state, piece_id("hero_razzle", 1), StatType.DEFENSE, 4) == 4
+    # Markers are shared: the other piece inherits the penalty too.
+    assert get_computed_stat(state, piece_id("hero_razzle", 1), StatType.ATTACK, 4) == 2
+    assert get_computed_stat(state, piece_id("hero_razzle", 1), StatType.DEFENSE, 4) == 2
 
 
 def test_poison_on_piece_counts_once_for_owner_initiative():

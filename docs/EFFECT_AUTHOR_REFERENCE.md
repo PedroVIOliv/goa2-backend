@@ -1240,6 +1240,7 @@ directly.
 
 `SelectStep`/filters offer pieces as independent enemy hero units; the acting
 piece is excluded as "self" while her other pieces stay selectable; defense
-windows route to the owner with `defender_id` keeping the piece; markers stay
-piece-local for attack/defense and count once for initiative; piece defeat
+windows route to the owner with `defender_id` keeping the piece; markers are a
+shared hero inventory (a marker on any piece affects every piece's
+attack/defense and counts once for initiative); piece defeat
 cascades to hero defeat.

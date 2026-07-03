@@ -133,9 +133,10 @@ class GameState(BaseModel):
     ) -> Marker:
         """
         Place a marker on a target hero or hero piece.
-        A marker placed on a HeroPiece stays attached to that piece: its
-        attack/defense penalties are piece-local, while initiative aggregates
-        markers across all pieces at the owner level (stats.py).
+        A marker placed on a HeroPiece records that piece as the target, but
+        markers are a shared hero inventory: the penalty applies to every
+        piece's attack/defense and counts once at the owner level for
+        initiative (stats.py).
         If marker was on another hero, it automatically leaves them (singleton).
         """
         marker = self.get_marker(marker_type)

@@ -53,9 +53,10 @@ class Marker(BaseModel):
     - All markers return to supply at end of round
     - Markers on defeated heroes are returned
 
-    Multi-piece heroes: a marker placed on a HeroPiece stays attached to that
-    piece (piece-local attack/defense), while its initiative effect counts
-    once for the owning hero.
+    Multi-piece heroes: markers are a shared hero inventory (like the hand of
+    cards). A marker placed on any HeroPiece applies to the whole hero — it
+    affects every piece's attack/defense, and its initiative effect counts once
+    for the owning hero.
 
     Attributes:
         type: The marker type (VENOM, etc.)

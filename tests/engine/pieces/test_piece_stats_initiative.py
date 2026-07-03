@@ -177,6 +177,40 @@ def _card_with_secondary_attack() -> Card:
     )
 
 
+def test_poison_marker_is_shared_across_pieces_for_attack():
+    """Markers are a shared hero inventory: a poison marker on one piece debuffs
+    the attack of any acting piece, not just the piece it was placed on."""
+    from goa2.domain.models.marker import MarkerType
+
+    state = _state()
+    state.place_marker(MarkerType.POISON, piece_id("hero_razzle", 1), -2, "hero_knight")
+
+    # Acting piece_2 does NOT carry the marker, but shares it (same hero).
+    state.acting_piece_id = piece_id("hero_razzle", 2)
+    assert get_computed_stat(state, "hero_razzle", StatType.ATTACK, 3) == 1
+
+
+def test_poison_marker_is_shared_across_pieces_for_defense():
+    from goa2.domain.models.marker import MarkerType
+
+    state = _state()
+    state.place_marker(MarkerType.POISON, piece_id("hero_razzle", 1), -2, "hero_knight")
+
+    # Defense of the attacked piece_2 shares the marker on piece_1.
+    state.acting_piece_id = piece_id("hero_razzle", 2)
+    assert get_computed_stat(state, "hero_razzle", StatType.DEFENSE, 4) == 2
+
+
+def test_poison_marker_counts_once_for_owner_initiative():
+    from goa2.domain.models.marker import MarkerType
+
+    state = _state()
+    state.place_marker(MarkerType.POISON, piece_id("hero_razzle", 1), -2, "hero_knight")
+
+    # Owner-level initiative counts the single shared marker exactly once.
+    assert get_computed_stat(state, "hero_razzle", StatType.INITIATIVE, 5) == 3
+
+
 def test_defense_stats_use_attacked_piece_from_context():
     state = _state(actor="hero_knight")
     razzle = state.get_hero("hero_razzle")
