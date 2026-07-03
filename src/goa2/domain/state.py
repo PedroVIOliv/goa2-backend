@@ -100,6 +100,10 @@ class GameState(BaseModel):
 
     next_entity_id: int = 1
 
+    # Multi-piece heroes (Razzle): the piece performing the current action.
+    # Bound by ChooseActingPieceStep, cleared by FinalizeHeroTurnStep.
+    acting_piece_id: BoardEntityID | None = None
+
     active_effects: list[ActiveEffect] = Field(default_factory=list)
 
     # Singleton markers - each MarkerType has exactly one Marker instance
@@ -129,8 +133,16 @@ class GameState(BaseModel):
     ) -> Marker:
         """
         Place a marker on a target hero.
+        Markers always attach to the HERO: a HeroPiece target resolves to its
+        owner (rules ruling — a marker on any Razzle affects all Razzles).
         If marker was on another hero, it automatically leaves them (singleton).
         """
+        from goa2.domain.models.unit import HeroPiece
+
+        entity = self.misc_entities.get(BoardEntityID(str(target_id)))
+        if isinstance(entity, HeroPiece):
+            target_id = entity.owner_hero_id
+
         marker = self.get_marker(marker_type)
         marker.place(target_id=target_id, value=value, source_id=source_id)
         return marker
@@ -364,6 +376,69 @@ class GameState(BaseModel):
             if entity and isinstance(entity, (Unit, Token)):
                 result.append(eid)
         return result
+
+    def _multi_piece_hero(self, entity_id: str) -> Hero | None:
+        """Return the Hero if entity_id names a multi-piece hero, else None."""
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if str(hero.id) == str(entity_id) and hero.is_multi_piece:
+                    return hero
+        return None
+
+    def get_piece_ids(self, hero_id: str) -> list[str]:
+        """On-board piece IDs for a hero. Normal on-board hero → [hero_id]."""
+        from goa2.engine.hero_pieces import piece_id as _piece_id
+
+        hero = self._multi_piece_hero(hero_id)
+        if hero is None:
+            if BoardEntityID(str(hero_id)) in self.entity_locations:
+                return [str(hero_id)]
+            return []
+        return [
+            _piece_id(str(hero.id), i)
+            for i in range(1, hero.piece_supply + 1)
+            if BoardEntityID(_piece_id(str(hero.id), i)) in self.entity_locations
+        ]
+
+    def get_positions(self, entity_id: str) -> list[Hex]:
+        """All board positions for an entity. Multi-piece hero → all piece hexes."""
+        if self._multi_piece_hero(entity_id) is not None:
+            return [
+                self.entity_locations[BoardEntityID(pid)] for pid in self.get_piece_ids(entity_id)
+            ]
+        loc = self.entity_locations.get(BoardEntityID(str(entity_id)))
+        return [loc] if loc else []
+
+    def get_position(self, entity_id: str) -> Hex | None:
+        """Single position — bound contexts only.
+
+        Multi-piece hero IDs resolve through acting_piece_id (None if unbound).
+        Everything else is a direct entity_locations lookup.
+        """
+        direct = self.entity_locations.get(BoardEntityID(str(entity_id)))
+        if direct is not None:
+            return direct
+        hero = self._multi_piece_hero(entity_id)
+        if hero is not None and self.acting_piece_id:
+            piece = self.misc_entities.get(self.acting_piece_id)
+            if piece is not None and getattr(piece, "owner_hero_id", None) == str(hero.id):
+                return self.entity_locations.get(self.acting_piece_id)
+        return None
+
+    def has_board_presence(self, hero_id: str) -> bool:
+        """True if the hero (or any of its pieces) is on the board."""
+        return bool(self.get_positions(hero_id))
+
+    def resolve_board_actor(self, unit_id: str) -> str:
+        """Board entity that physically performs an action for unit_id.
+
+        Multi-piece hero with a bound acting piece → the piece ID; else identity.
+        """
+        if self._multi_piece_hero(unit_id) is not None and self.acting_piece_id:
+            piece = self.misc_entities.get(self.acting_piece_id)
+            if piece is not None and getattr(piece, "owner_hero_id", None) == str(unit_id):
+                return str(self.acting_piece_id)
+        return str(unit_id)
 
     def place_entity(self, entity_id: BoardEntityID, target_hex: Hex):
         """
