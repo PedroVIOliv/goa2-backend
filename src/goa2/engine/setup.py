@@ -237,7 +237,15 @@ class GameSetup:
                     break
 
             if spawn_loc:
-                state.place_entity(hero.id, spawn_loc)
+                if hero.is_multi_piece:
+                    # Multi-piece heroes (Razzle) never occupy the board
+                    # themselves: register the piece supply and place piece 1.
+                    from goa2.engine.hero_pieces import create_hero_pieces, piece_id
+
+                    create_hero_pieces(state, hero)
+                    state.place_entity(BoardEntityID(piece_id(str(hero.id), 1)), spawn_loc)
+                else:
+                    state.place_entity(hero.id, spawn_loc)
             else:
                 logger.warning("No spawn point available for %s", hero.name)
 
