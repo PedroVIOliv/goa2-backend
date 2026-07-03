@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
@@ -10,9 +11,9 @@ from goa2.domain.hex import Hex
 from goa2.domain.input import SKIP, InputOption, InputRequestType, create_input_request
 from goa2.domain.models import StepType
 from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.steps.base import GameStep, StepResult
-from goa2.engine.topology import topology_distance
+from goa2.engine.topology import are_connected, get_topology_service, topology_distance
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,34 @@ class ChooseActingPieceStep(GameStep):
                 options=options,
             ),
         )
+
+
+class SetActingPieceStep(GameStep):
+    """Bind a specific already-selected piece as the acting piece."""
+
+    type: StepType = StepType.SET_ACTING_PIECE
+    hero_id: str
+    piece_id: str | None = None
+    piece_key: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        piece_id = self.piece_id
+        if piece_id is None and self.piece_key:
+            piece_id = context.get(self.piece_key)
+        if not piece_id:
+            return StepResult(is_finished=True)
+
+        pieces = state.get_piece_ids(self.hero_id)
+        if str(piece_id) not in pieces:
+            logger.debug("   [PIECE] Invalid acting-piece binding: %s", piece_id)
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        state.acting_piece_id = BoardEntityID(str(piece_id))
+        logger.debug("   [PIECE] Re-bound acting piece %s", piece_id)
+        return StepResult(is_finished=True)
 
 
 class SpawnHeroPieceStep(GameStep):
@@ -160,6 +189,259 @@ class SpawnHeroPieceStep(GameStep):
                 can_skip=True,
             ),
         )
+
+
+@dataclass(frozen=True)
+class _PushPreview:
+    target_dest: Hex
+    moved_distance: int
+    direction_idx: int
+
+
+class RazzleMirroredPushStep(GameStep):
+    """Push a nearby unit, then move Razzle's acting piece the actual distance back.
+
+    The chosen push distance is an intent. Obstacles, board edge, and topology
+    can stop the pushed unit early; the acting piece must be able to move exactly
+    that actual distance in the opposite direction for the distance choice to be
+    legal.
+    """
+
+    type: StepType = StepType.RAZZLE_MIRRORED_PUSH
+    hero_id: str
+    max_distance: int
+    selected_target_id: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.steps.movement import MoveUnitStep, PushUnitStep
+
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        actor_piece = state.resolve_board_actor(self.hero_id)
+        actor_hex = state.get_position(actor_piece)
+        if actor_hex is None:
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        if self.selected_target_id is None:
+            targets = self._valid_targets(state, context, actor_piece, actor_hex)
+            if not targets:
+                return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+            if self.pending_input:
+                selection = str(self.pending_input.get("selection"))
+                self.pending_input = None
+                if selection in targets:
+                    self.selected_target_id = selection
+                else:
+                    return self._target_request(targets)
+            else:
+                return self._target_request(targets)
+
+        target_id = self.selected_target_id
+        if target_id is None:
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        legal = self._legal_distances(state, context, actor_piece, actor_hex, target_id)
+        if not legal:
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            self.pending_input = None
+            try:
+                distance = int(selection)
+            except (TypeError, ValueError):
+                return self._distance_request(legal)
+
+            if distance in legal:
+                preview, mirror_dest = legal[distance]
+                steps: list[GameStep] = []
+                if distance > 0:
+                    steps.append(PushUnitStep(target_id=target_id, distance=distance))
+                if preview.moved_distance > 0 and mirror_dest is not None:
+                    context["razzle_mirror_dest"] = mirror_dest
+                    steps.append(
+                        MoveUnitStep(
+                            unit_id=actor_piece,
+                            destination_key="razzle_mirror_dest",
+                            range_val=preview.moved_distance,
+                            is_movement_action=False,
+                        )
+                    )
+                return StepResult(is_finished=True, new_steps=steps)
+
+        return self._distance_request(legal)
+
+    def _target_request(self, targets: list[str]) -> StepResult:
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_UNIT,
+                player_id=self.hero_id,
+                prompt="Select an adjacent unit to push",
+                options=targets,
+            ),
+        )
+
+    def _distance_request(self, legal: dict[int, tuple[_PushPreview, Hex | None]]) -> StepResult:
+        options = [
+            InputOption(
+                id=str(distance),
+                text=str(distance),
+                metadata={"actual_moved": preview.moved_distance},
+            )
+            for distance, (preview, _) in sorted(legal.items())
+        ]
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_NUMBER,
+                player_id=self.hero_id,
+                prompt="Choose push distance",
+                options=options,
+            ),
+        )
+
+    def _valid_targets(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        actor_piece: str,
+        actor_hex: Hex,
+    ) -> list[str]:
+        topology = get_topology_service()
+        targets: list[str] = []
+        actor_id = str(state.current_actor_id) if state.current_actor_id else self.hero_id
+        for entity_id in state.entity_locations:
+            target_id = str(entity_id)
+            if target_id == actor_piece:
+                continue
+            if not state.get_unit(UnitID(target_id)):
+                continue
+            target_hex = state.get_position(target_id)
+            if target_hex is None or not topology.are_adjacent(actor_hex, target_hex, state):
+                continue
+            if not state.validator.can_be_targeted(state, actor_id, target_id, context).allowed:
+                continue
+            if not state.validator.can_be_pushed(state, target_id, actor_id, context).allowed:
+                continue
+
+            from goa2.engine.filters_units import ImmunityFilter
+
+            if not ImmunityFilter().apply(target_id, state, context):
+                continue
+            targets.append(target_id)
+        return targets
+
+    def _legal_distances(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        actor_piece: str,
+        actor_hex: Hex,
+        target_id: str,
+    ) -> dict[int, tuple[_PushPreview, Hex | None]]:
+        legal: dict[int, tuple[_PushPreview, Hex | None]] = {}
+        for distance in range(0, self.max_distance + 1):
+            preview = self._preview_push(state, context, actor_hex, target_id, distance)
+            if preview is None:
+                continue
+            mirror_dest = self._mirror_destination(
+                state,
+                context,
+                actor_piece,
+                actor_hex,
+                preview.direction_idx,
+                preview.moved_distance,
+            )
+            if preview.moved_distance == 0 or mirror_dest is not None:
+                legal[distance] = (preview, mirror_dest)
+        return legal
+
+    def _preview_push(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        source_hex: Hex,
+        target_id: str,
+        distance: int,
+    ) -> _PushPreview | None:
+        target_hex = state.get_position(target_id)
+        if target_hex is None:
+            return None
+
+        direction_idx = source_hex.direction_to(target_hex)
+        if direction_idx is None:
+            return None
+
+        path: list[Hex] = [target_hex]
+        for _ in range(distance):
+            prev = path[-1]
+            next_hex = prev.neighbor(direction_idx)
+            if next_hex not in state.board.tiles:
+                break
+            if not are_connected(prev, next_hex, state):
+                break
+
+            is_obstacle = state.validator.is_obstacle_for_actor(
+                state,
+                next_hex,
+                str(state.current_actor_id) if state.current_actor_id else target_id,
+                context,
+            )
+            if is_obstacle:
+                if state.validator.is_passable_token(state, next_hex):
+                    path.append(next_hex)
+                    continue
+                break
+            path.append(next_hex)
+
+        while len(path) > 1 and state.validator.is_passable_token(state, path[-1]):
+            path.pop()
+
+        return _PushPreview(
+            target_dest=path[-1],
+            moved_distance=len(path) - 1,
+            direction_idx=direction_idx,
+        )
+
+    def _mirror_destination(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        actor_piece: str,
+        actor_hex: Hex,
+        push_direction_idx: int,
+        distance: int,
+    ) -> Hex | None:
+        if distance == 0:
+            return None
+
+        actor_id = str(state.current_actor_id) if state.current_actor_id else self.hero_id
+        if not state.validator.can_be_moved(state, actor_piece, actor_id, context).allowed:
+            return None
+        if not state.validator.can_move(
+            state,
+            actor_piece,
+            distance,
+            context,
+            is_movement_action=False,
+        ).allowed:
+            return None
+
+        direction_idx = (push_direction_idx + 3) % 6
+        current = actor_hex
+        for _ in range(distance):
+            next_hex = current.neighbor(direction_idx)
+            if next_hex not in state.board.tiles:
+                return None
+            if not are_connected(current, next_hex, state):
+                return None
+            if state.validator.is_obstacle_for_actor(state, next_hex, actor_id, context):
+                return None
+            current = next_hex
+        return current
 
 
 class RemoveHeroPieceStep(GameStep):

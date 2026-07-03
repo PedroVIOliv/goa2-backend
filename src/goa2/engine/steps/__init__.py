@@ -89,7 +89,9 @@ from goa2.engine.steps.phases import (  # noqa: F401
 )
 from goa2.engine.steps.pieces import (  # noqa: F401
     ChooseActingPieceStep,
+    RazzleMirroredPushStep,
     RemoveHeroPieceStep,
+    SetActingPieceStep,
     SpawnHeroPieceStep,
 )
 from goa2.engine.steps.reactions import (  # noqa: F401

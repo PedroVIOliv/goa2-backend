@@ -216,8 +216,10 @@ class StepType(StrEnum):
     RESTORE_CARD_INITIATIVE = "restore_card_initiative"
     SCHEDULE_ACTION_CONTROL = "schedule_action_control"
     CHOOSE_ACTING_PIECE = "choose_acting_piece"
+    SET_ACTING_PIECE = "set_acting_piece"
     SPAWN_HERO_PIECE = "spawn_hero_piece"
     REMOVE_HERO_PIECE = "remove_hero_piece"
+    RAZZLE_MIRRORED_PUSH = "razzle_mirrored_push"
 
 
 class FilterType(StrEnum):
