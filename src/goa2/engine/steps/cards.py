@@ -23,7 +23,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
-from goa2.domain.types import HeroID, UnitID
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter, UnitTypeFilter
 from goa2.engine.stats import get_computed_stat
@@ -473,6 +473,18 @@ class ForceDiscardOrDefeatStep(GameStep):
         if not victim:
             return StepResult(is_finished=True)
 
+        victim_entity_id = BoardEntityID(str(victim_id))
+        is_owner_level_multipiece_victim = (
+            str(victim.id) == str(victim_id)
+            and victim.is_multi_piece
+            and state.has_board_presence(str(victim.id))
+        )
+        if victim_entity_id not in state.entity_locations and not is_owner_level_multipiece_victim:
+            logger.debug(
+                "   [EFFECT] Skipping discard-or-defeat for off-board victim %s.", victim_id
+            )
+            return StepResult(is_finished=True)
+
         if not victim.hand:
             logger.debug(f"   [EFFECT] {victim_id} has no cards to discard! DEFEATED!")
             # Credit the kill. Prefer an explicit override; otherwise fall back to
@@ -780,22 +792,32 @@ class ResolveCardStep(GameStep):
                 else:
                     # Secondary: Standard Primitives
                     if act_type == ActionType.MOVEMENT:
-                        steps_list.append(MoveSequenceStep(unit_id=self.hero_id, range_val=val))
+                        move_base = card.current_secondary_actions.get(act_type, val)
+                        steps_list.append(
+                            MoveSequenceStep(
+                                unit_id=self.hero_id,
+                                range_val=move_base,
+                                range_stat_type=StatType.MOVEMENT,
+                            )
+                        )
 
                     elif act_type == ActionType.FAST_TRAVEL:
                         steps_list.append(FastTravelSequenceStep(unit_id=self.hero_id))
 
                     elif act_type == ActionType.ATTACK:
-                        # Damage is already computed in 'val'
-                        # But Range is implicit, so compute it here
+                        attack_base = card.current_secondary_actions.get(act_type, val)
                         base_rng = card.get_base_stat_value(StatType.RANGE)
                         if base_rng == 0:
                             base_rng = 1
-                        total_rng = get_computed_stat(
-                            state, UnitID(self.hero_id), StatType.RANGE, base_rng
-                        )
 
-                        steps_list.append(AttackSequenceStep(damage=val, range_val=total_rng))
+                        steps_list.append(
+                            AttackSequenceStep(
+                                damage=attack_base,
+                                range_val=base_rng,
+                                damage_stat_type=StatType.ATTACK,
+                                range_stat_type=StatType.RANGE,
+                            )
+                        )
 
                     elif act_type == ActionType.CLEAR:
                         hero_loc = state.get_position(self.hero_id)

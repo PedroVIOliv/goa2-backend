@@ -10,7 +10,7 @@ from pydantic import Field
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
-from goa2.domain.models import GamePhase, Hero, StepType, TargetType, TeamColor, Token
+from goa2.domain.models import GamePhase, Hero, StatType, StepType, TargetType, TeamColor, Token
 from goa2.domain.models.effect import EffectType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
@@ -46,6 +46,8 @@ class AttackSequenceStep(GameStep):
     )  # Additional filters for target selection
     damage_bonus_key: str | None = None  # Add int from context to damage
     range_bonus_key: str | None = None  # Add int from context to range_val
+    damage_stat_type: StatType | None = None  # Recompute damage after actor binding
+    range_stat_type: StatType | None = None  # Recompute range after actor binding
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.cards import ResolvePreActionDiscardStep
@@ -63,17 +65,27 @@ class AttackSequenceStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        # Apply dynamic bonuses from context
-        effective_damage = (
-            self.damage + int(context.get(self.damage_bonus_key, 0))
-            if self.damage_bonus_key
-            else self.damage
-        )
-        effective_range = (
-            self.range_val + int(context.get(self.range_bonus_key, 0))
-            if self.range_bonus_key
-            else self.range_val
-        )
+        base_actor_id = str(state.current_actor_id) if state.current_actor_id else None
+        board_actor_id = state.resolve_board_actor(base_actor_id) if base_actor_id else None
+
+        effective_damage = self.damage
+        effective_range = self.range_val
+        if board_actor_id:
+            from goa2.engine.stats import get_computed_stat
+
+            if self.damage_stat_type is not None:
+                effective_damage = get_computed_stat(
+                    state, UnitID(board_actor_id), self.damage_stat_type, self.damage
+                )
+            if self.range_stat_type is not None:
+                effective_range = get_computed_stat(
+                    state, UnitID(board_actor_id), self.range_stat_type, self.range_val
+                )
+
+        if self.damage_bonus_key:
+            effective_damage += int(context.get(self.damage_bonus_key, 0))
+        if self.range_bonus_key:
+            effective_range += int(context.get(self.range_bonus_key, 0))
 
         logger.debug(
             f"   [MACRO] Expanding Attack Sequence (Dmg: {effective_damage}, Rng: {effective_range})"
@@ -337,11 +349,27 @@ class DefeatUnitStep(GameStep):
         if not victim:
             raise ValueError(f"Cannot defeat unknown unit: {actual_victim_id}")
 
+        from goa2.domain.models.unit import HeroPiece
+
+        if (
+            isinstance(victim, HeroPiece)
+            and BoardEntityID(str(actual_victim_id)) not in state.entity_locations
+        ):
+            logger.debug(
+                "   [DEATH] Skipping stale defeat of off-board piece %s.", actual_victim_id
+            )
+            return StepResult(is_finished=True)
+        if (
+            isinstance(victim, Hero)
+            and victim.is_multi_piece
+            and not state.has_board_presence(str(victim.id))
+        ):
+            logger.debug("   [DEATH] Skipping stale defeat of off-board hero %s.", actual_victim_id)
+            return StepResult(is_finished=True)
+
         # Multi-piece heroes: defeating ANY piece defeats the hero.
         # Translate the victim to the owning Hero for all player-level
         # consequences, and remove every on-board piece at the end.
-        from goa2.domain.models.unit import HeroPiece
-
         removal_ids = [actual_victim_id]
         if isinstance(victim, HeroPiece):
             owner = state.get_hero(HeroID(actual_victim_id))

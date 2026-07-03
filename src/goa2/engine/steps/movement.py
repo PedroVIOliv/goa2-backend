@@ -15,6 +15,7 @@ from goa2.domain.models import (
     Card,
     Hero,
     HeroPiece,
+    StatType,
     StepType,
     TargetType,
     TeamColor,
@@ -217,6 +218,7 @@ class MoveSequenceStep(GameStep):
     type: StepType = StepType.MOVE_SEQUENCE
     unit_id: str | None = None
     range_val: int = 1
+    range_stat_type: StatType | None = None
     destination_key: str = "target_hex"
     is_mandatory: bool = True
     pass_through_obstacles: bool = False
@@ -227,11 +229,11 @@ class MoveSequenceStep(GameStep):
     # "trample mode" — through-effects key off the resulting straight-line move.
     allow_straight_line_through_obstacles: bool = False
 
-    def _get_effective_range(self, state: GameState, unit_id: str) -> int:
+    def _get_effective_range(self, state: GameState, unit_id: str, range_val: int) -> int:
         """Get effective movement range, considering MOVEMENT_ZONE effects."""
         from goa2.domain.models.effect import EffectType
 
-        max_range = self.range_val
+        max_range = range_val
 
         unit_loc = state.entity_locations.get(BoardEntityID(unit_id))
         if not unit_loc:
@@ -255,10 +257,19 @@ class MoveSequenceStep(GameStep):
 
         base_actor_id = self.unit_id or state.current_actor_id
         actor_id = state.resolve_board_actor(str(base_actor_id)) if base_actor_id else None
+        action_range = self.range_val
+        if actor_id and self.range_stat_type is not None:
+            from goa2.engine.stats import get_computed_stat
+
+            action_range = get_computed_stat(
+                state, UnitID(str(actor_id)), self.range_stat_type, self.range_val
+            )
 
         # Calculate effective range (capped by MOVEMENT_ZONE effects)
         effective_range = (
-            self._get_effective_range(state, str(actor_id)) if actor_id else self.range_val
+            self._get_effective_range(state, str(actor_id), action_range)
+            if actor_id
+            else action_range
         )
 
         # Auto-detect pass_through_obstacles from hero's active movement auras

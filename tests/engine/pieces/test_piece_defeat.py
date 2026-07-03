@@ -47,3 +47,25 @@ def test_defeating_one_piece_removes_all_and_rewards_once():
     # Exactly one life counter penalty
     assert state.teams[razzle.team].life_counters == life_before - 1
     assert "hero_razzle" in state.heroes_defeated_this_round
+
+
+def test_queued_piece_defeats_only_charge_hero_defeat_once():
+    state = _state()
+    knight = state.get_hero("hero_knight")
+    razzle = state.get_hero("hero_razzle")
+    gold_before = knight.gold
+    life_before = state.teams[razzle.team].life_counters
+
+    push_steps(
+        state,
+        [
+            DefeatUnitStep(victim_id=piece_id("hero_razzle", 1), killer_id="hero_knight"),
+            DefeatUnitStep(victim_id=piece_id("hero_razzle", 2), killer_id="hero_knight"),
+        ],
+    )
+    process_stack(state)
+
+    assert not state.has_board_presence("hero_razzle")
+    assert knight.gold == gold_before + 1
+    assert state.teams[razzle.team].life_counters == life_before - 1
+    assert state.heroes_defeated_this_round.count("hero_razzle") == 1

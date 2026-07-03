@@ -240,16 +240,17 @@ def get_computed_stat(
                 if aura.flat_bonus is not None:
                     total += aura.flat_bonus
                 else:
-                    hero_hex = state.entity_locations.get(BoardEntityID(str(unit_id)))
-                    if not hero_hex:
-                        continue
                     saved_actor = state.current_actor_id
-                    state.current_actor_id = unit_id
+                    counted_ids: set[str] = set()
                     try:
-                        count = _count_matching_units(state, aura)
+                        for scope_id in scope_ids:
+                            if state.get_position(scope_id) is None:
+                                continue
+                            state.current_actor_id = UnitID(str(scope_id))
+                            counted_ids.update(_matching_unit_ids(state, aura))
                     finally:
                         state.current_actor_id = saved_actor
-                    total += count * aura.multiplier
+                    total += len(counted_ids) * aura.multiplier
 
     # 4. Add Marker effects (for heroes with markers on them).
     # Attack/defense read markers on this board unit (piece-local) plus any
@@ -272,11 +273,16 @@ def get_computed_stat(
 def _count_matching_units(state: GameState, aura: StatAura) -> int:
     """Count all units on the board that match all aura filters.
     Range is handled by RangeFilter within count_filters."""
-    count = 0
+    return len(_matching_unit_ids(state, aura))
+
+
+def _matching_unit_ids(state: GameState, aura: StatAura) -> set[str]:
+    """IDs of on-board units matching a count-based stat aura for current actor."""
+    matched: set[str] = set()
     for entity_id in state.entity_locations:
         if all(f.apply(str(entity_id), state, {}) for f in aura.count_filters):
-            count += 1
-    return count
+            matched.add(str(entity_id))
+    return matched
 
 
 def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:

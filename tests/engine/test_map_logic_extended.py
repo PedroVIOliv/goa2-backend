@@ -4,6 +4,7 @@ from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
+from goa2.engine.hero_pieces import create_hero_pieces, piece_id
 from goa2.engine.map_logic import (
     check_lane_push_trigger,
     count_enemies,
@@ -110,6 +111,19 @@ def test_count_enemies_extended(map_state):
 
     # Non-existent zone
     assert count_enemies(map_state, "Unknown", TeamColor.RED) == 0
+
+
+def test_count_enemies_counts_multipiece_hero_presences(map_state):
+    blue_hero = map_state.get_hero("h2")
+    blue_hero.piece_supply = 2
+    map_state.remove_entity("h2")
+    map_state.remove_entity("m1")
+    map_state.remove_entity("m2")
+    create_hero_pieces(map_state, blue_hero)
+    map_state.place_entity(piece_id("h2", 1), Hex(q=1, r=0, s=-1))
+    map_state.place_entity(piece_id("h2", 2), Hex(q=1, r=-1, s=0))
+
+    assert count_enemies(map_state, "Mid", TeamColor.RED) == 2
 
 
 def test_find_nearest_empty_hexes_extended(map_state):

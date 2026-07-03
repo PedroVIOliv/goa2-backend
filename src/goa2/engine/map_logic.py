@@ -88,16 +88,16 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
     for team_obj in state.teams.values():
         if team_obj.color != team:  # Hostile Team
             for minion in team_obj.minions:
-                loc = state.unit_locations.get(minion.id)
+                loc = state.get_position(str(minion.id))
                 if loc and loc in zone.hexes:
                     count += 1
 
     for t_color, t_obj in state.teams.items():
         if t_color != team:
             for hero in t_obj.heroes:
-                loc = state.unit_locations.get(hero.id)
-                if loc and loc in zone.hexes:
-                    count += 1
+                for loc in state.get_positions(str(hero.id)):
+                    if loc in zone.hexes:
+                        count += 1
 
     return count
 

@@ -462,6 +462,9 @@ class RemoveHeroPieceStep(GameStep):
 
         def remove_piece(pid: str) -> GameEvent:
             from_hex = state.entity_locations.get(BoardEntityID(pid))
+            for marker in state.markers.values():
+                if marker.target_id == pid:
+                    marker.remove()
             state.remove_entity(BoardEntityID(pid))
             if str(state.acting_piece_id) == pid:
                 state.acting_piece_id = None

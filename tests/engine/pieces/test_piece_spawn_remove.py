@@ -1,9 +1,12 @@
 """Spawn (supply-capped) and voluntary removal of hero pieces."""
 
 from goa2.domain.hex import Hex
+from goa2.domain.models import StatType
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.hero_pieces import create_hero_pieces, piece_id
+from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.pieces import RemoveHeroPieceStep, SpawnHeroPieceStep
 from tests.engine.effects.builders import EffectScenarioBuilder
 
@@ -113,3 +116,21 @@ def test_removed_pieces_return_to_supply_for_respawn():
 
     razzle = state.get_hero("hero_razzle")
     assert piece_id("hero_razzle", 2) in pieces_in_supply(state, razzle)
+
+
+def test_remove_piece_returns_attached_markers_before_respawn():
+    state = _state(n_pieces=2)
+    state.place_marker(
+        MarkerType.POISON, piece_id("hero_razzle", 2), value=-2, source_id="hero_knight"
+    )
+
+    push_steps(state, [RemoveHeroPieceStep(hero_id="hero_razzle", mode="choose_one")])
+    result = process_stack(state)
+    assert result.input_request is not None
+    state.execution_stack[-1].pending_input = {"selection": piece_id("hero_razzle", 2)}
+    process_stack(state)
+
+    assert state.markers[MarkerType.POISON].target_id is None
+
+    state.place_entity(piece_id("hero_razzle", 2), Hex(q=-1, r=0, s=1))
+    assert get_computed_stat(state, piece_id("hero_razzle", 2), StatType.ATTACK, 5) == 5

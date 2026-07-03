@@ -121,10 +121,12 @@ class SelectStep(GameStep):
             return StepResult(is_finished=True)
 
         actor_id = state.current_actor_id
+        prompt_player_id = normalize_prompt_player_id(state, actor_id) if actor_id else None
         if self.override_player_id_key:
             found = context.get(self.override_player_id_key)
             if found:
-                actor_id = HeroID(normalize_prompt_player_id(state, found))
+                actor_id = HeroID(str(found))
+                prompt_player_id = normalize_prompt_player_id(state, found)
 
         candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
@@ -279,7 +281,7 @@ class SelectStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=request_type,
-                player_id=str(actor_id),
+                player_id=prompt_player_id or str(actor_id),
                 prompt=self.prompt,
                 options=options_for_request,
                 can_skip=not self.is_mandatory,
@@ -382,6 +384,7 @@ class MultiSelectStep(GameStep):
             return StepResult(is_finished=True)
 
         actor_id = state.current_actor_id
+        prompt_player_id = normalize_prompt_player_id(state, actor_id) if actor_id else None
         if not actor_id:
             context[self.output_key] = self.selections
             return StepResult(is_finished=True)
@@ -451,7 +454,7 @@ class MultiSelectStep(GameStep):
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_UNIT,
-                player_id=str(actor_id),
+                player_id=prompt_player_id or str(actor_id),
                 prompt=f"{self.prompt} ({len(self.selections)}/{self.max_selections})",
                 options=candidates,
                 can_skip=allow_done,
@@ -749,13 +752,18 @@ class GuessCardColorStep(GameStep):
         options = [
             InputOption(id=color, text=color) for color in self._valid_colors(state, context)
         ]
+        player_id = (
+            normalize_prompt_player_id(state, state.current_actor_id)
+            if state.current_actor_id
+            else ""
+        )
 
         return StepResult(
             is_finished=False,
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_OPTION,
-                player_id=str(state.current_actor_id),
+                player_id=player_id,
                 prompt="Guess the card's color",
                 options=options,
             ),
