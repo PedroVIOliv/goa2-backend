@@ -51,13 +51,24 @@ The expensive version of this refactor would put piece IDs into actor contexts, 
 
 ### 3.2 Position resolver — the load-bearing new API
 
-New methods on `GameState` (or `engine/hero_pieces.py`):
+A multi-piece hero's position is fundamentally **set-valued**; a singular position only exists in a *bound context* (her acting piece mid-action, or the specific piece being attacked/pushed). The API makes that explicit:
 
-- `get_position(entity_id) -> Hex | None` — piece/normal-unit ID → its `entity_locations` entry; multi-piece hero ID → **the acting piece's hex** if an action is in progress, else `None`.
+- `get_positions(entity_id) -> list[Hex]` — **the default.** Piece/normal-unit ID → `[its hex]`; multi-piece hero ID → hexes of all on-board pieces (possibly empty). Never surprises with `None`.
+- `get_position(entity_id) -> Hex | None` — **bound contexts only.** Piece/normal-unit ID → its hex; multi-piece hero ID → the acting piece's hex if bound, else `None`. Used where a unique origin is required: movement execution, attack origin, "adjacent to you" during action resolution.
 - `has_board_presence(hero_id) -> bool` — normal hero: in `entity_locations`; multi-piece hero: any piece on board. Replaces raw `hero_id in state.entity_locations` off-board checks (e.g. `ResolveCardStep`, `cards.py:616`; combat guards in `reactions.py:230`, `combat.py:177`).
 - `get_piece_ids(state, hero_id) -> list[str]` — on-board pieces (returns `[hero_id]` itself for normal heroes, making effect helpers uniform).
 
-**Migration:** grep-audit direct `entity_locations` reads in shared engine code (filters, rules, validation, steps — ~20 files) and route hero-positional ones through `get_position`. Reads keyed by *target/victim* IDs already work (those are piece IDs). Writes (`place_entity`/`move_unit`/`remove_entity`) are untouched.
+**Call-site categories** (each migrated site is classified as one of these):
+
+| Category | Examples | Resolution |
+|---|---|---|
+| **Bound** — a unique piece exists | movement origin, attack adjacency, defense radius (`defender_id` carries the piece), `stats.py:62` origin during resolution | `get_position` (acting piece) or the piece ID already in context |
+| **Any-piece predicate** — outside her turn or pre-binding | fast-travel availability (`cards.py:636` — available if *any* piece is in a zone with safe destinations; the piece choice is then restricted to qualifying pieces), "is hero in zone X", passive-trigger eligibility | `get_positions` + any/all semantics decided per site |
+| **Per-piece enumeration** — each piece independently | area stat modifiers & auras (`stats.py:133/207`, `effect_manager.py:59` — a piece in radius gets the effect, per "separate heroes always"), battle counting, spawn displacement | iterate `get_piece_ids`/`get_positions` |
+
+**Pre-binding stat previews:** `ResolveCardStep`'s action-option values (`compute_option`) are computed before a piece is bound, so position-dependent modifiers are ambiguous at preview time. Previews are informational; the authoritative values are computed at resolution with a bound piece. Preview policy: compute with the piece-independent portion (items + hero-keyed modifiers), which is exact for single-piece heroes and a documented approximation for Razzle pre-binding.
+
+**Migration:** grep-audit direct `entity_locations` reads in shared engine code (filters, rules, validation, steps — ~20 files), classify per the table, and route hero-positional ones through the resolver. Reads keyed by *target/victim* IDs already work (those are piece IDs). Writes (`place_entity`/`move_unit`/`remove_entity`) are untouched.
 
 ### 3.3 Acting piece
 
@@ -124,7 +135,8 @@ Classify each `team.heroes` iteration site (~12 in engine/domain):
 TDD throughout (`tests/engine/effects/` helpers, `effect_contract`/`effect_flow` marks). Core invariant tests, roughly in build order:
 
 1. `HeroPiece` unit-hood: enumerable by enemy `SelectStep`, team/range filterable, blocks pathfinding, JSON round-trip (incl. `acting_piece_id`).
-2. Position resolver: `get_position(hero)` = acting piece mid-action / `None` otherwise; `has_board_presence` across 0/1/4 pieces.
+2. Position resolver: `get_positions(hero)` returns all piece hexes at any time; `get_position(hero)` = acting piece mid-action / `None` otherwise; `has_board_presence` across 0/1/4 pieces.
+2b. Unbound-context correctness: area stat modifier applies to a defending piece in radius while another piece is outside it (per-piece enumeration); fast travel offered when only a non-acting-default piece is in a valid zone.
 3. Attack a piece → defense prompt reaches the Razzle player (`player_id = hero_razzle`), defense value from shared hand, radius effects computed at the attacked piece.
 4. Defeat via any piece → all pieces removed, killer rewarded once, respawn as one piece.
 5. Attack piece 1 (blocked), repeat "different unit" → piece 2 targetable, piece 1 excluded (direct ID comparison).
