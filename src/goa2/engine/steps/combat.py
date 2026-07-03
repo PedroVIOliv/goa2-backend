@@ -337,6 +337,24 @@ class DefeatUnitStep(GameStep):
         if not victim:
             raise ValueError(f"Cannot defeat unknown unit: {actual_victim_id}")
 
+        # Multi-piece heroes: defeating ANY piece defeats the hero.
+        # Translate the victim to the owning Hero for all player-level
+        # consequences, and remove every on-board piece at the end.
+        from goa2.domain.models.unit import HeroPiece
+
+        removal_ids = [actual_victim_id]
+        if isinstance(victim, HeroPiece):
+            owner = state.get_hero(HeroID(actual_victim_id))
+            if owner is None:
+                raise ValueError(f"HeroPiece {actual_victim_id} has no owner hero")
+            removal_ids = state.get_piece_ids(str(owner.id))
+            victim = owner
+            actual_victim_id = str(owner.id)
+            logger.debug(
+                f"   [DEATH] Piece defeat → hero defeat of {actual_victim_id}; "
+                f"removing pieces {removal_ids}"
+            )
+
         killer = state.get_unit(UnitID(self.killer_id)) if self.killer_id else None
 
         if hasattr(victim, "value") and self._has_minion_protection(
@@ -489,7 +507,7 @@ class DefeatUnitStep(GameStep):
                             return StepResult(
                                 is_finished=True,
                                 new_steps=[
-                                    RemoveUnitStep(unit_id=actual_victim_id),
+                                    *[RemoveUnitStep(unit_id=rid) for rid in removal_ids],
                                     TriggerGameOverStep(
                                         winner=winning_team, condition="ANNIHILATION"
                                     ),
@@ -520,7 +538,7 @@ class DefeatUnitStep(GameStep):
 
         return StepResult(
             is_finished=True,
-            new_steps=[RemoveUnitStep(unit_id=actual_victim_id)],
+            new_steps=[RemoveUnitStep(unit_id=rid) for rid in removal_ids],
             events=events,
         )
 
