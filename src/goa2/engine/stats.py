@@ -96,7 +96,9 @@ def _matches_affects_filter(effect: ActiveEffect, target_id: str, state: GameSta
 
     source_team = getattr(source, "team", None)
     target_team = getattr(target, "team", None)
-    is_hero = isinstance(target, Hero)
+    from goa2.domain.models.unit import HeroPiece
+
+    is_hero = isinstance(target, (Hero, HeroPiece))
     is_minion = isinstance(target, Minion)
 
     if affects == AffectsFilter.SELF:
@@ -151,11 +153,20 @@ def get_computed_stat(
     if not unit:
         return base_value
 
+    # A HeroPiece computes hero-level bonuses (items, auras, markers) from its
+    # owning Hero, while positional checks below keep using the piece's own id.
+    hero_owner: Hero | None = unit if isinstance(unit, Hero) else None
+    if hero_owner is None:
+        from goa2.domain.models.unit import HeroPiece
+
+        if isinstance(unit, HeroPiece):
+            hero_owner = state.get_hero(BoardEntityID(str(unit_id)))
+
     total = base_value
 
     # 1. Add Item Bonuses (for Heroes)
-    if isinstance(unit, Hero):
-        item_bonus = unit.items.get(stat_type, 0)
+    if hero_owner is not None:
+        item_bonus = hero_owner.items.get(stat_type, 0)
         # Check for DOUBLE_ITEMS effect (Min: Inner Strength / Perfect Self)
         if item_bonus > 0:
             for effect in state.active_effects:
@@ -181,16 +192,16 @@ def get_computed_stat(
         total += effect.stat_value
 
     # 3. Add filter-based aura effects (for heroes with active auras)
-    if isinstance(unit, Hero):
+    if hero_owner is not None:
         from goa2.engine.effects import get_active_aura_effects
 
-        for _card, aura_effect in get_active_aura_effects(state, unit):
+        for _card, aura_effect in get_active_aura_effects(state, hero_owner):
             for aura in aura_effect.get_stat_auras():
                 if aura.stat_type != stat_type:
                     continue
                 # Check conditional aura restrictions
                 if aura.basic_only or aura.action_type_only is not None:
-                    card = unit.current_turn_card
+                    card = hero_owner.current_turn_card
                     if not card:
                         continue
                     if aura.basic_only and not card.is_basic:
@@ -216,8 +227,8 @@ def get_computed_stat(
                     total += count * aura.multiplier
 
     # 4. Add Marker effects (for heroes with markers on them)
-    if isinstance(unit, Hero):
-        for marker in state.get_markers_on_hero(str(unit_id)):
+    if hero_owner is not None:
+        for marker in state.get_markers_on_hero(str(hero_owner.id)):
             for marker_stat_type, marker_value in marker.get_stat_effects():
                 if marker_stat_type == stat_type:
                     total += marker_value

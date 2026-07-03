@@ -212,7 +212,7 @@ class RangeFilter(FilterCondition):
             if not origin_uid:
                 return False
 
-            origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+            origin_hex = state.get_position(str(origin_uid))
             if not origin_hex:
                 return False
 
