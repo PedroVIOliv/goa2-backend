@@ -65,6 +65,7 @@ class FinalizeHeroTurnStep(GameStep):
 
         # Clear transient context for the next actor
         context.clear()
+        state.acting_piece_id = None
         state.current_actor_id = None
 
         return StepResult(

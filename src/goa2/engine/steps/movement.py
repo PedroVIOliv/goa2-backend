@@ -14,6 +14,7 @@ from goa2.domain.models import (
     ActionType,
     Card,
     Hero,
+    HeroPiece,
     StepType,
     TargetType,
     TeamColor,
@@ -136,7 +137,7 @@ class MoveUnitStep(GameStep):
 
         # Mine detection: only enemy heroes trigger mines
         moving_entity = state.get_entity(BoardEntityID(target_unit_id))
-        moving_team = moving_entity.team if isinstance(moving_entity, Hero) else None
+        moving_team = moving_entity.team if isinstance(moving_entity, (Hero, HeroPiece)) else None
         if moving_team and "triggered_mine_ids" not in context and start_hex != dest_hex:
             has_enemy_mines = any(
                 token.is_passable
@@ -252,7 +253,8 @@ class MoveSequenceStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
-        actor_id = self.unit_id or state.current_actor_id
+        base_actor_id = self.unit_id or state.current_actor_id
+        actor_id = state.resolve_board_actor(str(base_actor_id)) if base_actor_id else None
 
         # Calculate effective range (capped by MOVEMENT_ZONE effects)
         effective_range = (
@@ -449,7 +451,8 @@ class FastTravelSequenceStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
-        actor_id = self.unit_id or state.current_actor_id
+        base_actor_id = self.unit_id or state.current_actor_id
+        actor_id = state.resolve_board_actor(str(base_actor_id)) if base_actor_id else None
         if not actor_id:
             return StepResult(is_finished=True)
 
@@ -534,7 +537,7 @@ class MinePathChoiceStep(GameStep):
 
         # Only enemy heroes trigger mines
         moving_entity = state.get_entity(BoardEntityID(moving_id))
-        moving_team = moving_entity.team if isinstance(moving_entity, Hero) else None
+        moving_team = moving_entity.team if isinstance(moving_entity, (Hero, HeroPiece)) else None
         if not moving_team:
             context[self.output_key] = []
             return StepResult(is_finished=True)
@@ -926,7 +929,10 @@ class MoveTowardTargetStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        mover_id = self.unit_id or (str(state.current_actor_id) if state.current_actor_id else None)
+        base_mover_id = self.unit_id or (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
+        mover_id = state.resolve_board_actor(str(base_mover_id)) if base_mover_id else None
         if not mover_id:
             return StepResult(is_finished=True)
 
@@ -1016,9 +1022,9 @@ class PushUnitStep(GameStep):
         if not src_hex and self.source_key:
             source_id = context.get(self.source_key)
             if source_id:
-                src_hex = state.entity_locations.get(BoardEntityID(str(source_id)))
+                src_hex = state.get_position(str(source_id))
         if not src_hex and state.current_actor_id:
-            src_hex = state.entity_locations.get(BoardEntityID(state.current_actor_id))
+            src_hex = state.get_position(str(state.current_actor_id))
 
         if not src_hex:
             logger.debug("   [ERROR] No source for push.")
@@ -1129,7 +1135,9 @@ class PushUnitStep(GameStep):
         # Collect enemy mine IDs from the path (hexes between start and landing, exclusive)
         if pushed_dist > 0:
             pushed_entity = state.get_entity(BoardEntityID(actual_target_id))
-            pushed_team = pushed_entity.team if isinstance(pushed_entity, Hero) else None
+            pushed_team = (
+                pushed_entity.team if isinstance(pushed_entity, (Hero, HeroPiece)) else None
+            )
             if pushed_team:
                 enemy_mine_ids: list[str] = []
                 for hx in path[1:-1]:

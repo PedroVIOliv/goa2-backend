@@ -87,6 +87,11 @@ from goa2.engine.steps.phases import (  # noqa: F401
     FindNextActorStep,
     RestoreActionTypeStep,
 )
+from goa2.engine.steps.pieces import (  # noqa: F401
+    ChooseActingPieceStep,
+    RemoveHeroPieceStep,
+    SpawnHeroPieceStep,
+)
 from goa2.engine.steps.reactions import (  # noqa: F401
     ConfirmResolutionStep,
     ReactionWindowStep,

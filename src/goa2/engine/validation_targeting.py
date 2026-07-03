@@ -34,8 +34,8 @@ class TargetingValidationMixin:
         if not actor_id or not target_id:
             return ValidationResult.deny("Invalid actor or target")
 
-        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
-        target_loc = state.entity_locations.get(BoardEntityID(target_id))
+        actor_loc = state.get_position(actor_id)
+        target_loc = state.get_position(target_id)
 
         if not actor_loc or not target_loc:
             # If not on board, targeting is usually impossible unless global effect

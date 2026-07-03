@@ -215,6 +215,9 @@ class StepType(StrEnum):
     SET_CARD_INITIATIVE = "set_card_initiative"
     RESTORE_CARD_INITIATIVE = "restore_card_initiative"
     SCHEDULE_ACTION_CONTROL = "schedule_action_control"
+    CHOOSE_ACTING_PIECE = "choose_acting_piece"
+    SPAWN_HERO_PIECE = "spawn_hero_piece"
+    REMOVE_HERO_PIECE = "remove_hero_piece"
 
 
 class FilterType(StrEnum):
@@ -260,6 +263,7 @@ class FilterType(StrEnum):
     SAME_DIRECTION_FROM_ORIGIN = "same_direction_from_origin_filter"
     FARTHEST_EMPTY_ADJACENT = "farthest_empty_adjacent_filter"
     HAS_UNRESOLVED_CARD = "has_unresolved_card_filter"
+    HERO_PIECE = "hero_piece_filter"
 
 
 class TargetType(StrEnum):

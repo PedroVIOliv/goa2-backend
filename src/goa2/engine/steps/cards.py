@@ -23,7 +23,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID, UnitID
+from goa2.domain.types import HeroID, UnitID
 from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter, UnitTypeFilter
 from goa2.engine.stats import get_computed_stat
@@ -273,12 +273,14 @@ class ResolvePreActionDiscardStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        if BoardEntityID(hero_id) not in state.entity_locations:
+        if not state.has_board_presence(hero_id):
             # Hero left the board (defeated by a previous disruptor trigger).
             if self.abort_on_defeat:
                 logger.debug(f"   [DISRUPTOR] {hero_id} left the board. Aborting action.")
                 return StepResult(is_finished=True, abort_action=True)
             return StepResult(is_finished=True)
+
+        board_actor_id = state.resolve_board_actor(hero_id)
 
         for effect in state.active_effects:
             if effect.effect_type != EffectType.PRE_ACTION_DISCARD:
@@ -287,7 +289,7 @@ class ResolvePreActionDiscardStep(GameStep):
                 continue
             if not _is_effect_active(effect, state):
                 continue
-            if not is_unit_in_effect_scope(effect, hero_id, state):
+            if not is_unit_in_effect_scope(effect, board_actor_id, state):
                 continue
 
             self.processed_effect_ids.append(effect.id)
@@ -613,7 +615,7 @@ class ResolveCardStep(GameStep):
             return StepResult(is_finished=True)
 
         # If hero is off-board (didn't respawn), skip action
-        if self.hero_id not in state.entity_locations:
+        if not state.has_board_presence(self.hero_id):
             return StepResult(is_finished=True)
 
         card = hero.current_turn_card
@@ -633,11 +635,13 @@ class ResolveCardStep(GameStep):
                 return False
 
             if act_type == ActionType.FAST_TRAVEL:
-                u_loc = state.unit_locations.get(UnitID(self.hero_id))
-                if not u_loc:
+                hero_positions = state.get_positions(self.hero_id)
+                if not hero_positions:
                     return False
-                z_id = state.board.get_zone_for_hex(u_loc)
-                if not z_id:
+                zone_ids = {
+                    z for z in (state.board.get_zone_for_hex(loc) for loc in hero_positions) if z
+                }
+                if not zone_ids:
                     return False
 
                 if not hero:
@@ -648,7 +652,9 @@ class ResolveCardStep(GameStep):
                 if not team:
                     return False
 
-                safe = get_safe_zones_for_fast_travel(state, team, z_id)
+                safe = [
+                    z for zid in zone_ids for z in get_safe_zones_for_fast_travel(state, team, zid)
+                ]
                 if not safe:
                     return False
             return True
@@ -743,6 +749,10 @@ class ResolveCardStep(GameStep):
                 # NOTE: Renamed local variable to avoid shadowing re-declaration if any
                 steps_list: list[GameStep] = []
 
+                from goa2.engine.steps.pieces import ChooseActingPieceStep
+
+                steps_list.append(ChooseActingPieceStep(hero_id=self.hero_id))
+
                 # Check for BEFORE_* passive abilities based on action type.
                 # BEFORE_ACTION always fires — primary, secondary, or HOLD —
                 # in addition to any specific BEFORE_ATTACK/MOVEMENT/SKILL.
@@ -788,7 +798,7 @@ class ResolveCardStep(GameStep):
                         steps_list.append(AttackSequenceStep(damage=val, range_val=total_rng))
 
                     elif act_type == ActionType.CLEAR:
-                        hero_loc = state.entity_locations.get(BoardEntityID(self.hero_id))
+                        hero_loc = state.get_position(self.hero_id)
                         if not hero_loc:
                             steps_list.append(
                                 LogMessageStep(
@@ -1605,7 +1615,7 @@ def _one_man_army_bonus(state: GameState, zone) -> dict[TeamColor, int]:
                 continue
             if hero.ultimate_card.effect_id != "one_man_army":
                 continue
-            hero_loc = state.entity_locations.get(hero.id)
+            hero_loc = state.get_position(str(hero.id))
             if hero_loc and hero_loc in zone.hexes and hero.team is not None:
                 bonus[hero.team] += 1
                 logger.debug(f"   [BATTLE] {hero.name} counts as a heavy minion (One Man Army)")

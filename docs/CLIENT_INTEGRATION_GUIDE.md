@@ -585,7 +585,8 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "effects": [ ... ],
   "markers": { ... },
   "tokens": [ ... ],
-  "board_entities": [ ... ]
+  "board_entities": [ ... ],
+  "hero_pieces": { ... }
 }
 ```
 
@@ -604,6 +605,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
+| `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
 
 ### Team data
 
@@ -723,6 +725,36 @@ The view is player-scoped — what you see depends on your token:
 Hex coordinates use the cube coordinate system: `q + r + s = 0`.
 
 `entity_locations` is the authoritative source for unit positions.
+
+### Hero Pieces
+
+Some heroes, currently Razzle, exist on the board as up to 4 identical pieces
+with stable IDs like `hero_razzle_piece_1`, while remaining one player-level
+hero. The view contains a top-level `hero_pieces` object:
+
+```json
+{
+  "hero_razzle_piece_1": {
+    "owner_hero_id": "hero_razzle",
+    "team": "RED",
+    "position": {"q": 0, "r": 0, "s": 0}
+  },
+  "hero_razzle_piece_2": {
+    "owner_hero_id": "hero_razzle",
+    "team": "RED",
+    "position": null
+  }
+}
+```
+
+`position: null` means the piece is in supply. Render every on-board piece as
+the owning hero; pieces of the same owner are visually interchangeable.
+`SELECT_UNIT` options may contain piece IDs, and clients should submit that
+piece ID. Defense prompts for an attacked piece still use the owner hero ID in
+`player_id`, so route the prompt to the owner player's token/session. The owner
+hero itself does not appear in `board.entity_locations`; derive board presence
+from its pieces. Piece spawn/removal uses `UNIT_PLACED` and `UNIT_REMOVED`
+events with `metadata.owner_hero_id`.
 
 ### Minion data
 

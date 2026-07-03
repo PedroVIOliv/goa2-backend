@@ -74,12 +74,38 @@ class UnitTypeFilter(FilterCondition):
             return False
 
         if self.unit_type == "HERO":
-            return isinstance(entity, Hero)
+            from goa2.domain.models.unit import HeroPiece
+
+            return isinstance(entity, (Hero, HeroPiece))
         elif self.unit_type == "MINION":
             return isinstance(entity, Minion)
         elif self.unit_type == "TOKEN":
             return isinstance(entity, Token)
         return False
+
+
+class HeroPieceFilter(FilterCondition):
+    """Candidate is a HeroPiece owned by the current actor."""
+
+    type: FilterType = FilterType.HERO_PIECE
+    exclude_acting: bool = True
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        from goa2.domain.models.unit import HeroPiece
+
+        if not isinstance(candidate, str):
+            return False
+        entity = state.misc_entities.get(BoardEntityID(candidate))
+        if not isinstance(entity, HeroPiece):
+            return False
+        actor_owner = (
+            state.get_hero(BoardEntityID(str(state.current_actor_id)))
+            if state.current_actor_id
+            else None
+        )
+        if actor_owner is None or entity.owner_hero_id != str(actor_owner.id):
+            return False
+        return not (self.exclude_acting and str(state.acting_piece_id) == candidate)
 
 
 class TokenTypeFilter(FilterCondition):

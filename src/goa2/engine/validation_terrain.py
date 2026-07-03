@@ -83,12 +83,12 @@ class TerrainValidationMixin:
 
             # Get barrier origin position
             origin_id = effect.barrier_origin_id or effect.source_id
-            origin_hex = state.entity_locations.get(BoardEntityID(origin_id))
+            origin_hex = state.get_position(origin_id)
             if not origin_hex:
                 continue
 
             # Get actor position
-            actor_hex = state.entity_locations.get(BoardEntityID(actor_id))
+            actor_hex = state.get_position(actor_id)
             if not actor_hex:
                 continue
 

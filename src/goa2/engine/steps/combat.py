@@ -790,8 +790,8 @@ class RespawnHeroStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        # Only respawn if not on board
-        if self.hero_id in state.unit_locations:
+        # Only respawn if not on board (any piece counts for multi-piece heroes)
+        if state.has_board_presence(self.hero_id):
             return StepResult(is_finished=True)
 
         if self.pending_input:
@@ -805,7 +805,13 @@ class RespawnHeroStep(GameStep):
             if selected_hex_dict:
                 selected_hex = Hex(**selected_hex_dict)
                 logger.debug(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
-                state.move_unit(UnitID(self.hero_id), selected_hex)
+                if hero.is_multi_piece:
+                    from goa2.engine.hero_pieces import pieces_in_supply
+
+                    supply = pieces_in_supply(state, hero)
+                    state.place_entity(BoardEntityID(supply[0]), selected_hex)
+                else:
+                    state.move_unit(UnitID(self.hero_id), selected_hex)
                 return StepResult(is_finished=True)
 
         # Find hero spawn points for this team that aren't obstacles

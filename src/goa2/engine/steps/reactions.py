@@ -232,7 +232,9 @@ class ResolveDefenseTextStep(GameStep):
         # Defender left the board before the defense text resolves (e.g. a Trinkets
         # disruptor defeated them after the block was played). A defeated hero
         # applies no defense action text.
-        if BoardEntityID(str(defender_id)) not in state.entity_locations:
+        if BoardEntityID(
+            str(defender_id)
+        ) not in state.entity_locations and not state.has_board_presence(str(defender_id)):
             logger.debug(f"   [DEFENSE] {defender_id} is off-board — skipping defense text.")
             return StepResult(is_finished=True)
 

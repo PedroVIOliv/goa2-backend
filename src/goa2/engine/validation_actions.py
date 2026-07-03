@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from goa2.domain.models import Card
 from goa2.domain.models.effect import ActiveEffect, EffectType
 from goa2.domain.models.enums import ActionType, CardColor
-from goa2.domain.types import BoardEntityID, UnitID
+from goa2.domain.types import UnitID
 from goa2.engine.validation_types import ValidationContext, ValidationResult
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ class ActionValidationMixin:
             return False
 
         # Check Active Effects (Zones/Auras) that restrict actions
-        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
+        actor_loc = state.get_position(actor_id)
         if actor_loc:
             actor_unit = state.get_unit(UnitID(actor_id))
 
@@ -105,7 +105,7 @@ class ActionValidationMixin:
         Checks: PREVENT_ACTION_REPEAT effects.
         """
         # Check for repeat prevention via ActiveEffects
-        actor_loc = state.entity_locations.get(BoardEntityID(actor_id))
+        actor_loc = state.get_position(actor_id)
         if actor_loc:
             actor_unit = state.get_unit(UnitID(actor_id))
             for effect in state.active_effects:

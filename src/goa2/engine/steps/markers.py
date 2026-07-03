@@ -283,11 +283,12 @@ class OfferRockUltimateStep(GameStep):
             if team_color == actor.team:
                 continue
             for enemy_hero in team.heroes:
-                hloc = state.entity_locations.get(BoardEntityID(str(enemy_hero.id)))
-                if hloc is None:
-                    continue
-                if any(topology.distance(hloc, rh, state) == 1 for rh in hexes):
-                    affected.append(str(enemy_hero.id))
+                for enemy_id in state.get_piece_ids(str(enemy_hero.id)):
+                    hloc = state.get_position(enemy_id)
+                    if hloc is None:
+                        continue
+                    if any(topology.distance(hloc, rh, state) == 1 for rh in hexes):
+                        affected.append(enemy_id)
 
         if not affected:
             return StepResult(is_finished=True)

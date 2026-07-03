@@ -41,7 +41,7 @@ class LineBehindTargetFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -105,7 +105,7 @@ class NotInStraightLineFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -153,7 +153,7 @@ class InStraightLineFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -203,7 +203,7 @@ class StraightLinePathFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -259,12 +259,10 @@ class FarthestEmptyAdjacentFilter(FilterCondition):
             origin_uid = state.current_actor_id
         if not origin_uid:
             return False
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
 
         anchor_id = context.get(self.anchor_key)
-        anchor_hex = (
-            state.entity_locations.get(BoardEntityID(str(anchor_id))) if anchor_id else None
-        )
+        anchor_hex = state.get_position(str(anchor_id)) if anchor_id else None
         if not origin_hex or not anchor_hex:
             return False
 
@@ -322,7 +320,7 @@ class SameDirectionFromOriginFilter(FilterCondition):
                 origin_uid = state.current_actor_id
             if not origin_uid:
                 return False
-            origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+            origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -370,7 +368,7 @@ class MaxEmptySpacesInLineFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex or not origin_hex.is_straight_line(candidate):
             return False
 
@@ -417,7 +415,7 @@ class SpaceBehindEmptyFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
@@ -463,14 +461,14 @@ class RelativeDistanceFilter(FilterCondition):
             origin_uid = state.current_actor_id
         if not origin_uid:
             return False
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 
         ref_uid = context.get(self.reference_key)
         if not ref_uid:
             return False
-        ref_hex = state.entity_locations.get(BoardEntityID(str(ref_uid)))
+        ref_hex = state.get_position(str(ref_uid))
         if not ref_hex:
             return False
 
@@ -537,7 +535,7 @@ class ClearLineOfSightFilter(FilterCondition):
         if not origin_uid:
             return False
 
-        origin_hex = state.entity_locations.get(BoardEntityID(str(origin_uid)))
+        origin_hex = state.get_position(str(origin_uid))
         if not origin_hex:
             return False
 

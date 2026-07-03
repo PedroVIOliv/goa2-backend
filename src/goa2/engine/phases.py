@@ -186,7 +186,7 @@ def resolve_next_action(state: GameState):
         )
 
         steps: list[GameStep] = []
-        if hero_id not in state.entity_locations:
+        if not state.has_board_presence(hero_id):
             steps.append(RespawnHeroStep(hero_id=hero_id))
         steps.extend(
             [

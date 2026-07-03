@@ -13,7 +13,7 @@ from typing import Any
 from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
 from goa2.domain.models.enums import GamePhase, StatType
-from goa2.domain.models.unit import Hero, Minion
+from goa2.domain.models.unit import Hero, HeroPiece, Minion
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 
@@ -64,6 +64,9 @@ def build_view(
     # Build other public board entities view
     board_entities_view = _build_board_entities_view(state)
 
+    # Build hero pieces view (public info)
+    hero_pieces_view = _build_hero_pieces_view(state)
+
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
 
@@ -83,6 +86,7 @@ def build_view(
         "markers": markers_view,
         "tokens": tokens_view,
         "board_entities": board_entities_view,
+        "hero_pieces": hero_pieces_view,
     }
 
 
@@ -420,6 +424,21 @@ def _build_board_entities_view(state: GameState) -> list[dict[str, Any]]:
             }
         )
     return entities_view
+
+
+def _build_hero_pieces_view(state: GameState) -> dict[str, dict[str, Any]]:
+    """Build public metadata for multi-piece hero pieces."""
+    pieces_view: dict[str, dict[str, Any]] = {}
+    for entity_id, entity in state.misc_entities.items():
+        if not isinstance(entity, HeroPiece):
+            continue
+        loc = state.entity_locations.get(BoardEntityID(str(entity_id)))
+        pieces_view[str(entity_id)] = {
+            "owner_hero_id": entity.owner_hero_id,
+            "team": entity.team.value if entity.team else None,
+            "position": ({"q": loc.q, "r": loc.r, "s": loc.s} if loc else None),
+        }
+    return pieces_view
 
 
 def _build_markers_view(state: GameState) -> dict[str, Any]:

@@ -56,7 +56,7 @@ class EffectManager:
             # Only enemy minions of the beneficiary count.
             if getattr(minion, "team", None) == beneficiary.team:
                 continue
-            bene_hex = state.entity_locations.get(BoardEntityID(effect.source_id))
+            bene_hex = state.get_position(effect.source_id)
             if bene_hex is None:
                 continue
             if topology_distance(bene_hex, minion_hex, state) > (effect.scope.range or 0):

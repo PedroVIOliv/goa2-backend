@@ -106,7 +106,7 @@ class EffectValidationMixin:
             return effect.scope.origin_hex
 
         origin_id = effect.scope.origin_id or effect.source_id
-        return state.entity_locations.get(BoardEntityID(origin_id))
+        return state.get_position(origin_id)
 
     def _get_zone_for_hex(self, hex: Hex, state: GameState) -> str | None:
         """Get zone ID containing this hex."""

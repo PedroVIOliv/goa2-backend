@@ -406,7 +406,7 @@ class CancelEffectsStep(GameStep):
         if effect.scope.origin_hex:
             return effect.scope.origin_hex
         origin_id = effect.scope.origin_id or effect.source_id
-        return state.entity_locations.get(BoardEntityID(origin_id))
+        return state.get_position(origin_id)
 
     def _get_scope_origin(self, state: GameState) -> Hex | None:
         if not self.scope:
@@ -414,7 +414,7 @@ class CancelEffectsStep(GameStep):
         if self.scope.origin_hex:
             return self.scope.origin_hex
         if self.scope.origin_id:
-            return state.entity_locations.get(BoardEntityID(self.scope.origin_id))
+            return state.get_position(self.scope.origin_id)
         return None
 
     def _hex_in_scope(self, hex: Hex, origin: Hex, state: GameState) -> bool:
