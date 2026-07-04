@@ -33,7 +33,7 @@
   **labels**). Lanes resolving to <3 zones are skipped with a warning, as are
   unknown labels. Legacy `"lane"` and the hardcoded fallback are unchanged.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/engine/test_map_loader_lanes.py`:
 
@@ -120,7 +120,7 @@ def test_lane_with_unknown_label_is_skipped(tmp_path, caplog):
     assert board.lanes == {"lane_1": ["z_a", "z_b", "z_c"]}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_map_loader_lanes.py -v`
 Expected: `test_lanes_key_loads_both_lanes_in_order` and
@@ -128,7 +128,7 @@ Expected: `test_lanes_key_loads_both_lanes_in_order` and
 `board.lanes` falls back to the hardcoded labels and is empty/wrong);
 `test_legacy_single_lane_map_still_loads` PASSES (guards regression).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace the lane-inference block at the end of `load_map()`
 (`# Lane inference` through the final `logger.warning`) with:
@@ -175,17 +175,17 @@ Replace the lane-inference block at the end of `load_map()`
             )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_map_loader_lanes.py -v`
 Expected: 3 PASS.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `PYTHONPATH=src uv run pytest tests/ -q`
 Expected: all pass (no behavior change for legacy maps).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/goa2/engine/map_loader.py tests/engine/test_map_loader_lanes.py
@@ -208,7 +208,7 @@ git commit -m "feat: load multi-lane maps via top-level 'lanes' key"
 The file has three parts: `<style>`, static layout markup, one `<script>`.
 No external resources.
 
-- [ ] **Step 1: State model + layout skeleton**
+- [x] **Step 1: State model + layout skeleton**
 
 Editor state (single mutable object, mirrored to localStorage):
 
@@ -227,7 +227,7 @@ Import-Export), main area = one full-height `<svg>` with a `<g id="world">`
 group (pan/zoom target). Tool mode is a single variable:
 `mode = {kind: "paint"} | {kind: "erase"} | {kind: "tag", tag: "Terrain"}`.
 
-- [ ] **Step 2: Hex grid rendering + pan/zoom**
+- [x] **Step 2: Hex grid rendering + pan/zoom**
 
 Pointy-top axial math (hex size `S = 22`):
 
@@ -257,7 +257,7 @@ Interaction (all listeners on the `<svg>` root — event delegation):
   (dedupe by "q,r" within one drag)
 - CSS `.ghost:hover` / `.painted:hover` for hover highlight, no JS handlers
 
-- [ ] **Step 3: Zones panel + paint/erase tools**
+- [x] **Step 3: Zones panel + paint/erase tools**
 
 - "Add zone" → `{id: `zone_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, label: "Zone N", color: <next of 10-color palette>}`.
 - Each zone row: color swatch (native `<input type="color">`), label text
@@ -269,7 +269,7 @@ Interaction (all listeners on the `<svg>` root — event delegation):
 - Paint applies `{zoneId: activeZone.id, tags: existing tags or []}` to the
   hex; erase deletes the key and clears tags/badges.
 
-- [ ] **Step 4: Tags tool**
+- [x] **Step 4: Tags tool**
 
 Built-in tag list: `Terrain`, `RedHeroSpawn`, `BlueHeroSpawn`,
 `RedHeavySpawn`, `RedMeleeSpawn`, `RedRangedSpawn`, `BlueHeavySpawn`,
@@ -281,7 +281,7 @@ spawn tags → first letter of team + first letter of type (e.g. "RH" for
 RedHeroSpawn, "BHv" for BlueHeavySpawn), colored red/blue; custom → first 3
 chars. Multiple badges stack vertically within the hex.
 
-- [ ] **Step 5: Lanes panel**
+- [x] **Step 5: Lanes panel**
 
 - Lanes render as cards: lane id header, delete button (disabled when only
   one lane remains), ordered zone-label list with ↑ / ↓ / ✕ per entry, and an
@@ -290,7 +290,7 @@ chars. Multiple badges stack vertically within the hex.
   already used.
 - Empty state hint: "Order zones red side → blue side."
 
-- [ ] **Step 6: Import / export / autosave**
+- [x] **Step 6: Import / export / autosave**
 
 Import (file `<input>`): parse JSON in try/catch — on failure show the error
 in a status bar and leave state untouched. On success build fresh state:
@@ -327,14 +327,14 @@ UI and writes serialized state to
 `localStorage["goa2_map_editor"]`; on page load restore if present.
 "New map" button: confirm(), then reset state + clear localStorage.
 
-- [ ] **Step 7: Syntax check**
+- [x] **Step 7: Syntax check**
 
 Extract the script and check it parses:
 
 Run: `python3 -c "import re,sys; h=open('tools/map_editor.html').read(); open('/tmp/me.js','w').write(re.findall(r'<script>(.*)</script>', h, re.S)[0])" && node --check /tmp/me.js`
 Expected: no output (exit 0).
 
-- [ ] **Step 8: Round-trip verification**
+- [x] **Step 8: Round-trip verification**
 
 Simulate the editor's export of an imported `test_map.json` (same transform
 as `buildExport`: identity on zones/hexes, legacy map with no `lane` key →
@@ -365,7 +365,7 @@ EOF
 Expected: `round-trip OK`. (Full in-browser round trip — import, paint,
 export — is the user's manual acceptance check.)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add tools/map_editor.html
@@ -376,7 +376,7 @@ git commit -m "feat: add single-file browser map editor"
 
 ### Task 3: Plan/spec bookkeeping
 
-- [ ] **Step 1: Commit the plan** (if not yet committed) and tick checkboxes
+- [x] **Step 1: Commit the plan** (if not yet committed) and tick checkboxes
   as tasks complete.
 
 ```bash
