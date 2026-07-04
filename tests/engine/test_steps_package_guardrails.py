@@ -62,6 +62,7 @@ EXPECTED_STEP_CLASSES = {
     "FastTravelStep",
     "FinalizeHeroTurnStep",
     "FindNextActorStep",
+    "FlipTieBreakerCoinStep",
     "FinishedExpiringEffectStep",
     "ForEachStep",
     "ForceDefenseCardMovementStep",

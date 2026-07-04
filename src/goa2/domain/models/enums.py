@@ -29,6 +29,7 @@ class TokenType(StrEnum):
     TOTEM = "totem"
     TREE = "tree"
     ROCK = "rock"
+    MAGMA = "magma"
 
 
 class CardTier(StrEnum):
@@ -220,6 +221,7 @@ class StepType(StrEnum):
     SPAWN_HERO_PIECE = "spawn_hero_piece"
     REMOVE_HERO_PIECE = "remove_hero_piece"
     RAZZLE_MIRRORED_PUSH = "razzle_mirrored_push"
+    FLIP_TIE_BREAKER_COIN = "flip_tie_breaker_coin"
 
 
 class FilterType(StrEnum):

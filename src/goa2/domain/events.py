@@ -51,6 +51,8 @@ class GameEventType(StrEnum):
     # Mines
     MINE_TRIGGERED = "MINE_TRIGGERED"
 
+    TIE_BREAKER_FLIPPED = "TIE_BREAKER_FLIPPED"
+
 
 def _hex_dict(h: Hex | None) -> dict[str, int] | None:
     """Serialize a Hex to a {q, r, s} dict for JSON compatibility."""

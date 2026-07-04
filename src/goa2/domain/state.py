@@ -115,6 +115,16 @@ class GameState(BaseModel):
     # Private field for cached validator (not serialized)
     _validator: Any | None = None
 
+    @property
+    def coin_face(self) -> str:
+        """The Tie Breaker coin's currently-showing face ("BLUE" or "ORANGE").
+
+        The coin is the same bit as ``tie_breaker_team``: a BLUE-favored coin
+        shows its blue face, a RED-favored coin shows its orange face. Ignatia's
+        deck branches on this face.
+        """
+        return "BLUE" if self.tie_breaker_team == TeamColor.BLUE else "ORANGE"
+
     def add_effect(self, effect: ActiveEffect):
         """Adds a spatial/behavioral effect to the active list."""
         self.active_effects.append(effect)

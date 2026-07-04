@@ -33,6 +33,41 @@ class LogMessageStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class FlipTieBreakerCoinStep(GameStep):
+    """Flips the Tie Breaker coin (toggles ``state.tie_breaker_team``).
+
+    Used both by the initiative tie flow (the coin flips after a cross-team tie
+    winner's turn resolves, before the next initiative check) and by Ignatia's
+    ultimate (Chaos Incarnate lets her flip the coin mid-turn). Changing the
+    coin also changes its blue/orange face — see ``GameState.coin_face``.
+    """
+
+    type: StepType = StepType.FLIP_TIE_BREAKER_COIN
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        from goa2.domain.events import GameEvent, GameEventType
+        from goa2.domain.models import TeamColor
+
+        old = state.tie_breaker_team
+        state.tie_breaker_team = TeamColor.BLUE if old == TeamColor.RED else TeamColor.RED
+        logger.debug(f"   [COIN] Tie Breaker flipped {old.name} -> {state.tie_breaker_team.name}")
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.TIE_BREAKER_FLIPPED,
+                    metadata={
+                        "tie_breaker_team": state.tie_breaker_team.value,
+                        "coin_face": state.coin_face,
+                    },
+                )
+            ],
+        )
+
+
 class SetContextFlagStep(GameStep):
     """
     Utility step that sets a flag/value in the execution context.

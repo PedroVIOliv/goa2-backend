@@ -126,6 +126,7 @@ from goa2.engine.steps.utility import (  # noqa: F401
     ComputeHexStep,
     CountAdjacentEnemiesStep,
     CountStep,
+    FlipTieBreakerCoinStep,
     ForEachStep,
     LogMessageStep,
     MayRepeatNTimesStep,

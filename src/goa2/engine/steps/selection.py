@@ -623,6 +623,10 @@ class ResolveTieBreakerStep(GameStep):
         needs_input = False
         target_team = None
         candidates = []
+        # The coin flips only AFTER a cross-team tie winner's turn resolves
+        # (before the next initiative check), not when they are picked. This
+        # lets Ignatia read the correct (pre-flip) face on her turn.
+        flip_after = False
 
         # LOGIC:
         # A. If multiple teams -> Use Tie Breaker Coin to pick the FAVORED Team.
@@ -639,11 +643,10 @@ class ResolveTieBreakerStep(GameStep):
                 needs_input = True
             else:
                 winner_id = candidates[0]
-                state.tie_breaker_team = (
-                    TeamColor.BLUE if state.tie_breaker_team == TeamColor.RED else TeamColor.RED
-                )
+                flip_after = True
                 logger.debug(
-                    f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. Coin flipped."
+                    f"   [TIE] Coin wins for {favored_team.name}. {winner_id} acts. "
+                    "Coin flips after their turn."
                 )
 
         # B. If only one team -> they must choose who goes next
@@ -667,11 +670,7 @@ class ResolveTieBreakerStep(GameStep):
                         f"   [TIE] Team {target_team.name} chose {winner_id} to act first."
                     )
                     if len(teams_represented) > 1:
-                        state.tie_breaker_team = (
-                            TeamColor.BLUE
-                            if state.tie_breaker_team == TeamColor.RED
-                            else TeamColor.RED
-                        )
+                        flip_after = True
                 else:
                     logger.debug(
                         f"   [TIE] Rejected invalid tie-break selection {submitted!r}; "
@@ -707,6 +706,10 @@ class ResolveTieBreakerStep(GameStep):
             new_steps.append(RespawnHeroStep(hero_id=winner_id))
         new_steps.append(ResolveCardStep(hero_id=winner_id))
         new_steps.append(ConfirmResolutionStep(hero_id=winner_id))
+        if flip_after:
+            from goa2.engine.steps.utility import FlipTieBreakerCoinStep
+
+            new_steps.append(FlipTieBreakerCoinStep())
         new_steps.append(FinalizeHeroTurnStep(hero_id=winner_id))
 
         return StepResult(is_finished=True, new_steps=new_steps)

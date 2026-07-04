@@ -108,6 +108,11 @@ class EffectType(StrEnum):
     # legality (teams, ranges, filters, stats) remain the controlled hero.
     CONTROL_NEXT_ACTION = "control_next_action"
 
+    # Ignatia — Equilibrium: a THIS_ROUND, inert flag. Only Ignatia's own effects
+    # read it (to let her choose either coin branch this round). Modeled like
+    # DISCARD_SHIELD: an effect that carries no engine behavior of its own.
+    EQUILIBRIUM = "equilibrium"
+
 
 class AffectsFilter(StrEnum):
     """Who is affected by this effect."""

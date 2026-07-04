@@ -12,6 +12,7 @@ def pytest_configure() -> None:
     importlib.import_module("goa2.data.heroes.cutter")
     importlib.import_module("goa2.data.heroes.hanu")
     importlib.import_module("goa2.data.heroes.brynn")
+    importlib.import_module("goa2.data.heroes.ignatia")
     importlib.import_module("goa2.scripts.arien_effects")
     importlib.import_module("goa2.scripts.brynn_effects")
     importlib.import_module("goa2.scripts.hanu_effects")
@@ -23,3 +24,4 @@ def pytest_configure() -> None:
     importlib.import_module("goa2.scripts.wasp_effects")
     importlib.import_module("goa2.scripts.whisper_effects")
     importlib.import_module("goa2.scripts.widget_effects")
+    importlib.import_module("goa2.scripts.ignatia_effects")
