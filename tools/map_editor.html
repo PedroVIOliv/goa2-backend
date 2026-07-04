@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoA2 Map Editor</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font: 14px/1.4 -apple-system, "Segoe UI", sans-serif; color: #222; }
+  body { display: flex; }
+
+  #sidebar {
+    width: 320px; flex: none; height: 100%; overflow-y: auto;
+    background: #f7f5f2; border-right: 1px solid #ddd; padding: 12px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  #sidebar h1 { font-size: 16px; margin: 0; }
+  #sidebar h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #777; margin: 0 0 6px; }
+  section { border-top: 1px solid #e2ded8; padding-top: 8px; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row input[type=text] { flex: 1; }
+  input[type=text], select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; min-width: 0; }
+  button { padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+  button:hover { background: #eee; }
+  button.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  .hint { font-size: 12px; color: #888; margin: 6px 0 0; }
+
+  .zone-row {
+    display: flex; gap: 6px; align-items: center; padding: 3px 4px; border-radius: 4px;
+    cursor: pointer; border: 1px solid transparent;
+  }
+  .zone-row.active { border-color: #2b6cb0; background: #e8f0fa; }
+  .zone-row input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #ccc; flex: none; }
+  .zone-row input.zlabel { flex: 1; }
+  .zone-row .count { color: #888; font-size: 12px; min-width: 24px; text-align: right; }
+  .zone-row .del, .lane-card .del { border: none; background: none; color: #b33; font-size: 15px; padding: 0 4px; }
+
+  #tagList { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  #tagList button { font-size: 12px; padding: 2px 6px; }
+
+  .lane-card { border: 1px solid #ddd; border-radius: 6px; background: #fff; padding: 6px; margin-bottom: 8px; }
+  .lane-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+  .lane-card ol { margin: 4px 0; padding-left: 22px; }
+  .lane-card li { display: flex; justify-content: space-between; gap: 4px; padding: 1px 0; }
+  .lane-card li .ops button { padding: 0 4px; font-size: 12px; border: none; background: none; }
+  .lane-card select { width: 100%; }
+
+  #status { margin-top: auto; font-size: 12px; white-space: pre-wrap; border-radius: 4px; padding: 6px; }
+  #status.warn { background: #fdf3d7; color: #7a5b00; }
+  #status.err { background: #fbdcdc; color: #8f1f1f; }
+  #status.ok { background: #e2f2e2; color: #205a20; }
+
+  #board { flex: 1; height: 100%; display: block; background: #fcfbf9; touch-action: none; user-select: none; }
+  #board polygon { stroke: #ddd; stroke-width: 1; fill: #f4f1ec; }
+  #board polygon.painted { stroke: #999; fill-opacity: .85; }
+  #board polygon:hover { stroke: #444; stroke-width: 2; }
+  #board .badge text {
+    font: 700 9px monospace; text-anchor: middle; dominant-baseline: middle; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>GoA2 Map Editor</h1>
+  <div class="row">
+    <input type="text" id="mapName" title="Map name (export file name)">
+    <button id="newMap" title="Clear everything and start over">New</button>
+  </div>
+  <p class="hint">Wheel: zoom &middot; middle-drag or space-drag: pan &middot; click/drag: apply tool</p>
+
+  <section>
+    <h2>Zones</h2>
+    <div id="zoneList"></div>
+    <div class="row">
+      <button id="addZone">+ Add zone</button>
+      <button id="eraseBtn" title="Remove hexes from the map">Eraser</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tags</h2>
+    <div id="tagList"></div>
+    <div class="row">
+      <input type="text" id="customTag" placeholder="Custom tag">
+      <button id="addTagBtn">Add</button>
+    </div>
+    <p class="hint">Pick a tag, then click painted hexes to toggle it.</p>
+  </section>
+
+  <section>
+    <h2>Lanes</h2>
+    <div id="laneList"></div>
+    <button id="addLane">+ Add lane</button>
+    <p class="hint">Order zones red side &rarr; blue side.</p>
+  </section>
+
+  <section>
+    <h2>File</h2>
+    <div class="row">
+      <button id="importBtn">Import&hellip;</button>
+      <button id="exportBtn">Export JSON</button>
+    </div>
+    <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  </section>
+
+  <div id="status"></div>
+</div>
+
+<svg id="board" xmlns="http://www.w3.org/2000/svg">
+  <g id="world">
+    <g id="hexes"></g>
+    <g id="badges"></g>
+  </g>
+</svg>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * Pure logic — no DOM access. Node-testable via:
+ *   module.exports at the bottom of this block.
+ * State shape:
+ *   { mapName, zones: [{id,label,color}],
+ *     hexes: Map<"q,r", {zoneId, tags: []}>,
+ *     lanes: {laneId: [zoneId, ...]} }   // ids internally, labels in JSON
+ * ------------------------------------------------------------------ */
+"use strict";
+
+const HEX_SIZE = 22;
+const SQRT3 = Math.sqrt(3);
+
+function hexX(q, r) { return HEX_SIZE * SQRT3 * (q + r / 2); }
+function hexY(q, r) { return HEX_SIZE * 1.5 * r; }
+
+function hexPoints(cx, cy) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i - 30);
+    pts.push(`${(cx + HEX_SIZE * Math.cos(a)).toFixed(2)},${(cy + HEX_SIZE * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(" ");
+}
+
+function makeState() {
+  return { mapName: "new_map", zones: [], hexes: new Map(), lanes: { lane_1: [] } };
+}
+
+function newZoneId() {
+  return `zone_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function zoneById(st, id) { return st.zones.find((z) => z.id === id) || null; }
+
+function labelToIdMap(st) {
+  const m = new Map();
+  for (const z of st.zones) m.set(z.label, z.id);
+  return m;
+}
+
+/* data: already-parsed JSON object -> {state, warnings}. Throws on malformed input. */
+function parseImport(data) {
+  const warnings = [];
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Map file must be a JSON object");
+  }
+  if (!Array.isArray(data.hex_map)) throw new Error('Missing "hex_map" array');
+
+  const st = makeState();
+  st.zones = (data.zone_definitions || []).map((z) => ({
+    id: String(z.id),
+    label: String(z.label ?? z.id),
+    color: /^#[0-9a-fA-F]{6}$/.test(z.color || "") ? z.color : "#cccccc",
+  }));
+
+  for (const h of data.hex_map) {
+    if (typeof h.q !== "number" || typeof h.r !== "number") {
+      throw new Error("hex_map entry missing numeric q/r");
+    }
+    st.hexes.set(`${h.q},${h.r}`, {
+      zoneId: h.zone_id != null ? String(h.zone_id) : null,
+      tags: Array.isArray(h.tags) ? h.tags.map(String) : [],
+    });
+  }
+
+  const l2i = labelToIdMap(st);
+  let lanesSrc = null;
+  if (data.lanes && typeof data.lanes === "object" && !Array.isArray(data.lanes)) {
+    lanesSrc = data.lanes;
+  } else if (Array.isArray(data.lane)) {
+    lanesSrc = { lane_1: data.lane };
+  }
+  if (lanesSrc) {
+    st.lanes = {};
+    for (const [laneId, labels] of Object.entries(lanesSrc)) {
+      const ids = [];
+      for (const label of labels) {
+        if (l2i.has(label)) ids.push(l2i.get(label));
+        else warnings.push(`Lane ${laneId}: unknown zone label "${label}" dropped.`);
+      }
+      st.lanes[laneId] = ids;
+    }
+  }
+  if (!Object.keys(st.lanes).length) st.lanes = { lane_1: [] };
+  return { state: st, warnings };
+}
+
+function buildExport(st) {
+  return {
+    zone_definitions: st.zones.map((z) => ({ id: z.id, label: z.label, color: z.color })),
+    hex_map: [...st.hexes.entries()].map(([key, h]) => {
+      const [q, r] = key.split(",").map(Number);
+      return { q, r, s: -q - r, zone_id: h.zoneId, tags: [...h.tags] };
+    }),
+    lanes: Object.fromEntries(
+      Object.entries(st.lanes).map(([laneId, zids]) => [
+        laneId,
+        zids.map((zid) => zoneById(st, zid)).filter(Boolean).map((z) => z.label),
+      ])
+    ),
+  };
+}
+
+/* Non-blocking pre-export warnings. */
+function validateExport(st) {
+  const w = [];
+  const counts = new Map();
+  for (const h of st.hexes.values()) counts.set(h.zoneId, (counts.get(h.zoneId) || 0) + 1);
+
+  for (const [laneId, zids] of Object.entries(st.lanes)) {
+    if (zids.length < 3) w.push(`Lane ${laneId} has fewer than 3 zones (loader will skip it).`);
+    for (const zid of zids) {
+      const z = zoneById(st, zid);
+      if (!z) { w.push(`Lane ${laneId} references a deleted zone.`); continue; }
+      if (!counts.get(zid)) w.push(`Lane ${laneId}: zone "${z.label}" has no hexes.`);
+    }
+  }
+  const allTags = new Set();
+  for (const h of st.hexes.values()) for (const t of h.tags) allTags.add(t);
+  for (const t of ["RedHeroSpawn", "BlueHeroSpawn"]) {
+    if (!allTags.has(t)) w.push(`No hex tagged ${t}.`);
+  }
+  return w;
+}
+
+function serializeState(st) {
+  return JSON.stringify({
+    mapName: st.mapName, zones: st.zones, lanes: st.lanes, hexes: [...st.hexes.entries()],
+  });
+}
+
+function deserializeState(json) {
+  const raw = JSON.parse(json);
+  const st = makeState();
+  st.mapName = raw.mapName || "new_map";
+  st.zones = raw.zones || [];
+  st.lanes = raw.lanes && Object.keys(raw.lanes).length ? raw.lanes : { lane_1: [] };
+  st.hexes = new Map(raw.hexes || []);
+  return st;
+}
+
+function badgeFor(tag) {
+  if (tag === "Terrain") return { text: "▲", color: "#444" };
+  const m = tag.match(/^(Red|Blue)(Hero|Heavy|Melee|Ranged)Spawn$/);
+  if (m) {
+    const type = { Hero: "H", Heavy: "Hv", Melee: "M", Ranged: "R" }[m[2]];
+    return { text: m[1][0] + type, color: m[1] === "Red" ? "#c0392b" : "#2563b8" };
+  }
+  return { text: tag.slice(0, 3), color: "#6b21a8" };
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    makeState, parseImport, buildExport, validateExport,
+    serializeState, deserializeState, badgeFor, hexX, hexY,
+  };
+}
+</script>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * UI layer — everything that touches the DOM.
+ * ------------------------------------------------------------------ */
+"use strict";
+
+const STORAGE_KEY = "goa2_map_editor";
+const BUILTIN_TAGS = [
+  "Terrain", "RedHeroSpawn", "BlueHeroSpawn",
+  "RedHeavySpawn", "RedMeleeSpawn", "RedRangedSpawn",
+  "BlueHeavySpawn", "BlueMeleeSpawn", "BlueRangedSpawn",
+];
+const PALETTE = [
+  "#ff9800", "#f0b97b", "#e7e3df", "#77b0e6", "#2b33e1",
+  "#8bc34a", "#e57373", "#9575cd", "#4db6ac", "#f06292",
+];
+
+const svg = document.getElementById("board");
+const gHexes = document.getElementById("hexes");
+const gBadges = document.getElementById("badges");
+const els = {
+  mapName: document.getElementById("mapName"),
+  zoneList: document.getElementById("zoneList"),
+  tagList: document.getElementById("tagList"),
+  laneList: document.getElementById("laneList"),
+  status: document.getElementById("status"),
+  eraseBtn: document.getElementById("eraseBtn"),
+  customTag: document.getElementById("customTag"),
+  fileInput: document.getElementById("fileInput"),
+};
+
+let state = makeState();
+let customTags = [];
+let activeZoneId = null;
+let mode = { kind: "paint" };
+
+let bounds = { qMin: -25, qMax: 24, rMin: -20, rMax: 19 }; // ~2000 ghost hexes
+const polyByKey = new Map();
+const badgeByKey = new Map();
+
+/* ---------------- grid ---------------- */
+
+function expandBoundsToState() {
+  for (const key of state.hexes.keys()) {
+    const [q, r] = key.split(",").map(Number);
+    bounds.qMin = Math.min(bounds.qMin, q - 2);
+    bounds.qMax = Math.max(bounds.qMax, q + 2);
+    bounds.rMin = Math.min(bounds.rMin, r - 2);
+    bounds.rMax = Math.max(bounds.rMax, r + 2);
+  }
+}
+
+function buildGrid() {
+  expandBoundsToState();
+  gHexes.textContent = "";
+  gBadges.textContent = "";
+  polyByKey.clear();
+  badgeByKey.clear();
+  for (let r = bounds.rMin; r <= bounds.rMax; r++) {
+    for (let q = bounds.qMin; q <= bounds.qMax; q++) {
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      poly.setAttribute("points", hexPoints(hexX(q, r), hexY(q, r)));
+      poly.dataset.q = q;
+      poly.dataset.r = r;
+      gHexes.appendChild(poly);
+      polyByKey.set(`${q},${r}`, poly);
+    }
+  }
+  for (const key of state.hexes.keys()) restyleHex(key);
+}
+
+function restyleHex(key) {
+  const poly = polyByKey.get(key);
+  if (!poly) return;
+  const h = state.hexes.get(key);
+  if (h) {
+    const zone = zoneById(state, h.zoneId);
+    poly.classList.add("painted");
+    poly.style.fill = zone ? zone.color : "#bbbbbb";
+  } else {
+    poly.classList.remove("painted");
+    poly.style.fill = "";
+  }
+  updateBadge(key);
+}
+
+function updateBadge(key) {
+  const old = badgeByKey.get(key);
+  if (old) { old.remove(); badgeByKey.delete(key); }
+  const h = state.hexes.get(key);
+  if (!h || !h.tags.length) return;
+  const [q, r] = key.split(",").map(Number);
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.setAttribute("class", "badge");
+  h.tags.forEach((tag, i) => {
+    const b = badgeFor(tag);
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", hexX(q, r));
+    t.setAttribute("y", hexY(q, r) + (i - (h.tags.length - 1) / 2) * 10);
+    t.setAttribute("fill", b.color);
+    t.textContent = b.text;
+    g.appendChild(t);
+  });
+  gBadges.appendChild(g);
+  badgeByKey.set(key, g);
+}
+
+/* ---------------- viewport (pan/zoom) ---------------- */
+
+const vb = { x: -450, y: -320, w: 1100 };
+const MIN_W = 250, MAX_W = 4200;
+
+function applyVB() {
+  const h = vb.w * (svg.clientHeight / Math.max(svg.clientWidth, 1));
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${h}`);
+}
+
+function fitView() {
+  const keys = [...state.hexes.keys()];
+  if (!keys.length) { vb.x = -450; vb.y = -320; vb.w = 1100; applyVB(); return; }
+  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+  for (const key of keys) {
+    const [q, r] = key.split(",").map(Number);
+    xMin = Math.min(xMin, hexX(q, r)); xMax = Math.max(xMax, hexX(q, r));
+    yMin = Math.min(yMin, hexY(q, r)); yMax = Math.max(yMax, hexY(q, r));
+  }
+  const margin = 4 * HEX_SIZE;
+  const aspect = svg.clientWidth / Math.max(svg.clientHeight, 1);
+  vb.w = Math.max(xMax - xMin + 2 * margin, (yMax - yMin + 2 * margin) * aspect, MIN_W);
+  vb.x = (xMin + xMax) / 2 - vb.w / 2;
+  vb.y = (yMin + yMax) / 2 - (vb.w / aspect) / 2;
+  applyVB();
+}
+
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const mx = vb.x + ((e.clientX - rect.left) / rect.width) * vb.w;
+  const my = vb.y + ((e.clientY - rect.top) / rect.height) * (vb.w * rect.height / rect.width);
+  const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+  const nw = Math.min(Math.max(vb.w * factor, MIN_W), MAX_W);
+  const scale = nw / vb.w;
+  vb.x = mx - (mx - vb.x) * scale;
+  vb.y = my - (my - vb.y) * scale;
+  vb.w = nw;
+  applyVB();
+}, { passive: false });
+
+let spaceDown = false;
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) {
+    spaceDown = true;
+    e.preventDefault();
+  }
+});
+document.addEventListener("keyup", (e) => { if (e.code === "Space") spaceDown = false; });
+
+let pan = null; // {startX, startY, vbx, vby}
+
+/* ---------------- tools ---------------- */
+
+let painting = false;
+let dragVisited = null;
+
+function keyFromEventTarget(t) {
+  return t && t.dataset && t.dataset.q !== undefined ? `${t.dataset.q},${t.dataset.r}` : null;
+}
+
+function applyTool(key) {
+  if (dragVisited.has(key)) return;
+  dragVisited.add(key);
+  if (mode.kind === "paint") {
+    if (!activeZoneId || !zoneById(state, activeZoneId)) {
+      setStatus(["Add/select a zone first."], "warn");
+      return;
+    }
+    const existing = state.hexes.get(key);
+    state.hexes.set(key, { zoneId: activeZoneId, tags: existing ? existing.tags : [] });
+  } else if (mode.kind === "erase") {
+    if (!state.hexes.has(key)) return;
+    state.hexes.delete(key);
+  } else if (mode.kind === "tag") {
+    const h = state.hexes.get(key);
+    if (!h) return; // tags only on painted hexes
+    const i = h.tags.indexOf(mode.tag);
+    if (i >= 0) h.tags.splice(i, 1); else h.tags.push(mode.tag);
+  }
+  restyleHex(key);
+  commit();
+}
+
+svg.addEventListener("pointerdown", (e) => {
+  if (e.button === 1 || (e.button === 0 && spaceDown)) {
+    e.preventDefault();
+    pan = { startX: e.clientX, startY: e.clientY, vbx: vb.x, vby: vb.y };
+    return;
+  }
+  if (e.button !== 0) return;
+  const key = keyFromEventTarget(e.target);
+  if (!key) return;
+  painting = true;
+  dragVisited = new Set();
+  applyTool(key);
+});
+
+svg.addEventListener("pointerover", (e) => {
+  if (!painting) return;
+  const key = keyFromEventTarget(e.target);
+  if (key) applyTool(key);
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (!pan) return;
+  const rect = svg.getBoundingClientRect();
+  const scale = vb.w / rect.width;
+  vb.x = pan.vbx - (e.clientX - pan.startX) * scale;
+  vb.y = pan.vby - (e.clientY - pan.startY) * scale;
+  applyVB();
+});
+
+window.addEventListener("pointerup", () => {
+  pan = null;
+  if (painting) { painting = false; renderZonePanel(); }
+});
+
+/* ---------------- panels ---------------- */
+
+function zoneHexCounts() {
+  const counts = new Map();
+  for (const h of state.hexes.values()) counts.set(h.zoneId, (counts.get(h.zoneId) || 0) + 1);
+  return counts;
+}
+
+function setMode(m) {
+  mode = m;
+  els.eraseBtn.classList.toggle("active", m.kind === "erase");
+  renderZonePanel();
+  renderTagPanel();
+}
+
+function renderZonePanel() {
+  const counts = zoneHexCounts();
+  els.zoneList.textContent = "";
+  for (const zone of state.zones) {
+    const row = document.createElement("div");
+    row.className = "zone-row" + (mode.kind === "paint" && zone.id === activeZoneId ? " active" : "");
+
+    const color = document.createElement("input");
+    color.type = "color";
+    color.value = zone.color;
+    color.addEventListener("input", () => {
+      zone.color = color.value;
+      for (const [key, h] of state.hexes) if (h.zoneId === zone.id) restyleHex(key);
+      commit();
+    });
+
+    const label = document.createElement("input");
+    label.type = "text";
+    label.className = "zlabel";
+    label.value = zone.label;
+    label.addEventListener("change", () => {
+      zone.label = label.value.trim() || zone.label;
+      label.value = zone.label;
+      renderLanePanel();
+      commit();
+    });
+
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = counts.get(zone.id) || 0;
+
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "×";
+    del.title = "Delete zone (removes its hexes)";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const n = counts.get(zone.id) || 0;
+      if (n && !confirm(`Delete zone "${zone.label}" and its ${n} hexes?`)) return;
+      deleteZone(zone.id);
+    });
+
+    row.append(color, label, count, del);
+    row.addEventListener("click", (e) => {
+      if (e.target !== row && e.target !== count) return;
+      activeZoneId = zone.id;
+      setMode({ kind: "paint" });
+    });
+    els.zoneList.appendChild(row);
+  }
+}
+
+function deleteZone(zoneId) {
+  state.zones = state.zones.filter((z) => z.id !== zoneId);
+  const doomed = [];
+  for (const [key, h] of state.hexes) if (h.zoneId === zoneId) doomed.push(key);
+  for (const key of doomed) { state.hexes.delete(key); restyleHex(key); }
+  for (const laneId of Object.keys(state.lanes)) {
+    state.lanes[laneId] = state.lanes[laneId].filter((zid) => zid !== zoneId);
+  }
+  if (activeZoneId === zoneId) activeZoneId = state.zones[0] ? state.zones[0].id : null;
+  renderZonePanel();
+  renderLanePanel();
+  commit();
+}
+
+document.getElementById("addZone").addEventListener("click", () => {
+  const zone = {
+    id: newZoneId(),
+    label: `Zone ${state.zones.length + 1}`,
+    color: PALETTE[state.zones.length % PALETTE.length],
+  };
+  state.zones.push(zone);
+  activeZoneId = zone.id;
+  setMode({ kind: "paint" });
+  renderLanePanel();
+  commit();
+});
+
+els.eraseBtn.addEventListener("click", () => setMode({ kind: "erase" }));
+
+function renderTagPanel() {
+  els.tagList.textContent = "";
+  for (const tag of [...BUILTIN_TAGS, ...customTags]) {
+    const btn = document.createElement("button");
+    btn.textContent = tag;
+    btn.classList.toggle("active", mode.kind === "tag" && mode.tag === tag);
+    btn.addEventListener("click", () => setMode({ kind: "tag", tag }));
+    els.tagList.appendChild(btn);
+  }
+}
+
+document.getElementById("addTagBtn").addEventListener("click", () => {
+  const tag = els.customTag.value.trim();
+  if (!tag) return;
+  if (!BUILTIN_TAGS.includes(tag) && !customTags.includes(tag)) customTags.push(tag);
+  els.customTag.value = "";
+  setMode({ kind: "tag", tag });
+});
+
+function renderLanePanel() {
+  els.laneList.textContent = "";
+  const laneIds = Object.keys(state.lanes);
+  for (const laneId of laneIds) {
+    const card = document.createElement("div");
+    card.className = "lane-card";
+
+    const head = document.createElement("div");
+    head.className = "lane-head";
+    const title = document.createElement("b");
+    title.textContent = laneId;
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "×";
+    del.disabled = laneIds.length <= 1;
+    del.addEventListener("click", () => {
+      delete state.lanes[laneId];
+      renderLanePanel();
+      commit();
+    });
+    head.append(title, del);
+    card.appendChild(head);
+
+    const list = document.createElement("ol");
+    state.lanes[laneId].forEach((zid, i) => {
+      const zone = zoneById(state, zid);
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = zone ? zone.label : "(deleted zone)";
+      const ops = document.createElement("span");
+      ops.className = "ops";
+      const mk = (txt, fn, disabled) => {
+        const b = document.createElement("button");
+        b.textContent = txt;
+        b.disabled = !!disabled;
+        b.addEventListener("click", fn);
+        ops.appendChild(b);
+      };
+      const arr = state.lanes[laneId];
+      mk("↑", () => { [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; renderLanePanel(); commit(); }, i === 0);
+      mk("↓", () => { [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; renderLanePanel(); commit(); }, i === arr.length - 1);
+      mk("✕", () => { arr.splice(i, 1); renderLanePanel(); commit(); });
+      li.append(name, ops);
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+
+    const add = document.createElement("select");
+    const ph = document.createElement("option");
+    ph.value = "";
+    ph.textContent = "+ add zone…";
+    add.appendChild(ph);
+    for (const zone of state.zones) {
+      if (state.lanes[laneId].includes(zone.id)) continue;
+      const opt = document.createElement("option");
+      opt.value = zone.id;
+      opt.textContent = zone.label;
+      add.appendChild(opt);
+    }
+    add.addEventListener("change", () => {
+      if (!add.value) return;
+      state.lanes[laneId].push(add.value);
+      renderLanePanel();
+      commit();
+    });
+    card.appendChild(add);
+
+    els.laneList.appendChild(card);
+  }
+}
+
+document.getElementById("addLane").addEventListener("click", () => {
+  let n = 1;
+  while (state.lanes[`lane_${n}`]) n++;
+  state.lanes[`lane_${n}`] = [];
+  renderLanePanel();
+  commit();
+});
+
+/* ---------------- status / persistence / file ---------------- */
+
+function setStatus(messages, cls) {
+  els.status.className = cls || "";
+  els.status.textContent = messages.join("\n");
+}
+
+let saveTimer = null;
+function commit() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(STORAGE_KEY, serializeState(state)); } catch { /* full/blocked */ }
+  }, 250);
+}
+
+function renderAll() {
+  els.mapName.value = state.mapName;
+  renderZonePanel();
+  renderTagPanel();
+  renderLanePanel();
+}
+
+els.mapName.addEventListener("change", () => {
+  state.mapName = els.mapName.value.trim() || "new_map";
+  els.mapName.value = state.mapName;
+  commit();
+});
+
+document.getElementById("newMap").addEventListener("click", () => {
+  if (!confirm("Discard the current map and start a new one?")) return;
+  state = makeState();
+  activeZoneId = null;
+  customTags = [];
+  localStorage.removeItem(STORAGE_KEY);
+  bounds = { qMin: -25, qMax: 24, rMin: -20, rMax: 19 };
+  buildGrid();
+  renderAll();
+  fitView();
+  setStatus(["New map."], "ok");
+});
+
+document.getElementById("importBtn").addEventListener("click", () => els.fileInput.click());
+
+els.fileInput.addEventListener("change", () => {
+  const file = els.fileInput.files[0];
+  els.fileInput.value = "";
+  if (!file) return;
+  file.text().then((text) => {
+    let result;
+    try {
+      result = parseImport(JSON.parse(text));
+    } catch (err) {
+      setStatus([`Import failed: ${err.message}`], "err");
+      return;
+    }
+    state = result.state;
+    state.mapName = file.name.replace(/\.json$/i, "") || "new_map";
+    activeZoneId = state.zones[0] ? state.zones[0].id : null;
+    setMode({ kind: "paint" });
+    buildGrid();
+    renderAll();
+    fitView();
+    commit();
+    setStatus([`Imported ${file.name}.`, ...result.warnings], result.warnings.length ? "warn" : "ok");
+  });
+});
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const warnings = validateExport(state);
+  const data = buildExport(state);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${state.mapName}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus([`Exported ${state.mapName}.json.`, ...warnings], warnings.length ? "warn" : "ok");
+});
+
+/* ---------------- init ---------------- */
+
+const saved = localStorage.getItem(STORAGE_KEY);
+if (saved) {
+  try {
+    state = deserializeState(saved);
+    activeZoneId = state.zones[0] ? state.zones[0].id : null;
+  } catch { state = makeState(); }
+}
+buildGrid();
+renderAll();
+fitView();
+window.addEventListener("resize", applyVB);
+</script>
+
+</body>
+</html>
