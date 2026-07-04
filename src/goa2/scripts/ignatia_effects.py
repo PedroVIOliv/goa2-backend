@@ -25,8 +25,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from goa2.domain.models import TargetType
-from goa2.domain.models.effect import EffectType
+from goa2.domain.models import TargetType, TokenType
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import CountMatchFilter, OrFilter
 from goa2.engine.filters_geometry import (
@@ -44,6 +50,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CreateEffectStep,
     DefeatUnitStep,
     FlipTieBreakerCoinStep,
     ForceDiscardOrDefeatStep,
@@ -51,6 +58,9 @@ from goa2.engine.steps import (
     GameStep,
     MayRepeatOnceStep,
     MoveUnitStep,
+    PlaceTokenStep,
+    PlaceTokenTrailStep,
+    RecordHexStep,
     RemoveUnitStep,
     SelectStep,
     SwapUnitsStep,
@@ -673,4 +683,105 @@ class ChaosGateEffect(_SwapEffect):
                 is_movement_action=False,
                 active_if_key=dest,
             ),
+        ]
+
+
+# =============================================================================
+# F7 — Path / Magma (path_of_ashes N2 / path_of_cinders N3 / path_of_flames N4)
+#   blue  : "Move up to N in a straight line. Place a Magma token in each empty
+#            space you moved through, or out of." (origin included, dest excluded)
+#   orange: "Place up to N Magma tokens in radius."
+# =============================================================================
+
+
+class _PathEffect(_IgnatiaBranchEffect):
+    """Subclasses set ``move_dist`` = N (also the orange placement cap)."""
+
+    move_dist: int = 2
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        origin = f"ign_{slot}_origin"
+        dest = f"ign_{slot}_dest"
+        return [
+            RecordHexStep(unit_id=str(hero.id), output_key=origin),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt=f"Move up to {self.move_dist} spaces in a straight line",
+                output_key=dest,
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(min_range=1, max_range=self.move_dist),
+                    StraightLinePathFilter(),
+                ],
+            ),
+            MoveUnitStep(
+                unit_id=str(hero.id),
+                destination_key=dest,
+                range_val=self.move_dist,
+                is_movement_action=False,
+                active_if_key=dest,
+            ),
+            PlaceTokenTrailStep(
+                token_type=TokenType.MAGMA,
+                origin_hex_key=origin,
+                dest_key=dest,
+                active_if_key=dest,
+            ),
+        ]
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        steps: list[GameStep] = []
+        for i in range(self.move_dist):
+            hk = f"ign_{slot}_m{i}"
+            steps.append(
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt="You may place a Magma token in radius",
+                    output_key=hk,
+                    is_mandatory=False,
+                    filters=[
+                        RangeFilter(max_range=stats.radius),
+                        ObstacleFilter(is_obstacle=False),
+                    ],
+                )
+            )
+            steps.append(PlaceTokenStep(token_type=TokenType.MAGMA, hex_key=hk, active_if_key=hk))
+        return steps
+
+    def _first_target_keys(self, slot):
+        return []  # tokens/hexes only — nothing to exclude on the ultimate re-perform
+
+
+@register_effect("path_of_ashes")
+class PathOfAshesEffect(_PathEffect):
+    move_dist = 2
+
+
+@register_effect("path_of_cinders")
+class PathOfCindersEffect(_PathEffect):
+    move_dist = 3
+
+
+@register_effect("path_of_flames")
+class PathOfFlamesEffect(_PathEffect):
+    move_dist = 4
+
+
+# =============================================================================
+# F8 — Equilibrium (Silver basic): raise the THIS_ROUND free-choice flag.
+# Not a branch card itself; it is what _equilibrium_active() detects.
+# =============================================================================
+
+
+@register_effect("equilibrium")
+class EquilibriumEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.EQUILIBRIUM,
+                scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.SELF),
+                duration=DurationType.THIS_ROUND,
+            )
         ]

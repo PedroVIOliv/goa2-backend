@@ -89,6 +89,7 @@ EXPECTED_STEP_CLASSES = {
     "PlaceMarkerStep",
     "OfferRockUltimateStep",
     "PlaceTokenStep",
+    "PlaceTokenTrailStep",
     "PlaceTokensInLineStep",
     "PlaceTurretStep",
     "PlaceUnitStep",

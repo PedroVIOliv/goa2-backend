@@ -765,3 +765,148 @@ def test_chaos_gate_blue_optional_move_under_equilibrium_still_works() -> None:
     run.choose({"q": 1, "r": 0, "s": -1}).finish()
 
     assert _pos(state, "fm") == (1, 0, -1)
+
+
+# =============================================================================
+# F7 — Path / Magma (path_of_ashes r3 N2 / path_of_cinders r4 N3 / path_of_flames r4 N4)
+#   blue  : move up to N in a straight line; place a Magma in each empty space
+#           moved through, or out of (origin included, destination excluded)
+#   orange: place up to N Magma tokens in radius
+# =============================================================================
+
+
+def _add_magma_pool(state, count: int = 4) -> None:
+    from goa2.domain.models import Token, TokenType
+
+    state.token_pool[TokenType.MAGMA] = []
+    for i in range(count):
+        tok = Token(id=f"magma_pool_{i}", name="Magma", token_type=TokenType.MAGMA)
+        state.register_entity(tok)
+        state.token_pool[TokenType.MAGMA].append(tok)
+
+
+def _magma_at(state, coord) -> bool:
+    from goa2.domain.hex import Hex
+    from goa2.domain.models import Token, TokenType
+
+    h = Hex(q=coord[0], r=coord[1], s=coord[2])
+    for eid, loc in state.entity_locations.items():
+        if loc == h:
+            ent = state.get_entity(eid)
+            if isinstance(ent, Token) and ent.token_type == TokenType.MAGMA:
+                return True
+    return False
+
+
+def _path_state(card_id: str):
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", card_id))
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    _add_magma_pool(state)
+    return state
+
+
+@pytest.mark.effect_flow
+def test_path_of_ashes_blue_lays_a_magma_trail_origin_included_dest_excluded() -> None:
+    state = _path_state("path_of_ashes")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 0, "s": -2}).finish()  # move 2 in a straight line
+
+    assert _pos(state, "hero_ignatia") == (2, 0, -2)
+    assert _magma_at(state, (0, 0, 0))  # moved out of
+    assert _magma_at(state, (1, 0, -1))  # moved through
+    assert not _magma_at(state, (2, 0, -2))  # destination excluded
+
+
+@pytest.mark.effect_flow
+def test_path_of_ashes_blue_moving_zero_places_nothing() -> None:
+    state = _path_state("path_of_ashes")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_HEX)
+    run.skip().finish()  # move up to 2 -> choose 0
+
+    assert _pos(state, "hero_ignatia") == (0, 0, 0)
+    assert not _magma_at(state, (0, 0, 0))
+    assert not _magma_at(state, (1, 0, -1))
+
+
+@pytest.mark.effect_flow
+def test_path_of_ashes_orange_places_up_to_two_magma_in_radius() -> None:
+    state = _path_state("path_of_ashes")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 1, "r": 0, "s": -1}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 0, "r": 1, "s": -1}).finish()
+
+    assert _magma_at(state, (1, 0, -1))
+    assert _magma_at(state, (0, 1, -1))
+
+
+# =============================================================================
+# F8 — Equilibrium (Silver): "This round: each time you perform or repeat a
+# primary action, you may apply either blue or orange text, regardless of the
+# coin." Playing it raises a THIS_ROUND flag that every branch card reads.
+# =============================================================================
+
+
+@pytest.mark.effect_flow
+def test_equilibrium_card_creates_this_round_flag() -> None:
+    from goa2.domain.models.effect import DurationType, EffectType
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(2))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", "equilibrium"))
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").finish()
+
+    flags = [e for e in state.active_effects if e.effect_type == EffectType.EQUILIBRIUM]
+    assert len(flags) == 1
+    assert flags[0].source_id == "hero_ignatia"
+    assert flags[0].duration == DurationType.THIS_ROUND
+
+
+@pytest.mark.effect_flow
+def test_equilibrium_played_then_branch_card_offers_choice_same_round() -> None:
+    # End-to-end: play the real Equilibrium card, then a branch card this round
+    # is driven off the flag it raised (no test-only activation).
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", "equilibrium"))
+        .blue_minion("am", at=(1, 0, -1))
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").finish()  # Equilibrium raises the flag
+
+    # Now Ignatia plays Chaos Bolt this round on an orange coin.
+    state.get_hero("hero_ignatia").current_turn_card = hero_card("Ignatia", "chaos_bolt")
+    _set_coin(state, "ORANGE")
+
+    run2 = run_card(state, "hero_ignatia")
+    run2.expect_input(InputRequestType.CHOOSE_ACTION)
+    # Equilibrium is active -> she is prompted to choose the side, not read the coin.
+    run2.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)

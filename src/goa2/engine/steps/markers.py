@@ -233,6 +233,57 @@ class PlaceTokensInLineStep(GameStep):
         return StepResult(is_finished=True, new_steps=new_steps)
 
 
+class PlaceTokenTrailStep(GameStep):
+    """Places a token in every empty hex along the straight line from
+    ``origin_hex_key`` toward ``dest_key``, INCLUDING the origin ("moved out of")
+    and EXCLUDING the destination ("moved to").
+
+    Used by Ignatia's Path cards: after moving up to N in a straight line, drop a
+    Magma token in each empty space moved through or out of. If origin == dest
+    (moved zero) or the two are not in a straight line, nothing is placed.
+    Placement is delegated to PlaceTokenStep so supply overflow and occupied-hex
+    skipping are handled consistently.
+    """
+
+    type: StepType = StepType.PLACE_TOKEN_TRAIL
+    token_type: TokenType
+    origin_hex_key: str
+    dest_key: str
+    owner_id_key: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        raw_origin = context.get(self.origin_hex_key)
+        raw_dest = context.get(self.dest_key)
+        if not raw_origin or not raw_dest:
+            return StepResult(is_finished=True)
+
+        origin = Hex(**raw_origin) if isinstance(raw_origin, dict) else raw_origin
+        dest = Hex(**raw_dest) if isinstance(raw_dest, dict) else raw_dest
+        if origin == dest or not origin.is_straight_line(dest):
+            return StepResult(is_finished=True)
+
+        dist = origin.distance(dest)
+        dq = (dest.q - origin.q) // dist
+        dr = (dest.r - origin.r) // dist
+        ds = (dest.s - origin.s) // dist
+
+        new_steps: list[GameStep] = []
+        current = origin
+        for i in range(dist):  # origin, origin+1, ..., dest-1 (destination excluded)
+            key = f"_trail_hex_{i}"
+            context[key] = current.model_dump()
+            new_steps.append(
+                PlaceTokenStep(
+                    token_type=self.token_type, hex_key=key, owner_id_key=self.owner_id_key
+                )
+            )
+            current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
+        return StepResult(is_finished=True, new_steps=new_steps)
+
+
 class OfferRockUltimateStep(GameStep):
     """Mrak's ultimate "Rock and a Hard Place" (active at level >= 8).
 

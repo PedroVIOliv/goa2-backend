@@ -222,6 +222,7 @@ class StepType(StrEnum):
     REMOVE_HERO_PIECE = "remove_hero_piece"
     RAZZLE_MIRRORED_PUSH = "razzle_mirrored_push"
     FLIP_TIE_BREAKER_COIN = "flip_tie_breaker_coin"
+    PLACE_TOKEN_TRAIL = "place_token_trail"
 
 
 class FilterType(StrEnum):

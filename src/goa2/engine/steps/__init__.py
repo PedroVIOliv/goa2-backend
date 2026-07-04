@@ -56,6 +56,7 @@ from goa2.engine.steps.markers import (  # noqa: F401
     PlaceMarkerStep,
     PlaceTokensInLineStep,
     PlaceTokenStep,
+    PlaceTokenTrailStep,
     PlaceTurretStep,
     RemoveMarkerStep,
     RemoveTokenStep,
