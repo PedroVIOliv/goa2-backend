@@ -47,6 +47,12 @@ class Board(BaseModel):
     # double-lane maps will have two. E.g. {"lane_1": [RedBase, Zone1, Mid, Zone2, BlueBase]}
     lanes: dict[str, list[str]] = Field(default_factory=dict)
 
+    # Optional per-lane starting Battle Zone (zone id), keyed by lane id.
+    # Set from the map's "battle_zones" key; lanes without an entry start at
+    # the lane's center zone. Lets even-length (e.g. 6-zone) lanes express
+    # which side the initial advantage goes to.
+    starting_battle_zones: dict[str, str] = Field(default_factory=dict)
+
     # Private optimized lookup for O(1) zone resolution
     # Populated by validation
     _hex_lookup: dict[Hex, str] = {}

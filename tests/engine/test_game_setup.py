@@ -195,6 +195,28 @@ class TestQuickGameSetup:
             GameSetup.create_game(map_path, red_heroes, blue_heroes, game_type="quick")
 
 
+class TestConfiguredBattleZones:
+    def _map_with_battle_zones(self, tmp_path, battle_zones: dict) -> str:
+        import json
+        from pathlib import Path
+
+        data = json.loads(Path("src/goa2/data/maps/forgotten_island.json").read_text())
+        data["battle_zones"] = battle_zones
+        p = tmp_path / "map.json"
+        p.write_text(json.dumps(data))
+        return str(p)
+
+    def test_setup_uses_configured_battle_zone(self, setup_registry, tmp_path):
+        map_path = self._map_with_battle_zones(tmp_path, {"lane_1": "RedBeach"})
+        state = GameSetup.create_game(map_path, ["Arien"], ["Knight"])
+        assert state.battle_zones["lane_1"] == "RedBeach"
+
+    def test_setup_defaults_to_lane_center_without_config(self, map_path, setup_registry):
+        state = GameSetup.create_game(map_path, ["Arien"], ["Knight"])
+        lane = state.board.lanes["lane_1"]
+        assert state.battle_zones["lane_1"] == lane[len(lane) // 2]
+
+
 def test_rogue_definition():
     """
     Verifies the Rogue hero is loaded correctly with the updated 5-card deck.

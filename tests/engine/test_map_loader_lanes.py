@@ -65,6 +65,65 @@ def test_legacy_single_lane_map_still_loads():
     assert len(board.lane) >= 3  # legacy accessor works on single-lane boards
 
 
+def _six_zone_two_lane_data() -> dict:
+    zones = [
+        _zone("z_rb1", "RedBase1"),
+        _zone("z_mid1", "Mid1"),
+        _zone("z_bb1", "BlueBase1"),
+        _zone("z_rb2", "RedBase2"),
+        _zone("z_mid2", "Mid2"),
+        _zone("z_bb2", "BlueBase2"),
+    ]
+    hex_map = (
+        _hexes("z_rb1", [(0, 0)])
+        + _hexes("z_mid1", [(1, 0)])
+        + _hexes("z_bb1", [(2, 0)])
+        + _hexes("z_rb2", [(0, 5)])
+        + _hexes("z_mid2", [(1, 5)])
+        + _hexes("z_bb2", [(2, 5)])
+    )
+    return {
+        "zone_definitions": zones,
+        "hex_map": hex_map,
+        "lanes": {
+            "lane_1": ["RedBase1", "Mid1", "BlueBase1"],
+            "lane_2": ["RedBase2", "Mid2", "BlueBase2"],
+        },
+    }
+
+
+def test_battle_zones_key_sets_starting_battle_zones(tmp_path):
+    data = _six_zone_two_lane_data()
+    data["battle_zones"] = {"lane_1": "Mid1", "lane_2": "BlueBase2"}
+    board = load_map(_write_map(tmp_path, data))
+    assert board.starting_battle_zones == {"lane_1": "z_mid1", "lane_2": "z_bb2"}
+
+
+def test_battle_zones_invalid_entries_are_skipped(tmp_path):
+    data = _six_zone_two_lane_data()
+    data["battle_zones"] = {
+        "lane_1": "Nope",  # unknown label
+        "lane_2": "Mid1",  # exists, but belongs to lane_1
+        "lane_9": "Mid2",  # unknown lane
+    }
+    board = load_map(_write_map(tmp_path, data))
+    assert board.starting_battle_zones == {}
+
+
+def test_battle_zones_missing_defaults_to_empty(tmp_path):
+    board = load_map(_write_map(tmp_path, _six_zone_two_lane_data()))
+    assert board.starting_battle_zones == {}
+
+
+def test_battle_zones_works_with_legacy_lane_key(tmp_path):
+    data = _six_zone_two_lane_data()
+    del data["lanes"]
+    data["lane"] = ["RedBase1", "Mid1", "BlueBase1"]
+    data["battle_zones"] = {"lane_1": "RedBase1"}  # DEFAULT_LANE_ID is lane_1
+    board = load_map(_write_map(tmp_path, data))
+    assert board.starting_battle_zones == {"lane_1": "z_rb1"}
+
+
 def test_lane_with_unknown_label_is_skipped(tmp_path):
     data = {
         "zone_definitions": [

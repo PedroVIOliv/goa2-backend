@@ -257,4 +257,19 @@ def load_map(file_path: str) -> Board:
                 list(label_to_id.keys()),
             )
 
+    # Optional per-lane starting Battle Zone: {"battle_zones": {lane_id: zone label}}
+    starting_battle_zones: dict[str, str] = {}
+    for lane_id, bz_label in (data.get("battle_zones") or {}).items():
+        if lane_id not in board.lanes:
+            logger.warning("battle_zones: unknown lane %r; entry skipped.", lane_id)
+            continue
+        bz_id = label_to_id.get(bz_label)
+        if not bz_id or bz_id not in board.lanes[lane_id]:
+            logger.warning(
+                "battle_zones: zone %r is not in lane %r; entry skipped.", bz_label, lane_id
+            )
+            continue
+        starting_battle_zones[lane_id] = bz_id
+    board.starting_battle_zones = starting_battle_zones
+
     return board

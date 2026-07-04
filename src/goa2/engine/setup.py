@@ -118,9 +118,13 @@ class GameSetup:
         state.battle_zones = {}
         state.wave_counters = {}
         for lane_id, lane in board.lanes.items():
-            # The starting Battle Zone is the center of each lane
-            mid_index = len(lane) // 2
-            state.battle_zones[lane_id] = lane[mid_index]
+            # Map-configured starting Battle Zone wins; otherwise the lane center.
+            configured = board.starting_battle_zones.get(lane_id)
+            if configured and configured in lane:
+                state.battle_zones[lane_id] = configured
+            else:
+                mid_index = len(lane) // 2
+                state.battle_zones[lane_id] = lane[mid_index]
             state.wave_counters[lane_id] = waves_per_lane
 
         # 5. Register Heroes & Place them
