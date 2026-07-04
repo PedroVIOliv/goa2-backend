@@ -41,6 +41,23 @@ New top-level key written by the editor (replaces legacy `"lane"`):
 Lane values are ordered zone **labels** (red side → blue side), matching the
 existing legacy `"lane"` convention. The loader resolves labels → zone ids.
 
+Optional per-lane starting Battle Zone (added 2026-07-04, after the initial
+build): even-length lanes (e.g. the 6-zone lanes of double-lane maps) have no
+center zone, so the map declares which zone the battle starts in — i.e. which
+side gets the advantage:
+
+```json
+{
+  "battle_zones": {"lane_1": "RMid1", "lane_2": "BMid2"}
+}
+```
+
+Values are zone labels and must belong to the lane. The loader stores them on
+`Board.starting_battle_zones` (zone ids); `GameSetup` prefers them over the
+`len(lane) // 2` center fallback. In the editor, a ★ toggle on each lane
+entry marks the starting Battle Zone; exporting an even-length lane without
+one warns.
+
 ## Editor
 
 ### Rendering

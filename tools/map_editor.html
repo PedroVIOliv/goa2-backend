@@ -93,7 +93,7 @@
     <h2>Lanes</h2>
     <div id="laneList"></div>
     <button id="addLane">+ Add lane</button>
-    <p class="hint">Order zones red side &rarr; blue side.</p>
+    <p class="hint">Order zones red side &rarr; blue side. ★ marks the starting Battle Zone (defaults to the lane center).</p>
   </section>
 
   <section>
@@ -122,7 +122,8 @@
  * State shape:
  *   { mapName, zones: [{id,label,color}],
  *     hexes: Map<"q,r", {zoneId, tags: []}>,
- *     lanes: {laneId: [zoneId, ...]} }   // ids internally, labels in JSON
+ *     lanes: {laneId: [zoneId, ...]},      // ids internally, labels in JSON
+ *     battleZones: {laneId: zoneId} }      // starting Battle Zone per lane
  * ------------------------------------------------------------------ */
 "use strict";
 
@@ -142,7 +143,7 @@ function hexPoints(cx, cy) {
 }
 
 function makeState() {
-  return { mapName: "new_map", zones: [], hexes: new Map(), lanes: { lane_1: [] } };
+  return { mapName: "new_map", zones: [], hexes: new Map(), lanes: { lane_1: [] }, battleZones: {} };
 }
 
 function newZoneId() {
@@ -201,11 +202,30 @@ function parseImport(data) {
     }
   }
   if (!Object.keys(st.lanes).length) st.lanes = { lane_1: [] };
+
+  if (data.battle_zones && typeof data.battle_zones === "object" && !Array.isArray(data.battle_zones)) {
+    for (const [laneId, label] of Object.entries(data.battle_zones)) {
+      const zid = l2i.get(label);
+      if (st.lanes[laneId] && zid && st.lanes[laneId].includes(zid)) {
+        st.battleZones[laneId] = zid;
+      } else {
+        warnings.push(`battle_zones: "${label}" is not a zone of ${laneId}; dropped.`);
+      }
+    }
+  }
   return { state: st, warnings };
 }
 
 function buildExport(st) {
+  const battleZones = {};
+  for (const [laneId, zid] of Object.entries(st.battleZones)) {
+    const zone = zoneById(st, zid);
+    if (zone && st.lanes[laneId] && st.lanes[laneId].includes(zid)) {
+      battleZones[laneId] = zone.label;
+    }
+  }
   return {
+    ...(Object.keys(battleZones).length ? { battle_zones: battleZones } : {}),
     zone_definitions: st.zones.map((z) => ({ id: z.id, label: z.label, color: z.color })),
     hex_map: [...st.hexes.entries()].map(([key, h]) => {
       const [q, r] = key.split(",").map(Number);
@@ -228,6 +248,13 @@ function validateExport(st) {
 
   for (const [laneId, zids] of Object.entries(st.lanes)) {
     if (zids.length < 3) w.push(`Lane ${laneId} has fewer than 3 zones (loader will skip it).`);
+    const bz = st.battleZones[laneId];
+    if (bz && !zids.includes(bz)) {
+      w.push(`Lane ${laneId}: starting Battle Zone is not in the lane.`);
+    }
+    if (!bz && zids.length >= 3 && zids.length % 2 === 0) {
+      w.push(`Lane ${laneId} has an even number of zones — mark a starting Battle Zone (★) to pick the advantage side.`);
+    }
     for (const zid of zids) {
       const z = zoneById(st, zid);
       if (!z) { w.push(`Lane ${laneId} references a deleted zone.`); continue; }
@@ -244,7 +271,8 @@ function validateExport(st) {
 
 function serializeState(st) {
   return JSON.stringify({
-    mapName: st.mapName, zones: st.zones, lanes: st.lanes, hexes: [...st.hexes.entries()],
+    mapName: st.mapName, zones: st.zones, lanes: st.lanes,
+    battleZones: st.battleZones, hexes: [...st.hexes.entries()],
   });
 }
 
@@ -254,6 +282,7 @@ function deserializeState(json) {
   st.mapName = raw.mapName || "new_map";
   st.zones = raw.zones || [];
   st.lanes = raw.lanes && Object.keys(raw.lanes).length ? raw.lanes : { lane_1: [] };
+  st.battleZones = raw.battleZones || {};
   st.hexes = new Map(raw.hexes || []);
   return st;
 }
@@ -575,6 +604,7 @@ function deleteZone(zoneId) {
   for (const key of doomed) { state.hexes.delete(key); restyleHex(key); }
   for (const laneId of Object.keys(state.lanes)) {
     state.lanes[laneId] = state.lanes[laneId].filter((zid) => zid !== zoneId);
+    if (state.battleZones[laneId] === zoneId) delete state.battleZones[laneId];
   }
   if (activeZoneId === zoneId) activeZoneId = state.zones[0] ? state.zones[0].id : null;
   renderZonePanel();
@@ -633,6 +663,7 @@ function renderLanePanel() {
     del.disabled = laneIds.length <= 1;
     del.addEventListener("click", () => {
       delete state.lanes[laneId];
+      delete state.battleZones[laneId];
       renderLanePanel();
       commit();
     });
@@ -655,9 +686,23 @@ function renderLanePanel() {
         ops.appendChild(b);
       };
       const arr = state.lanes[laneId];
+      const isBZ = state.battleZones[laneId] === zid;
+      mk(isBZ ? "★" : "☆", () => {
+        if (isBZ) delete state.battleZones[laneId];
+        else state.battleZones[laneId] = zid;
+        renderLanePanel();
+        commit();
+      });
+      ops.lastChild.title = "Starting Battle Zone (advantage side on even-length lanes)";
+      if (isBZ) ops.lastChild.style.color = "#c8a400";
       mk("↑", () => { [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; renderLanePanel(); commit(); }, i === 0);
       mk("↓", () => { [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; renderLanePanel(); commit(); }, i === arr.length - 1);
-      mk("✕", () => { arr.splice(i, 1); renderLanePanel(); commit(); });
+      mk("✕", () => {
+        arr.splice(i, 1);
+        if (state.battleZones[laneId] === zid) delete state.battleZones[laneId];
+        renderLanePanel();
+        commit();
+      });
       li.append(name, ops);
       list.appendChild(li);
     });
