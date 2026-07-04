@@ -303,3 +303,275 @@ def test_loosely_blue_attacks_off_axis_without_repeat() -> None:
     # Blue has no repeat: after the defender passes, the action ends (no repeat prompt).
     run.choose("h_off").expect_input("SELECT_CARD_OR_PASS")
     run.choose("PASS").finish()
+
+
+# =============================================================================
+# F2 — Range-extreme attacks (crack_of_doom / imminent_eruption), range 5
+#   blue  : target a unit adjacent to you (range 1)
+#   orange: target a unit at maximum range (exactly the card's range)
+# =============================================================================
+
+
+def _range_state(card_id: str):
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(5))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", card_id))
+        .blue_minion("adj", at=(1, 0, -1))  # range 1
+        .blue_minion("mid", at=(0, 3, -3))  # range 3
+        .blue_minion("far", at=(-5, 0, 5))  # range 5 (clear axis)
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+@pytest.mark.effect_flow
+def test_crack_of_doom_blue_targets_only_adjacent() -> None:
+    state = _range_state("crack_of_doom")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "adj" in opts
+    assert "mid" not in opts
+    assert "far" not in opts
+
+
+@pytest.mark.effect_flow
+def test_crack_of_doom_orange_targets_only_maximum_range() -> None:
+    state = _range_state("crack_of_doom")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "far" in opts  # exactly at max range
+    assert "adj" not in opts
+    assert "mid" not in opts  # closer than max range -> excluded
+
+
+@pytest.mark.effect_flow
+def test_imminent_eruption_orange_targets_only_maximum_range() -> None:
+    state = _range_state("imminent_eruption")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "far" in opts
+    assert "adj" not in opts
+    assert "mid" not in opts
+
+
+def _imminent_blue_state():
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(5))
+        .red_hero(
+            "hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", "imminent_eruption")
+        )
+        .blue_minion("m1", at=(1, 0, -1))  # adjacent minion
+        .blue_minion("m2", at=(0, 1, -1))  # adjacent minion
+        .blue_hero("h1", at=(-1, 0, 1))  # adjacent hero
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+@pytest.mark.effect_flow
+def test_imminent_eruption_blue_repeats_on_a_different_adjacent_minion() -> None:
+    state = _imminent_blue_state()
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    # First adjacent target is a minion -> auto-resolves.
+    run.choose("m1").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "m2" in opts  # a different adjacent minion
+    assert "m1" not in opts  # first target excluded
+    assert "h1" not in opts  # repeat must be a minion, not a hero
+
+
+# =============================================================================
+# F3 — Chaos Bolt (Gold basic), range 3
+#   blue  : target a minion adjacent to you
+#   orange: target a hero in range
+# =============================================================================
+
+
+def _chaos_bolt_state():
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", "chaos_bolt"))
+        .blue_minion("am", at=(1, 0, -1))  # adjacent minion
+        .blue_hero("ah", at=(0, 1, -1))  # adjacent hero
+        .blue_minion("fm", at=(3, 0, -3))  # range-3 minion
+        .blue_hero("rh", at=(-3, 0, 3))  # range-3 hero
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+@pytest.mark.effect_flow
+def test_chaos_bolt_blue_targets_only_adjacent_minion() -> None:
+    state = _chaos_bolt_state()
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "am" in opts
+    assert "ah" not in opts  # blue wants a minion, not a hero
+    assert "fm" not in opts  # not adjacent
+    assert "rh" not in opts
+
+
+@pytest.mark.effect_flow
+def test_chaos_bolt_orange_targets_only_hero_in_range() -> None:
+    state = _chaos_bolt_state()
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "ah" in opts  # adjacent hero, in range
+    assert "rh" in opts  # range-3 hero
+    assert "am" not in opts  # orange wants a hero, not a minion
+    assert "fm" not in opts
+
+
+# =============================================================================
+# F4 — Discard/Defeat AoE
+#   abrupt_combustion (r3) / spontaneous_immolation (r4):
+#     blue  : an enemy hero in radius adjacent to a token or a minion discards
+#     orange: remove an enemy minion in radius adjacent to an enemy hero
+#   violent_conflagration (r4):
+#     blue  : ...discards a card, OR is defeated
+#     orange: DEFEAT an enemy minion in radius adjacent to an enemy hero
+# =============================================================================
+
+
+def _place_token(state, token_id, token_type, at):
+    from goa2.domain.hex import Hex
+    from goa2.domain.models import Token
+
+    tok = Token(id=token_id, name=token_id, token_type=token_type)
+    state.register_entity(tok)
+    state.place_entity(token_id, Hex(q=at[0], r=at[1], s=at[2]))
+
+
+@pytest.mark.effect_flow
+def test_abrupt_combustion_blue_targets_hero_adjacent_to_any_token_or_minion() -> None:
+    from goa2.domain.models import TokenType
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero(
+            "hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", "abrupt_combustion")
+        )
+        .blue_hero("h_tok", at=(2, 0, -2))  # adjacent to a token
+        .blue_hero("h_min", at=(0, 2, -2))  # adjacent to a minion
+        .blue_hero("h_alone", at=(-2, 0, 2))  # adjacent to nothing
+        .blue_minion("supp", at=(0, 3, -3))  # anchor for h_min
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    # A non-Magma token proves the check is "any token", not Magma-specific.
+    _place_token(state, "rock1", TokenType.ROCK, at=(3, 0, -3))
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    assert "h_tok" in opts
+    assert "h_min" in opts
+    assert "h_alone" not in opts
+
+
+def _orange_minion_state(card_id: str):
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", card_id))
+        .blue_minion("supp", at=(1, 0, -1))  # adjacent to enemy hero eh
+        .blue_hero("eh", at=(2, 0, -2))
+        .blue_minion("lone_m", at=(0, 2, -2))  # not adjacent to any enemy hero
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+@pytest.mark.effect_flow
+def test_abrupt_combustion_orange_removes_supported_minion_no_coins() -> None:
+    state = _orange_minion_state("abrupt_combustion")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    opts = _option_set(run)
+    assert "supp" in opts
+    assert "lone_m" not in opts  # not adjacent to an enemy hero
+
+    run.choose("supp").finish()
+    assert state.entity_locations.get("supp") is None  # removed
+    assert state.get_hero("hero_ignatia").gold == 0  # remove -> no coins
+
+
+@pytest.mark.effect_flow
+def test_violent_conflagration_orange_defeats_supported_minion_for_coins() -> None:
+    state = _orange_minion_state("violent_conflagration")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("supp").finish()
+
+    assert state.entity_locations.get("supp") is None  # defeated
+    assert state.get_hero("hero_ignatia").gold > 0  # defeat -> coins
+
+
+@pytest.mark.effect_flow
+def test_violent_conflagration_blue_defeats_cardless_eligible_hero() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero(
+            "hero_ignatia",
+            at=(0, 0, 0),
+            current_card=hero_card("Ignatia", "violent_conflagration"),
+        )
+        .blue_hero("victim", at=(2, 0, -2))
+        .blue_minion("anchor", at=(3, 0, -3))  # makes victim eligible
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    state.get_hero("victim").hand = []  # no cards -> "or is defeated"
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("victim").finish()
+
+    assert any(e.event_type == GameEventType.UNIT_DEFEATED for e in run.events)

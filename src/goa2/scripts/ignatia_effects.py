@@ -28,15 +28,25 @@ from typing import TYPE_CHECKING
 from goa2.domain.models import TargetType
 from goa2.domain.models.effect import EffectType
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_composite import CountMatchFilter, OrFilter
 from goa2.engine.filters_geometry import InStraightLineFilter, NotInStraightLineFilter
 from goa2.engine.filters_hex import RangeFilter
-from goa2.engine.filters_units import ExcludeIdentityFilter, TeamFilter, UnitTypeFilter
+from goa2.engine.filters_units import (
+    ExcludeIdentityFilter,
+    TeamFilter,
+    TokenTypeFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    DefeatUnitStep,
     FlipTieBreakerCoinStep,
+    ForceDiscardOrDefeatStep,
+    ForceDiscardStep,
     GameStep,
     MayRepeatOnceStep,
+    RemoveUnitStep,
     SelectStep,
 )
 
@@ -254,3 +264,227 @@ class LooselyAimedFireboltsEffect(_FireAttackEffect):
 
     def _first_target_keys(self, slot):
         return [f"ign_{slot}_v1", f"ign_{slot}_v2"]
+
+
+# =============================================================================
+# F2 — Range-extreme attacks (crack_of_doom / imminent_eruption)
+#   blue  : "Target a unit adjacent to you." (range 1, hardcoded)
+#   orange: "Target a unit at maximum range." (exactly the card's range)
+# =============================================================================
+
+
+class _RangeExtremeAttackEffect(_IgnatiaBranchEffect):
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                target_id_key=f"ign_{slot}_v1",
+                target_filters=_excl(exclude),
+            )
+        ]
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_id_key=f"ign_{slot}_v1",
+                target_filters=[
+                    RangeFilter(min_range=stats.range, max_range=stats.range),
+                    *_excl(exclude),
+                ],
+            )
+        ]
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1"]
+
+
+@register_effect("crack_of_doom")
+class CrackOfDoomEffect(_RangeExtremeAttackEffect):
+    pass
+
+
+@register_effect("imminent_eruption")
+class ImminentEruptionEffect(_RangeExtremeAttackEffect):
+    """Blue additionally "may repeat once on a minion" (adjacent, different)."""
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        first = AttackSequenceStep(
+            damage=stats.primary_value,
+            range_val=1,
+            is_ranged=True,
+            target_id_key=f"ign_{slot}_v1",
+            target_filters=_excl(exclude),
+        )
+        repeat = MayRepeatOnceStep(
+            prompt="Repeat once on a different adjacent minion?",
+            steps_template=[
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Target a different adjacent minion",
+                    output_key=f"ign_{slot}_v2",
+                    is_mandatory=True,
+                    filters=[
+                        UnitTypeFilter(unit_type="MINION"),
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=1),
+                        ExcludeIdentityFilter(exclude_keys=[f"ign_{slot}_v1", *exclude]),
+                    ],
+                ),
+                AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=1,
+                    is_ranged=True,
+                    target_id_key=f"ign_{slot}_v2",
+                ),
+            ],
+        )
+        return [first, repeat]
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1", f"ign_{slot}_v2"]
+
+
+# =============================================================================
+# F3 — Chaos Bolt (Gold basic)
+#   blue  : "Target a minion adjacent to you."
+#   orange: "Target a hero in range."
+# =============================================================================
+
+
+@register_effect("chaos_bolt")
+class ChaosBoltEffect(_IgnatiaBranchEffect):
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                target_id_key=f"ign_{slot}_v1",
+                target_filters=[UnitTypeFilter(unit_type="MINION"), *_excl(exclude)],
+            )
+        ]
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_id_key=f"ign_{slot}_v1",
+                target_filters=[UnitTypeFilter(unit_type="HERO"), *_excl(exclude)],
+            )
+        ]
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1"]
+
+
+# =============================================================================
+# F4 — Discard/Defeat AoE
+#   abrupt_combustion (r3) / spontaneous_immolation (r4):
+#     blue  : an enemy hero in radius adjacent to a token or a minion discards
+#     orange: remove an enemy minion in radius adjacent to an enemy hero
+#   violent_conflagration (r4):
+#     blue  : ...discards a card, or is defeated
+#     orange: defeat an enemy minion in radius adjacent to an enemy hero
+# =============================================================================
+
+
+def _adjacent_to_token_or_minion() -> CountMatchFilter:
+    """Presence check: the candidate hex has a token OR a minion adjacent to it
+    (any token; not a bare hero). Measured from the candidate via ORIGIN_HEX_KEY."""
+    return CountMatchFilter(
+        include_tokens=True,
+        min_count=1,
+        sub_filters=[
+            RangeFilter(min_range=1, max_range=1, origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY),
+            OrFilter(filters=[UnitTypeFilter(unit_type="MINION"), TokenTypeFilter()]),
+        ],
+    )
+
+
+def _adjacent_to_enemy_hero() -> CountMatchFilter:
+    """Presence check: the candidate (an enemy minion) is adjacent to an enemy
+    hero (enemy relative to Ignatia)."""
+    return CountMatchFilter(
+        min_count=1,
+        sub_filters=[
+            UnitTypeFilter(unit_type="HERO"),
+            TeamFilter(relation="ENEMY"),
+            RangeFilter(min_range=1, max_range=1, origin_hex_key=CountMatchFilter.ORIGIN_HEX_KEY),
+        ],
+    )
+
+
+class _CombustionEffect(_IgnatiaBranchEffect):
+    """Subclasses set ``defeat_on_discard`` (blue "or is defeated") and
+    ``defeat_minion`` (orange "defeat" vs "remove")."""
+
+    defeat_on_discard: bool = False
+    defeat_minion: bool = False
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        victim = f"ign_{slot}_v1"
+        select = SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="An enemy hero in radius adjacent to a token or minion",
+            output_key=victim,
+            is_mandatory=True,
+            filters=[
+                UnitTypeFilter(unit_type="HERO"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=stats.radius),
+                _adjacent_to_token_or_minion(),
+                *_excl(exclude),
+            ],
+        )
+        if self.defeat_on_discard:
+            resolve = ForceDiscardOrDefeatStep(victim_key=victim)
+        else:
+            resolve = ForceDiscardStep(victim_key=victim)
+        return [select, resolve]
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        victim = f"ign_{slot}_v1"
+        select = SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="An enemy minion in radius adjacent to an enemy hero",
+            output_key=victim,
+            is_mandatory=True,
+            filters=[
+                UnitTypeFilter(unit_type="MINION"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=stats.radius),
+                _adjacent_to_enemy_hero(),
+                *_excl(exclude),
+            ],
+        )
+        if self.defeat_minion:
+            resolve = DefeatUnitStep(victim_key=victim, killer_id=str(hero.id))
+        else:
+            resolve = RemoveUnitStep(unit_key=victim)
+        return [select, resolve]
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1"]
+
+
+@register_effect("abrupt_combustion")
+class AbruptCombustionEffect(_CombustionEffect):
+    pass
+
+
+@register_effect("spontaneous_immolation")
+class SpontaneousImmolationEffect(_CombustionEffect):
+    pass
+
+
+@register_effect("violent_conflagration")
+class ViolentConflagrationEffect(_CombustionEffect):
+    defeat_on_discard = True
+    defeat_minion = True

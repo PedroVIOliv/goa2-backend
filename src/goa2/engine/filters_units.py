@@ -117,11 +117,13 @@ class HeroPieceFilter(FilterCondition):
 
 class TokenTypeFilter(FilterCondition):
     type: FilterType = FilterType.TOKEN_TYPE
-    token_type: TokenType
+    token_type: TokenType | None = None  # None matches any token
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         entity = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
-        return isinstance(entity, Token) and entity.token_type == self.token_type
+        if not isinstance(entity, Token):
+            return False
+        return self.token_type is None or entity.token_type == self.token_type
 
 
 class MinionTypesFilter(FilterCondition):
