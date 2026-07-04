@@ -218,27 +218,43 @@ def load_map(file_path: str) -> Board:
                     neighbor_zone.neighbors.append(current_zone_id)
 
     # Lane inference
-    # Priority: 1. "lane" field in JSON, 2. "ordered_labels" fallback
-    lane_labels = data.get("lane")
-    if not lane_labels:
-        lane_labels = ["RedBase", "RedBeach", "Mid", "BlueBeach", "BlueBase"]
-
-    lane_ids = []
+    # Priority: 1. "lanes" dict, 2. legacy "lane" list, 3. hardcoded fallback
     label_to_id = {z.label: z.id for z in zones.values() if z.label}
 
-    for label in lane_labels:
-        if label in label_to_id:
-            lane_ids.append(label_to_id[label])
-        else:
-            logger.warning("Lane label %r not found in zones.", label)
+    def _resolve_labels(labels: list[str]) -> list[str]:
+        resolved = []
+        for label in labels:
+            if label in label_to_id:
+                resolved.append(label_to_id[label])
+            else:
+                logger.warning("Lane label %r not found in zones.", label)
+        return resolved
 
-    if len(lane_ids) >= 3:
-        board.lane = lane_ids
-        logger.info("Inferred lane: %s", lane_labels)
+    lanes_data = data.get("lanes")
+    if lanes_data:
+        lanes: dict[str, list[str]] = {}
+        for lane_id, lane_labels in lanes_data.items():
+            lane_ids = _resolve_labels(lane_labels)
+            if len(lane_ids) >= 3:
+                lanes[lane_id] = lane_ids
+            else:
+                logger.warning(
+                    "Skipping lane %r: needs at least 3 resolvable zones, got %s.",
+                    lane_id,
+                    lane_ids,
+                )
+        board.lanes = lanes
+        logger.info("Loaded lanes: %s", list(lanes))
     else:
-        logger.warning(
-            "Could not infer minimal lane (RedBase->Mid->BlueBase). Found: %s",
-            list(label_to_id.keys()),
-        )
+        lane_labels = data.get("lane") or ["RedBase", "RedBeach", "Mid", "BlueBeach", "BlueBase"]
+        lane_ids = _resolve_labels(lane_labels)
+        if len(lane_ids) >= 3:
+            board.lane = lane_ids
+            logger.info("Inferred lane: %s", lane_labels)
+        else:
+            logger.warning(
+                "Could not infer minimal lane (RedBase->Mid->BlueBase). Found: %s",
+                list(label_to_id.keys()),
+            )
 
     return board
