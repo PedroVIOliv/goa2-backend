@@ -23,14 +23,18 @@ them without engine changes:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from goa2.domain.models import TargetType
 from goa2.domain.models.effect import EffectType
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_composite import CountMatchFilter, OrFilter
-from goa2.engine.filters_geometry import InStraightLineFilter, NotInStraightLineFilter
-from goa2.engine.filters_hex import RangeFilter
+from goa2.engine.filters_geometry import (
+    InStraightLineFilter,
+    NotInStraightLineFilter,
+    StraightLinePathFilter,
+)
+from goa2.engine.filters_hex import ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import (
     ExcludeIdentityFilter,
     TeamFilter,
@@ -46,8 +50,10 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     GameStep,
     MayRepeatOnceStep,
+    MoveUnitStep,
     RemoveUnitStep,
     SelectStep,
+    SwapUnitsStep,
 )
 
 if TYPE_CHECKING:
@@ -128,10 +134,17 @@ class _IgnatiaBranchEffect(CardEffect):
     ) -> list[GameStep]:
         blue = self._blue_steps(state, hero, card, stats, slot, exclude)
         orange = self._orange_steps(state, hero, card, stats, slot, exclude)
+        # Gate each branch on the chosen side. Steps that ALREADY carry an
+        # active_if_key (e.g. Chaos Gate's optional "move 1 space", gated on its
+        # own dest key) are left alone: their key is only ever set inside this
+        # same (gated) branch, so they can't fire for the other side. Overwriting
+        # would break their own optionality.
         for s in blue:
-            s.active_if_key = f"ign_{slot}_is_blue"
+            if s.active_if_key is None:
+                s.active_if_key = f"ign_{slot}_is_blue"
         for s in orange:
-            s.active_if_key = f"ign_{slot}_is_orange"
+            if s.active_if_key is None:
+                s.active_if_key = f"ign_{slot}_is_orange"
         return [
             SelectStep(
                 target_type=TargetType.NUMBER,
@@ -488,3 +501,176 @@ class SpontaneousImmolationEffect(_CombustionEffect):
 class ViolentConflagrationEffect(_CombustionEffect):
     defeat_on_discard = True
     defeat_minion = True
+
+
+# =============================================================================
+# F5 — Move a hero in a straight line (searing_heat / scorching_blaze)
+#   blue  : move a friendly hero in radius N spaces in a straight line
+#   orange: move an enemy hero in radius N spaces in a straight line
+# =============================================================================
+
+
+class _MoveHeroLineEffect(_IgnatiaBranchEffect):
+    """Subclasses set the straight-line distance bounds (searing = exactly 2,
+    scorching = 2 or 3)."""
+
+    min_dist: int = 2
+    max_dist: int = 2
+
+    def _move_hero(
+        self, hero_relation: Literal["FRIENDLY", "ENEMY"], stats, slot: str, exclude: list[str]
+    ) -> list[GameStep]:
+        hkey = f"ign_{slot}_v1"
+        dkey = f"ign_{slot}_dest"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=f"Select a {hero_relation.lower()} hero in radius",
+                output_key=hkey,
+                is_mandatory=True,
+                # Moving a friendly hero is not an offensive action.
+                skip_immunity_filter=(hero_relation == "FRIENDLY"),
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation=hero_relation),
+                    RangeFilter(max_range=stats.radius),
+                    *_excl(exclude),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Move it in a straight line",
+                output_key=dkey,
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(min_range=self.min_dist, max_range=self.max_dist, origin_key=hkey),
+                    StraightLinePathFilter(origin_key=hkey),
+                ],
+            ),
+            MoveUnitStep(
+                unit_key=hkey,
+                destination_key=dkey,
+                range_val=self.max_dist,
+                is_movement_action=False,
+            ),
+        ]
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        return self._move_hero("FRIENDLY", stats, slot, exclude)
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        return self._move_hero("ENEMY", stats, slot, exclude)
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1"]
+
+
+@register_effect("searing_heat")
+class SearingHeatEffect(_MoveHeroLineEffect):
+    min_dist = 2
+    max_dist = 2
+
+
+@register_effect("scorching_blaze")
+class ScorchingBlazeEffect(_MoveHeroLineEffect):
+    min_dist = 2
+    max_dist = 3
+
+
+# =============================================================================
+# F6 — Swaps (unstable_portal / chaos_gate)
+#   blue  : swap with a friendly unit in radius
+#   orange: swap with an enemy unit in radius
+#   chaos_gate: blue then "may move that unit 1"; orange then "may move 1" (self)
+# =============================================================================
+
+
+class _SwapEffect(_IgnatiaBranchEffect):
+    def _swap(
+        self, relation: Literal["FRIENDLY", "ENEMY"], hero, stats, slot: str, exclude: list[str]
+    ) -> list[GameStep]:
+        v = f"ign_{slot}_v1"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=f"Swap with a {relation.lower()} unit in radius",
+                output_key=v,
+                is_mandatory=True,
+                skip_immunity_filter=(relation == "FRIENDLY"),
+                filters=[
+                    TeamFilter(relation=relation),
+                    RangeFilter(max_range=stats.radius),
+                    *_excl(exclude),
+                ],
+            ),
+            SwapUnitsStep(unit_a_id=str(hero.id), unit_b_key=v),
+        ]
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        return self._swap("FRIENDLY", hero, stats, slot, exclude)
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        return self._swap("ENEMY", hero, stats, slot, exclude)
+
+    def _first_target_keys(self, slot):
+        return [f"ign_{slot}_v1"]
+
+
+@register_effect("unstable_portal")
+class UnstablePortalEffect(_SwapEffect):
+    pass
+
+
+@register_effect("chaos_gate")
+class ChaosGateEffect(_SwapEffect):
+    """Adds an optional 1-space move: blue moves the swapped unit, orange moves
+    Ignatia herself. The move's own dest-key gate (bdest/odest) is distinct per
+    branch, so it composes with Equilibrium gating without clobbering."""
+
+    def _blue_steps(self, state, hero, card, stats, slot, exclude):
+        v = f"ign_{slot}_v1"
+        dest = f"ign_{slot}_bdest"
+        return [
+            *self._swap("FRIENDLY", hero, stats, slot, exclude),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="You may move that unit 1 space",
+                output_key=dest,
+                is_mandatory=False,
+                filters=[
+                    RangeFilter(min_range=1, max_range=1, origin_key=v),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            ),
+            MoveUnitStep(
+                unit_key=v,
+                destination_key=dest,
+                range_val=1,
+                is_movement_action=False,
+                active_if_key=dest,
+            ),
+        ]
+
+    def _orange_steps(self, state, hero, card, stats, slot, exclude):
+        dest = f"ign_{slot}_odest"
+        return [
+            *self._swap("ENEMY", hero, stats, slot, exclude),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="You may move 1 space",
+                output_key=dest,
+                is_mandatory=False,
+                # No origin -> measured from Ignatia (current actor), post-swap.
+                filters=[
+                    RangeFilter(min_range=1, max_range=1),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            ),
+            MoveUnitStep(
+                unit_id=str(hero.id),
+                destination_key=dest,
+                range_val=1,
+                is_movement_action=False,
+                active_if_key=dest,
+            ),
+        ]

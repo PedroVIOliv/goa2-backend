@@ -575,3 +575,193 @@ def test_violent_conflagration_blue_defeats_cardless_eligible_hero() -> None:
     run.choose("victim").finish()
 
     assert any(e.event_type == GameEventType.UNIT_DEFEATED for e in run.events)
+
+
+# =============================================================================
+# F5 — Move a hero in a straight line (searing_heat r3 / scorching_blaze r3)
+#   blue  : move a friendly hero in radius N spaces in a straight line
+#   orange: move an enemy hero in radius N spaces in a straight line
+#   searing: N = 2; scorching: N = 2 or 3
+# =============================================================================
+
+
+def _hex_coords(run) -> set:
+    return {(o.q, o.r, o.s) for o in _option_set(run) if hasattr(o, "q")}
+
+
+def _move_hero_state(card_id: str):
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(5))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", card_id))
+        .red_hero("ally", at=(2, 0, -2))  # friendly hero
+        .blue_hero("enemy", at=(0, 2, -2))  # enemy hero
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+@pytest.mark.effect_flow
+def test_searing_heat_blue_moves_a_friendly_hero_two_in_a_straight_line() -> None:
+    state = _move_hero_state("searing_heat")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    opts = _option_set(run)
+    assert "ally" in opts  # a friendly hero
+    assert "enemy" not in opts  # not the enemy (blue = friendly)
+    assert "hero_ignatia" not in opts  # never yourself
+
+    run.choose("ally").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 4, "r": 0, "s": -4}).finish()  # 2 straight-line from (2,0,-2)
+
+    moved = state.entity_locations.get("ally")
+    assert (moved.q, moved.r, moved.s) == (4, 0, -4)
+
+
+@pytest.mark.effect_flow
+def test_searing_heat_orange_targets_an_enemy_hero() -> None:
+    state = _move_hero_state("searing_heat")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    opts = _option_set(run)
+    assert "enemy" in opts
+    assert "ally" not in opts
+
+
+@pytest.mark.effect_flow
+def test_searing_heat_distance_is_exactly_two() -> None:
+    state = _move_hero_state("searing_heat")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("ally").expect_input(InputRequestType.SELECT_HEX)
+    coords = _hex_coords(run)
+    assert (4, 0, -4) in coords  # distance 2 offered
+    assert (5, 0, -5) not in coords  # distance 3 NOT offered
+
+
+@pytest.mark.effect_flow
+def test_scorching_blaze_allows_distance_two_or_three() -> None:
+    state = _move_hero_state("scorching_blaze")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("ally").expect_input(InputRequestType.SELECT_HEX)
+    coords = _hex_coords(run)
+    assert (4, 0, -4) in coords  # distance 2
+    assert (5, 0, -5) in coords  # distance 3
+
+
+# =============================================================================
+# F6 — Swaps (unstable_portal r4 / chaos_gate r4)
+#   blue  : swap with a friendly unit in radius (chaos_gate: then move that unit 1)
+#   orange: swap with an enemy unit in radius (chaos_gate: then move yourself 1)
+# =============================================================================
+
+
+def _swap_state(card_id: str):
+    return (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_ignatia", at=(0, 0, 0), current_card=hero_card("Ignatia", card_id))
+        .red_minion("fm", at=(2, 0, -2))  # friendly unit
+        .blue_minion("em", at=(0, 2, -2))  # enemy unit
+        .with_actor("hero_ignatia")
+        .build()
+    )
+
+
+def _pos(state, uid):
+    h = state.entity_locations.get(uid)
+    return (h.q, h.r, h.s) if h is not None else None
+
+
+@pytest.mark.effect_flow
+def test_unstable_portal_blue_swaps_with_friendly_unit() -> None:
+    state = _swap_state("unstable_portal")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    opts = _option_set(run)
+    assert "fm" in opts
+    assert "em" not in opts  # blue = friendly
+
+    run.choose("fm").finish()
+    assert _pos(state, "hero_ignatia") == (2, 0, -2)
+    assert _pos(state, "fm") == (0, 0, 0)
+
+
+@pytest.mark.effect_flow
+def test_unstable_portal_orange_swaps_with_enemy_unit() -> None:
+    state = _swap_state("unstable_portal")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    opts = _option_set(run)
+    assert "em" in opts
+    assert "fm" not in opts
+
+    run.choose("em").finish()
+    assert _pos(state, "hero_ignatia") == (0, 2, -2)
+    assert _pos(state, "em") == (0, 0, 0)
+
+
+@pytest.mark.effect_flow
+def test_chaos_gate_blue_swaps_then_moves_that_unit() -> None:
+    state = _swap_state("chaos_gate")
+    _set_coin(state, "BLUE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("fm").expect_input(InputRequestType.SELECT_HEX)  # move that unit (optional)
+    run.choose({"q": 1, "r": 0, "s": -1}).finish()
+
+    assert _pos(state, "hero_ignatia") == (2, 0, -2)
+    assert _pos(state, "fm") == (1, 0, -1)  # swapped to origin, then moved 1
+
+
+@pytest.mark.effect_flow
+def test_chaos_gate_orange_swaps_then_moves_self() -> None:
+    state = _swap_state("chaos_gate")
+    _set_coin(state, "ORANGE")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("em").expect_input(InputRequestType.SELECT_HEX)  # move yourself (optional)
+    run.choose({"q": 0, "r": 1, "s": -1}).finish()
+
+    assert _pos(state, "em") == (0, 0, 0)
+    assert _pos(state, "hero_ignatia") == (0, 1, -1)  # swapped to em's spot, then moved 1
+
+
+@pytest.mark.effect_flow
+def test_chaos_gate_blue_optional_move_under_equilibrium_still_works() -> None:
+    # Regression: Equilibrium gating must not clobber the optional move's own gate.
+    state = _swap_state("chaos_gate")
+    _set_coin(state, "ORANGE")
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)  # 1 = Blue
+    run.choose("fm").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 1, "r": 0, "s": -1}).finish()
+
+    assert _pos(state, "fm") == (1, 0, -1)
