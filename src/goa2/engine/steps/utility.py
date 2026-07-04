@@ -366,7 +366,7 @@ class MayRepeatNTimesStep(GameStep):
         if not actor_id:
             return StepResult(is_finished=True)
 
-        if state.active_zone_id and not self.lane_push_checked:
+        if state.battle_zones and not self.lane_push_checked:
             self.lane_push_checked = True
             from goa2.engine.steps.combat import CheckLanePushStep
 

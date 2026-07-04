@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from pydantic import Field
 
+from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
@@ -899,15 +900,16 @@ class RespawnHeroStep(GameStep):
 
 class RespawnMinionStep(GameStep):
     """
-    Respawns a minion of a certain type/team in the active zone.
+    Respawns a minion of a certain type/team in its lane's Battle Zone.
     """
 
     type: StepType = StepType.RESPAWN_MINION
     team: TeamColor
     minion_type: Any  # MinionType enum
+    lane_id: str = DEFAULT_LANE_ID
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        zone_id = state.active_zone_id
+        zone_id = state.battle_zone_for_lane(self.lane_id)
         if not zone_id:
             return StepResult(is_finished=True)
 
@@ -916,13 +918,18 @@ class RespawnMinionStep(GameStep):
             return StepResult(is_finished=True)
 
         target_minion = None
-        # Check if minion exists in team roster but not on board (limbo)
+        # Check if minion exists in team roster but not on board (limbo).
+        # Minions respawn only in the lane they are bound to.
         team_obj = state.teams.get(self.team) if self.team else None
         if not team_obj:
             return StepResult(is_finished=True)
 
         for m in team_obj.minions:
-            if m.type == self.minion_type and m.id not in state.entity_locations:
+            if (
+                m.type == self.minion_type
+                and m.lane_id == self.lane_id
+                and m.id not in state.entity_locations
+            ):
                 target_minion = m
                 break
 
@@ -1056,24 +1063,36 @@ class RespawnMinionAtHexStep(GameStep):
 
 class CheckLanePushStep(GameStep):
     """
-    Checks if the active zone meets the condition for a Lane Push (0 minions for one team).
-    If so, spawns a LanePushStep.
+    Checks if a Battle Zone meets the condition for a Lane Push (0 minions for
+    one team). If so, spawns a LanePushStep for that lane.
+
+    With lane_id=None (default) every lane is checked, so existing call sites
+    remain correct on multi-lane maps.
     """
 
     type: StepType = StepType.CHECK_LANE_PUSH
+    lane_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import check_lane_push_trigger
 
-        if not state.active_zone_id:
-            return StepResult(is_finished=True)
+        lanes_to_check = (
+            [self.lane_id] if self.lane_id is not None else list(state.battle_zones.keys())
+        )
 
-        losing_team = check_lane_push_trigger(state, state.active_zone_id)
-        if losing_team:
-            logger.debug(f"   [CHECK] Lane Push Condition Met for {losing_team.name}")
-            return StepResult(is_finished=True, new_steps=[LanePushStep(losing_team=losing_team)])
+        push_steps: list[GameStep] = []
+        for lane_id in lanes_to_check:
+            zone_id = state.battle_zone_for_lane(lane_id)
+            if not zone_id:
+                continue
+            losing_team = check_lane_push_trigger(state, zone_id)
+            if losing_team:
+                logger.debug(
+                    f"   [CHECK] Lane Push Condition Met for {losing_team.name} on {lane_id}"
+                )
+                push_steps.append(LanePushStep(lane_id=lane_id, losing_team=losing_team))
 
-        return StepResult(is_finished=True)
+        return StepResult(is_finished=True, new_steps=push_steps)
 
 
 class LanePushStep(GameStep):
@@ -1087,6 +1106,7 @@ class LanePushStep(GameStep):
     """
 
     type: StepType = StepType.LANE_PUSH
+    lane_id: str = DEFAULT_LANE_ID
     losing_team: TeamColor
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -1094,12 +1114,22 @@ class LanePushStep(GameStep):
         from goa2.engine.steps.markers import _remove_token_from_board
         from goa2.engine.steps.movement import ResolveDisplacementStep
 
-        logger.debug(f"   [PUSH] Lane Push Triggered! Losing Team: {self.losing_team.name}")
+        logger.debug(
+            f"   [PUSH] Lane Push Triggered on {self.lane_id}! "
+            f"Losing Team: {self.losing_team.name}"
+        )
 
-        state.wave_counter -= 1
-        logger.debug(f"   [PUSH] Wave Counter removed. Remaining: {state.wave_counter}")
+        remaining_waves = state.wave_counters.get(self.lane_id, 0) - 1
+        state.wave_counters[self.lane_id] = remaining_waves
+        logger.debug(
+            f"   [PUSH] Wave Counter removed ({self.lane_id}). Remaining: {remaining_waves}"
+        )
 
-        if state.wave_counter <= 0:
+        if remaining_waves <= 0:
+            # NOTE (double-lane TBD): on double-lane maps the last-wave rule is
+            # different — compare total zones between each Throne and BOTH
+            # Battle Zones, with a tie meaning "undo the push and keep playing".
+            # This branch implements the single-lane rule only.
             logger.debug("   [GAME OVER] Last Push Victory!")
             winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
             return StepResult(
@@ -1107,7 +1137,7 @@ class LanePushStep(GameStep):
                 new_steps=[TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")],
             )
 
-        next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team)
+        next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team, self.lane_id)
 
         if is_game_over:
             logger.debug(
@@ -1123,11 +1153,12 @@ class LanePushStep(GameStep):
             logger.debug("   [ERROR] Could not determine next zone for push.")
             return StepResult(is_finished=True)
 
-        if not state.active_zone_id:
+        current_zone_id = state.battle_zone_for_lane(self.lane_id)
+        if not current_zone_id:
             logger.debug("   [ERROR] No active zone for push.")
             return StepResult(is_finished=True)
 
-        current_zone = state.board.zones.get(state.active_zone_id)
+        current_zone = state.board.zones.get(current_zone_id)
 
         # Per rules: "Remove all Minions from old Battle Zone."
         # Heroes stay? Yes, heroes are displaced only if blocking spawn (handled by respawn logic later).
@@ -1146,14 +1177,15 @@ class LanePushStep(GameStep):
             state.remove_unit(uid)
             logger.debug(f"   [PUSH] Wiped {uid} from old zone.")
 
-        logger.debug(f"   [PUSH] Battle Zone moved: {state.active_zone_id} -> {next_zone_id}")
-        state.active_zone_id = next_zone_id
+        logger.debug(f"   [PUSH] Battle Zone moved: {current_zone_id} -> {next_zone_id}")
+        state.battle_zones[self.lane_id] = next_zone_id
 
         next_zone = state.board.zones.get(next_zone_id)
         pending_displacements = []
 
         if next_zone:
             # We need to spawn minions for BOTH teams at their respective points in the new zone.
+            # Only minions bound to this lane respawn here.
 
             for sp in next_zone.spawn_points:
                 if sp.is_minion_spawn:
@@ -1163,7 +1195,9 @@ class LanePushStep(GameStep):
                             (
                                 m
                                 for m in team.minions
-                                if m.type == sp.minion_type and m.id not in state.unit_locations
+                                if m.type == sp.minion_type
+                                and m.lane_id == self.lane_id
+                                and m.id not in state.unit_locations
                             ),
                             None,
                         )
@@ -1212,25 +1246,33 @@ class LanePushStep(GameStep):
 
 class MinionBattleStep(GameStep):
     """
-    Compare minion counts in active zone and queue removals for the losing team.
+    Compare minion counts in each Battle Zone and queue removals for the losing team.
     Separated from EndPhaseStep so finishing steps can execute first,
     ensuring battle counts reflect post-finishing-step state.
+
+    With lane_id=None (default) battles resolve for every lane (per the
+    double-lane rules: "separately, but simultaneously").
     """
 
     type: StepType = StepType.MINION_BATTLE
+    lane_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        battle_steps = self._resolve_minion_battle(state)
+        lanes = [self.lane_id] if self.lane_id is not None else list(state.battle_zones.keys())
+        battle_steps: list[GameStep] = []
+        for lane_id in lanes:
+            battle_steps.extend(self._resolve_minion_battle(state, lane_id))
         return StepResult(is_finished=True, new_steps=battle_steps)
 
-    def _resolve_minion_battle(self, state: GameState) -> list[GameStep]:
+    def _resolve_minion_battle(self, state: GameState, lane_id: str) -> list[GameStep]:
         from goa2.engine.steps.cards import _one_man_army_bonus
         from goa2.engine.steps.selection import ChooseMinionRemovalStep
 
-        if not state.active_zone_id:
+        zone_id = state.battle_zone_for_lane(lane_id)
+        if not zone_id:
             return []
 
-        zone = state.board.zones.get(state.active_zone_id)
+        zone = state.board.zones.get(zone_id)
         if not zone:
             return []
 
@@ -1271,7 +1313,7 @@ class MinionBattleStep(GameStep):
             ChooseMinionRemovalStep(
                 losing_team=loser_team.value,
                 remaining_to_remove=diff,
-                zone_id=state.active_zone_id,
+                zone_id=zone_id,
             )
         ]
 
@@ -1353,17 +1395,14 @@ class ReturnMinionToZoneStep(GameStep):
     type: StepType = StepType.RETURN_MINION_TO_ZONE
 
     def _get_minions_outside_zone(self, state: GameState) -> list[tuple[str, TeamColor]]:
-        """Find all minions outside the active zone."""
-        if not state.active_zone_id:
-            return []
-
-        zone = state.board.zones.get(state.active_zone_id)
-        if not zone:
-            return []
-
+        """Find all minions outside the Battle Zone of their own lane."""
         outside = []
         for team in state.teams.values():
             for minion in team.minions:
+                zone_id = state.battle_zone_for_lane(minion.lane_id)
+                zone = state.board.zones.get(zone_id) if zone_id else None
+                if not zone:
+                    continue
                 loc = state.unit_locations.get(minion.id)
                 if loc and loc not in zone.hexes:
                     if not minion.team:
@@ -1400,8 +1439,11 @@ class ReturnMinionToZoneStep(GameStep):
                 )
             return StepResult(is_finished=True)
 
-        if not state.active_zone_id:
-            # No active zone, skip
+        # Return the minion to the Battle Zone of its own lane
+        minion = state.get_unit(UnitID(minion_id))
+        home_zone_id = state.battle_zone_for_lane(getattr(minion, "lane_id", DEFAULT_LANE_ID))
+        if not home_zone_id:
+            # No active zone for this lane, skip
             if remaining:
                 return StepResult(
                     is_finished=True,
@@ -1411,7 +1453,7 @@ class ReturnMinionToZoneStep(GameStep):
 
         from goa2.engine.map_logic import find_nearest_empty_hexes
 
-        candidates = find_nearest_empty_hexes(state, loc, state.active_zone_id)
+        candidates = find_nearest_empty_hexes(state, loc, home_zone_id)
 
         if not candidates:
             logger.debug(f"   [ZONE] No empty space in zone for {minion_id}!")

@@ -93,7 +93,9 @@ def _build(
 
 
 def _battle(state: GameState) -> tuple[str | None, int]:
-    steps = MinionBattleStep()._resolve_minion_battle(state)
+    from goa2.domain.board import DEFAULT_LANE_ID
+
+    steps = MinionBattleStep()._resolve_minion_battle(state, DEFAULT_LANE_ID)
     if not steps:
         return (None, 0)
     s = steps[0]

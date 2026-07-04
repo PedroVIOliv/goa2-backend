@@ -174,8 +174,9 @@ def is_immune(target: Unit, state: GameState) -> bool:
     Also checks IMMUNITY_ENEMY_ACTIONS effects (e.g., Death Seeker).
     """
     if isinstance(target, Minion) and target.is_heavy:
-        # "until no more friendly minions are present" (Usually implies in the battle)
-        zone_id = state.active_zone_id
+        # "until no more friendly minions are present" — checked in the heavy's
+        # own lane's Battle Zone (minions are bound to the lane they spawned in).
+        zone_id = state.battle_zone_for_lane(target.lane_id)
         if not zone_id:
             return False
 
@@ -193,7 +194,7 @@ def is_immune(target: Unit, state: GameState) -> bool:
         # Optimization: We only care about Minions.
         # Iterate team.minions instead of entity_locations to filter by Type first.
         for m in team.minions:
-            if m.id == target.id:
+            if m.id == target.id or m.lane_id != target.lane_id:
                 continue
 
             # Use unified lookup

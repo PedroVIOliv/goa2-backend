@@ -85,8 +85,8 @@ def _count_empty_spawn_points(
 
     override = _has_tide_of_darkness(state)
 
-    active_zone_id = state.active_zone_id
-    if not active_zone_id and not override:
+    battle_zone_ids = state.battle_zone_ids()
+    if not battle_zone_ids and not override:
         return 0
 
     topology = get_topology_service()
@@ -97,7 +97,7 @@ def _count_empty_spawn_points(
                 continue
             if minion_only and not tile.spawn_point.is_minion_spawn:
                 continue
-            if tile.zone_id != active_zone_id:
+            if tile.zone_id not in battle_zone_ids:
                 continue
         if tile.is_occupied:
             continue
@@ -109,10 +109,8 @@ def _count_empty_spawn_points(
     return count
 
 
-def _is_adjacent_to_empty_spawn_in_battle_zone(
-    state: GameState, unit_hex, active_zone_id: str
-) -> bool:
-    """Check if a hex is adjacent to an empty spawn point in the battle zone.
+def _is_adjacent_to_empty_spawn_in_battle_zone(state: GameState, unit_hex) -> bool:
+    """Check if a hex is adjacent to an empty spawn point in a battle zone.
 
     With Tide of Darkness active, any non-occupied non-terrain neighbor qualifies.
     """
@@ -121,6 +119,7 @@ def _is_adjacent_to_empty_spawn_in_battle_zone(
     topology = get_topology_service()
     neighbors = topology.get_connected_neighbors(unit_hex, state)
     override = _has_tide_of_darkness(state)
+    battle_zone_ids = state.battle_zone_ids()
     for n in neighbors:
         tile = state.board.get_tile(n)
         if not tile:
@@ -129,7 +128,7 @@ def _is_adjacent_to_empty_spawn_in_battle_zone(
             if not tile.is_occupied and not tile.is_terrain:
                 return True
         else:
-            if tile.spawn_point and tile.zone_id == active_zone_id and not tile.is_occupied:
+            if tile.spawn_point and tile.zone_id in battle_zone_ids and not tile.is_occupied:
                 return True
     return False
 
@@ -290,8 +289,7 @@ class DeathTrapEffect(CardEffect):
         from goa2.engine.filters_units import ExcludeIdentityFilter
 
         radius = stats.radius or 0
-        active_zone_id = state.active_zone_id
-        if not active_zone_id:
+        if not state.battle_zone_ids():
             return []
 
         hero_hex = state.get_position(str(hero.id))
@@ -319,7 +317,7 @@ class DeathTrapEffect(CardEffect):
                     dist = topology.distance(hero_hex, enemy_hex, state)
                     if dist > radius:
                         continue
-                    if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex, active_zone_id):
+                    if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex):
                         valid_target_ids.append(board_id)
 
         if not valid_target_ids:
@@ -577,12 +575,11 @@ class DreadRazorEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
 
-        active_zone_id = state.active_zone_id
         hero_hex = state.get_position(str(hero.id))
 
         can_ranged = False
-        if hero_hex and active_zone_id:
-            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, active_zone_id)
+        if hero_hex and state.battle_zone_ids():
+            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex)
 
         if not can_ranged:
             # Only melee option available

@@ -77,7 +77,13 @@ def build_view(
         "current_actor_id": state.current_actor_id,
         "unresolved_hero_ids": list(state.unresolved_hero_ids),
         "unresolved_cards": unresolved_cards_view,
-        "active_zone_id": state.active_zone_id,
+        # Legacy single-lane field: populated when the game has exactly one
+        # lane, null otherwise. New clients should read battle_zones.
+        "active_zone_id": (
+            next(iter(state.battle_zones.values())) if len(state.battle_zones) == 1 else None
+        ),
+        "battle_zones": dict(state.battle_zones),
+        "wave_counters": dict(state.wave_counters),
         "cheats_enabled": state.cheats_enabled,
         "tie_breaker_team": state.tie_breaker_team.value,
         "teams": teams_view,

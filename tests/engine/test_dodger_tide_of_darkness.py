@@ -199,7 +199,7 @@ class TestIsAdjacentToEmptySpawnWithOverride:
         """With Tide active, any non-occupied non-terrain neighbor qualifies."""
         state = _make_state(hero_level=8, num_spawn_points=0)
         hero_hex = Hex(q=0, r=0, s=0)
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "z1") is True
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is True
 
     def test_false_when_all_neighbors_occupied_with_override(self):
         """Even with Tide, if all neighbors are occupied, returns False."""
@@ -219,20 +219,20 @@ class TestIsAdjacentToEmptySpawnWithOverride:
             b = Hero(id=bid, name=bid, team=TeamColor.BLUE, deck=[], level=1)
             state.teams[TeamColor.BLUE].heroes.append(b)
             state.place_entity(bid, n)
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "z1") is False
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is False
 
     def test_without_override_needs_spawn_point(self):
         """Without Tide, only spawn points qualify."""
         state = _make_state(hero_level=7, num_spawn_points=0)
         hero_hex = Hex(q=0, r=0, s=0)
         # No spawn points, so should be False even though neighbors are empty
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "z1") is False
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is False
 
     def test_without_override_with_spawn_point(self):
         state = _make_state(hero_level=7, num_spawn_points=1)
         hero_hex = Hex(q=0, r=0, s=0)
         # spawn point at (1,0,-1) which is adjacent
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "z1") is True
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is True
 
 
 # =============================================================================

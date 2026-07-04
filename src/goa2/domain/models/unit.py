@@ -272,6 +272,11 @@ class Minion(Unit):
 
     type: MinionType
 
+    # Lane this minion is bound to, per the rules: minions respawn in (and are
+    # returned to) the Battle Zone of the lane they originally spawned in.
+    # Matches DEFAULT_LANE_ID on single-lane maps.
+    lane_id: str = "lane_1"
+
     @property
     def value(self) -> int:
         return 4 if self.type == MinionType.HEAVY else 2

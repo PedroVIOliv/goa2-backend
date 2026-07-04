@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import Field
 
+from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType, create_input_request
@@ -1494,11 +1495,14 @@ class ResolveDisplacementStep(GameStep):
 
         from goa2.engine.map_logic import find_nearest_empty_hexes
 
-        if not state.active_zone_id:
+        # Displaced minions are placed within the Battle Zone of their own lane
+        displaced_unit = state.get_unit(UnitID(uid))
+        zone_id = state.battle_zone_for_lane(getattr(displaced_unit, "lane_id", DEFAULT_LANE_ID))
+        if not zone_id:
             # Should be impossible if game is running, but safety check
             return StepResult(is_finished=True)
 
-        candidates = find_nearest_empty_hexes(state, origin, state.active_zone_id)
+        candidates = find_nearest_empty_hexes(state, origin, zone_id)
 
         if not candidates:
             logger.debug(f"   [DISPLACE] No empty space found for {uid} in zone!")

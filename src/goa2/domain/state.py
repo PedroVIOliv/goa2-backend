@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from goa2.domain.board import Board
+from goa2.domain.board import DEFAULT_LANE_ID, Board
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.models import (
@@ -35,14 +35,19 @@ class GameState(BaseModel):
     board: Board
     teams: dict[TeamColor, Team]
 
-    active_zone_id: str | None = None  # The ID of the current Battle Zone
+    # Current Battle Zone per lane (lane_id -> zone_id). Single-lane games have
+    # one entry under DEFAULT_LANE_ID; use the `active_zone_id` property for
+    # legacy single-lane access.
+    battle_zones: dict[str, str] = Field(default_factory=dict)
 
     phase: GamePhase = GamePhase.SETUP
 
     resolution_step: ResolutionStep = ResolutionStep.NONE
     round: int = 1
     turn: int = 1
-    wave_counter: int = 5
+    # Remaining Wave counters per lane (lane_id -> count). Use the
+    # `wave_counter` property for legacy single-lane access.
+    wave_counters: dict[str, int] = Field(default_factory=lambda: {DEFAULT_LANE_ID: 5})
     cheats_enabled: bool = False
     rng_seed: int | None = None
 
@@ -251,6 +256,82 @@ class GameState(BaseModel):
                 raise ValueError(f"Cannot register hero {entity.id}: Invalid or missing team.")
             self.teams[entity.team].heroes.append(entity)
             logger.debug("Registered hero %s to team %s", entity.id, entity.team)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_lane_fields(cls, data: Any) -> Any:
+        """Accept the legacy single-lane shape from old saves and old call
+        sites: `active_zone_id: str` -> `battle_zones` and
+        `wave_counter: int` -> `wave_counters`."""
+        if isinstance(data, dict):
+            legacy_zone = data.pop("active_zone_id", None)
+            if legacy_zone and not data.get("battle_zones"):
+                data["battle_zones"] = {DEFAULT_LANE_ID: legacy_zone}
+            legacy_waves = data.pop("wave_counter", None)
+            if legacy_waves is not None and "wave_counters" not in data:
+                data["wave_counters"] = {DEFAULT_LANE_ID: legacy_waves}
+        return data
+
+    # --- Lane helpers -----------------------------------------------------
+    # Engine/effect code should use these (or `battle_zones` directly) rather
+    # than the legacy single-lane properties below.
+
+    def battle_zone_ids(self) -> set[str]:
+        """Zone ids of all current Battle Zones (one per lane)."""
+        return set(self.battle_zones.values())
+
+    def battle_zone_for_lane(self, lane_id: str) -> str | None:
+        """Current Battle Zone of the given lane, or None."""
+        return self.battle_zones.get(lane_id)
+
+    def lane_of_zone(self, zone_id: str) -> str | None:
+        """Lane whose current Battle Zone (or lane sequence) contains zone_id."""
+        for lane_id, active in self.battle_zones.items():
+            if active == zone_id:
+                return lane_id
+        return self.board.lane_of_zone(zone_id)
+
+    @property
+    def active_zone_id(self) -> str | None:
+        """Legacy single-lane accessor for the current Battle Zone.
+
+        Raises on multi-lane games so a missed call site fails loudly instead
+        of silently operating on the wrong lane.
+        """
+        if len(self.battle_zones) > 1:
+            raise RuntimeError(
+                "GameState.active_zone_id is single-lane only; this game has multiple "
+                "lanes. Use battle_zones / battle_zone_for_lane() instead."
+            )
+        return next(iter(self.battle_zones.values()), None)
+
+    @active_zone_id.setter
+    def active_zone_id(self, value: str | None) -> None:
+        if len(self.battle_zones) > 1:
+            raise RuntimeError(
+                "GameState.active_zone_id is single-lane only; this game has multiple "
+                "lanes. Write battle_zones[lane_id] instead."
+            )
+        self.battle_zones = {DEFAULT_LANE_ID: value} if value else {}
+
+    @property
+    def wave_counter(self) -> int:
+        """Legacy single-lane accessor for the Wave counter (raises on multi-lane)."""
+        if len(self.wave_counters) > 1:
+            raise RuntimeError(
+                "GameState.wave_counter is single-lane only; this game has multiple "
+                "lanes. Use wave_counters[lane_id] instead."
+            )
+        return next(iter(self.wave_counters.values()), 0)
+
+    @wave_counter.setter
+    def wave_counter(self, value: int) -> None:
+        if len(self.wave_counters) > 1:
+            raise RuntimeError(
+                "GameState.wave_counter is single-lane only; this game has multiple "
+                "lanes. Write wave_counters[lane_id] instead."
+            )
+        self.wave_counters = {DEFAULT_LANE_ID: value}
 
     @model_validator(mode="after")
     def unify_token_references(self) -> GameState:

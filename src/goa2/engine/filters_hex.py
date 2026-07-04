@@ -287,10 +287,11 @@ class AdjacentSpawnPointFilter(FilterCondition):
                 if self.battle_zone_only:
                     from goa2.scripts.dodger_effects import _has_tide_of_darkness
 
-                    if not _has_tide_of_darkness(state):
-                        active_zone_id = state.active_zone_id
-                        if not active_zone_id or tile.zone_id != active_zone_id:
-                            continue
+                    # "the Battle Zone" reads as "a Battle Zone" on multi-lane maps
+                    if not _has_tide_of_darkness(state) and (
+                        not tile.zone_id or tile.zone_id not in state.battle_zone_ids()
+                    ):
+                        continue
                 if self.is_empty:
                     if not state.validator.is_obstacle_for_actor(
                         state,
@@ -311,7 +312,10 @@ class AdjacentSpawnPointFilter(FilterCondition):
 
 class BattleZoneFilter(FilterCondition):
     """
-    Filters hexes to the active battle zone only.
+    Filters hexes to the active battle zone(s) only.
+
+    Per the double-lane rules, card text reading "the Battle Zone" is treated
+    as "a Battle Zone", so any lane's current Battle Zone qualifies.
     """
 
     type: FilterType = FilterType.BATTLE_ZONE
@@ -326,10 +330,9 @@ class BattleZoneFilter(FilterCondition):
 
             if _has_tide_of_darkness(state):
                 return True
-            active_zone_id = state.active_zone_id
-            if not active_zone_id:
+            if not tile.zone_id:
                 return False
-            return tile.zone_id == active_zone_id
+            return tile.zone_id in state.battle_zone_ids()
         return False
 
 

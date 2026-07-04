@@ -1,5 +1,6 @@
 from collections import deque
 
+from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor
 from goa2.domain.state import GameState
@@ -45,16 +46,18 @@ def check_lane_push_trigger(state: GameState, active_zone_id: str) -> TeamColor 
     return None
 
 
-def get_push_target_zone_id(state: GameState, losing_team: TeamColor) -> tuple[str | None, bool]:
+def get_push_target_zone_id(
+    state: GameState, losing_team: TeamColor, lane_id: str = DEFAULT_LANE_ID
+) -> tuple[str | None, bool]:
     """
-    Calculates the next zone ID based on the losing team.
+    Calculates the next zone ID for a push on the given lane.
     Returns (next_zone_id, is_game_over).
     """
-    current_id = state.active_zone_id
+    current_id = state.battle_zone_for_lane(lane_id)
     if not current_id:
         return None, False
 
-    lane = state.board.lane
+    lane = state.board.lanes.get(lane_id, [])
     if not lane or current_id not in lane:
         return None, False
 

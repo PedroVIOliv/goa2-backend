@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from goa2.domain.hex import Hex
 from goa2.domain.models.spawn import SpawnPoint
 from goa2.domain.tile import Tile
+
+# Lane id used for single-lane maps and as the default binding for minions.
+# Double-lane maps will declare their own ids (e.g. "lane_1"/"lane_2").
+DEFAULT_LANE_ID = "lane_1"
 
 
 class Zone(BaseModel):
@@ -38,12 +42,40 @@ class Board(BaseModel):
 
     tiles: dict[Hex, Tile] = Field(default_factory=dict)
 
-    # E.g. [RedBase, Zone1, Mid, Zone2, BlueBase]
-    lane: list[str] = Field(default_factory=list)
+    # Ordered zone sequences from Red Throne to Blue Throne, keyed by lane id.
+    # Single-lane maps have one entry (DEFAULT_LANE_ID);
+    # double-lane maps will have two. E.g. {"lane_1": [RedBase, Zone1, Mid, Zone2, BlueBase]}
+    lanes: dict[str, list[str]] = Field(default_factory=dict)
 
     # Private optimized lookup for O(1) zone resolution
     # Populated by validation
     _hex_lookup: dict[Hex, str] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_lane(cls, data: Any) -> Any:
+        """Accept the legacy single-lane shape (`lane: [...]`) from old saves
+        and map JSON, converting it to `lanes: {DEFAULT_LANE_ID: [...]}`."""
+        if isinstance(data, dict):
+            legacy = data.pop("lane", None)
+            if legacy and not data.get("lanes"):
+                data["lanes"] = {DEFAULT_LANE_ID: legacy}
+        return data
+
+    @property
+    def lane(self) -> list[str]:
+        """Legacy single-lane accessor. Raises on multi-lane boards so a missed
+        call site fails loudly instead of silently picking one lane."""
+        if len(self.lanes) > 1:
+            raise RuntimeError(
+                "Board.lane is single-lane only; this board has multiple lanes. "
+                "Use Board.lanes / lane-aware helpers instead."
+            )
+        return next(iter(self.lanes.values()), [])
+
+    @lane.setter
+    def lane(self, value: list[str]) -> None:
+        self.lanes = {DEFAULT_LANE_ID: list(value)} if value else {}
 
     def model_post_init(self, __context: Any) -> None:
         """
@@ -57,6 +89,13 @@ class Board(BaseModel):
         for z_id, zone in self.zones.items():
             for h in zone.hexes:
                 self._hex_lookup[h] = z_id
+
+    def lane_of_zone(self, zone_id: str) -> str | None:
+        """Returns the id of the lane whose zone sequence contains zone_id."""
+        for lane_id, zone_ids in self.lanes.items():
+            if zone_id in zone_ids:
+                return lane_id
+        return None
 
     def get_zone_for_hex(self, h: Hex) -> str | None:
         # Optimization: Check Tile first

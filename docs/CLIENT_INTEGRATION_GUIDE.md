@@ -570,7 +570,9 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
     { "hero_id": "hero_arien", "initiative": 7, "card": { ... } },
     { "hero_id": "hero_knight", "initiative": 5, "card": { ... } }
   ],
-  "active_zone_id": null,
+  "active_zone_id": "Mid",
+  "battle_zones": { "lane_1": "Mid" },
+  "wave_counters": { "lane_1": 5 },
   "cheats_enabled": false,
   "tie_breaker_team": "RED",
   "teams": {
@@ -600,7 +602,9 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `current_actor_id` | string/null | Hero currently acting during RESOLUTION |
 | `unresolved_hero_ids` | string[] | Heroes that haven't acted yet this round |
 | `unresolved_cards` | object[] | Cards in resolution order (highest initiative first). Each entry: `{hero_id, initiative, card}`. Only populated during RESOLUTION phase; empty array otherwise. Ties broken by `tie_breaker_team`. Recalculated dynamically — order may change between actions due to modifiers. |
-| `active_zone_id` | string/null | Currently active zone (if applicable) |
+| `active_zone_id` | string/null | Legacy single-lane field: the current Battle Zone when the game has exactly one lane, `null` otherwise. Prefer `battle_zones`. |
+| `battle_zones` | object | Current Battle Zone per lane (`lane_id -> zone_id`). Single-lane maps have one entry (`"lane_1"`). |
+| `wave_counters` | object | Remaining Wave counters per lane (`lane_id -> int`). |
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |

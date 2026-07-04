@@ -15,18 +15,27 @@ class EntityFactory:
     """
 
     @staticmethod
-    def create_minion(state: GameState, team: TeamColor, m_type: MinionType) -> Minion:
+    def create_minion(
+        state: GameState,
+        team: TeamColor,
+        m_type: MinionType,
+        lane_id: str | None = None,
+    ) -> Minion:
         """
         Creates a new Minion with a unique ID.
         Format: minion_{seq}
+        Binds the minion to `lane_id` (defaults to the model's single-lane id).
         """
         uid = state.create_entity_id("minion")
-        return Minion(
+        minion = Minion(
             id=BoardEntityID(uid),
             name=f"{team.name} {m_type.name} Minion",
             team=team,
             type=m_type,
         )
+        if lane_id:
+            minion.lane_id = lane_id
+        return minion
 
     @staticmethod
     def create_token(

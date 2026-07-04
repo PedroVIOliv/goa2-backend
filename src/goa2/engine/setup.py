@@ -88,7 +88,7 @@ class GameSetup:
 
         # 2. Calculate Wave & Life Counters
         total_players = len(red_heroes) + len(blue_heroes)
-        wave_counters, life_counters = GameSetup.get_game_config(game_type, total_players)
+        waves_per_lane, life_counters = GameSetup.get_game_config(game_type, total_players)
 
         # 3. Initialize State
         state = GameState(
@@ -107,19 +107,21 @@ class GameSetup:
                     life_counters=life_counters,
                 ),
             },
-            wave_counter=wave_counters,
             phase=GamePhase.SETUP,
             cheats_enabled=cheats_enabled,
         )
 
-        # 4. Determine Lane & Battle Zone
-        if not board.lane:
+        # 4. Determine Battle Zone & Wave counters per lane
+        if not board.lanes:
             raise ValueError("Map does not have a defined lane!")
 
-        # Mid is usually the center of the lane list
-        mid_index = len(board.lane) // 2
-        active_zone_id = board.lane[mid_index]
-        state.active_zone_id = active_zone_id
+        state.battle_zones = {}
+        state.wave_counters = {}
+        for lane_id, lane in board.lanes.items():
+            # The starting Battle Zone is the center of each lane
+            mid_index = len(lane) // 2
+            state.battle_zones[lane_id] = lane[mid_index]
+            state.wave_counters[lane_id] = waves_per_lane
 
         # 5. Register Heroes & Place them
         GameSetup._setup_team(state, TeamColor.RED, red_heroes)
@@ -128,8 +130,9 @@ class GameSetup:
         # 6. Build token pool
         GameSetup._initialize_token_pool(state)
 
-        # 7. Spawn Initial Minions (In Active Zone)
-        GameSetup._spawn_initial_minions(state, active_zone_id)
+        # 7. Spawn Initial Minions (In each lane's Battle Zone)
+        for lane_id, zone_id in state.battle_zones.items():
+            GameSetup._spawn_initial_minions(state, zone_id, lane_id)
 
         # 8. Finalize Setup
         # Flip Coin
@@ -156,12 +159,12 @@ class GameSetup:
             game_type,
             len(board.tiles),
             total_players,
-            wave_counters,
+            waves_per_lane,
             life_counters,
         )
         logger.info(
-            "Battle zone: %s. Coin favors: %s",
-            active_zone_id,
+            "Battle zones: %s. Coin favors: %s",
+            state.battle_zones,
             state.tie_breaker_team.name,
         )
 
@@ -250,9 +253,10 @@ class GameSetup:
                 logger.warning("No spawn point available for %s", hero.name)
 
     @staticmethod
-    def _spawn_initial_minions(state: GameState, zone_id: str):
+    def _spawn_initial_minions(state: GameState, zone_id: str, lane_id: str | None = None):
         """
-        Spawns minions at all minion spawn points in the target zone.
+        Spawns minions at all minion spawn points in the target zone,
+        binding them to the given lane for respawn purposes.
         """
         zone = state.board.zones.get(zone_id)
         if not zone:
@@ -261,8 +265,8 @@ class GameSetup:
         for h in zone.hexes:
             sp = state.board.get_spawn_point(h)
             if sp and sp.type == SpawnType.MINION and sp.minion_type:
-                # Create Minion
-                minion = EntityFactory.create_minion(state, sp.team, sp.minion_type)
+                # Create Minion (bound to its lane)
+                minion = EntityFactory.create_minion(state, sp.team, sp.minion_type, lane_id)
                 state.register_entity(minion, "minion")
 
                 # Place
