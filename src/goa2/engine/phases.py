@@ -326,6 +326,10 @@ def end_turn(state: GameState):
     """
     logger.info("End of turn %s.", state.turn)
 
+    # The turn is over: "discarded this turn" resets. (Discards made by
+    # finishing steps at this boundary land in the next turn's log.)
+    state.turn_discard_log = {}
+
     from goa2.engine.effect_manager import EffectManager
 
     finishing = EffectManager.expire_active_turn_effects(state)

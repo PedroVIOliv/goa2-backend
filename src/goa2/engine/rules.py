@@ -207,7 +207,12 @@ def is_immune(target: Unit, state: GameState) -> bool:
     # opposing team (e.g. Death Seeker). An effect with blocks_friendly_actors
     # (Hanu's Journey line) grants full heavy-style immunity — the target's own
     # allies cannot affect it either. You are never immune to your own actions.
-    from goa2.domain.models.effect import EffectType
+    # Two binding forms:
+    #  - unit-bound: source_id == target (Death Seeker, Hanu's Journey)
+    #  - radius aura: scope RADIUS + affects filter, evaluated from the
+    #    origin's CURRENT position at check time (Emmitt's Future Proof —
+    #    entering the radius gains protection, leaving loses it)
+    from goa2.domain.models.effect import EffectType, Shape
 
     actor_id = state.current_actor_id
     if actor_id:
@@ -222,9 +227,18 @@ def is_immune(target: Unit, state: GameState) -> bool:
                     continue
                 if not effect.is_active:
                     continue
-                if effect.source_id != str(target.id):
+                if not (is_enemy_actor or effect.blocks_friendly_actors):
                     continue
-                if is_enemy_actor or effect.blocks_friendly_actors:
+                if effect.scope.shape == Shape.RADIUS:
+                    # Aura form: the source is the ORIGIN, not the protected
+                    # unit — coverage comes from the scope's affects filter
+                    # (FRIENDLY_HEROES excludes the origin itself).
+                    target_hex = state.get_position(str(target.id))
+                    if target_hex is not None and state.validator._is_in_scope(
+                        effect, str(target.id), target_hex, state
+                    ):
+                        return True
+                elif effect.source_id == str(target.id):
                     return True
 
     return False

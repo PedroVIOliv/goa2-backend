@@ -93,6 +93,11 @@ class GameState(BaseModel):
         default_factory=list
     )  # Two-card-capable heroes that explicitly closed planning with one card
 
+    turn_discard_log: dict[HeroID, list[str]] = Field(
+        default_factory=dict
+    )  # Card IDs each hero discarded THIS TURN (any source); cleared at end_turn.
+    # Read by "retrieve all cards discarded this turn" effects (Emmitt).
+
     pending_upgrades: dict[HeroID, int] = Field(
         default_factory=dict
     )  # Level Up Phase Buffer: HeroID -> Number of upgrades pending

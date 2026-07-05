@@ -202,6 +202,10 @@ class DiscardCardStep(GameStep):
 
         hero.discard_card(target_card, from_hand=(actual_source == CardContainerType.HAND))
 
+        # Record in the turn-scoped discard log (cleared at end_turn); read by
+        # "retrieve all cards discarded this turn" effects (Emmitt).
+        state.turn_discard_log.setdefault(HeroID(str(h_id)), []).append(target_card.id)
+
         # Changing a card's state cancels its active effect (premature end, so
         # finishing_steps do not run). Harmless no-op for hand cards.
         from goa2.engine.effect_manager import EffectManager
