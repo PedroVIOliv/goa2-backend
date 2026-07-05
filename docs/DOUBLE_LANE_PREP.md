@@ -1,9 +1,10 @@
 # Double-Lane Map Preparation
 
-Status of the groundwork for supporting the 8–10 player double-lane map.
-The engine is still **single-lane only** in practice (no double-lane map file
-exists), but the data model and push machinery are now lane-aware, so adding
-the second lane is an additive feature rather than a refactor.
+Status of the work for supporting the 8–10 player double-lane map.
+The data model, push machinery, map loading, and **endgame rules** are now
+fully lane-aware, and a real two-lane map exists
+(`src/goa2/data/maps/accross_the_river.json`). What remains is the 8–10
+player setup config and frontend rendering (see "Still TBD" below).
 
 Rules background (double-lane): two independent Lanes, each with its own
 Battle Zone, minions, and Wave counter set. Minions are bound to the Battle
@@ -97,58 +98,91 @@ New lane helpers on `GameState`:
   exactly one lane, `null` otherwise. Documented in
   `docs/CLIENT_INTEGRATION_GUIDE.md`.
 
+### Multi-lane maps and loader (shipped after the prep)
+
+- The loader (`engine/map_loader.py`) reads a top-level `"lanes"` key
+  (`{"lane_1": [...], "lane_2": [...]}`, commit `fbfc67f`) and an optional
+  `"battle_zones"` key (`{lane_id: zone label}`) for per-lane starting
+  Battle Zones (`Board.starting_battle_zones`).
+- A real two-lane map exists: `src/goa2/data/maps/accross_the_river.json`
+  (6 zones per lane, shared base zones, starting Battle Zones MidA2/MidB2).
+  Maps are produced by the browser map editor (`tools/map_editor.html` —
+  CSV geometry import, rotation, ★ starting-zone marker).
+
+### Double-lane endgame rules (shipped)
+
+Spec: `docs/superpowers/specs/2026-07-05-double-lane-endgame-design.md`.
+
+`CheckLanePushStep` is the endgame coordinator on multi-lane games. Pushes
+triggered by the same check are simultaneous. Outcomes are pre-computed
+before any mutation, then:
+
+- Throne pushes favoring **both** teams ⇒ tie remedy.
+- Throne push favoring **one** team ⇒ `LANE_PUSH` victory.
+- Any wave counter at 0 after the flips ⇒ zone-count comparison at
+  **post-push** positions (`map_logic.endgame_totals`): more total zones
+  between your Throne and both Battle Zones ⇒ `LAST_PUSH` victory; equal ⇒
+  tie remedy. Counters stay at 0, so **every subsequent push re-runs the
+  comparison** until someone wins.
+- Otherwise ⇒ mechanics-only `LanePushStep`s (pre-computed
+  `target_zone_id`, `skip_wave_counter=True`).
+
+Tie remedy: zones do not move, counters stay flipped, and each triggered
+lane gets a full wipe + spawn-point respawn in its unmoved Battle Zone
+(rulebook: "spawn all minions in the Zones they occupied before the push
+and continue playing").
+
+Single-lane games keep the classic rules (last flip ⇒ pusher wins),
+entirely inside `LanePushStep`.
+
+### Lane-bound ability respawns (shipped)
+
+Necromancy/Necromastery (`scripts/dodger_effects.py:_build_respawn_steps`)
+are hex-first: the player picks a spawn-point hex (only hexes whose lane
+has limbo supply are offered), and the minion comes from **that lane's**
+limbo supply (`RespawnMinionAtHexStep(lane_bound=True)`). Hexes outside any
+lane (Tide of Darkness) fall back to the full supply.
+
 ### Tests
 
-`tests/engine/test_lane_plumbing.py` (20 tests): legacy back-compat
-(constructor kwargs, property setters, old-save JSON migration, multi-lane
-raising), lane helpers, minion lane binding (respawn / return-to-zone /
-heavy immunity), per-lane push on a synthetic two-lane board, multi-zone
-`BattleZoneFilter`, and the effect-script convention check.
+- `tests/engine/test_lane_plumbing.py` (20 tests): legacy back-compat
+  (constructor kwargs, property setters, old-save JSON migration, multi-lane
+  raising), lane helpers, minion lane binding (respawn / return-to-zone /
+  heavy immunity), per-lane push on a synthetic two-lane board, multi-zone
+  `BattleZoneFilter`, and the effect-script convention check.
+- `tests/engine/test_double_lane_endgame.py` (16 tests): zone-count
+  helpers, coordinator scenarios (throne precedence, post-push comparison,
+  tie remedies, re-comparison, single-lane gate), Across the River
+  integration.
+- `tests/engine/test_lane_respawn_binding.py` (5 tests): lane-bound
+  hex-first respawns.
 
-## Still TBD (the actual double-lane feature)
+## Still TBD
 
-These were deliberately deferred — they are the feature itself and cannot be
-meaningfully tested without a real two-lane map file.
-
-1. **Double-lane map JSON + loader support.** No two-lane map exists. The
-   loader (`engine/map_loader.py`) still only reads the single `"lane"` key
-   (fed through the legacy migration); it needs a `"lanes"` map format
-   (e.g. `{"lane_1": [...], "lane_2": [...]}`) and a real double-lane map
-   with two sets of minion spawn points.
-
-2. **Double-lane endgame rules.** `LanePushStep` implements the single-lane
-   last-wave rule (last counter flipped ⇒ winner of that push wins). The
-   double-lane rule is different: when the last Wave counter on either lane
-   flips, compare **total zones between each team's Throne and both Battle
-   Zones**; the team with more distance wins. A simultaneous-win tie means
-   respawn minions in their pre-push zones and continue playing. There is a
-   `NOTE (double-lane TBD)` marker at the wave-counter branch in
-   `engine/steps/combat.py`.
-
-3. **8–10 player setup config.** `GameSetup.get_game_config()` supports up
+1. **8–10 player setup config.** `GameSetup.get_game_config()` supports up
    to 6 players. Double-lane is 6–8 players (2×7 waves, 6 life) and 9–10
    players (2×7 waves, 7 life). Also missing: the rule that extra heroes
    (>3 per team) are placed in empty spaces **adjacent to** their team's
    occupied hero spawn points.
 
-4. **Simultaneous minion battles.** `MinionBattleStep` resolves lanes
-   sequentially (lane order = `battle_zones` dict order). The rules say
-   "separately, but simultaneously" — if an effect ever makes ordering
-   observable (e.g. a removal in lane 1 changing lane 2's count), the
-   ordering/tie-breaker interaction needs a decision. For plain minion
-   removal it is not observable, so this is likely fine as-is.
+2. **Simultaneous minion battles.** Pushes triggered by the same check ARE
+   resolved simultaneously by the coordinator, but `MinionBattleStep` still
+   queues battle *removals* in lane order (`battle_zones` dict order). For
+   plain minion removal the ordering is not observable, so this is fine
+   as-is; revisit if an effect ever makes it observable.
 
-5. **Hero respawn / zone semantics on the second lane.** Anything that
+3. **Hero respawn / zone semantics on the second lane.** Anything that
    references zones by name or assumes one "Mid" (e.g. `playtest.py` dev
-   tooling, some map-specific effect interpretations) should be audited when
-   the real map exists. `playtest.py` still uses the legacy properties
-   (fine — it is single-lane dev tooling; it will raise loudly if pointed at
-   a two-lane game).
+   tooling, some map-specific effect interpretations) should be audited
+   against `accross_the_river.json`. `playtest.py` still uses the legacy
+   properties (fine — it is single-lane dev tooling; it will raise loudly
+   if pointed at a two-lane game).
 
-6. **Client support.** The view already carries `battle_zones` /
+4. **Client support.** The view already carries `battle_zones` /
    `wave_counters`, but the frontend needs to render two lanes and the
    per-lane wave counters; `active_zone_id` will be `null` on double-lane
-   games.
+   games. Push/tie-undo `GameEvent`s are also still TODO (the push
+   machinery is silent except `GAME_OVER`).
 
 ## Conventions going forward
 
