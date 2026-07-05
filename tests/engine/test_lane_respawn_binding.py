@@ -45,6 +45,9 @@ def _make_compact_two_lane_state() -> GameState:
         board.zones[zone_ids[0]] = Zone(id=zone_ids[0], hexes=set())
         board.zones[zone_ids[2]] = Zone(id=zone_ids[2], hexes=set())
         hexes = [_hex(q, r) for q in range(0, 3)]
+        # One melee + one ranged spawn point per mid zone, so both types have
+        # respawn headroom (the per-zone spawn-point cap gates by type/color).
+        hex_types = [MinionType.MELEE, MinionType.RANGED, MinionType.MELEE]
         board.zones[zone_ids[1]] = Zone(
             id=zone_ids[1],
             hexes=set(hexes),
@@ -55,15 +58,21 @@ def _make_compact_two_lane_state() -> GameState:
                     type=SpawnType.MINION,
                     minion_type=MinionType.MELEE,
                 ),
+                SpawnPoint(
+                    location=hexes[1],
+                    team=TeamColor.RED,
+                    type=SpawnType.MINION,
+                    minion_type=MinionType.RANGED,
+                ),
             ],
         )
-        for h in hexes:
+        for h, mt in zip(hexes, hex_types, strict=True):
             tile = Tile(hex=h, zone_id=zone_ids[1])
             tile.spawn_point = SpawnPoint(
                 location=h,
                 team=TeamColor.RED,
                 type=SpawnType.MINION,
-                minion_type=MinionType.MELEE,
+                minion_type=mt,
             )
             board.tiles[h] = tile
     # connector hex between the rows (no zone, plain tile)
@@ -185,3 +194,124 @@ class TestLaneBoundRespawn:
         assert type(s).__name__ == "RespawnMinionAtHexStep"
         assert s.lane_bound is True
         assert s.unit_key is None
+
+
+def _make_single_zone_state(
+    *,
+    melee_spawns: int = 1,
+    ranged_spawns: int = 1,
+) -> GameState:
+    """One-lane, one-Battle-Zone board with distinct per-type spawn counts.
+
+    Models the Forgotten Island trap: a zone whose count of spawn points of
+    a given (type, color) is the real cap on how many minions of that type
+    may be present there — independent of how many miniatures are bound to
+    the lane. Spawn hexes lie on row r=0; the RED hero stands at the far end.
+    """
+    board = Board()
+    zone_ids = ["mid_rbase", "mid", "mid_bbase"]
+    board.lanes = {"lane_1": zone_ids}
+    board.zones["mid_rbase"] = Zone(id="mid_rbase", hexes=set())
+    board.zones["mid_bbase"] = Zone(id="mid_bbase", hexes=set())
+
+    spawn_specs: list[tuple[Hex, MinionType]] = []
+    col = 0
+    for _ in range(melee_spawns):
+        spawn_specs.append((_hex(col, 0), MinionType.MELEE))
+        col += 1
+    for _ in range(ranged_spawns):
+        spawn_specs.append((_hex(col, 0), MinionType.RANGED))
+        col += 1
+    hero_hex = _hex(col, 0)  # first non-spawn hex
+
+    spawn_points = [
+        SpawnPoint(
+            location=h,
+            team=TeamColor.RED,
+            type=SpawnType.MINION,
+            minion_type=mt,
+        )
+        for h, mt in spawn_specs
+    ]
+    mid_hexes = [h for h, _ in spawn_specs] + [hero_hex]
+    board.zones["mid"] = Zone(id="mid", hexes=set(mid_hexes), spawn_points=spawn_points)
+
+    by_hex = {sp.location: sp for sp in spawn_points}
+    for h in mid_hexes:
+        tile = Tile(hex=h, zone_id="mid")
+        tile.spawn_point = by_hex.get(h)
+        board.tiles[h] = tile
+
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+        },
+    )
+    state.battle_zones = {"lane_1": "mid"}
+    state.wave_counters = {"lane_1": 5}
+
+    hero = Hero(id="hero_dodger", name="Dodger", team=TeamColor.RED, deck=[], level=1)
+    state.teams[TeamColor.RED].heroes.append(hero)
+    state.place_entity("hero_dodger", hero_hex)
+    state.current_actor_id = "hero_dodger"
+    return state
+
+
+def _place_minion(state, minion_id, at, lane_id="lane_1", minion_type=MinionType.MELEE):
+    m = _add_limbo_minion(state, minion_id, lane_id, minion_type)
+    state.place_entity(UnitID(minion_id), at)
+    return m
+
+
+class TestPerZoneSpawnCap:
+    """Rulebook: may respawn a minion of (type, color) only if that zone has
+    MORE spawn points of that (type, color) than miniatures of it present."""
+
+    def test_capped_type_not_offered(self):
+        # mid: 1 melee spawn (occupied), 1 ranged spawn (empty).
+        state = _make_single_zone_state(melee_spawns=1, ranged_spawns=1)
+        _place_minion(state, "red_melee_present", _hex(0, 0))  # fills the melee cap
+        _add_limbo_minion(state, "red_melee_limbo", "lane_1", MinionType.MELEE)
+
+        push_steps(state, [_respawn_step()])
+        result = process_stack(state)
+
+        # Melee is at capacity (1 spawn point, 1 present); the only limbo
+        # minion is a melee, so no legal respawn exists -> no hex offered.
+        assert result.input_request is None
+        assert "red_melee_limbo" not in state.unit_locations
+
+    def test_capped_type_excluded_uncapped_type_placed(self):
+        # mid: 1 melee spawn (occupied), 1 ranged spawn (empty).
+        state = _make_single_zone_state(melee_spawns=1, ranged_spawns=1)
+        _place_minion(state, "red_melee_present", _hex(0, 0))
+        _add_limbo_minion(state, "red_melee_limbo", "lane_1", MinionType.MELEE)
+        _add_limbo_minion(state, "red_ranged_limbo", "lane_1", MinionType.RANGED)
+
+        push_steps(state, [_respawn_step()])
+        result = process_stack(state)
+        assert result.input_request.request_type == InputRequestType.SELECT_HEX
+        # choose the empty ranged spawn hex
+        state.execution_stack[-1].pending_input = {"selection": {"q": 1, "r": 0, "s": -1}}
+        result = process_stack(state)
+
+        # Only the ranged is eligible -> auto-placed (no melee/ranged choice).
+        assert result.input_request is None
+        assert state.unit_locations.get("red_ranged_limbo") == _hex(1, 0)
+        assert "red_melee_limbo" not in state.unit_locations  # melee stayed capped
+
+    def test_headroom_allows_respawn(self):
+        # mid: 1 melee spawn, EMPTY (no present melee) -> headroom exists.
+        state = _make_single_zone_state(melee_spawns=1, ranged_spawns=0)
+        _add_limbo_minion(state, "red_melee_limbo", "lane_1", MinionType.MELEE)
+
+        push_steps(state, [_respawn_step()])
+        result = process_stack(state)
+        assert result.input_request.request_type == InputRequestType.SELECT_HEX
+        state.execution_stack[-1].pending_input = {"selection": {"q": 0, "r": 0, "s": 0}}
+        result = process_stack(state)
+
+        assert result.input_request is None
+        assert state.unit_locations.get("red_melee_limbo") == _hex(0, 0)
