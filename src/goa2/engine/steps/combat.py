@@ -1061,6 +1061,74 @@ class RespawnMinionAtHexStep(GameStep):
         )
 
 
+def _wipe_minions_in_zone(state: GameState, zone_id: str) -> None:
+    """Remove every minion physically inside the zone (push wipe)."""
+    zone = state.board.zones.get(zone_id)
+    if not zone:
+        return
+    to_remove = []
+    for uid, loc in state.unit_locations.items():
+        if loc in zone.hexes:
+            unit = state.get_unit(UnitID(uid))
+            if hasattr(unit, "type") and hasattr(unit, "value"):  # Duck typing Minion
+                to_remove.append(uid)
+    for uid in to_remove:
+        state.remove_unit(uid)
+        logger.debug(f"   [PUSH] Wiped {uid} from zone {zone_id}.")
+
+
+def _respawn_minions_at_spawn_points(
+    state: GameState, lane_id: str, zone_id: str
+) -> list[tuple[str, Hex]]:
+    """
+    Spawn limbo minions bound to `lane_id` at the zone's minion spawn
+    points (both teams). Returns blocked spawns as pending displacements.
+    """
+    from goa2.engine.steps.markers import _remove_token_from_board
+
+    zone = state.board.zones.get(zone_id)
+    pending_displacements: list[tuple[str, Hex]] = []
+    if not zone:
+        return pending_displacements
+
+    for sp in zone.spawn_points:
+        if not sp.is_minion_spawn:
+            continue
+        team = state.teams.get(sp.team)
+        if not team:
+            continue
+        candidate = next(
+            (
+                m
+                for m in team.minions
+                if m.type == sp.minion_type
+                and m.lane_id == lane_id
+                and m.id not in state.unit_locations
+            ),
+            None,
+        )
+        if not candidate:
+            continue
+        tile = state.board.get_tile(sp.location)
+        if tile and not tile.is_occupied:
+            state.move_unit(candidate.id, sp.location)
+            logger.debug(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
+        else:
+            occupant_id = str(tile.occupant_id) if tile and tile.occupant_id else None
+            occupant = state.misc_entities.get(BoardEntityID(occupant_id)) if occupant_id else None
+            if isinstance(occupant, Token) and occupant_id:
+                _remove_token_from_board(state, occupant_id)
+                state.move_unit(candidate.id, sp.location)
+                logger.debug(
+                    f"   [PUSH] Removed token {occupant_id} and spawned "
+                    f"{candidate.id} at {sp.location}"
+                )
+            else:
+                logger.debug(f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)")
+                pending_displacements.append((str(candidate.id), sp.location))
+    return pending_displacements
+
+
 class CheckLanePushStep(GameStep):
     """
     Checks if a Battle Zone meets the condition for a Lane Push (0 minions for
@@ -1102,16 +1170,20 @@ class LanePushStep(GameStep):
     2. Moves Battle Zone.
     3. Wipes Minions in old zone.
     4. Respawns Minions in new zone.
-    5. Checks Victory Conditions (Throne or Last Push).
+    5. Checks Victory Conditions (Throne or Last Push) — single-lane only;
+       on multi-lane games CheckLanePushStep decides the endgame BEFORE
+       spawning this step and passes target_zone_id/skip_wave_counter.
     """
 
     type: StepType = StepType.LANE_PUSH
     lane_id: str = DEFAULT_LANE_ID
     losing_team: TeamColor
+    # Set by CheckLanePushStep on multi-lane games (mechanics-only mode).
+    target_zone_id: str | None = None
+    skip_wave_counter: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.map_logic import get_push_target_zone_id
-        from goa2.engine.steps.markers import _remove_token_from_board
         from goa2.engine.steps.movement import ResolveDisplacementStep
 
         logger.debug(
@@ -1119,35 +1191,44 @@ class LanePushStep(GameStep):
             f"Losing Team: {self.losing_team.name}"
         )
 
-        remaining_waves = state.wave_counters.get(self.lane_id, 0) - 1
-        state.wave_counters[self.lane_id] = remaining_waves
-        logger.debug(
-            f"   [PUSH] Wave Counter removed ({self.lane_id}). Remaining: {remaining_waves}"
-        )
-
-        if remaining_waves <= 0:
-            # NOTE (double-lane TBD): on double-lane maps the last-wave rule is
-            # different — compare total zones between each Throne and BOTH
-            # Battle Zones, with a tie meaning "undo the push and keep playing".
-            # This branch implements the single-lane rule only.
-            logger.debug("   [GAME OVER] Last Push Victory!")
-            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            return StepResult(
-                is_finished=True,
-                new_steps=[TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")],
-            )
-
-        next_zone_id, is_game_over = get_push_target_zone_id(state, self.losing_team, self.lane_id)
-
-        if is_game_over:
+        if not self.skip_wave_counter:
+            remaining_waves = state.wave_counters.get(self.lane_id, 0) - 1
+            state.wave_counters[self.lane_id] = remaining_waves
             logger.debug(
-                f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached."
+                f"   [PUSH] Wave Counter removed ({self.lane_id}). Remaining: {remaining_waves}"
             )
-            winning_team = TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
-            return StepResult(
-                is_finished=True,
-                new_steps=[TriggerGameOverStep(winner=winning_team, condition="LANE_PUSH")],
+
+            if remaining_waves <= 0:
+                # Single-lane last-push rule (pusher wins). Multi-lane games
+                # never reach this branch: the coordinator resolves the
+                # comparison and spawns this step with skip_wave_counter=True.
+                logger.debug("   [GAME OVER] Last Push Victory!")
+                winning_team = (
+                    TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
+                )
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[TriggerGameOverStep(winner=winning_team, condition="LAST_PUSH")],
+                )
+
+        if self.target_zone_id is not None:
+            next_zone_id: str | None = self.target_zone_id
+        else:
+            next_zone_id, is_game_over = get_push_target_zone_id(
+                state, self.losing_team, self.lane_id
             )
+
+            if is_game_over:
+                logger.debug(
+                    f"   [GAME OVER] Lane Push Victory! {self.losing_team.name} Throne reached."
+                )
+                winning_team = (
+                    TeamColor.BLUE if self.losing_team == TeamColor.RED else TeamColor.RED
+                )
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[TriggerGameOverStep(winner=winning_team, condition="LANE_PUSH")],
+                )
 
         if not next_zone_id:
             logger.debug("   [ERROR] Could not determine next zone for push.")
@@ -1158,87 +1239,17 @@ class LanePushStep(GameStep):
             logger.debug("   [ERROR] No active zone for push.")
             return StepResult(is_finished=True)
 
-        current_zone = state.board.zones.get(current_zone_id)
-
-        # Per rules: "Remove all Minions from old Battle Zone."
-        # Heroes stay? Yes, heroes are displaced only if blocking spawn (handled by respawn logic later).
-        # Actually rules say: "Occupied by Unit: Owning Team Places Minion..."
-        # But here we just wipe OLD minions.
-
-        to_remove = []
-        if current_zone:
-            for uid, loc in state.unit_locations.items():
-                if loc in current_zone.hexes:
-                    unit = state.get_unit(UnitID(uid))
-                    if hasattr(unit, "type") and hasattr(unit, "value"):  # Duck typing Minion
-                        to_remove.append(uid)
-
-        for uid in to_remove:
-            state.remove_unit(uid)
-            logger.debug(f"   [PUSH] Wiped {uid} from old zone.")
+        _wipe_minions_in_zone(state, current_zone_id)
 
         logger.debug(f"   [PUSH] Battle Zone moved: {current_zone_id} -> {next_zone_id}")
         state.battle_zones[self.lane_id] = next_zone_id
 
-        next_zone = state.board.zones.get(next_zone_id)
-        pending_displacements = []
-
-        if next_zone:
-            # We need to spawn minions for BOTH teams at their respective points in the new zone.
-            # Only minions bound to this lane respawn here.
-
-            for sp in next_zone.spawn_points:
-                if sp.is_minion_spawn:
-                    team = state.teams.get(sp.team)
-                    if team:
-                        candidate = next(
-                            (
-                                m
-                                for m in team.minions
-                                if m.type == sp.minion_type
-                                and m.lane_id == self.lane_id
-                                and m.id not in state.unit_locations
-                            ),
-                            None,
-                        )
-
-                        if candidate:
-                            tile = state.board.get_tile(sp.location)
-                            if tile and not tile.is_occupied:
-                                state.move_unit(candidate.id, sp.location)
-                                logger.debug(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
-                            else:
-                                occupant_id = None
-                                if tile and tile.occupant_id:
-                                    occupant_id = str(tile.occupant_id)
-                                occupant = (
-                                    state.misc_entities.get(BoardEntityID(occupant_id))
-                                    if occupant_id
-                                    else None
-                                )
-                                if isinstance(occupant, Token) and occupant_id:
-                                    _remove_token_from_board(state, occupant_id)
-                                    state.move_unit(candidate.id, sp.location)
-                                    logger.debug(
-                                        f"   [PUSH] Removed token {occupant_id} and spawned {candidate.id} at {sp.location}"
-                                    )
-                                else:
-                                    logger.debug(
-                                        f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)"
-                                    )
-                                    pending_displacements.append((candidate.id, sp.location))
+        pending_displacements = _respawn_minions_at_spawn_points(state, self.lane_id, next_zone_id)
 
         if pending_displacements:
-            # Explicitly type cast the list to match ResolveDisplacementStep's expectation
-            # ResolveDisplacementStep expects List[Tuple[str, Hex]] or similar.
-            # candidate.id is BoardEntityID (subtype of str).
             return StepResult(
                 is_finished=True,
-                new_steps=[
-                    ResolveDisplacementStep(
-                        displacements=cast(list[tuple[str, Hex]], pending_displacements)
-                    )
-                ],
+                new_steps=[ResolveDisplacementStep(displacements=pending_displacements)],
             )
 
         return StepResult(is_finished=True)

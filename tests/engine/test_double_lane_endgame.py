@@ -13,7 +13,9 @@ from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
 from goa2.domain.types import UnitID
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.map_logic import endgame_totals, zones_between
+from goa2.engine.steps import LanePushStep
 
 
 def _row_hexes(q_start: int, q_end: int, r: int) -> list[Hex]:
@@ -116,3 +118,57 @@ class TestZoneCounting:
         totals = endgame_totals(state, {"lane_1": "l1_bbeach"})
         # lane_1 at bbeach (red 2, blue 0) + lane_2 at mid (red 1, blue 1)
         assert totals == {TeamColor.RED: 3, TeamColor.BLUE: 1}
+
+
+class TestLanePushMechanicsOnly:
+    def test_precomputed_push_skips_counter_and_endgame(self):
+        state = _make_endgame_state(waves=1)
+        _add_minion(
+            state, "blue_1", TeamColor.BLUE, "lane_1", at=_row_hexes(4, 7, 0)[3]
+        )  # in l1_mid
+        _add_minion(state, "red_limbo", TeamColor.RED, "lane_1")  # limbo
+
+        push_steps(
+            state,
+            [
+                LanePushStep(
+                    lane_id="lane_1",
+                    losing_team=TeamColor.RED,
+                    target_zone_id="l1_rbeach",
+                    skip_wave_counter=True,
+                )
+            ],
+        )
+        result = process_stack(state)
+
+        assert result.input_request is None
+        # counter untouched, no game over despite waves=1
+        assert state.wave_counters["lane_1"] == 1
+        assert state.winner is None
+        # zone moved to the pre-computed target
+        assert state.battle_zones["lane_1"] == "l1_rbeach"
+        # old-zone minion wiped, respawns happened in the new zone
+        blue_loc = state.unit_locations.get("blue_1")
+        rbeach_hexes = state.board.zones["l1_rbeach"].hexes
+        assert blue_loc in rbeach_hexes
+        assert state.unit_locations.get("red_limbo") in rbeach_hexes
+
+    def test_new_fields_round_trip_serialization(self):
+        state = _make_endgame_state()
+        push_steps(
+            state,
+            [
+                LanePushStep(
+                    lane_id="lane_2",
+                    losing_team=TeamColor.BLUE,
+                    target_zone_id="l2_bbeach",
+                    skip_wave_counter=True,
+                )
+            ],
+        )
+        data = state.model_dump(mode="json")
+        restored = GameState.model_validate(data)
+        s = restored.execution_stack[0]
+        assert type(s).__name__ == "LanePushStep"
+        assert s.target_zone_id == "l2_bbeach"
+        assert s.skip_wave_counter is True
