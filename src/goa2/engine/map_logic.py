@@ -79,6 +79,39 @@ def get_push_target_zone_id(
     return lane[new_idx], False
 
 
+def zones_between(state: GameState, team: TeamColor, lane_id: str, zone_id: str) -> int:
+    """
+    Number of zones strictly between a team's Throne and the given zone on
+    a lane. Lanes are ordered RedBase -> BlueBase; for a zone at index i in
+    a lane of length n: RED distance = i - 1, BLUE distance = n - 2 - i.
+    Returns 0 for zones not on the lane.
+    """
+    lane = state.board.lanes.get(lane_id, [])
+    if zone_id not in lane:
+        return 0
+    idx = lane.index(zone_id)
+    if team == TeamColor.RED:
+        return max(0, idx - 1)
+    return max(0, len(lane) - 2 - idx)
+
+
+def endgame_totals(
+    state: GameState, bz_overrides: dict[str, str] | None = None
+) -> dict[TeamColor, int]:
+    """
+    Total zones between each team's Throne and every lane's Battle Zone
+    (the double-lane last-wave comparison). `bz_overrides` supplies
+    hypothetical post-push positions as {lane_id: zone_id}.
+    """
+    overrides = bz_overrides or {}
+    totals = {TeamColor.RED: 0, TeamColor.BLUE: 0}
+    for lane_id, current_zone_id in state.battle_zones.items():
+        zone_id = overrides.get(lane_id, current_zone_id)
+        for team in (TeamColor.RED, TeamColor.BLUE):
+            totals[team] += zones_between(state, team, lane_id, zone_id)
+    return totals
+
+
 def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
     """
     Counts HOSTILE units (Minions + Heroes) in a zone.
