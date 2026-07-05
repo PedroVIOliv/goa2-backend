@@ -270,6 +270,7 @@ Swap cards between hand/resolved/unresolved states.
 - [x] ValidationService PREVENT_ACTION_REPEAT
 - [x] Targeting Prevention / Line of Sight (Priority 1.2)
 - [x] CancelEffectsStep (Priority 2.1)
+- [x] Obstacle-aware ReturnMinionToZoneStep pathing & placement fallback
 
 
 ---

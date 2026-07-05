@@ -1004,11 +1004,41 @@ class RespawnMinionAtHexStep(GameStep):
     # ------------------------------------------------------------------
     # Lane-bound mode
     # ------------------------------------------------------------------
+    def _zone_type_headroom(
+        self, state: GameState, team_obj: Any, zone_id: str | None
+    ) -> dict[Any, int] | None:
+        """Per minion-type respawn headroom in `zone_id` for this team:
+        `#spawn points (type, team) - #miniatures (type, team) present`.
+
+        Rulebook: a minion may be respawned only where that Battle Zone has
+        MORE spawn points of its (type, color), empty or not, than miniatures
+        of it present. Returns None for hexes with no zone (e.g. Tide of
+        Darkness spaces), which are uncapped.
+        """
+        zone = state.board.zones.get(zone_id) if zone_id else None
+        if not zone:
+            return None
+        spawn_count: dict[Any, int] = {}
+        for sp in zone.spawn_points:
+            if sp.is_minion_spawn and sp.team == self.team and sp.minion_type is not None:
+                spawn_count[sp.minion_type] = spawn_count.get(sp.minion_type, 0) + 1
+        present: dict[Any, int] = {}
+        for m in team_obj.minions:
+            loc = state.get_position(str(m.id))
+            if loc is not None and loc in zone.hexes:
+                present[m.type] = present.get(m.type, 0) + 1
+        return {
+            t: spawn_count.get(t, 0) - present.get(t, 0) for t in set(spawn_count) | set(present)
+        }
+
     def _limbo_minions_for_hex(self, state: GameState, team_obj: Any, h: Hex) -> list[Any]:
         """Limbo minions legal at hex h: bound to the hex's lane, one per
-        type. Hexes outside any lane fall back to all limbo minions."""
+        type, and only for types whose Battle Zone still has spawn-point
+        headroom (see `_zone_type_headroom`). Hexes outside any lane fall
+        back to all limbo minions."""
         tile = state.board.get_tile(h)
         lane_id = state.lane_of_zone(tile.zone_id) if tile and tile.zone_id else None
+        headroom = self._zone_type_headroom(state, team_obj, tile.zone_id if tile else None)
         seen: set[Any] = set()
         result = []
         for m in team_obj.minions:
@@ -1018,6 +1048,8 @@ class RespawnMinionAtHexStep(GameStep):
                 continue
             if m.type in seen:
                 continue
+            if headroom is not None and headroom.get(m.type, 0) <= 0:
+                continue  # zone already at spawn-point capacity for this type
             seen.add(m.type)
             result.append(m)
         return result
@@ -1717,7 +1749,13 @@ class ReturnMinionToZoneStep(GameStep):
 
         from goa2.engine.map_logic import find_nearest_empty_hexes
 
-        candidates = find_nearest_empty_hexes(state, loc, home_zone_id)
+        candidates = find_nearest_empty_hexes(
+            state, loc, home_zone_id, respect_obstacles=True, actor_id=minion_id
+        )
+
+        if not candidates:
+            # Fallback: "If no path exists, it is Placed instead via shortest distance to an empty space within the BattleZone."
+            candidates = find_nearest_empty_hexes(state, loc, home_zone_id, respect_obstacles=False)
 
         if not candidates:
             logger.debug(f"   [ZONE] No empty space in zone for {minion_id}!")

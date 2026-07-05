@@ -138,7 +138,13 @@ def count_enemies(state: GameState, zone_id: str, team: TeamColor) -> int:
     return count
 
 
-def find_nearest_empty_hexes(state: GameState, start_hex: Hex, zone_id: str) -> list[Hex]:
+def find_nearest_empty_hexes(
+    state: GameState,
+    start_hex: Hex,
+    zone_id: str,
+    respect_obstacles: bool = False,
+    actor_id: str | None = None,
+) -> list[Hex]:
     """
     Finds the nearest empty hex(es) to start_hex within the specified zone.
     Used for displacement/collision resolution.
@@ -174,8 +180,14 @@ def find_nearest_empty_hexes(state: GameState, start_hex: Hex, zone_id: str) -> 
 
         # Expand (only if we haven't found a closer layer yet)
         if found_distance is None:
-            # Use topology-aware neighbors to respect board splits
-            for neighbor in get_connected_neighbors(current, state):
+            if respect_obstacles:
+                from goa2.engine.topology import get_traversable_neighbors
+
+                neighbors = get_traversable_neighbors(current, state, actor_id=actor_id)
+            else:
+                neighbors = get_connected_neighbors(current, state)
+
+            for neighbor in neighbors:
                 # SAFETY: Only expand to hexes that exist on the board
                 if neighbor not in visited and state.board.is_on_map(neighbor):
                     visited.add(neighbor)

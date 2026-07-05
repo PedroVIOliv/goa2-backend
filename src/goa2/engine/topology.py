@@ -402,9 +402,17 @@ def get_connected_neighbors(hex: Hex, state: GameState) -> list[Hex]:
     return get_topology_service().get_connected_neighbors(hex, state)
 
 
-def get_traversable_neighbors(hex: Hex, state: GameState, end_hex: Hex | None = None) -> list[Hex]:
+def get_traversable_neighbors(
+    hex: Hex,
+    state: GameState,
+    end_hex: Hex | None = None,
+    actor_id: str | None = None,
+    pass_through_obstacles: bool = False,
+) -> list[Hex]:
     """Module-level convenience for TopologyService.get_traversable_neighbors()."""
-    return get_topology_service().get_traversable_neighbors(hex, state, end_hex)
+    return get_topology_service().get_traversable_neighbors(
+        hex, state, end_hex, actor_id, pass_through_obstacles
+    )
 
 
 def get_connected_ring(center: Hex, radius: int, state: GameState) -> list[Hex]:

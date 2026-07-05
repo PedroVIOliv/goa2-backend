@@ -104,6 +104,11 @@ def test_multiple_minions_tiebreaker_order(zone_state):
     zone_state.board.tiles[Hex(q=3, r=-3, s=0)] = Tile(hex=Hex(q=3, r=-3, s=0))
     zone_state.move_unit(m_blue.id, Hex(q=3, r=-3, s=0))
 
+    # Add alternative route for m_blue to get around m_red at (1,-1,0)
+    route = [Hex(q=2, r=-3, s=1), Hex(q=1, r=-2, s=1), Hex(q=0, r=-1, s=1)]
+    for h in route:
+        zone_state.board.tiles[h] = Tile(hex=h)
+
     zone_state.tie_breaker_team = TeamColor.RED
 
     step = ReturnMinionToZoneStep()
@@ -171,3 +176,53 @@ def test_finalize_hero_turn_spawns_check(zone_state):
     # Minion should be returned to zone
     zone = zone_state.board.zones["battle_zone"]
     assert zone_state.unit_locations.get(m_red.id) in zone.hexes
+
+
+def test_return_minion_respects_obstacles(zone_state):
+    """If the direct path to the zone is blocked, the minion must take a longer traversable route."""
+    m_red = create_minion("r1", TeamColor.RED)
+    zone_state.teams[TeamColor.RED].minions.append(m_red)
+
+    # Place red minion outside
+    zone_state.move_unit(m_red.id, Hex(q=2, r=-2, s=0))
+
+    # Place an obstacle blocking the direct path to the zone at Hex(1,-1,0)
+    blocking_minion = create_minion("blocker", TeamColor.BLUE)
+    zone_state.teams[TeamColor.BLUE].minions.append(blocking_minion)
+    zone_state.move_unit(blocking_minion.id, Hex(q=1, r=-1, s=0))
+
+    # Add alternative route for m_red to get around blocker
+    route = [Hex(q=2, r=-3, s=1), Hex(q=1, r=-2, s=1), Hex(q=0, r=-1, s=1)]
+    for h in route:
+        zone_state.board.tiles[h] = Tile(hex=h)
+
+    step = ReturnMinionToZoneStep()
+    push_steps(zone_state, [step])
+    _ = process_stack(zone_state).input_request
+
+    # m_red should successfully bypass the obstacle and end up in the battle zone at Hex(0,0,0)
+    assert zone_state.unit_locations.get(m_red.id) == Hex(q=0, r=0, s=0)
+
+
+def test_return_minion_respects_obstacles_fallback(zone_state):
+    """If the direct path to the zone is completely blocked (no traversable path), the minion is Placed instead (ignores path obstacles)."""
+    m_red = create_minion("r1", TeamColor.RED)
+    zone_state.teams[TeamColor.RED].minions.append(m_red)
+
+    # Place red minion outside
+    zone_state.move_unit(m_red.id, Hex(q=2, r=-2, s=0))
+
+    # Place an obstacle blocking the only possible route to the zone at Hex(1,-1,0)
+    blocking_minion = create_minion("blocker", TeamColor.BLUE)
+    zone_state.teams[TeamColor.BLUE].minions.append(blocking_minion)
+    zone_state.move_unit(blocking_minion.id, Hex(q=1, r=-1, s=0))
+
+    # No alternative path is added, so it is completely blocked.
+    # When ReturnMinionToZoneStep runs, it should fail to find a traversable path (since q=1, r=-1, s=0 is blocked),
+    # but then fall back to placement (ignoring obstacles for path propagation) and return m_red to the empty space (q=0, r=0, s=0).
+    step = ReturnMinionToZoneStep()
+    push_steps(zone_state, [step])
+    _ = process_stack(zone_state).input_request
+
+    # m_red should be Placed at Hex(0,0,0) (via the fallback placement rule)
+    assert zone_state.unit_locations.get(m_red.id) == Hex(q=0, r=0, s=0)
