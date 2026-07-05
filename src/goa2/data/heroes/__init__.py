@@ -6,6 +6,7 @@ import goa2.data.heroes.brogan
 import goa2.data.heroes.brynn
 import goa2.data.heroes.cutter
 import goa2.data.heroes.dodger
+import goa2.data.heroes.emmitt
 import goa2.data.heroes.garrus
 import goa2.data.heroes.hanu
 import goa2.data.heroes.ignatia

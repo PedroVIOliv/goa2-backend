@@ -221,6 +221,24 @@ Pass your turn during the PLANNING phase (the hero will not play a card this rou
 
 **Response:** `200 OK` — returns `ActionResultResponse`.
 
+### `POST /games/{game_id}/planning-done`
+
+Only relevant for a hero whose active ultimate allows playing two cards per
+turn (Emmitt's *Alternative Timelines*, level >= 8). Such a hero's planning
+does **not** close after the first commit: they may `POST .../cards` a second
+time, or call this endpoint to declare they are playing only one card this
+turn. Planning also auto-closes if their hand is empty after the first commit.
+
+If the hero played two cards, immediately after revelation the server issues a
+mandatory `SELECT_CARD` input request (routed to that hero) to retrieve one of
+the two revealed cards back to hand; the other resolves normally. Both cards
+are visible to all players until the choice is made (see `extra_turn_card`).
+
+**Request body:** empty
+
+**Response:** `200 OK` — returns `ActionResultResponse`. `400` if the hero has
+not committed a card yet.
+
 ### `POST /games/{game_id}/input`
 
 Submit a response to an input request (e.g., selecting a unit, choosing a hex).
@@ -405,6 +423,17 @@ All messages are JSON with a `type` field:
 }
 ```
 
+#### `FINISH_PLANNING`
+
+Done-signal for a two-card-capable hero (Emmitt's ultimate) playing only one
+card this turn. See `POST /games/{game_id}/planning-done`.
+
+```json
+{
+  "type": "FINISH_PLANNING"
+}
+```
+
 #### `SUBMIT_INPUT`
 
 ```json
@@ -503,7 +532,7 @@ Sent to the player who performed the action:
 
 ### Broadcast behavior
 
-After a mutation (`COMMIT_CARD`, `PASS_TURN`, `SUBMIT_INPUT`):
+After a mutation (`COMMIT_CARD`, `PASS_TURN`, `FINISH_PLANNING`, `SUBMIT_INPUT`):
 
 1. The acting player receives an `ACTION_RESULT` message
 2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view, carrying the same action's `events`
@@ -640,6 +669,7 @@ Each team contains:
   "deck": [ ... ],
   "played_cards": [ ... ],
   "current_turn_card": null,
+  "extra_turn_card": null,
   "discard_pile": [ ... ],
   "ultimate_card": null
 }

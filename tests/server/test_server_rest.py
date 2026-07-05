@@ -87,6 +87,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Brynn": 3,
         "Razzle": 4,
         "Ignatia": 4,
+        "Emmitt": 4,
     }
 
 
@@ -681,3 +682,120 @@ def test_give_gold_cheat_spectator_blocked(client):
     )
     assert cheat_resp.status_code == 403
     assert "Spectators cannot use cheats" in cheat_resp.json()["detail"]
+
+
+# ---- Alternative Timelines (Emmitt ultimate) planning flow ----
+
+
+@pytest.fixture
+def emmitt_game(client):
+    """Game with Emmitt (RED, level 8 → ultimate active) vs Wasp (BLUE)."""
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Emmitt"],
+            "blue_heroes": ["Wasp"],
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    game = client.app.state.registry.get(data["game_id"])
+    game.session.state.get_hero("hero_emmitt").level = 8
+    return data
+
+
+def _first_hand_card_id(client, game_data, hero_id):
+    token = _token_for(game_data, hero_id)
+    view = client.get(f"/games/{game_data['game_id']}", headers=_auth(token)).json()
+    for team in view["view"]["teams"].values():
+        for hero in team["heroes"]:
+            if hero["id"] == hero_id:
+                return hero["hand"][0]["id"]
+    raise ValueError(f"No hand for {hero_id}")
+
+
+def test_emmitt_two_card_commit_and_retrieve(client, emmitt_game):
+    """Second commit accepted; after all commit, the retrieve prompt goes to
+    Emmitt; answering it returns the card to hand and starts resolution."""
+    game_id = emmitt_game["game_id"]
+    em_token = _token_for(emmitt_game, "hero_emmitt")
+    wa_token = _token_for(emmitt_game, "hero_wasp")
+
+    r1 = client.post(
+        f"/games/{game_id}/cards", json={"card_id": "reverse_time"}, headers=_auth(em_token)
+    )
+    assert r1.status_code == 200
+    r2 = client.post(
+        f"/games/{game_id}/cards", json={"card_id": "unstable_timeline"}, headers=_auth(em_token)
+    )
+    assert r2.status_code == 200
+
+    wasp_card = _first_hand_card_id(client, emmitt_game, "hero_wasp")
+    r3 = client.post(
+        f"/games/{game_id}/cards", json={"card_id": wasp_card}, headers=_auth(wa_token)
+    )
+    assert r3.status_code == 200
+    body = r3.json()
+    assert body["current_phase"] == "RESOLUTION"
+    assert body["input_request"] is not None
+    assert body["input_request"]["player_id"] == "hero_emmitt"
+    assert set(body["input_request"]["valid_options"]) == {"reverse_time", "unstable_timeline"}
+
+    r4 = client.post(
+        f"/games/{game_id}/input",
+        json={"selection": "unstable_timeline"},
+        headers=_auth(em_token),
+    )
+    assert r4.status_code == 200
+
+    view = client.get(f"/games/{game_id}", headers=_auth(em_token)).json()["view"]
+    emmitt_view = next(
+        h for t in view["teams"].values() for h in t["heroes"] if h["id"] == "hero_emmitt"
+    )
+    assert "unstable_timeline" in [c["id"] for c in emmitt_view["hand"]]
+    assert emmitt_view["current_turn_card"]["id"] == "reverse_time"
+    assert emmitt_view["extra_turn_card"] is None
+
+
+def test_emmitt_planning_done_endpoint(client, emmitt_game):
+    """Commit one + planning-done closes Emmitt's planning without a second card."""
+    game_id = emmitt_game["game_id"]
+    em_token = _token_for(emmitt_game, "hero_emmitt")
+    wa_token = _token_for(emmitt_game, "hero_wasp")
+
+    client.post(
+        f"/games/{game_id}/cards", json={"card_id": "reverse_time"}, headers=_auth(em_token)
+    )
+    wasp_card = _first_hand_card_id(client, emmitt_game, "hero_wasp")
+    r = client.post(f"/games/{game_id}/cards", json={"card_id": wasp_card}, headers=_auth(wa_token))
+    assert r.json()["current_phase"] == "PLANNING"  # waits for Emmitt
+
+    done = client.post(f"/games/{game_id}/planning-done", headers=_auth(em_token))
+    assert done.status_code == 200
+    assert done.json()["current_phase"] == "RESOLUTION"
+
+
+def test_planning_done_before_commit_rejected(client, emmitt_game):
+    game_id = emmitt_game["game_id"]
+    em_token = _token_for(emmitt_game, "hero_emmitt")
+    resp = client.post(f"/games/{game_id}/planning-done", headers=_auth(em_token))
+    assert resp.status_code == 400
+
+
+def test_second_commit_without_ultimate_still_409(client, game_data):
+    """Regression: a normal hero's second commit is still rejected."""
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+    card = _first_hand_card_id(client, game_data, "hero_arien")
+    assert (
+        client.post(
+            f"/games/{game_id}/cards", json={"card_id": card}, headers=_auth(token)
+        ).status_code
+        == 200
+    )
+    view = client.get(f"/games/{game_id}", headers=_auth(token)).json()["view"]
+    arien = next(h for t in view["teams"].values() for h in t["heroes"] if h["id"] == "hero_arien")
+    second = arien["hand"][0]["id"]
+    resp = client.post(f"/games/{game_id}/cards", json={"card_id": second}, headers=_auth(token))
+    assert resp.status_code == 409

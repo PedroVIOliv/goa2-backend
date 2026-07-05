@@ -13,6 +13,18 @@ from goa2.engine.steps import (
 logger = logging.getLogger(__name__)
 
 
+def hero_can_play_two_cards(hero) -> bool:
+    """True when the hero's active ultimate allows committing two cards
+    during Planning (Emmitt's Alternative Timelines)."""
+    from goa2.engine.effects import CardEffectRegistry
+
+    ult = hero.ultimate_card
+    if ult is None or hero.level < 8 or not ult.effect_id:
+        return False
+    effect = CardEffectRegistry.get(ult.effect_id)
+    return bool(effect and effect.plays_two_cards)
+
+
 def commit_card(state: GameState, hero_id: HeroID, card: Card):
     """
     Called when a player selects a card during the Planning Phase.
@@ -28,7 +40,34 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
         return
 
     if hero_id in state.pending_inputs:
-        raise ValueError(f"{hero_id} has already committed a card this turn")
+        first = state.pending_inputs[hero_id]
+        if first is None or not hero_can_play_two_cards(hero):
+            raise ValueError(f"{hero_id} has already committed a card this turn")
+        if hero_id in state.pending_second_cards:
+            raise ValueError(f"{hero_id} has already committed two cards this turn")
+        if hero_id in state.planning_done:
+            raise ValueError(f"{hero_id} has already finished planning this turn")
+
+        if card not in hero.hand:
+            logger.warning(
+                "%s tried to play card %s which is not in hand.",
+                hero_id,
+                card.id,
+            )
+            return
+
+        try:
+            hero.play_card(card)
+        except ValueError as e:
+            logger.warning("Error playing card: %s", e)
+            return
+        # play_card points current_turn_card at the latest commit; revelation
+        # reassigns it from the buffers, so the transient overwrite is harmless.
+        state.pending_second_cards[hero_id] = card
+        logger.info("%s committed a second card (Alternative Timelines).", hero_id)
+
+        _check_phase_transition(state)
+        return
 
     # Check if card is in hand
     if card not in hero.hand:
@@ -75,11 +114,52 @@ def pass_turn(state: GameState, hero_id: HeroID):
     _check_phase_transition(state)
 
 
+def finish_planning(state: GameState, hero_id: HeroID):
+    """
+    Explicit done-signal for a two-card-capable hero (Emmitt's ultimate) who
+    chooses to play only one card this turn. No-op for heroes that already
+    committed a second card.
+    """
+    if state.phase != GamePhase.PLANNING:
+        logger.warning("Cannot finish planning. Game is in %s", state.phase)
+        return
+
+    if hero_id not in state.pending_inputs:
+        raise ValueError(f"{hero_id} must commit a card before finishing planning")
+
+    if hero_id not in state.planning_done:
+        state.planning_done.append(hero_id)
+    logger.info("%s finished planning.", hero_id)
+
+    _check_phase_transition(state)
+
+
+def _planning_open_for(state: GameState, hero_id: HeroID) -> bool:
+    """A two-card-capable hero keeps planning open after their first commit
+    until they commit a second card, signal done, or run out of cards."""
+    card = state.pending_inputs.get(hero_id)
+    if card is None:  # passed (or not committed — caller checks count)
+        return False
+    hero = state.get_hero(hero_id)
+    if not hero or not hero_can_play_two_cards(hero):
+        return False
+    return (
+        hero_id not in state.pending_second_cards
+        and hero_id not in state.planning_done
+        and len(hero.hand) > 0
+    )
+
+
 def _check_phase_transition(state: GameState):
     # Check if all heroes have committed (Card or Pass)
     total_heroes = sum(len(team.heroes) for team in state.teams.values())
-    if len(state.pending_inputs) >= total_heroes:
-        start_revelation_phase(state)
+    if len(state.pending_inputs) < total_heroes:
+        return
+    # Two-card-capable heroes must close planning explicitly (second commit,
+    # done-signal, or empty hand)
+    if any(_planning_open_for(state, h_id) for h_id in state.pending_inputs):
+        return
+    start_revelation_phase(state)
 
 
 def start_revelation_phase(state: GameState):
@@ -109,11 +189,20 @@ def start_revelation_phase(state: GameState):
             # card.state is already UNRESOLVED from play_card
 
             hero.current_turn_card = card
+
+            second = state.pending_second_cards.get(h_id)
+            if second is not None:
+                logger.info("%s also reveals %s (Alternative Timelines).", h_id, second.name)
+                second.is_facedown = False
+                hero.extra_turn_card = second
+
             state.unresolved_hero_ids.append(h_id)
         else:
             logger.warning("Hero %s not found during revelation.", h_id)
 
-    state.pending_inputs = {}  # Clear buffer
+    state.pending_inputs = {}  # Clear buffers
+    state.pending_second_cards = {}
+    state.planning_done = []
 
     # Transition to Resolution
     start_resolution_phase(state)
@@ -122,6 +211,25 @@ def start_revelation_phase(state: GameState):
 def start_resolution_phase(state: GameState):
     state.phase = GamePhase.RESOLUTION
     logger.info("Resolution phase started.")
+
+    # Heroes that revealed two cards must retrieve one before anyone resolves
+    # (Emmitt's ultimate). The choice step pauses for input; FindNextActorStep
+    # then starts normal initiative resolution.
+    dual_hero_ids = [
+        h_id
+        for h_id in state.unresolved_hero_ids
+        if (hero := state.get_hero(h_id)) and hero.extra_turn_card is not None
+    ]
+    if dual_hero_ids:
+        from goa2.engine.steps import FindNextActorStep, RetrieveUnresolvedCardStep
+
+        steps: list[GameStep] = [
+            RetrieveUnresolvedCardStep(hero_id=str(h_id)) for h_id in dual_hero_ids
+        ]
+        steps.append(FindNextActorStep())
+        push_steps(state, steps)
+        return
+
     resolve_next_action(state)
 
 

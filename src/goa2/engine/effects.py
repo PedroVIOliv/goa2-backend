@@ -93,6 +93,11 @@ class CardEffect:
         build_on_block_steps: Implement on-block logic with pre-computed stats.
     """
 
+    # Capability flag: an active ultimate whose effect sets this lets its hero
+    # commit two cards during Planning (Emmitt's Alternative Timelines). Read
+    # by engine/phases.py.
+    plays_two_cards: bool = False
+
     # -------------------------------------------------------------------------
     # Public API - Called by engine. Computes stats and delegates to build_*.
     # -------------------------------------------------------------------------

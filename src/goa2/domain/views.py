@@ -198,6 +198,13 @@ def _build_hero_view(
             if hero.current_turn_card
             else None
         ),
+        # Second revealed card (Emmitt's Alternative Timelines): set only
+        # between revelation and the retrieve choice; face-up, so public
+        "extra_turn_card": (
+            _build_card_view(hero.extra_turn_card, is_own_hero=is_own_hero)
+            if hero.extra_turn_card
+            else None
+        ),
         # Discard pile: Always visible (public info) - use is_own_hero=True so all cards show full info
         "discard_pile": [_build_card_view(card, is_own_hero=True) for card in hero.discard_pile],
         # Ultimate card: Own hero sees it, others see faceup only

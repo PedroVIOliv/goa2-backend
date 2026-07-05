@@ -18,6 +18,7 @@ from goa2.engine.steps.cards import (  # noqa: F401
     ResolveUpgradesStep,
     RestoreCardInitiativeStep,
     RetrieveCardStep,
+    RetrieveUnresolvedCardStep,
     RoundResetStep,
     SetCardInitiativeStep,
     StealCoinsStep,

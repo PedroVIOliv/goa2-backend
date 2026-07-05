@@ -172,7 +172,16 @@ async def commit_card(
             raise CardNotInHandError(body.card_id, player.hero_id)
 
         if player.hero_id in session.state.pending_inputs:
-            raise AlreadyCommittedError(player.hero_id)
+            # A hero whose active ultimate allows two cards (Emmitt) may
+            # commit a second one; everyone else is rejected here.
+            from goa2.engine.phases import hero_can_play_two_cards
+
+            if (
+                not hero_can_play_two_cards(hero)
+                or player.hero_id in session.state.pending_second_cards
+                or player.hero_id in session.state.planning_done
+            ):
+                raise AlreadyCommittedError(player.hero_id)
 
         if game.replay_recorder:
             game.replay_recorder.record_commit(
@@ -210,6 +219,34 @@ async def pass_turn(
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
+        _log_result(game, result)
+        registry.save_game(game_id)
+        return _result_to_response(result)
+
+
+@router.post("/{game_id}/planning-done", response_model=ActionResultResponse)
+async def planning_done(
+    game_id: str,
+    player: PlayerDep,
+    registry: RegistryDep,
+) -> ActionResultResponse:
+    """Done-signal for a hero who may play two cards (Emmitt's ultimate) but
+    chooses to play only one this turn. Requires a committed card."""
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot finish planning")
+    game = registry.get(game_id)
+
+    async with game.lock:
+        session = game.session
+        if session.current_phase != GamePhase.PLANNING:
+            raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+        if game.replay_recorder:
+            game.replay_recorder.record_finish_planning(
+                player.hero_id, session.state.round, session.state.turn
+            )
+        result = session.finish_planning(HeroID(player.hero_id))
+        game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
         return _result_to_response(result)

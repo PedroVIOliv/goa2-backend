@@ -1113,6 +1113,73 @@ class RetrieveCardStep(GameStep):
         return StepResult(is_finished=True, events=[event])
 
 
+class RetrieveUnresolvedCardStep(GameStep):
+    """
+    Emmitt's Alternative Timelines: after revealing two cards, the hero MUST
+    retrieve one of their two unresolved cards to hand; the other remains as
+    the turn card. Runs at the start of Resolution, before any hero acts.
+    """
+
+    type: StepType = StepType.RETRIEVE_UNRESOLVED_CARD
+    hero_id: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        hero = state.get_hero(HeroID(self.hero_id))
+        if not hero or hero.extra_turn_card is None or hero.current_turn_card is None:
+            return StepResult(is_finished=True)
+
+        first, second = hero.current_turn_card, hero.extra_turn_card
+
+        if self.pending_input:
+            chosen_id = self.pending_input.get("selection")
+            if chosen_id in (first.id, second.id):
+                retrieved = first if chosen_id == first.id else second
+                kept = second if retrieved is first else first
+
+                hero.extra_turn_card = None
+                hero.return_card_to_hand(retrieved)
+                # return_card_to_hand clears current_turn_card when it points at
+                # the retrieved card; the kept card is the turn card either way.
+                hero.current_turn_card = kept
+
+                logger.info(
+                    "   [TIMELINES] %s retrieves %s, keeps %s.",
+                    self.hero_id,
+                    retrieved.name,
+                    kept.name,
+                )
+                return StepResult(
+                    is_finished=True,
+                    events=[
+                        GameEvent(
+                            event_type=GameEventType.CARD_RETRIEVED,
+                            actor_id=self.hero_id,
+                            metadata={
+                                "card_id": retrieved.id,
+                                "card_name": retrieved.name,
+                                "kept_card_id": kept.id,
+                                "source": "alternative_timelines",
+                            },
+                        )
+                    ],
+                )
+            logger.warning("   [TIMELINES] Invalid retrieve choice %s. Re-prompting.", chosen_id)
+            self.pending_input = None
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_CARD,
+                player_id=self.hero_id,
+                prompt="Alternative Timelines: retrieve one of your unresolved cards.",
+                options=[
+                    {"id": first.id, "text": f"{first.name} (initiative {first.initiative})"},
+                    {"id": second.id, "text": f"{second.name} (initiative {second.initiative})"},
+                ],
+            ),
+        )
+
+
 class CountCardsStep(GameStep):
     """
     Counts cards in a hero's container (hand, discard, deck, played)

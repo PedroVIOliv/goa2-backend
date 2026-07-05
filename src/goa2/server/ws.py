@@ -161,6 +161,30 @@ async def _handle_commit_card(
     }
 
 
+async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, Any]:
+    """Handle FINISH_PLANNING message (done-signal for a two-card-capable
+    hero — Emmitt's Alternative Timelines — playing only one card)."""
+    session = game.session
+    if session.current_phase != GamePhase.PLANNING:
+        raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+    if game.replay_recorder:
+        game.replay_recorder.record_finish_planning(
+            hero_id, session.state.round, session.state.turn
+        )
+    result = session.finish_planning(HeroID(hero_id))
+    game.last_result = result
+    _log_ws_result(game, result)
+    return {
+        "type": "ACTION_RESULT",
+        "result_type": result.result_type.value,
+        "current_phase": result.current_phase.value,
+        "events": [ev.model_dump() for ev in result.events],
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "winner": result.winner,
+    }
+
+
 async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     """Handle PASS_TURN message."""
     session = game.session
@@ -319,6 +343,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         reply = await _handle_commit_card(game, hero_id, data)
                     elif msg_type == "PASS_TURN":
                         reply = await _handle_pass_turn(game, hero_id)
+                    elif msg_type == "FINISH_PLANNING":
+                        reply = await _handle_finish_planning(game, hero_id)
                     elif msg_type == "ROLLBACK":
                         reply = await _handle_rollback(game, hero_id)
                     elif msg_type == "CHEATS_GOLD":
@@ -337,6 +363,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
                     "PASS_TURN",
+                    "FINISH_PLANNING",
                     "ROLLBACK",
                     "CHEATS_GOLD",
                 ):
@@ -351,6 +378,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
                     "PASS_TURN",
+                    "FINISH_PLANNING",
                     "ROLLBACK",
                     "CHEATS_GOLD",
                 ):

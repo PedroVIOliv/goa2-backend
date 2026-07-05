@@ -182,6 +182,7 @@ class StepType(StrEnum):
     COLLECT_UNITS = "collect_units"
     CHECK_CONTEXT_CONDITION = "check_context_condition"
     RETRIEVE_CARD = "retrieve_card"
+    RETRIEVE_UNRESOLVED_CARD = "retrieve_unresolved_card"
     COUNT_CARDS = "count_cards"
     CHECK_MINION_PROTECTION = "check_minion_protection"
     RECORD_HEX = "record_hex"

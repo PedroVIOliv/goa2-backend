@@ -71,6 +71,16 @@ class GameSession:
         _pass_turn(self.state, hero_id)
         return self._check_after_planning()
 
+    def finish_planning(self, hero_id: HeroID) -> SessionResult:
+        """Done-signal for a hero who may play two cards (Emmitt's ultimate)
+        but chooses to play only one this turn."""
+        if self.state.phase != GamePhase.PLANNING:
+            raise ValueError(f"Cannot finish planning in {self.state.phase} phase")
+        from goa2.engine.phases import finish_planning as _finish_planning
+
+        _finish_planning(self.state, hero_id)
+        return self._check_after_planning()
+
     def advance(self, response: InputResponse | dict[str, Any] | None = None) -> SessionResult:
         if self.state.phase == GamePhase.PLANNING:
             raise ValueError("Cannot advance() during PLANNING. Use commit_card() or pass_turn().")

@@ -454,3 +454,50 @@ def test_ws_rollback_no_active_actor(client, game_data):
         ws.send_json({"type": "ROLLBACK"})
         msg = ws.receive_json()
         assert msg["type"] == "ERROR"
+
+
+# ---- FINISH_PLANNING (Emmitt's Alternative Timelines) ----
+
+
+def test_ws_finish_planning(client):
+    """A two-card-capable hero can close planning with one card via WS."""
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Emmitt"],
+            "blue_heroes": ["Wasp"],
+        },
+    )
+    data = resp.json()
+    game_id = data["game_id"]
+    client.app.state.registry.get(game_id).session.state.get_hero("hero_emmitt").level = 8
+    em_token = _token_for(data, "hero_emmitt")
+    wa_token = _token_for(data, "hero_wasp")
+
+    # Wasp commits via REST
+    wa_view = client.get(f"/games/{game_id}", headers={"Authorization": f"Bearer {wa_token}"})
+    wasp_card = next(
+        h
+        for t in wa_view.json()["view"]["teams"].values()
+        for h in t["heroes"]
+        if h["id"] == "hero_wasp"
+    )["hand"][0]["id"]
+    client.post(
+        f"/games/{game_id}/cards",
+        json={"card_id": wasp_card},
+        headers={"Authorization": f"Bearer {wa_token}"},
+    )
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={em_token}") as ws:
+        ws.receive_json()  # initial state
+        ws.send_json({"type": "COMMIT_CARD", "card_id": "reverse_time"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ACTION_RESULT"
+        assert msg["current_phase"] == "PLANNING"  # still open for Emmitt
+        ws.receive_json()  # broadcast STATE_UPDATE from the commit
+
+        ws.send_json({"type": "FINISH_PLANNING"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ACTION_RESULT"
+        assert msg["current_phase"] == "RESOLUTION"

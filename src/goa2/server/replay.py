@@ -148,6 +148,9 @@ class ReplayRecorder:
     def record_pass(self, hero_id: str, round_num: int, turn: int) -> None:
         self._append({"type": "pass", "r": round_num, "t": turn, "hero": hero_id})
 
+    def record_finish_planning(self, hero_id: str, round_num: int, turn: int) -> None:
+        self._append({"type": "finish_planning", "r": round_num, "t": turn, "hero": hero_id})
+
     def record_input(self, hero_id: str, selection: Any, round_num: int, turn: int) -> None:
         self._append(
             {"type": "input", "r": round_num, "t": turn, "hero": hero_id, "sel": selection}
@@ -321,6 +324,8 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         session.commit_card(hero_id, card)
     elif kind == "pass":
         session.pass_turn(hero_id)
+    elif kind == "finish_planning":
+        session.finish_planning(hero_id)
     elif kind == "input":
         session.advance(InputResponse(request_id="", selection=decision["sel"]))
     elif kind == "rollback":

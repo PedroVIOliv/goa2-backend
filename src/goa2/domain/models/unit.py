@@ -51,6 +51,11 @@ class Hero(Unit):
     current_turn_card: Card | None = Field(
         default=None, description="The card played for the current turn (Unresolved)"
     )
+    extra_turn_card: Card | None = Field(
+        default=None,
+        description="Second revealed card when two were played this turn "
+        "(Emmitt's ultimate); one of the two is retrieved before resolution",
+    )
     resolved_turn_count: int = Field(
         default=0,
         description="Number of cards resolved this round (determines next played_cards position)",

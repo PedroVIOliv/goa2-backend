@@ -85,6 +85,14 @@ class GameState(BaseModel):
         default_factory=dict
     )  # Planning Phase Buffer: HeroID -> Card
 
+    pending_second_cards: dict[HeroID, Card] = Field(
+        default_factory=dict
+    )  # Planning Phase Buffer for heroes that may play two cards (Emmitt's ultimate)
+
+    planning_done: list[HeroID] = Field(
+        default_factory=list
+    )  # Two-card-capable heroes that explicitly closed planning with one card
+
     pending_upgrades: dict[HeroID, int] = Field(
         default_factory=dict
     )  # Level Up Phase Buffer: HeroID -> Number of upgrades pending
