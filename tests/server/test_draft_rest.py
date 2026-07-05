@@ -236,3 +236,75 @@ def test_cheats_flow_to_created_game(client):
         ]
         is True
     )
+
+
+def _create_draft(client, **overrides):
+    body = {"host_name": "Alice", **overrides}
+    return client.post("/drafts", json=body)
+
+
+def test_create_accepts_max_hero_stars(client):
+    r = _create_draft(client, max_hero_stars=2)
+    assert r.status_code == 201
+    d = r.json()
+    view = client.get(f"/drafts/{d['draft_id']}", headers=_auth(d["player_token"]))
+    assert view.json()["draft"]["max_hero_stars"] == 2
+
+
+def test_create_rejects_out_of_range_max_hero_stars(client):
+    assert _create_draft(client, max_hero_stars=5).status_code == 400
+    assert _create_draft(client, max_hero_stars=0).status_code == 400
+
+
+def test_settings_updates_max_hero_stars(client):
+    d = _create_draft(client).json()
+    hdr = _auth(d["player_token"])
+    r = client.patch(f"/drafts/{d['draft_id']}/settings", json={"max_hero_stars": 3}, headers=hdr)
+    assert r.status_code == 200
+    assert r.json()["draft"]["max_hero_stars"] == 3
+
+
+def test_settings_rejects_out_of_range_max_hero_stars(client):
+    d = _create_draft(client).json()
+    hdr = _auth(d["player_token"])
+    r = client.patch(f"/drafts/{d['draft_id']}/settings", json={"max_hero_stars": 0}, headers=hdr)
+    assert r.status_code == 400
+
+
+def test_start_pool_filtered_by_star_cap(client):
+    from goa2.data.heroes.registry import get_hero_difficulty_stars
+
+    d = _create_draft(client, max_hero_stars=1).json()
+    draft_id, host = d["draft_id"], d["player_token"]
+    guest = client.post(f"/drafts/{draft_id}/join", json={"display_name": "Bob"}).json()
+    client.post(f"/drafts/{draft_id}/team", json={"team": "RED"}, headers=_auth(host))
+    client.post(
+        f"/drafts/{draft_id}/team", json={"team": "BLUE"}, headers=_auth(guest["player_token"])
+    )
+    assert client.post(f"/drafts/{draft_id}/start", headers=_auth(host)).status_code == 200
+    pool = client.get(f"/drafts/{draft_id}", headers=_auth(host)).json()["draft"]["hero_pool"]
+    assert pool  # non-empty
+    assert all(get_hero_difficulty_stars(h) == 1 for h in pool)
+
+
+def test_start_rejected_when_cap_leaves_too_few_heroes(client):
+    # 1-star pool (7 heroes) can't fill a 3v3 sequential_ban_pick draft (12 steps).
+    d = _create_draft(client, max_hero_stars=1).json()
+    draft_id, host = d["draft_id"], d["player_token"]
+    toks = {"p1": host}
+    for name in ("B", "C", "D", "E", "F"):
+        jr = client.post(f"/drafts/{draft_id}/join", json={"display_name": name}).json()
+        toks[jr["player_id"]] = jr["player_token"]
+    for pid, team in (
+        ("p1", "RED"),
+        ("p2", "RED"),
+        ("p3", "RED"),
+        ("p4", "BLUE"),
+        ("p5", "BLUE"),
+        ("p6", "BLUE"),
+    ):
+        client.post(f"/drafts/{draft_id}/team", json={"team": team}, headers=_auth(toks[pid]))
+    r = client.post(f"/drafts/{draft_id}/start", headers=_auth(host))
+    assert r.status_code == 409
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(host)).json()["draft"]
+    assert view["status"] == "LOBBY"

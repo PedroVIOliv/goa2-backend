@@ -119,6 +119,7 @@ class CreateDraftRequest(BaseModel):
     game_type: str = "LONG"
     draft_mode: str = "sequential_ban_pick"
     cheats_enabled: bool = False
+    max_hero_stars: int = 4
 
 
 class UpdateDraftSettingsRequest(BaseModel):
@@ -128,6 +129,7 @@ class UpdateDraftSettingsRequest(BaseModel):
     game_type: str | None = None
     draft_mode: str | None = None
     cheats_enabled: bool | None = None
+    max_hero_stars: int | None = None
 
 
 class JoinDraftRequest(BaseModel):

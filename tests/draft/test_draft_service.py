@@ -223,3 +223,48 @@ def test_unassigned_players_do_not_gate_game_creation():
     service.claim_hero(st, "p1", st.picks[TeamColor.RED][0])
     service.claim_hero(st, "p2", st.picks[TeamColor.BLUE][0])
     assert service.is_ready_to_create_game(st)
+
+
+def _lobby_1v1():
+    st = _new_draft()
+    service.join(st, "Bob")
+    service.set_team(st, "p1", TeamColor.RED)
+    service.set_team(st, "p2", TeamColor.BLUE)
+    return st
+
+
+def test_create_default_max_hero_stars_is_four():
+    assert _new_draft().max_hero_stars == 4
+
+
+def test_create_accepts_max_hero_stars():
+    st = service.create_draft(
+        "d1",
+        "forgotten_island",
+        "LONG",
+        "sequential_ban_pick",
+        "Alice",
+        now=0.0,
+        max_hero_stars=2,
+    )
+    assert st.max_hero_stars == 2
+
+
+def test_update_settings_changes_max_hero_stars():
+    st = _new_draft()
+    service.update_settings(st, max_hero_stars=3)
+    assert st.max_hero_stars == 3
+
+
+def test_start_rejects_pool_smaller_than_sequence():
+    st = _lobby_1v1()  # a 1v1 sequential_ban_pick consumes 4 heroes (2 bans + 2 picks)
+    with pytest.raises(InvalidDraftPhaseError):
+        service.start_draft(st, ["Arien"], random.Random(1))
+    assert st.status is DraftStatus.LOBBY
+
+
+def test_start_succeeds_when_pool_covers_sequence():
+    st = _lobby_1v1()
+    service.start_draft(st, HEROES, random.Random(1))
+    assert st.status is DraftStatus.DRAFTING
+    assert len(st.hero_pool) >= len(st.sequence)

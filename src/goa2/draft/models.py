@@ -45,6 +45,8 @@ class DraftState(BaseModel):
     game_type: str
     draft_mode: str
     cheats: bool = False
+    # Max hero difficulty (stars, 1..4) allowed into the pool. 4 = all heroes.
+    max_hero_stars: int = 4
     # Team sizes are derived from membership at start_draft (no preset; 0 in LOBBY).
     red_size: int = 0
     blue_size: int = 0

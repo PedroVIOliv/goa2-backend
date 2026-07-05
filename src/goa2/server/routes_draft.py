@@ -11,7 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from goa2.data.heroes.registry import HeroRegistry
+from goa2.data.heroes.registry import HeroRegistry, get_hero_difficulty_stars
 from goa2.domain.models import TeamColor
 from goa2.draft import service
 from goa2.draft.errors import InvalidTeamError, NotHostError
@@ -160,6 +160,8 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         raise HTTPException(status_code=400, detail="game_type must be QUICK or LONG")
     if body.draft_mode not in DRAFT_MODES:
         raise HTTPException(status_code=400, detail=f"Unknown draft_mode '{body.draft_mode}'")
+    if not (1 <= body.max_hero_stars <= 4):
+        raise HTTPException(status_code=400, detail="max_hero_stars must be between 1 and 4")
     _map_path(body.map_name)
     draft_id = uuid.uuid4().hex[:12]
     state = service.create_draft(
@@ -170,6 +172,7 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         body.host_name,
         now=time.time(),
         cheats=body.cheats_enabled,
+        max_hero_stars=body.max_hero_stars,
     )
     md = registry.create(state)
     return CreateDraftResponse(
@@ -193,6 +196,8 @@ async def update_settings(
         raise HTTPException(status_code=400, detail="game_type must be QUICK or LONG")
     if body.draft_mode is not None and body.draft_mode not in DRAFT_MODES:
         raise HTTPException(status_code=400, detail=f"Unknown draft_mode '{body.draft_mode}'")
+    if body.max_hero_stars is not None and not (1 <= body.max_hero_stars <= 4):
+        raise HTTPException(status_code=400, detail="max_hero_stars must be between 1 and 4")
     if body.map_name is not None:
         _map_path(body.map_name)  # 404 if missing
     md = registry.get(draft_id)
@@ -203,6 +208,7 @@ async def update_settings(
             game_type=body.game_type,
             draft_mode=body.draft_mode,
             cheats=body.cheats_enabled,
+            max_hero_stars=body.max_hero_stars,
         )
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
@@ -306,7 +312,16 @@ async def start_draft(
                 detail=f"{total} assigned players is not a valid match size "
                 f"(must be one of {sorted(VALID_TOTALS)}).",
             )
-        service.start_draft(md.state, HeroRegistry.list_heroes(), random.Random())
+        # Only rated heroes (1..4 stars) are draftable. A 0-star result means the
+        # hero is unrated (e.g. legacy/test-only heroes not in the difficulty
+        # table) and must never appear in a difficulty-capped pool, regardless of
+        # the cap.
+        eligible = [
+            h
+            for h in HeroRegistry.list_heroes()
+            if 1 <= get_hero_difficulty_stars(h) <= md.state.max_hero_stars
+        ]
+        service.start_draft(md.state, eligible, random.Random())
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 

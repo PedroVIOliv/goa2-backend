@@ -62,6 +62,7 @@ def create_draft(
     host_name: str,
     now: float,
     cheats: bool = False,
+    max_hero_stars: int = 4,
 ) -> DraftState:
     get_mode(draft_mode)  # validate mode name early (raises KeyError -> caller maps)
     state = DraftState(
@@ -70,6 +71,7 @@ def create_draft(
         game_type=game_type,
         draft_mode=draft_mode,
         cheats=cheats,
+        max_hero_stars=max_hero_stars,
         created_at=now,
     )
     state.players.append(DraftPlayer(id="p1", display_name=host_name, is_host=True))
@@ -83,6 +85,7 @@ def update_settings(
     game_type: str | None = None,
     draft_mode: str | None = None,
     cheats: bool | None = None,
+    max_hero_stars: int | None = None,
 ) -> None:
     """Host-editable lobby settings. LOBBY-only. Only validates the draft mode name;
     map and game_type are validated by the route layer against the engine."""
@@ -96,6 +99,8 @@ def update_settings(
         state.game_type = game_type
     if cheats is not None:
         state.cheats = cheats
+    if max_hero_stars is not None:
+        state.max_hero_stars = max_hero_stars
 
 
 def join(state: DraftState, display_name: str) -> DraftPlayer:
@@ -168,6 +173,13 @@ def start_draft(state: DraftState, all_heroes: list[str], rng: random.Random) ->
     state.hero_pool = mode.hero_pool(all_heroes)
     state.first_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
     state.sequence = mode.build_sequence(state.red_size, state.blue_size, state.first_team)
+    # Every ban and pick consumes one hero; reject a start the pool can't fill.
+    if len(state.hero_pool) < len(state.sequence):
+        raise InvalidDraftPhaseError(
+            f"Only {len(state.hero_pool)} heroes at ≤{state.max_hero_stars}★, "
+            f"but this draft needs {len(state.sequence)} (bans + picks). "
+            f"Raise the star cap or use fewer players/bans."
+        )
     state.current_index = 0
     state.status = DraftStatus.DRAFTING
 
