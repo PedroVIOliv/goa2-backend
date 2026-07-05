@@ -1131,11 +1131,28 @@ def _respawn_minions_at_spawn_points(
 
 class CheckLanePushStep(GameStep):
     """
-    Checks if a Battle Zone meets the condition for a Lane Push (0 minions for
-    one team). If so, spawns a LanePushStep for that lane.
+    Checks if a Battle Zone meets the condition for a Lane Push (0 minions
+    for one team) and decides what happens.
 
-    With lane_id=None (default) every lane is checked, so existing call sites
-    remain correct on multi-lane maps.
+    Single-lane games: spawns a classic LanePushStep (which owns the wave
+    counter and endgame rules).
+
+    Multi-lane games: acts as the endgame coordinator. Pushes triggered by
+    the same check are simultaneous per the double-lane rules. Outcomes are
+    pre-computed BEFORE any mutation, then:
+      - throne pushes favoring both teams  -> tie remedy
+      - throne push favoring one team      -> LANE_PUSH victory
+      - any wave counter at 0 after flips  -> zone-count comparison at
+        post-push positions (LAST_PUSH victory, or tie remedy on equal)
+      - otherwise                          -> mechanics-only LanePushSteps
+
+    Tie remedy: zones do not move, counters stay flipped, and each
+    triggered lane gets a full wipe + spawn-point respawn in its unmoved
+    Battle Zone (rulebook: "spawn all minions in the Zones they occupied
+    before the push and continue playing").
+
+    With lane_id=None (default) every lane is checked, so existing call
+    sites remain correct on multi-lane maps.
     """
 
     type: StepType = StepType.CHECK_LANE_PUSH
@@ -1148,7 +1165,7 @@ class CheckLanePushStep(GameStep):
             [self.lane_id] if self.lane_id is not None else list(state.battle_zones.keys())
         )
 
-        push_steps: list[GameStep] = []
+        triggered: list[tuple[str, TeamColor]] = []
         for lane_id in lanes_to_check:
             zone_id = state.battle_zone_for_lane(lane_id)
             if not zone_id:
@@ -1158,9 +1175,106 @@ class CheckLanePushStep(GameStep):
                 logger.debug(
                     f"   [CHECK] Lane Push Condition Met for {losing_team.name} on {lane_id}"
                 )
-                push_steps.append(LanePushStep(lane_id=lane_id, losing_team=losing_team))
+                triggered.append((lane_id, losing_team))
 
-        return StepResult(is_finished=True, new_steps=push_steps)
+        if not triggered:
+            return StepResult(is_finished=True)
+
+        if len(state.board.lanes) <= 1:
+            return StepResult(
+                is_finished=True,
+                new_steps=[
+                    LanePushStep(lane_id=lane_id, losing_team=losing_team)
+                    for lane_id, losing_team in triggered
+                ],
+            )
+
+        return self._resolve_multi_lane(state, triggered)
+
+    def _resolve_multi_lane(
+        self, state: GameState, triggered: list[tuple[str, TeamColor]]
+    ) -> StepResult:
+        from goa2.engine.map_logic import endgame_totals, get_push_target_zone_id
+
+        # Pre-compute every push's outcome before mutating anything.
+        outcomes: list[tuple[str, TeamColor, str | None, bool]] = []
+        for lane_id, losing_team in triggered:
+            target, reaches_throne = get_push_target_zone_id(state, losing_team, lane_id)
+            outcomes.append((lane_id, losing_team, target, reaches_throne))
+
+        # Flip counters for all triggered lanes (they stay flipped even on a tie).
+        for lane_id, _, _, _ in outcomes:
+            state.wave_counters[lane_id] = max(0, state.wave_counters.get(lane_id, 0) - 1)
+
+        # Throne precedence.
+        throne_winners = {
+            TeamColor.BLUE if losing_team == TeamColor.RED else TeamColor.RED
+            for _, losing_team, _, reaches_throne in outcomes
+            if reaches_throne
+        }
+        if len(throne_winners) == 2:
+            logger.debug("   [ENDGAME] Simultaneous throne pushes — tie remedy.")
+            return self._tie_remedy(state, outcomes)
+        if len(throne_winners) == 1:
+            winner = throne_winners.pop()
+            logger.debug(f"   [GAME OVER] Lane Push Victory for {winner.name}!")
+            return StepResult(
+                is_finished=True,
+                new_steps=[TriggerGameOverStep(winner=winner, condition="LANE_PUSH")],
+            )
+
+        # Last-wave comparison: once any lane's counters are exhausted, every
+        # push re-runs the comparison at post-push positions.
+        if any(count <= 0 for count in state.wave_counters.values()):
+            overrides = {
+                lane_id: target for lane_id, _, target, _ in outcomes if target is not None
+            }
+            totals = endgame_totals(state, overrides)
+            red, blue = totals[TeamColor.RED], totals[TeamColor.BLUE]
+            logger.debug(f"   [ENDGAME] Last-wave comparison: RED {red} vs BLUE {blue}")
+            if red != blue:
+                winner = TeamColor.RED if red > blue else TeamColor.BLUE
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[TriggerGameOverStep(winner=winner, condition="LAST_PUSH")],
+                )
+            logger.debug("   [ENDGAME] Equal totals — tie remedy, play continues.")
+            return self._tie_remedy(state, outcomes)
+
+        # No endgame: mechanics-only pushes with pre-computed targets.
+        push_new_steps: list[GameStep] = []
+        for lane_id, losing_team, target, _ in outcomes:
+            if target is None:
+                logger.debug(f"   [ERROR] No push target for {lane_id}; skipping.")
+                continue
+            push_new_steps.append(
+                LanePushStep(
+                    lane_id=lane_id,
+                    losing_team=losing_team,
+                    target_zone_id=target,
+                    skip_wave_counter=True,
+                )
+            )
+        return StepResult(is_finished=True, new_steps=push_new_steps)
+
+    def _tie_remedy(
+        self, state: GameState, outcomes: list[tuple[str, TeamColor, str | None, bool]]
+    ) -> StepResult:
+        from goa2.engine.steps.movement import ResolveDisplacementStep
+
+        displacements: list[tuple[str, Hex]] = []
+        for lane_id, _, _, _ in outcomes:
+            zone_id = state.battle_zone_for_lane(lane_id)
+            if not zone_id:
+                continue
+            _wipe_minions_in_zone(state, zone_id)
+            displacements.extend(_respawn_minions_at_spawn_points(state, lane_id, zone_id))
+        if displacements:
+            return StepResult(
+                is_finished=True,
+                new_steps=[ResolveDisplacementStep(displacements=displacements)],
+            )
+        return StepResult(is_finished=True)
 
 
 class LanePushStep(GameStep):

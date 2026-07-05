@@ -15,7 +15,7 @@ from goa2.domain.tile import Tile
 from goa2.domain.types import UnitID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.map_logic import endgame_totals, zones_between
-from goa2.engine.steps import LanePushStep
+from goa2.engine.steps import CheckLanePushStep, LanePushStep
 
 
 def _row_hexes(q_start: int, q_end: int, r: int) -> list[Hex]:
@@ -172,3 +172,112 @@ class TestLanePushMechanicsOnly:
         assert type(s).__name__ == "LanePushStep"
         assert s.target_zone_id == "l2_bbeach"
         assert s.skip_wave_counter is True
+
+
+def _mid_hexes(lane_key: str) -> list[Hex]:
+    r = 0 if lane_key == "l1" else 4
+    return _row_hexes(4, 7, r)
+
+
+def _run_check(state) -> None:
+    push_steps(state, [CheckLanePushStep()])
+    result = process_stack(state)
+    assert result.input_request is None
+
+
+class TestCoordinator:
+    def test_normal_multilane_push(self):
+        state = _make_endgame_state(waves=5)
+        # Red loses lane_1 (blue minion alone in l1_mid); blue loses lane_2
+        _add_minion(state, "b1", TeamColor.BLUE, "lane_1", at=_mid_hexes("l1")[3])
+        _add_minion(state, "r2", TeamColor.RED, "lane_2", at=_mid_hexes("l2")[0])
+        _run_check(state)
+        assert state.winner is None
+        assert state.battle_zones == {"lane_1": "l1_rbeach", "lane_2": "l2_bbeach"}
+        assert state.wave_counters == {"lane_1": 4, "lane_2": 4}
+
+    def test_single_throne_push_wins(self):
+        state = _make_endgame_state(waves=5)
+        state.battle_zones["lane_1"] = "l1_rbeach"
+        # Red loses at rbeach -> next index 0 = red base -> blue wins
+        _add_minion(state, "b1", TeamColor.BLUE, "lane_1", at=_row_hexes(0, 3, 0)[3])
+        _run_check(state)
+        assert state.winner == TeamColor.BLUE
+        assert state.victory_condition == "LANE_PUSH"
+
+    def test_double_throne_push_is_tie_remedy(self):
+        state = _make_endgame_state(waves=5)
+        state.battle_zones = {"lane_1": "l1_rbeach", "lane_2": "l2_bbeach"}
+        # lane_1: red loses -> would hit red base (blue would win)
+        _add_minion(state, "b1", TeamColor.BLUE, "lane_1", at=_row_hexes(0, 3, 0)[3])
+        # lane_2: blue loses -> would hit blue base (red would win)
+        _add_minion(state, "r2", TeamColor.RED, "lane_2", at=_row_hexes(8, 11, 4)[0])
+        # limbo supply so the tie respawn has something to place
+        _add_minion(state, "r1_limbo", TeamColor.RED, "lane_1")
+        _add_minion(state, "b2_limbo", TeamColor.BLUE, "lane_2")
+        _run_check(state)
+        assert state.winner is None
+        # zones did not move; counters still flipped
+        assert state.battle_zones == {"lane_1": "l1_rbeach", "lane_2": "l2_bbeach"}
+        assert state.wave_counters == {"lane_1": 4, "lane_2": 4}
+        # full respawn: the wiped-out teams got their supply back in-place
+        assert state.unit_locations.get("r1_limbo") in state.board.zones["l1_rbeach"].hexes
+        assert state.unit_locations.get("b2_limbo") in state.board.zones["l2_bbeach"].hexes
+        # survivors were wiped and respawned at spawn points of the same zone
+        assert state.unit_locations.get("b1") in state.board.zones["l1_rbeach"].hexes
+
+    def test_last_wave_comparison_uses_post_push_position(self):
+        state = _make_endgame_state(waves=5)
+        state.wave_counters = {"lane_1": 1, "lane_2": 5}
+        # lane_1 at mid, red loses -> post-push l1_rbeach (red 0, blue 2)
+        # lane_2 stays at mid (red 1, blue 1)
+        # post-push totals: red 1, blue 3 -> BLUE wins.
+        # (pre-push totals would be 2-2 — a tie — so this asserts timing.)
+        _add_minion(state, "b1", TeamColor.BLUE, "lane_1", at=_mid_hexes("l1")[3])
+        _run_check(state)
+        assert state.winner == TeamColor.BLUE
+        assert state.victory_condition == "LAST_PUSH"
+
+    def test_last_wave_equal_totals_is_tie_remedy(self):
+        state = _make_endgame_state(waves=5)
+        state.wave_counters = {"lane_1": 1, "lane_2": 5}
+        state.battle_zones = {"lane_1": "l1_rbeach", "lane_2": "l2_mid"}
+        # lane_1: blue loses at rbeach -> post-push l1_mid (red 1, blue 1)
+        # lane_2 at mid (red 1, blue 1) -> totals 2-2 -> tie remedy
+        _add_minion(state, "r1", TeamColor.RED, "lane_1", at=_row_hexes(0, 3, 0)[0])
+        _add_minion(state, "b1_limbo", TeamColor.BLUE, "lane_1")
+        _run_check(state)
+        assert state.winner is None
+        assert state.battle_zones["lane_1"] == "l1_rbeach"  # unmoved
+        assert state.wave_counters["lane_1"] == 0  # counter stays flipped
+        # full respawn in the unmoved zone for both teams
+        rbeach = state.board.zones["l1_rbeach"].hexes
+        assert state.unit_locations.get("r1") in rbeach
+        assert state.unit_locations.get("b1_limbo") in rbeach
+        # untriggered lane untouched
+        assert state.battle_zones["lane_2"] == "l2_mid"
+
+    def test_push_after_tie_recompares_from_any_lane(self):
+        state = _make_endgame_state(waves=5)
+        # lane_1 exhausted earlier (tie happened); push now occurs on lane_2
+        state.wave_counters = {"lane_1": 0, "lane_2": 3}
+        # lane_2: blue loses at mid -> post-push l2_bbeach (red 2, blue 0)
+        # lane_1 at mid (red 1, blue 1) -> totals red 3, blue 1 -> RED wins
+        _add_minion(state, "r2", TeamColor.RED, "lane_2", at=_mid_hexes("l2")[0])
+        _run_check(state)
+        assert state.winner == TeamColor.RED
+        assert state.victory_condition == "LAST_PUSH"
+
+    def test_single_lane_game_keeps_pusher_wins_rule(self):
+        state = _make_endgame_state(waves=1)
+        # Reduce to a single-lane game
+        state.board.lanes = {"lane_1": state.board.lanes["lane_1"]}
+        state.battle_zones = {"lane_1": "l1_rbeach"}
+        state.wave_counters = {"lane_1": 1}
+        # Red pushes (blue loses) from rbeach: the comparison rule would
+        # favor BLUE, but the single-lane rule says the pusher (RED) wins
+        # on the last flip.
+        _add_minion(state, "r1", TeamColor.RED, "lane_1", at=_row_hexes(0, 3, 0)[0])
+        _run_check(state)
+        assert state.winner == TeamColor.RED
+        assert state.victory_condition == "LAST_PUSH"
