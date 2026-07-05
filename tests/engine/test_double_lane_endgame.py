@@ -287,7 +287,7 @@ class TestAcrossTheRiver:
     def _load_state(self) -> GameState:
         from goa2.engine.map_loader import load_map
 
-        board = load_map("src/goa2/data/maps/accross_the_river.json")
+        board = load_map("src/goa2/data/maps/across_the_river.json")
         state = GameState(
             board=board,
             teams={

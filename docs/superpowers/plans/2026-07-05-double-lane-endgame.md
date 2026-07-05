@@ -791,7 +791,7 @@ class TestAcrossTheRiver:
     def _load_state(self) -> GameState:
         from goa2.engine.map_loader import load_map
 
-        board = load_map("src/goa2/data/maps/accross_the_river.json")
+        board = load_map("src/goa2/data/maps/across_the_river.json")
         state = GameState(
             board=board,
             teams={
@@ -1290,7 +1290,7 @@ git commit -m "feat: lane-bound hex-first respawn for Necromancy/Necromastery"
 - [x] **Step 1: Update `docs/DOUBLE_LANE_PREP.md`**
 
 In the "Still TBD" section:
-- Item 1 (map JSON + loader): mark done — loader reads a top-level `"lanes"` key (commit `fbfc67f`); `accross_the_river.json` is a real two-lane map (6 zones per lane, per-lane `battle_zones` starting positions); the browser map editor produces this format.
+- Item 1 (map JSON + loader): mark done — loader reads a top-level `"lanes"` key (commit `fbfc67f`); `across_the_river.json` is a real two-lane map (6 zones per lane, per-lane `battle_zones` starting positions); the browser map editor produces this format.
 - Item 2 (endgame rules): mark done — describe the coordinator (`CheckLanePushStep`): throne precedence, post-push zone-count comparison via `map_logic.endgame_totals`, tie remedy (zones stay, counters stay flipped, full respawn in triggered lanes), every push re-compares once any lane's counters are exhausted. Reference the spec `docs/superpowers/specs/2026-07-05-double-lane-endgame-design.md`.
 - Item 4 (simultaneous minion battles): note that pushes triggered by the same check now ARE resolved simultaneously by the coordinator; battle *removals* still resolve in lane order (unchanged, still unobservable).
 - Add under "What was done": ability respawns (Necromancy/Necromastery) are lane-bound, hex-first.

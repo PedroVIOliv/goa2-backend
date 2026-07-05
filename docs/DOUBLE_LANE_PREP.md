@@ -3,7 +3,7 @@
 Status of the work for supporting the 8–10 player double-lane map.
 The data model, push machinery, map loading, and **endgame rules** are now
 fully lane-aware, and a real two-lane map exists
-(`src/goa2/data/maps/accross_the_river.json`). What remains is the 8–10
+(`src/goa2/data/maps/across_the_river.json`). What remains is the 8–10
 player setup config and frontend rendering (see "Still TBD" below).
 
 Rules background (double-lane): two independent Lanes, each with its own
@@ -104,7 +104,7 @@ New lane helpers on `GameState`:
   (`{"lane_1": [...], "lane_2": [...]}`, commit `fbfc67f`) and an optional
   `"battle_zones"` key (`{lane_id: zone label}`) for per-lane starting
   Battle Zones (`Board.starting_battle_zones`).
-- A real two-lane map exists: `src/goa2/data/maps/accross_the_river.json`
+- A real two-lane map exists: `src/goa2/data/maps/across_the_river.json`
   (6 zones per lane, shared base zones, starting Battle Zones MidA2/MidB2).
   Maps are produced by the browser map editor (`tools/map_editor.html` —
   CSV geometry import, rotation, ★ starting-zone marker).
@@ -174,7 +174,7 @@ lane (Tide of Darkness) fall back to the full supply.
 3. **Hero respawn / zone semantics on the second lane.** Anything that
    references zones by name or assumes one "Mid" (e.g. `playtest.py` dev
    tooling, some map-specific effect interpretations) should be audited
-   against `accross_the_river.json`. `playtest.py` still uses the legacy
+   against `across_the_river.json`. `playtest.py` still uses the legacy
    properties (fine — it is single-lane dev tooling; it will raise loudly
    if pointed at a two-lane game).
 
