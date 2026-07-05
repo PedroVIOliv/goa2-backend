@@ -39,7 +39,7 @@
 - Consumes: `state.board.lanes: dict[str, list[str]]`, `state.battle_zones: dict[str, str]` (existing).
 - Produces: `zones_between(state: GameState, team: TeamColor, lane_id: str, zone_id: str) -> int` and `endgame_totals(state: GameState, bz_overrides: dict[str, str] | None = None) -> dict[TeamColor, int]` in `goa2.engine.map_logic`. Task 3 calls both.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/engine/test_double_lane_endgame.py`:
 
@@ -163,12 +163,12 @@ class TestZoneCounting:
         assert totals == {TeamColor.RED: 3, TeamColor.BLUE: 1}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py -q`
 Expected: FAIL — `ImportError: cannot import name 'endgame_totals' from 'goa2.engine.map_logic'`
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 Append to `src/goa2/engine/map_logic.py` (after `get_push_target_zone_id`, before `count_enemies`):
 
@@ -206,12 +206,12 @@ def endgame_totals(
     return totals
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py -q`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/goa2/engine/map_logic.py tests/engine/test_double_lane_endgame.py
@@ -233,7 +233,7 @@ git commit -m "feat: zone-count helpers for double-lane endgame"
   - `_respawn_minions_at_spawn_points(state: GameState, lane_id: str, zone_id: str) -> list[tuple[str, Hex]]` (pending displacements)
   - `LanePushStep(lane_id, losing_team, target_zone_id: str | None = None, skip_wave_counter: bool = False)` — when both new fields are set, the step performs mechanics only (no counter flip, no game-over checks).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/engine/test_double_lane_endgame.py`:
 
@@ -280,12 +280,12 @@ class TestLanePushMechanicsOnly:
         assert s.skip_wave_counter is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py -q`
 Expected: FAIL — `target_zone_id` unexpected keyword / validation error
 
-- [ ] **Step 3: Extract helpers and refactor `LanePushStep`**
+- [x] **Step 3: Extract helpers and refactor `LanePushStep`**
 
 In `src/goa2/engine/steps/combat.py`, add module-level helpers directly above `class CheckLanePushStep` (the code is moved out of `LanePushStep.resolve`, unchanged in behavior):
 
@@ -457,12 +457,12 @@ class LanePushStep(GameStep):
 
 Keep existing imports (`Token`, `BoardEntityID`, `cast` may become unused — remove `cast` if nothing else uses it; `ruff` will tell you).
 
-- [ ] **Step 4: Run new tests and the lane regression suites**
+- [x] **Step 4: Run new tests and the lane regression suites**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py tests/engine/test_lane_push.py tests/engine/test_lane_plumbing.py -q`
 Expected: all pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/goa2/engine/steps/combat.py tests/engine/test_double_lane_endgame.py
@@ -481,7 +481,7 @@ git commit -m "refactor: extract push mechanics; mechanics-only mode for LanePus
 - Consumes: `zones_between`/`endgame_totals` (Task 1); `_wipe_minions_in_zone`/`_respawn_minions_at_spawn_points` and mechanics-only `LanePushStep` (Task 2); existing `check_lane_push_trigger`, `get_push_target_zone_id`, `TriggerGameOverStep(winner, condition)`.
 - Produces: multi-lane endgame decisions. Victory conditions used: `"LANE_PUSH"` (throne) and `"LAST_PUSH"` (comparison) — same strings as today.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/engine/test_double_lane_endgame.py`:
 
@@ -596,12 +596,12 @@ class TestCoordinator:
         assert state.victory_condition == "LAST_PUSH"
 ```
 
-- [ ] **Step 2: Run tests to verify the new ones fail**
+- [x] **Step 2: Run tests to verify the new ones fail**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py -q`
 Expected: `TestCoordinator` tests FAIL (e.g. double-throne currently ends the game for whichever lane resolves first); `test_normal_multilane_push` and `test_single_lane_game_keeps_pusher_wins_rule` may already pass — that is fine.
 
-- [ ] **Step 3: Implement the coordinator**
+- [x] **Step 3: Implement the coordinator**
 
 Replace `CheckLanePushStep` in `src/goa2/engine/steps/combat.py`:
 
@@ -754,17 +754,17 @@ class CheckLanePushStep(GameStep):
         return StepResult(is_finished=True)
 ```
 
-- [ ] **Step 4: Run the endgame tests and lane regressions**
+- [x] **Step 4: Run the endgame tests and lane regressions**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py tests/engine/test_lane_push.py tests/engine/test_lane_plumbing.py -q`
 Expected: all pass
 
-- [ ] **Step 5: Run the full engine suite (coordinator touches shared machinery)**
+- [x] **Step 5: Run the full engine suite (coordinator touches shared machinery)**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/ -q`
 Expected: all pass. If a test fails because it constructed `CheckLanePushStep`/`LanePushStep` scenarios directly, fix the test only if its *setup* relied on removed internals; behavior expectations must not change for single-lane games.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/goa2/engine/steps/combat.py tests/engine/test_double_lane_endgame.py
@@ -782,7 +782,7 @@ git commit -m "feat: double-lane endgame coordinator in CheckLanePushStep"
 - Consumes: `load_map` (`goa2.engine.map_loader`), Task 1 helpers, Task 3 coordinator.
 - Produces: regression coverage on the real two-lane map.
 
-- [ ] **Step 1: Write the test (should pass immediately — it validates integration, not new code)**
+- [x] **Step 1: Write the test (should pass immediately — it validates integration, not new code)**
 
 Append to `tests/engine/test_double_lane_endgame.py`:
 
@@ -828,12 +828,12 @@ class TestAcrossTheRiver:
         assert state.battle_zones["lane_2"] == state.board.starting_battle_zones["lane_2"]
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_double_lane_endgame.py -q`
 Expected: all pass. If `test_push_moves_zone_along_real_lane` fails because the chosen hex is occupied/terrain, pick an empty hex from the zone (`h for h in zone.hexes if not state.board.get_tile(h).is_terrain`).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/engine/test_double_lane_endgame.py
@@ -858,7 +858,7 @@ git commit -m "test: double-lane endgame integration on Across the River map"
 - Hexes whose lane has no limbo supply are not offered.
 - Hexes outside any lane (possible under Dodger's Tide of Darkness, which makes all spaces spawn points) fall back to the full limbo supply — the binding rule cannot resolve a lane for a non-lane hex.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/engine/test_lane_respawn_binding.py`:
 
@@ -1051,12 +1051,12 @@ class TestLaneBoundRespawn:
         assert s.unit_key is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_lane_respawn_binding.py -q`
 Expected: FAIL — `lane_bound` unexpected keyword / validation error
 
-- [ ] **Step 3: Extend `RespawnMinionAtHexStep`**
+- [x] **Step 3: Extend `RespawnMinionAtHexStep`**
 
 In `src/goa2/engine/steps/combat.py`, replace the class. The legacy body moves into `_resolve_legacy` **unchanged**; the new lane-bound flow is added:
 
@@ -1224,7 +1224,7 @@ class RespawnMinionAtHexStep(GameStep):
 
 When moving the legacy body into `_resolve_legacy`, copy it verbatim from the current `resolve` (lines 989–1061) — only the `should_skip` check at the top is removed (now in `resolve`).
 
-- [ ] **Step 4: Rewrite `_build_respawn_steps` in dodger_effects.py**
+- [x] **Step 4: Rewrite `_build_respawn_steps` in dodger_effects.py**
 
 Replace the whole function (lines 802–882):
 
@@ -1265,12 +1265,12 @@ def _build_respawn_steps(
 
 Remove imports that become unused in `dodger_effects.py` (`SetContextFlagStep`, `CheckContextConditionStep`, `SelectStep`, `TargetType` — **only if** nothing else in the file uses them; check with `uv run ruff check src/goa2/scripts/dodger_effects.py`).
 
-- [ ] **Step 5: Run the new tests and dodger regressions**
+- [x] **Step 5: Run the new tests and dodger regressions**
 
 Run: `PYTHONPATH=src uv run pytest tests/engine/test_lane_respawn_binding.py tests/engine/test_dodger_tide_of_darkness.py tests/engine/test_dodger_darkest_ritual.py tests/engine/effects/cases/test_dodger_effects.py tests/engine/test_steps_package_guardrails.py -q`
 Expected: all pass. If a Tide of Darkness test exercises Necromancy/Necromastery with the old minion-first flow, update its input sequence to hex-first (the legality is unchanged).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/goa2/engine/steps/combat.py src/goa2/scripts/dodger_effects.py tests/engine/test_lane_respawn_binding.py
@@ -1287,7 +1287,7 @@ git commit -m "feat: lane-bound hex-first respawn for Necromancy/Necromastery"
 
 **Interfaces:** none (documentation + verification).
 
-- [ ] **Step 1: Update `docs/DOUBLE_LANE_PREP.md`**
+- [x] **Step 1: Update `docs/DOUBLE_LANE_PREP.md`**
 
 In the "Still TBD" section:
 - Item 1 (map JSON + loader): mark done — loader reads a top-level `"lanes"` key (commit `fbfc67f`); `accross_the_river.json` is a real two-lane map (6 zones per lane, per-lane `battle_zones` starting positions); the browser map editor produces this format.
@@ -1298,7 +1298,7 @@ In the "Still TBD" section:
 
 Also verify the `NOTE (double-lane TBD)` comment in `engine/steps/combat.py` was replaced in Task 2 (`grep -n "double-lane TBD" src/goa2/engine/steps/combat.py` → no matches).
 
-- [ ] **Step 2: Run the full suite and linters**
+- [x] **Step 2: Run the full suite and linters**
 
 Run: `PYTHONPATH=src uv run pytest tests/ -q`
 Expected: all pass (~700+ tests).
@@ -1306,7 +1306,7 @@ Expected: all pass (~700+ tests).
 Run: `uv run ruff check src/ && uv run black --check src/ && uv run mypy src/`
 Expected: clean (fix any issues).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/DOUBLE_LANE_PREP.md
