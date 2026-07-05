@@ -281,3 +281,44 @@ class TestCoordinator:
         _run_check(state)
         assert state.winner == TeamColor.RED
         assert state.victory_condition == "LAST_PUSH"
+
+
+class TestAcrossTheRiver:
+    def _load_state(self) -> GameState:
+        from goa2.engine.map_loader import load_map
+
+        board = load_map("src/goa2/data/maps/accross_the_river.json")
+        state = GameState(
+            board=board,
+            teams={
+                TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+                TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+            },
+        )
+        state.battle_zones = dict(board.starting_battle_zones)
+        state.wave_counters = {lane_id: 7 for lane_id in board.lanes}
+        return state
+
+    def test_starting_position_is_symmetric(self):
+        state = self._load_state()
+        assert len(state.board.lanes) == 2
+        assert all(len(lane) == 6 for lane in state.board.lanes.values())
+        totals = endgame_totals(state)
+        assert totals[TeamColor.RED] == totals[TeamColor.BLUE] == 3
+
+    def test_push_moves_zone_along_real_lane(self):
+        state = self._load_state()
+        lane_id = "lane_1"
+        lane = state.board.lanes[lane_id]
+        bz = state.battle_zones[lane_id]
+        idx = lane.index(bz)
+        # Blue minion alone in lane_1's BZ -> red loses -> zone moves toward red base
+        zone = state.board.zones[bz]
+        a_hex = next(h for h in zone.hexes if not state.board.get_tile(h).is_terrain)
+        _add_minion(state, "b1", TeamColor.BLUE, lane_id, at=a_hex)
+        _run_check(state)
+        assert state.winner is None
+        assert state.battle_zones[lane_id] == lane[idx - 1]
+        assert state.wave_counters[lane_id] == 6
+        # the other lane untouched
+        assert state.battle_zones["lane_2"] == state.board.starting_battle_zones["lane_2"]
