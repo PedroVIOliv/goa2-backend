@@ -349,6 +349,79 @@ def test_lane_push_spawns_minions_in_new_zone():
     assert state.unit_locations.get(m_blue_in_mid.id) == red_beach_hex_2
 
 
+def test_blocked_spawn_point_does_not_orphan_same_type_minion():
+    """Regression: a blocked spawn point must not strand another same-type
+    limbo minion.
+
+    Repro (from replay 7ff359546787): a lane zone has two RED MELEE spawn
+    points — one blocked by an enemy, one empty — and two RED MELEE minions in
+    limbo after a push wipe. The blocked point queues a candidate for
+    displacement but leaves it in limbo, so the empty point re-selects the SAME
+    minion, double-booking it and orphaning the other in limbo forever.
+
+    Every limbo minion must be assigned exactly once: one placed at the empty
+    point, the other queued for displacement, and neither left off-board.
+    """
+    from goa2.domain.board import DEFAULT_LANE_ID
+    from goa2.domain.tile import Tile
+    from goa2.engine.steps.combat import _respawn_minions_at_spawn_points
+
+    blocked_hex = Hex(q=-9, r=5, s=4)
+    empty_hex = Hex(q=-6, r=-1, s=7)
+
+    board = Board()
+    # Spawn points ordered [blocked, empty] — the order that triggers the bug.
+    board.zones["z"] = Zone(
+        id="z",
+        name="Z",
+        hexes={blocked_hex, empty_hex},
+        spawn_points=[
+            SpawnPoint(
+                location=blocked_hex,
+                team=TeamColor.RED,
+                type=SpawnType.MINION,
+                minion_type=MinionType.MELEE,
+            ),
+            SpawnPoint(
+                location=empty_hex,
+                team=TeamColor.RED,
+                type=SpawnType.MINION,
+                minion_type=MinionType.MELEE,
+            ),
+        ],
+    )
+    board.tiles[blocked_hex] = Tile(hex=blocked_hex, zone_id="z")
+    board.tiles[empty_hex] = Tile(hex=empty_hex, zone_id="z")
+
+    m_a = Minion(id=UnitID("m_a"), name="m_a", team=TeamColor.RED, type=MinionType.MELEE)
+    m_b = Minion(id=UnitID("m_b"), name="m_b", team=TeamColor.RED, type=MinionType.MELEE)
+    blocker = Minion(
+        id=UnitID("blocker"), name="blocker", team=TeamColor.BLUE, type=MinionType.MELEE
+    )
+
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[m_a, m_b]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[blocker]),
+        },
+    )
+    # An enemy sits on the blocked spawn point; m_a/m_b remain in limbo.
+    state.move_unit(blocker.id, blocked_hex)
+
+    pending = _respawn_minions_at_spawn_points(state, DEFAULT_LANE_ID, "z")
+
+    placed = {str(m.id) for m in (m_a, m_b) if m.id in state.unit_locations}
+    displaced = {uid for uid, _hex in pending}
+
+    # Every limbo minion is assigned exactly once — none stranded in limbo.
+    assert placed | displaced == {"m_a", "m_b"}
+    assert placed.isdisjoint(displaced)
+    assert len(placed) == 1 and len(displaced) == 1
+    # The one placed went to the empty spawn point.
+    assert state.unit_locations[next(iter(placed)) and UnitID(next(iter(placed)))] == empty_hex
+
+
 # --- Game-over boundary tests ---
 
 

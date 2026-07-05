@@ -1262,41 +1262,62 @@ def _respawn_minions_at_spawn_points(
     if not zone:
         return pending_displacements
 
-    for sp in zone.spawn_points:
-        if not sp.is_minion_spawn:
-            continue
+    def _next_candidate(sp: Any, reserved: set[str]) -> Any:
         team = state.teams.get(sp.team)
         if not team:
-            continue
-        candidate = next(
+            return None
+        return next(
             (
                 m
                 for m in team.minions
                 if m.type == sp.minion_type
                 and m.lane_id == lane_id
                 and m.id not in state.unit_locations
+                and str(m.id) not in reserved
             ),
             None,
         )
-        if not candidate:
+
+    # Two passes over the spawn points so a minion is assigned to at most one
+    # spawn point. Pass 1 places minions at directly-spawnable points (empty,
+    # or occupied only by a removable token), which takes them out of limbo.
+    # Pass 2 then queues displacements for genuinely blocked points using the
+    # minions that remain — never re-selecting one already placed or queued.
+    # Doing displacement selection in a single pass would re-pick a
+    # queued-but-still-in-limbo minion, double-booking it and stranding another.
+    blocked_points: list[Any] = []
+    for sp in zone.spawn_points:
+        if not sp.is_minion_spawn:
             continue
         tile = state.board.get_tile(sp.location)
+        occupant_id = str(tile.occupant_id) if tile and tile.occupant_id else None
+        occupant = state.misc_entities.get(BoardEntityID(occupant_id)) if occupant_id else None
+
         if tile and not tile.is_occupied:
-            state.move_unit(candidate.id, sp.location)
-            logger.debug(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
-        else:
-            occupant_id = str(tile.occupant_id) if tile and tile.occupant_id else None
-            occupant = state.misc_entities.get(BoardEntityID(occupant_id)) if occupant_id else None
-            if isinstance(occupant, Token) and occupant_id:
+            candidate = _next_candidate(sp, set())
+            if candidate:
+                state.move_unit(candidate.id, sp.location)
+                logger.debug(f"   [PUSH] Spawning {candidate.id} at {sp.location}")
+        elif isinstance(occupant, Token) and occupant_id:
+            candidate = _next_candidate(sp, set())
+            if candidate:
                 _remove_token_from_board(state, occupant_id)
                 state.move_unit(candidate.id, sp.location)
                 logger.debug(
                     f"   [PUSH] Removed token {occupant_id} and spawned "
                     f"{candidate.id} at {sp.location}"
                 )
-            else:
-                logger.debug(f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)")
-                pending_displacements.append((str(candidate.id), sp.location))
+        else:
+            blocked_points.append(sp)
+
+    reserved: set[str] = set()
+    for sp in blocked_points:
+        candidate = _next_candidate(sp, reserved)
+        if not candidate:
+            continue
+        reserved.add(str(candidate.id))
+        logger.debug(f"   [PUSH] Spawn blocked at {sp.location} (Displacement Queued)")
+        pending_displacements.append((str(candidate.id), sp.location))
     return pending_displacements
 
 
