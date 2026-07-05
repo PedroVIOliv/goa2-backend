@@ -969,21 +969,160 @@ class RespawnMinionStep(GameStep):
         )
 
 
+_LANE_RESPAWN_HEX_KEY = "lane_respawn_hex"
+
+
 class RespawnMinionAtHexStep(GameStep):
     """
-    Respawns a specific minion at a hex chosen from filtered candidates.
+    Respawns a minion at a hex chosen from filtered candidates.
 
-    Reads the minion ID from context[unit_key], validates it's in limbo,
-    then presents filtered hex options for placement. Emits UNIT_PLACED event.
+    Two modes:
+    - Legacy (unit_key set): the minion was chosen upstream; this step only
+      picks the hex.
+    - Lane-bound (lane_bound=True): hex-first. The player picks a spawn
+      hex (only hexes whose lane has limbo supply are offered), then the
+      minion comes from THAT lane's limbo supply (auto-picked when only
+      one type is available). Hexes outside any lane (e.g. Tide of
+      Darkness spawn points) fall back to the full limbo supply.
+
+    Emits UNIT_PLACED event.
     """
 
     type: StepType = StepType.RESPAWN_MINION_AT_HEX
     team: TeamColor
-    unit_key: str  # Context key containing minion ID
+    unit_key: str | None = None  # Context key containing minion ID (legacy mode)
+    lane_bound: bool = False
     hex_filters: list[FilterCondition] = Field(default_factory=list)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
+            return StepResult(is_finished=True)
+        if self.lane_bound:
+            return self._resolve_lane_bound(state, context)
+        return self._resolve_legacy(state, context)
+
+    # ------------------------------------------------------------------
+    # Lane-bound mode
+    # ------------------------------------------------------------------
+    def _limbo_minions_for_hex(self, state: GameState, team_obj: Any, h: Hex) -> list[Any]:
+        """Limbo minions legal at hex h: bound to the hex's lane, one per
+        type. Hexes outside any lane fall back to all limbo minions."""
+        tile = state.board.get_tile(h)
+        lane_id = state.lane_of_zone(tile.zone_id) if tile and tile.zone_id else None
+        seen: set[Any] = set()
+        result = []
+        for m in team_obj.minions:
+            if state.has_board_presence(str(m.id)):
+                continue
+            if lane_id is not None and m.lane_id != lane_id:
+                continue
+            if m.type in seen:
+                continue
+            seen.add(m.type)
+            result.append(m)
+        return result
+
+    def _place_minion(self, state: GameState, minion: Any, selected_hex: Hex) -> StepResult:
+        tile = state.board.get_tile(selected_hex)
+        if tile and tile.is_occupied:
+            logger.debug(f"   [ERROR] Cannot respawn {minion.id} at {selected_hex}. Occupied.")
+            return StepResult(is_finished=True)
+        state.move_unit(UnitID(minion.id), selected_hex)
+        logger.debug(f"   [RESPAWN] Respawned {minion.id} at {selected_hex}")
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.UNIT_PLACED,
+                    actor_id=str(minion.id),
+                    from_hex=None,
+                    to_hex=_hex_dict(selected_hex),
+                )
+            ],
+        )
+
+    def _resolve_lane_bound(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        team_obj = state.teams.get(self.team)
+        if not team_obj:
+            return StepResult(is_finished=True)
+
+        stored_hex = context.get(_LANE_RESPAWN_HEX_KEY)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+
+            # Round 1 answer: the hex.
+            if stored_hex is None and isinstance(selection, dict):
+                hex_obj = Hex(**selection)
+                candidates = self._limbo_minions_for_hex(state, team_obj, hex_obj)
+                if not candidates:
+                    logger.debug("   [RESPAWN] No limbo supply for chosen hex's lane.")
+                    return StepResult(is_finished=True)
+                if len(candidates) == 1:
+                    return self._place_minion(state, candidates[0], hex_obj)
+                context[_LANE_RESPAWN_HEX_KEY] = selection
+                return StepResult(
+                    requires_input=True,
+                    input_request=create_input_request(
+                        request_type=InputRequestType.SELECT_OPTION,
+                        player_id=(
+                            str(state.current_actor_id) if state.current_actor_id else "system"
+                        ),
+                        prompt="Choose a minion to respawn.",
+                        options=[
+                            {"id": str(m.id), "text": f"{m.type.value} Minion"} for m in candidates
+                        ],
+                    ),
+                )
+
+            # Round 2 answer: the minion.
+            if stored_hex is not None and isinstance(selection, str):
+                hex_obj = Hex(**stored_hex)
+                context.pop(_LANE_RESPAWN_HEX_KEY, None)
+                minion = next(
+                    (
+                        m
+                        for m in self._limbo_minions_for_hex(state, team_obj, hex_obj)
+                        if str(m.id) == selection
+                    ),
+                    None,
+                )
+                if not minion:
+                    logger.debug(f"   [RESPAWN] Minion {selection} not available.")
+                    return StepResult(is_finished=True)
+                return self._place_minion(state, minion, hex_obj)
+
+        # Round 0: offer spawn hexes whose lane has available supply.
+        valid_hexes = []
+        for h, tile in state.board.tiles.items():
+            if tile.is_occupied:
+                continue
+            if not all(f.apply(h, state, context) for f in self.hex_filters):
+                continue
+            if not self._limbo_minions_for_hex(state, team_obj, h):
+                continue
+            valid_hexes.append(h)
+
+        if not valid_hexes:
+            logger.debug("   [RESPAWN] No valid lane-bound respawn hexes.")
+            return StepResult(is_finished=True)
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_HEX,
+                player_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
+                prompt="Select space to respawn a minion.",
+                options=valid_hexes,
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Legacy mode (unit_key)
+    # ------------------------------------------------------------------
+    def _resolve_legacy(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if not self.unit_key:
+            logger.debug("   [RESPAWN] No unit_key configured.")
             return StepResult(is_finished=True)
 
         # Read minion ID from context

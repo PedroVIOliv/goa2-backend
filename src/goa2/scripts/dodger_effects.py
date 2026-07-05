@@ -806,80 +806,31 @@ def _build_respawn_steps(
     max_range: int,
 ) -> list[GameStep]:
     """
-    Shared logic for Necromancy/Necromastery: find limbo minions, let the
-    player choose one (if multiple), then respawn it at a filtered hex.
+    Shared logic for Necromancy/Necromastery: hex-first respawn. The player
+    picks a spawn-point hex in a Battle Zone in range; the minion comes
+    from that hex's lane-bound limbo supply (rulebook: minions are bound to
+    their original Battle Zone for the purpose of respawning).
     """
     if hero.team is None:
         return []
-    hero_team = hero.team
-    team_obj = state.teams.get(hero_team)
+    team_obj = state.teams.get(hero.team)
     if not team_obj:
         return []
-
-    # Find all friendly limbo minions, one per type
-    seen_types = set()
-    limbo_minions = []
-    for m in team_obj.minions:
-        if not state.has_board_presence(str(m.id)) and m.type not in seen_types:
-            seen_types.add(m.type)
-            limbo_minions.append(m)
-    if not limbo_minions:
+    if not any(not state.has_board_presence(str(m.id)) for m in team_obj.minions):
         return []
 
-    steps: list[GameStep] = []
-
-    if len(limbo_minions) == 1:
-        # Auto-select the only limbo minion
-        steps.append(
-            SetContextFlagStep(key="respawn_minion", value=limbo_minions[0].id),
-        )
-    else:
-        # Let player choose which minion type to respawn
-        number_options = list(range(1, len(limbo_minions) + 1))
-        number_labels = {i + 1: f"{m.type.value} Minion" for i, m in enumerate(limbo_minions)}
-        minion_id_map = {i + 1: m.id for i, m in enumerate(limbo_minions)}
-        steps.append(
-            SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose a minion to respawn",
-                output_key="respawn_choice",
-                number_options=number_options,
-                number_labels=number_labels,
-                is_mandatory=True,
-            ),
-        )
-        # Map the number choice to the minion ID
-        for num, minion_id in minion_id_map.items():
-            steps.append(
-                CheckContextConditionStep(
-                    input_key="respawn_choice",
-                    operator="==",
-                    threshold=num,
-                    output_key=f"chose_minion_{num}",
-                ),
-            )
-            steps.append(
-                SetContextFlagStep(
-                    key="respawn_minion",
-                    value=minion_id,
-                    active_if_key=f"chose_minion_{num}",
-                ),
-            )
-
-    # Respawn at filtered hex
-    steps.append(
+    return [
         RespawnMinionAtHexStep(
-            team=hero_team,
-            unit_key="respawn_minion",
+            team=hero.team,
+            lane_bound=True,
             hex_filters=[
                 SpawnPointTeamFilter(relation="FRIENDLY"),
                 BattleZoneFilter(),
                 ObstacleFilter(is_obstacle=False),
                 RangeFilter(max_range=max_range),
             ],
-        ),
-    )
-    return steps
+        )
+    ]
 
 
 @register_effect("necromancy")
