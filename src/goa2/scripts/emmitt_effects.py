@@ -136,6 +136,37 @@ class TimeCapsuleEffect(CardEffect):
 
 
 # =============================================================================
+# REVERSE TIME (Gold — Untiered, ATK 4)
+# "Target a unit adjacent to you. After the attack:
+#  Next turn: Heroes with lower initiative act before heroes with higher
+#  initiative; this effect ignores immunity. (Resolve ties as normal.)"
+# =============================================================================
+
+
+@register_effect("reverse_time")
+class ReverseTimeEffect(CardEffect):
+    """Global NEXT_TURN initiative inversion, applied in resolve_next_action.
+    Card-bound: deactivates if Emmitt is defeated or the card leaves play.
+    Played on the round's last turn it fizzles (NEXT_TURN never crosses
+    rounds). No immunity gate anywhere — it is a global ordering rule."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        from goa2.engine.steps import AttackSequenceStep
+
+        return [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            CreateEffectStep(
+                effect_type=EffectType.REVERSED_INITIATIVE,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.NEXT_TURN,
+                is_active=True,
+            ),
+        ]
+
+
+# =============================================================================
 # FUTURE PROOF (Green III — radius 4)
 # "Choose one —
 #  • You, and friendly heroes in radius, may retrieve all cards discarded

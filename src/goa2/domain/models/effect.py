@@ -66,6 +66,11 @@ class EffectType(StrEnum):
     # Repeat prevention (Enfeeblement) - blocks action repeats
     REPEAT_PREVENTION = "repeat_prevention"
 
+    # Global initiative inversion next turn (Emmitt - Reverse Time): heroes
+    # with LOWER computed initiative act first; ties resolve as normal.
+    # Checked in phases.resolve_next_action; ignores immunity (global rule).
+    REVERSED_INITIATIVE = "reversed_initiative"
+
     # Full immunity to enemy actions (Death Seeker) - like heavy minion immunity but for heroes
     IMMUNITY_ENEMY_ACTIONS = "immunity_enemy_actions"
 

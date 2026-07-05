@@ -267,8 +267,19 @@ def resolve_next_action(state: GameState):
     if not candidates:
         return
 
-    # 2. Sort Descending
-    candidates.sort(key=lambda x: x[1], reverse=True)
+    # 2. Sort Descending — unless a live REVERSED_INITIATIVE effect (Emmitt's
+    # Reverse Time, NEXT_TURN duration) inverts the order: lower computed
+    # initiative acts first. Global rule; ignores immunity. Ties unchanged.
+    from goa2.domain.models.effect import EffectType
+
+    reversed_order = any(
+        e.effect_type == EffectType.REVERSED_INITIATIVE
+        and e.is_active
+        and state.round == e.created_at_round
+        and state.turn == e.created_at_turn + 1
+        for e in state.active_effects
+    )
+    candidates.sort(key=lambda x: x[1], reverse=not reversed_order)
 
     # 3. Identify Tied Group
     highest_init = candidates[0][1]

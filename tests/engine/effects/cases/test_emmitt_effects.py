@@ -328,3 +328,165 @@ class TestFutureProof:
         run.expect_input("SELECT_NUMBER").choose(1)  # Emmitt accepts
         run.finish()
         assert "em_fresh" in [c.id for c in emmitt.hand]
+
+
+# =============================================================================
+# REVERSE TIME (§12): attack; next turn lower initiative acts first
+# =============================================================================
+
+
+def _order_state(init_a: int, init_b: int, *, items_a: int = 0):
+    """Two opposing heroes with committed cards, ready for resolve_next_action."""
+    from goa2.domain.models import StatType
+
+    from ..builders import skill_card
+
+    state = (
+        EffectScenarioBuilder()
+        .line_board(6)
+        .red_hero("hero_a", at=(0, 0, 0), current_card=skill_card("card_a", initiative=init_a))
+        .blue_hero("hero_b", at=(3, 0, -3), current_card=skill_card("card_b", initiative=init_b))
+        .build()
+    )
+    if items_a:
+        state.get_hero("hero_a").items[StatType.INITIATIVE] = items_a
+    state.unresolved_hero_ids = ["hero_a", "hero_b"]
+    state.current_actor_id = None
+    return state
+
+
+def _reversal(created_turn: int, created_round: int = 1) -> ActiveEffect:
+    return ActiveEffect(
+        id="rev_test",
+        source_id="hero_emmitt_src",
+        effect_type=EffectType.REVERSED_INITIATIVE,
+        scope=EffectScope(shape=Shape.GLOBAL),
+        duration=DurationType.NEXT_TURN,
+        is_active=True,
+        created_at_turn=created_turn,
+        created_at_round=created_round,
+    )
+
+
+@pytest.mark.effect_contract
+class TestReversedInitiativePrimitive:
+    def test_reversed_order_next_turn(self):
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_a"  # lowest first
+
+    def test_normal_order_without_effect(self):
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 2
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"
+
+    def test_reversal_dormant_on_creation_turn(self):
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 1
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"
+
+    def test_reversal_over_after_next_turn(self):
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 3
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"
+
+    def test_reversal_fizzles_across_round_boundary(self):
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.round = 2
+        state.turn = 1
+        state.active_effects.append(_reversal(created_turn=4, created_round=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"
+
+    def test_reversed_order_uses_computed_initiative(self):
+        from goa2.engine.phases import resolve_next_action
+
+        # hero_a: card 5 + item 5 = 10; hero_b: 6 → reversed picks b (6 < 10)
+        state = _order_state(5, 6, items_a=5)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"
+
+    def test_ties_still_go_to_tie_breaker(self):
+        from goa2.engine.phases import resolve_next_action
+        from goa2.engine.steps import ResolveTieBreakerStep
+
+        state = _order_state(4, 4)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert isinstance(state.execution_stack[-1], ResolveTieBreakerStep)
+
+
+@pytest.mark.effect_flow
+class TestReverseTime:
+    def _state(self, with_target: bool = True):
+        builder = (
+            EffectScenarioBuilder()
+            .line_board(8)
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "reverse_time"))
+            .blue_hero("hero_far", at=(5, 0, -5))
+            .with_actor("hero_emmitt")
+        )
+        if with_target:
+            builder = builder.blue_minion("minion_target", at=(1, 0, -1))
+        return builder.build()
+
+    def test_attack_then_creates_next_turn_reversal(self):
+        state = self._state()
+        run = run_card(state, "hero_emmitt", finalize_turn=True)
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.finish()
+
+        reversals = [
+            e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE
+        ]
+        assert len(reversals) == 1
+        assert reversals[0].duration == DurationType.NEXT_TURN
+        assert reversals[0].source_id == "hero_emmitt"
+
+    def test_no_effect_when_attack_aborts(self):
+        state = self._state(with_target=False)
+        run = run_card(state, "hero_emmitt", finalize_turn=True)
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.finish()  # no adjacent unit → mandatory targeting fails → abort
+        assert not [
+            e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE
+        ]
+
+    def test_defeat_of_emmitt_removes_reversal(self):
+        from goa2.engine.handler import process_stack, push_steps
+        from goa2.engine.steps import DefeatUnitStep
+
+        state = self._state()
+        run = run_card(state, "hero_emmitt", finalize_turn=True)
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.finish()
+        assert any(e.effect_type == EffectType.REVERSED_INITIATIVE for e in state.active_effects)
+
+        state.current_actor_id = "hero_far"
+        push_steps(state, [DefeatUnitStep(victim_id="hero_emmitt", killer_id="hero_far")])
+        process_stack(state)
+        assert not [
+            e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE
+        ]
