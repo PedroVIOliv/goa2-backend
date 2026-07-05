@@ -1,0 +1,84 @@
+{
+  "coordinate_system": "integer cube hex coordinates",
+  "constraint": "q + r + s = 0",
+  "adjacency": "Standard cube-coordinate adjacency is preserved. Neighboring hexes differ by one cube step.",
+  "centering": "Each map has two equally central hexes. One of those middle hexes was chosen as (0,0,0) so all coordinates remain integers.",
+  "maps": {
+    "Forgotten Island": {
+      "file": "forgotten_island_qrs_integer.csv",
+      "hex_count": 210,
+      "chosen_middle_hex_as_origin_in_original_fit": {
+        "q": -1,
+        "r": 0,
+        "s": 1
+      },
+      "other_middle_hex_in_original_fit": {
+        "q": 1,
+        "r": -1,
+        "s": 0
+      },
+      "other_middle_hex_after_recentering": {
+        "q": 2,
+        "r": -1,
+        "s": -1
+      }
+    },
+    "Narrow Passages": {
+      "file": "narrow_passages_qrs_integer.csv",
+      "hex_count": 186,
+      "chosen_middle_hex_as_origin_in_original_fit": {
+        "q": -2,
+        "r": 0,
+        "s": 2
+      },
+      "other_middle_hex_in_original_fit": {
+        "q": 0,
+        "r": -1,
+        "s": 1
+      },
+      "other_middle_hex_after_recentering": {
+        "q": 2,
+        "r": -1,
+        "s": -1
+      }
+    },
+    "Across the River": {
+      "file": "across_the_river_qrs_integer.csv",
+      "hex_count": 335,
+      "chosen_middle_hex_as_origin_in_original_fit": {
+        "q": -1,
+        "r": 0,
+        "s": 1
+      },
+      "other_middle_hex_in_original_fit": {
+        "q": 0,
+        "r": -1,
+        "s": 1
+      },
+      "other_middle_hex_after_recentering": {
+        "q": 1,
+        "r": -1,
+        "s": 0
+      }
+    },
+    "Magma and Ice": {
+      "file": "magma_and_ice_qrs_integer.csv",
+      "hex_count": 289,
+      "chosen_middle_hex_as_origin_in_original_fit": {
+        "q": -1,
+        "r": 0,
+        "s": 1
+      },
+      "other_middle_hex_in_original_fit": {
+        "q": 0,
+        "r": -1,
+        "s": 1
+      },
+      "other_middle_hex_after_recentering": {
+        "q": 1,
+        "r": -1,
+        "s": 0
+      }
+    }
+  }
+}

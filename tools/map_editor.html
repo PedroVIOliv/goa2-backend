@@ -20,6 +20,7 @@
   .row { display: flex; gap: 6px; align-items: center; }
   .row input[type=text] { flex: 1; }
   input[type=text], select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; min-width: 0; }
+  .row input[type=range] { flex: 1; min-width: 0; }
   button { padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
   button:hover { background: #eee; }
   button.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
@@ -71,6 +72,18 @@
   <p class="hint">Wheel: zoom &middot; middle-drag or space-drag: pan &middot; click/drag: apply tool</p>
 
   <section>
+    <h2>View</h2>
+    <div class="row">
+      <button id="rotL" title="Rotate 15° counter-clockwise">&#8635;</button>
+      <input type="range" id="rotSlider" min="-180" max="180" step="1" value="0" title="Rotate the board">
+      <button id="rotR" title="Rotate 15° clockwise">&#8634;</button>
+      <span id="rotVal" class="count" style="min-width:38px">0&deg;</span>
+      <button id="rotReset" title="Reset rotation to 0°">Reset</button>
+    </div>
+    <p class="hint">Rotate the board to line up with your reference image. Coordinates and export are unaffected.</p>
+  </section>
+
+  <section>
     <h2>Zones</h2>
     <div id="zoneList"></div>
     <div class="row">
@@ -102,7 +115,8 @@
       <button id="importBtn">Import&hellip;</button>
       <button id="exportBtn">Export JSON</button>
     </div>
-    <input type="file" id="fileInput" accept=".json,application/json" hidden>
+    <p class="hint">Import a map <code>.json</code>, or a geometry <code>.csv</code> (<code>q,r,s</code> columns) to paint zones onto.</p>
+    <input type="file" id="fileInput" accept=".json,.csv,application/json,text/csv" hidden>
   </section>
 
   <div id="status"></div>
@@ -156,6 +170,49 @@ function labelToIdMap(st) {
   const m = new Map();
   for (const z of st.zones) m.set(z.label, z.id);
   return m;
+}
+
+/* CSV text with q/r[/s] columns -> {state, warnings}. Throws on malformed input.
+ * Loads geometry only: every row becomes an unpainted hex (zoneId=null, no tags),
+ * ready to have zones painted, tags added, and lanes defined in the editor.
+ * Recognises a header row naming the columns (any order, case-insensitive);
+ * an extra "point_index" column (as in the map exports) is ignored. */
+function parseCsvImport(text) {
+  const warnings = [];
+  const lines = text.split(/\r?\n/).filter((ln) => ln.trim() !== "");
+  if (!lines.length) throw new Error("CSV file is empty");
+
+  const header = lines[0].split(",").map((c) => c.trim().toLowerCase());
+  const qi = header.indexOf("q");
+  const ri = header.indexOf("r");
+  const si = header.indexOf("s");
+  if (qi === -1 || ri === -1) {
+    throw new Error('CSV needs a header row with "q" and "r" columns');
+  }
+
+  const st = makeState();
+  const seen = new Set();
+  for (let n = 1; n < lines.length; n++) {
+    const cols = lines[n].split(",").map((c) => c.trim());
+    const q = Number(cols[qi]);
+    const r = Number(cols[ri]);
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+      warnings.push(`Row ${n + 1}: non-numeric q/r skipped.`);
+      continue;
+    }
+    if (si !== -1 && cols[si] !== "" && cols[si] != null) {
+      const s = Number(cols[si]);
+      if (Number.isFinite(s) && q + r + s !== 0) {
+        warnings.push(`Row ${n + 1}: q+r+s ≠ 0 (${q},${r},${s}); using q,r.`);
+      }
+    }
+    const key = `${q},${r}`;
+    if (seen.has(key)) { warnings.push(`Row ${n + 1}: duplicate hex ${key} skipped.`); continue; }
+    seen.add(key);
+    st.hexes.set(key, { zoneId: null, tags: [] });
+  }
+  if (!st.hexes.size) throw new Error("CSV had no valid hex rows");
+  return { state: st, warnings };
 }
 
 /* data: already-parsed JSON object -> {state, warnings}. Throws on malformed input. */
@@ -246,6 +303,9 @@ function validateExport(st) {
   const counts = new Map();
   for (const h of st.hexes.values()) counts.set(h.zoneId, (counts.get(h.zoneId) || 0) + 1);
 
+  const unpainted = counts.get(null) || 0;
+  if (unpainted) w.push(`${unpainted} hex${unpainted === 1 ? " has" : "es have"} no zone assigned — paint them before use.`);
+
   for (const [laneId, zids] of Object.entries(st.lanes)) {
     if (zids.length < 3) w.push(`Lane ${laneId} has fewer than 3 zones (loader will skip it).`);
     const bz = st.battleZones[laneId];
@@ -299,7 +359,7 @@ function badgeFor(tag) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    makeState, parseImport, buildExport, validateExport,
+    makeState, parseImport, parseCsvImport, buildExport, validateExport,
     serializeState, deserializeState, badgeFor, hexX, hexY,
   };
 }
@@ -323,6 +383,7 @@ const PALETTE = [
 ];
 
 const svg = document.getElementById("board");
+const gWorld = document.getElementById("world");
 const gHexes = document.getElementById("hexes");
 const gBadges = document.getElementById("badges");
 const els = {
@@ -344,6 +405,44 @@ let mode = { kind: "paint" };
 let bounds = { qMin: -25, qMax: 24, rMin: -20, rMax: 19 }; // ~2000 ghost hexes
 const polyByKey = new Map();
 const badgeByKey = new Map();
+
+let viewRot = 0;              // visual-only board rotation, degrees
+let pivot = { x: 0, y: 0 };   // board centroid (world coords) to rotate around
+
+/* Rotate the whole board group visually; export/coordinates are unaffected.
+ * Hit-testing still works because the browser tests the transformed geometry.
+ * Badges are counter-rotated so their text stays upright. */
+function computePivot() {
+  const keys = [...state.hexes.keys()];
+  if (!keys.length) { pivot = { x: 0, y: 0 }; return; }
+  let sx = 0, sy = 0;
+  for (const key of keys) {
+    const [q, r] = key.split(",").map(Number);
+    sx += hexX(q, r); sy += hexY(q, r);
+  }
+  pivot = { x: sx / keys.length, y: sy / keys.length };
+}
+
+function badgeTransform(q, r) {
+  return viewRot ? `rotate(${-viewRot} ${hexX(q, r).toFixed(2)} ${hexY(q, r).toFixed(2)})` : "";
+}
+
+function applyWorldTransform() {
+  gWorld.setAttribute("transform",
+    viewRot ? `rotate(${viewRot} ${pivot.x.toFixed(2)} ${pivot.y.toFixed(2)})` : "");
+  for (const [key, g] of badgeByKey) {
+    const [q, r] = key.split(",").map(Number);
+    const t = badgeTransform(q, r);
+    if (t) g.setAttribute("transform", t); else g.removeAttribute("transform");
+  }
+}
+
+function setRotation(deg) {
+  viewRot = Math.max(-180, Math.min(180, Math.round(deg)));
+  document.getElementById("rotSlider").value = viewRot;
+  document.getElementById("rotVal").textContent = `${viewRot}°`;
+  applyWorldTransform();
+}
 
 /* ---------------- grid ---------------- */
 
@@ -374,6 +473,8 @@ function buildGrid() {
     }
   }
   for (const key of state.hexes.keys()) restyleHex(key);
+  computePivot();
+  applyWorldTransform();
 }
 
 function restyleHex(key) {
@@ -399,6 +500,8 @@ function updateBadge(key) {
   const [q, r] = key.split(",").map(Number);
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   g.setAttribute("class", "badge");
+  const bt = badgeTransform(q, r);
+  if (bt) g.setAttribute("transform", bt);
   h.tags.forEach((tag, i) => {
     const b = badgeFor(tag);
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -732,6 +835,11 @@ function renderLanePanel() {
   }
 }
 
+document.getElementById("rotSlider").addEventListener("input", (e) => setRotation(Number(e.target.value)));
+document.getElementById("rotL").addEventListener("click", () => setRotation(viewRot - 15));
+document.getElementById("rotR").addEventListener("click", () => setRotation(viewRot + 15));
+document.getElementById("rotReset").addEventListener("click", () => setRotation(0));
+
 document.getElementById("addLane").addEventListener("click", () => {
   let n = 1;
   while (state.lanes[`lane_${n}`]) n++;
@@ -778,6 +886,7 @@ document.getElementById("newMap").addEventListener("click", () => {
   buildGrid();
   renderAll();
   fitView();
+  setRotation(0);
   setStatus(["New map."], "ok");
 });
 
@@ -787,21 +896,23 @@ els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files[0];
   els.fileInput.value = "";
   if (!file) return;
+  const isCsv = /\.csv$/i.test(file.name);
   file.text().then((text) => {
     let result;
     try {
-      result = parseImport(JSON.parse(text));
+      result = isCsv ? parseCsvImport(text) : parseImport(JSON.parse(text));
     } catch (err) {
       setStatus([`Import failed: ${err.message}`], "err");
       return;
     }
     state = result.state;
-    state.mapName = file.name.replace(/\.json$/i, "") || "new_map";
+    state.mapName = file.name.replace(/\.(json|csv)$/i, "") || "new_map";
     activeZoneId = state.zones[0] ? state.zones[0].id : null;
     setMode({ kind: "paint" });
     buildGrid();
     renderAll();
     fitView();
+    setRotation(0);
     commit();
     setStatus([`Imported ${file.name}.`, ...result.warnings], result.warnings.length ? "warn" : "ok");
   });
