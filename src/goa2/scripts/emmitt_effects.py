@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from goa2.domain.models import TargetType
 from goa2.domain.models.effect import AffectsFilter, DurationType, EffectScope, EffectType, Shape
+from goa2.domain.types import HeroID
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.steps import (
     CheckContextConditionStep,
@@ -21,7 +22,6 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
 )
-from goa2.domain.types import HeroID
 from goa2.engine.topology import get_topology_service
 
 if TYPE_CHECKING:
