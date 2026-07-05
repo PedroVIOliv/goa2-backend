@@ -334,6 +334,7 @@ def _build_board_view(state: GameState) -> dict[str, Any]:
     }
 
     return {
+        "map": state.board.map_id,
         "tiles": tiles_view,
         "zones": zones_view,
         "entity_locations": entity_locations,

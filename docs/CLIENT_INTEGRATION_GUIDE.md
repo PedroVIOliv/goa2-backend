@@ -580,6 +580,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
     "BLUE": { ... }
   },
   "board": {
+    "map": "forgotten_island",
     "tiles": { ... },
     "zones": { ... },
     "entity_locations": { ... }
@@ -703,6 +704,7 @@ The view is player-scoped — what you see depends on your token:
 
 ```json
 {
+  "map": "forgotten_island",
   "tiles": {
     "0_0_0": {
       "hex": {"q": 0, "r": 0, "s": 0},
@@ -727,6 +729,10 @@ The view is player-scoped — what you see depends on your token:
 ```
 
 Hex coordinates use the cube coordinate system: `q + r + s = 0`.
+
+`map` is the identifier of the loaded map (the map file's stem, e.g.
+`"forgotten_island"`, `"narrow_passages"`). It is an empty string for boards
+built without a map file (ad-hoc/test boards).
 
 `entity_locations` is the authoritative source for unit positions.
 

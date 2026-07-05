@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from goa2.domain.board import Board, Zone
@@ -180,7 +181,7 @@ def load_map(file_path: str) -> Board:
                 zone.spawn_points.append(sp)
                 break
 
-    board = Board(zones=zones, spawn_points=spawn_points)
+    board = Board(map_id=Path(file_path).stem, zones=zones, spawn_points=spawn_points)
     board.populate_tiles_from_zones()
 
     map_hexes = set(board.tiles.keys())

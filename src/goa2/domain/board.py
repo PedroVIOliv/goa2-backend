@@ -36,6 +36,11 @@ class Board(BaseModel):
     The static map container.
     """
 
+    # Identifier for the map this board was loaded from (the map file's stem,
+    # e.g. "forgotten_island", "narrow_passages"). Empty for boards built
+    # without a map file (ad-hoc/test boards).
+    map_id: str = ""
+
     zones: dict[str, Zone] = Field(default_factory=dict)
 
     spawn_points: list[SpawnPoint] = Field(default_factory=list)
