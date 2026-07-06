@@ -37,6 +37,98 @@ class ObstacleFilter(FilterCondition):
         return self.is_obstacle
 
 
+class HexBatchCompletableFilter(FilterCondition):
+    """Keeps a sequential hex batch from offering dead-end choices.
+
+    The current candidate is treated as the choice for ``slot_index``. The
+    filter then searches for any assignment of legal, distinct hexes to the
+    remaining slots using ``slot_filters`` and ``slot_keys`` as scratch context.
+    """
+
+    type: FilterType = FilterType.HEX_BATCH_COMPLETABLE
+    slot_index: int
+    slot_keys: list[str]
+    slot_filters: list[list[FilterCondition]]
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, Hex):
+            return False
+        if self.slot_index < 0 or self.slot_index >= len(self.slot_keys):
+            return False
+        if len(self.slot_keys) != len(self.slot_filters):
+            return False
+
+        scratch = dict(context)
+        scratch[self.slot_keys[self.slot_index]] = candidate
+        chosen = self._chosen_hexes(scratch, through_slot=self.slot_index)
+        if len(chosen) != self.slot_index + 1:
+            return False
+        return self._can_complete(state, scratch, self.slot_index + 1, chosen)
+
+    def _can_complete(
+        self, state: GameState, context: dict, slot_index: int, chosen: list[Hex]
+    ) -> bool:
+        if slot_index >= len(self.slot_keys):
+            return True
+
+        for hex_pos in state.board.tiles:
+            if hex_pos in chosen:
+                continue
+            if not self._passes_slot_filters(hex_pos, state, context, slot_index):
+                continue
+            scratch = dict(context)
+            scratch[self.slot_keys[slot_index]] = hex_pos
+            if self._can_complete(state, scratch, slot_index + 1, [*chosen, hex_pos]):
+                return True
+        return False
+
+    def _passes_slot_filters(
+        self, candidate: Hex, state: GameState, context: dict, slot_index: int
+    ) -> bool:
+        return all(
+            f.apply(candidate, state, context) for f in self._slot_filter_objects(slot_index)
+        )
+
+    def _slot_filter_objects(self, slot_index: int) -> list[FilterCondition]:
+        adapter = None
+        filters: list[FilterCondition] = []
+        for raw in self.slot_filters[slot_index]:
+            if type(raw) is FilterCondition:
+                if adapter is None:
+                    from pydantic import TypeAdapter
+
+                    from goa2.engine.step_types import AnyFilter
+
+                    adapter = TypeAdapter(AnyFilter)
+                filters.append(adapter.validate_python(raw.model_dump(mode="json")))
+            elif isinstance(raw, dict):
+                if adapter is None:
+                    from pydantic import TypeAdapter
+
+                    from goa2.engine.step_types import AnyFilter
+
+                    adapter = TypeAdapter(AnyFilter)
+                filters.append(adapter.validate_python(raw))
+            else:
+                filters.append(raw)
+        return filters
+
+    def _chosen_hexes(self, context: dict, *, through_slot: int) -> list[Hex]:
+        chosen: list[Hex] = []
+        for key in self.slot_keys[: through_slot + 1]:
+            raw = context.get(key)
+            if isinstance(raw, Hex):
+                hex_pos = raw
+            elif isinstance(raw, dict):
+                hex_pos = Hex(**raw)
+            else:
+                return []
+            if hex_pos in chosen:
+                return []
+            chosen.append(hex_pos)
+        return chosen
+
+
 class TerrainFilter(FilterCondition):
     type: FilterType = FilterType.TERRAIN
     is_terrain: bool = True

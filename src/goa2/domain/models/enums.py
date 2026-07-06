@@ -273,6 +273,7 @@ class FilterType(StrEnum):
     HAS_UNRESOLVED_CARD = "has_unresolved_card_filter"
     HAS_RESOLVED_CARD = "has_resolved_card_filter"
     HERO_PIECE = "hero_piece_filter"
+    HEX_BATCH_COMPLETABLE = "hex_batch_completable_filter"
 
 
 class TargetType(StrEnum):

@@ -170,16 +170,15 @@ class PlaceTokenBatchStep(GameStep):
 
     1. ``count`` greater than the TOTAL supply → fail (abort when mandatory).
     2. All-or-nothing feasibility precheck: there must exist ``count`` empty
-       hexes passing ``hex_filters`` that are pairwise ``min_spacing`` apart
-       (topology distance). Infeasible → skip silently — with an opt-in
-       prompt configured it is simply never shown ("option unavailable") —
-       or abort when mandatory.
+       hexes passing each slot's filters. Infeasible → skip silently — with
+       an opt-in prompt configured it is simply never shown ("option
+       unavailable") — or abort when mandatory.
     3. Optional opt-in prompt ("You may place …"); declining skips the batch.
     4. If the free supply is short, the owner removes on-board tokens of the
        type until ``count`` are free. Removal happens BEFORE any placement,
        so only pre-existing tokens are ever removed — never batch members.
     5. One hex-selection + PlaceTokenStep pair per token; each selection
-       enforces ``min_spacing`` from the batch's earlier picks.
+       offers only choices from which the remaining slots can still complete.
     6. ``placed_flag_key`` is set only when the batch goes through, for
        downstream "if you do" riders (gate with ``active_if_key``).
 
@@ -190,16 +189,14 @@ class PlaceTokenBatchStep(GameStep):
     type: StepType = StepType.PLACE_TOKEN_BATCH
     token_type: TokenType
     count: int
-    hex_filters: list[FilterCondition] = Field(default_factory=list)
-    min_spacing: int = 0
+    slot_filters: list[list[FilterCondition]] = Field(default_factory=list)
     opt_in_prompt: str | None = None
     owner_id: str | None = None
     placed_flag_key: str | None = None
     key_prefix: str = "tkb"
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        from goa2.engine.filters_hex import ObstacleFilter, RangeFilter
-        from goa2.engine.filters_units import ExcludeIdentityFilter
+        from goa2.engine.filters_hex import HexBatchCompletableFilter
         from goa2.engine.steps.selection import SelectStep
         from goa2.engine.steps.utility import CheckContextConditionStep, SetContextFlagStep
 
@@ -214,10 +211,19 @@ class PlaceTokenBatchStep(GameStep):
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
 
-        if not self._is_feasible(state, context):
+        slot_keys = [f"{self.key_prefix}_hex_{i}" for i in range(self.count)]
+        normalized_slot_filters = self._normalized_slot_filters()
+        if normalized_slot_filters is None:
+            logger.debug(
+                f"   [TOKEN BATCH] Invalid slot filter count for {self.count} "
+                f"{self.token_type.value} tokens."
+            )
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        if not self._is_feasible(state, context, slot_keys, normalized_slot_filters):
             logger.debug(
                 f"   [TOKEN BATCH] No placement of {self.count} {self.token_type.value} "
-                f"tokens with spacing {self.min_spacing} fits."
+                "tokens fits the slot filters."
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
 
@@ -266,22 +272,16 @@ class PlaceTokenBatchStep(GameStep):
                 RemoveTokenStep(token_key=rm_key, active_if_key=gate_key),
             ]
 
-        prior_keys: list[str] = []
         for i in range(self.count):
-            hex_key = f"{self.key_prefix}_hex_{i}"
+            hex_key = slot_keys[i]
             filters: list[FilterCondition] = [
-                *self.hex_filters,
-                ObstacleFilter(is_obstacle=False),
+                *normalized_slot_filters[i],
+                HexBatchCompletableFilter(
+                    slot_index=i,
+                    slot_keys=slot_keys,
+                    slot_filters=normalized_slot_filters,
+                ),
             ]
-            if self.min_spacing > 1:
-                filters += [
-                    RangeFilter(min_range=self.min_spacing, max_range=None, origin_hex_key=pk)
-                    for pk in prior_keys
-                ]
-            elif prior_keys:
-                filters.append(
-                    ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys))
-                )
             new_steps += [
                 SelectStep(
                     target_type=TargetType.HEX,
@@ -300,7 +300,6 @@ class PlaceTokenBatchStep(GameStep):
                     active_if_key=gate_key,
                 ),
             ]
-            prior_keys.append(hex_key)
 
         if self.placed_flag_key:
             new_steps.append(
@@ -309,42 +308,39 @@ class PlaceTokenBatchStep(GameStep):
 
         return StepResult(is_finished=True, new_steps=new_steps)
 
-    def _is_feasible(self, state: GameState, context: dict[str, Any]) -> bool:
-        """Does a set of ``count`` empty, filter-passing hexes exist that is
-        pairwise ``min_spacing`` apart? Backtracking with early pruning."""
-        from goa2.engine.topology import get_topology_service
+    def _normalized_slot_filters(self) -> list[list[FilterCondition]] | None:
+        from goa2.engine.filters_hex import ObstacleFilter
 
-        candidates: list[Hex] = []
-        for hex_pos in state.board.tiles:
-            tile = state.board.get_tile(hex_pos)
-            if tile is None or tile.is_obstacle:
-                continue
-            if all(f.apply(hex_pos, state, context) for f in self.hex_filters):
-                candidates.append(hex_pos)
+        if self.count < 0:
+            return None
+        raw_slot_filters = self.slot_filters or [[] for _ in range(self.count)]
+        if len(raw_slot_filters) != self.count:
+            return None
+        return [[*filters, ObstacleFilter(is_obstacle=False)] for filters in raw_slot_filters]
 
-        if len(candidates) < self.count:
-            return False
-        if self.count <= 1 or self.min_spacing <= 1:
+    def _is_feasible(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        slot_keys: list[str],
+        slot_filters: list[list[FilterCondition]],
+    ) -> bool:
+        """Does at least one full slot assignment exist?"""
+        from goa2.engine.filters_hex import HexBatchCompletableFilter
+
+        if self.count == 0:
             return True
-
-        topology = get_topology_service()
-
-        def backtrack(start: int, chosen: list[Hex]) -> bool:
-            if len(chosen) == self.count:
+        completion_filter = HexBatchCompletableFilter(
+            slot_index=0,
+            slot_keys=slot_keys,
+            slot_filters=slot_filters,
+        )
+        for hex_pos in state.board.tiles:
+            if not all(f.apply(hex_pos, state, context) for f in slot_filters[0]):
+                continue
+            if completion_filter.apply(hex_pos, state, context):
                 return True
-            for k in range(start, len(candidates)):
-                candidate = candidates[k]
-                if all(
-                    topology.distance(candidate, picked, state) >= self.min_spacing
-                    for picked in chosen
-                ):
-                    chosen.append(candidate)
-                    if backtrack(k + 1, chosen):
-                        return True
-                    chosen.pop()
-            return False
-
-        return backtrack(0, [])
+        return False
 
 
 class PlaceTokensInLineStep(GameStep):

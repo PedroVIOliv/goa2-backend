@@ -14,7 +14,7 @@ from pydantic import BaseModel, Discriminator, Tag
 from goa2.domain.models.enums import StepType
 from goa2.engine import filters_cards as _filters_cards  # noqa: F401
 from goa2.engine import filters_geometry as _filters_geometry  # noqa: F401
-from goa2.engine import filters_hex as _filters_hex  # noqa: F401
+from goa2.engine import filters_hex as _filters_hex
 from goa2.engine import filters_units as _filters_units  # noqa: F401
 from goa2.engine import steps as steps_mod
 from goa2.engine.filters_base import FilterCondition
@@ -178,12 +178,15 @@ def rebuild_serialization_models() -> None:
     steps_mod.ForEachStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = list[AnyStep]
     steps_mod.RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = list[AnyFilter]
-    steps_mod.PlaceTokenBatchStep.model_fields["hex_filters"].annotation = list[AnyFilter]
+    steps_mod.PlaceTokenBatchStep.model_fields["slot_filters"].annotation = list[list[AnyFilter]]
     ActiveEffect.model_fields["finishing_steps"].annotation = list[AnyStep]
     StatAura.model_fields["count_filters"].annotation = list[AnyFilter]
     OrFilter.model_fields["filters"].annotation = list[AnyFilter]
     AndFilter.model_fields["filters"].annotation = list[AnyFilter]
     CountMatchFilter.model_fields["sub_filters"].annotation = list[AnyFilter]
+    _filters_hex.HexBatchCompletableFilter.model_fields["slot_filters"].annotation = list[
+        list[AnyFilter]
+    ]
 
     for model_cls in (
         steps_mod.RespawnMinionAtHexStep,
@@ -191,6 +194,7 @@ def rebuild_serialization_models() -> None:
         OrFilter,
         AndFilter,
         CountMatchFilter,
+        _filters_hex.HexBatchCompletableFilter,
         steps_mod.SelectStep,
         steps_mod.MultiSelectStep,
         steps_mod.AttackSequenceStep,

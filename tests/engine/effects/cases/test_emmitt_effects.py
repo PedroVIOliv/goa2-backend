@@ -885,13 +885,23 @@ def _batch_state(board_len: int = 12, on_board=(), actor: str = "hero_emmitt"):
 
 def _push_batch(state, **kwargs):
     from goa2.domain.models import TokenType
+    from goa2.engine.filters import RangeFilter
     from goa2.engine.handler import process_stack, push_steps
     from goa2.engine.steps import PlaceTokenBatchStep
 
     kwargs.setdefault("token_type", TokenType.GLITCH)
-    kwargs.setdefault("min_spacing", 3)
     kwargs.setdefault("is_mandatory", False)
     kwargs.setdefault("placed_flag_key", "glitch_placed")
+    if "slot_filters" not in kwargs:
+        count = kwargs.get("count", 0)
+        key_prefix = kwargs.get("key_prefix", "tkb")
+        kwargs["slot_filters"] = [
+            [
+                RangeFilter(min_range=3, max_range=None, origin_hex_key=f"{key_prefix}_hex_{j}")
+                for j in range(i)
+            ]
+            for i in range(count)
+        ]
     push_steps(state, [PlaceTokenBatchStep(**kwargs)])
     return process_stack(state)
 
@@ -917,6 +927,20 @@ def _option_qs(request) -> set[int]:
             continue
         qs.add(raw["q"] if isinstance(raw, dict) else raw.q)
     return qs
+
+
+def _option_hex_tuples(request) -> set[tuple[int, int, int]]:
+    out = set()
+    for option in request.options:
+        meta = getattr(option, "metadata", None) or {}
+        raw = meta.get("hex") or meta.get("raw")
+        if raw is None:
+            continue
+        if isinstance(raw, dict):
+            out.add((raw["q"], raw["r"], raw["s"]))
+        else:
+            out.add((raw.q, raw.r, raw.s))
+    return out
 
 
 @pytest.mark.effect_contract
@@ -1355,16 +1379,25 @@ class TestUnstableTimelineDefense:
         # Attack 5 < defense 6 → blocked; Emmitt survives in place.
         assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
 
-    def test_defense_mid_placement_abort_returns_to_combat(self):
-        """A failed mandatory sub-step in defense text skips the remaining
-        defense text, not the pending combat resolution."""
+    def test_defense_placement_lookahead_excludes_dead_end(self):
+        """A locally legal first token hex is hidden when it cannot complete
+        the remaining batch."""
         state = self._corner_paint_state()
         run = run_card(state, "hero_enemy")
         run.expect_input("CHOOSE_ACTION").choose("ATTACK")
         run.expect_input("SELECT_UNIT").choose("hero_emmitt")
         run.expect_input("SELECT_CARD_OR_PASS").choose("unstable_timeline")
 
-        run.expect_input("SELECT_HEX").choose({"q": -4, "r": 2, "s": 2})
+        run.expect_input("SELECT_HEX")
+        options = _option_hex_tuples(run.latest_request)
+        assert (-4, 2, 2) not in options
+        assert options == {(-4, 0, 4), (-4, 4, 0), (-2, 1, 1)}
+
+        run.choose({"q": -4, "r": 0, "s": 4})
+        run.expect_input("SELECT_HEX").choose({"q": -4, "r": 4, "s": 0})
+        run.expect_input("SELECT_HEX").choose({"q": -2, "r": 1, "s": 1})
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_UNIT_OR_TOKEN").choose("glitch_1")
         run.finish()
 
         combat_events = [
@@ -1374,7 +1407,7 @@ class TestUnstableTimelineDefense:
         assert combat_events[-1].metadata["outcome"] == "BLOCKED"
         assert state.execution_context["block_succeeded"] is True
         assert state.current_actor_id == "hero_enemy"
-        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+        assert state.get_position("hero_emmitt") == Hex(q=-4, r=0, s=4)
 
     def test_defense_tokens_removed_at_end_of_enemy_turn(self):
         """H3: tokens placed during the enemy's turn are removed at the end

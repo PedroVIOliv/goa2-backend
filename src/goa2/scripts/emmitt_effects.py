@@ -226,6 +226,26 @@ class FutureProofEffect(TimeCapsuleEffect):
 GLITCH_SPACING = 3
 
 
+def _glitch_slot_filters(count: int, radius: int, hero_id: str, key_prefix: str):
+    from goa2.engine.filters import RangeFilter
+
+    base = [RangeFilter(max_range=radius, origin_id=hero_id)]
+    return [
+        [
+            *base,
+            *[
+                RangeFilter(
+                    min_range=GLITCH_SPACING,
+                    max_range=None,
+                    origin_hex_key=f"{key_prefix}_hex_{j}",
+                )
+                for j in range(i)
+            ],
+        ]
+        for i in range(count)
+    ]
+
+
 def _glitch_cleanup_step(active_if_key: str | None = None) -> GameStep:
     """'End of turn: Remove all Glitch tokens' — a THIS_TURN timer whose
     finishing steps sweep every Glitch token off the board (Min's grenade
@@ -282,8 +302,7 @@ class FlashbackEffect(CardEffect):
             PlaceTokenBatchStep(
                 token_type=TokenType.GLITCH,
                 count=self.token_count,
-                hex_filters=[RangeFilter(max_range=radius, origin_id=str(hero.id))],
-                min_spacing=GLITCH_SPACING,
+                slot_filters=_glitch_slot_filters(self.token_count, radius, str(hero.id), "glitch"),
                 opt_in_prompt=f"Place {self.token_count} Glitch tokens in radius?",
                 owner_id=str(hero.id),
                 placed_flag_key="glitch_placed",
@@ -354,7 +373,7 @@ class UnstableTimelineEffect(CardEffect):
 
     def _timeline_steps(self, hero: Hero, stats: CardStats, count: int) -> list[GameStep]:
         from goa2.domain.models import TokenType
-        from goa2.engine.filters import RangeFilter, TeamFilter, TokenTypeFilter, UnitTypeFilter
+        from goa2.engine.filters import TeamFilter, TokenTypeFilter, UnitTypeFilter
         from goa2.engine.steps import CountStep, PlaceTokenBatchStep, SwapUnitsStep
 
         radius = stats.radius or 0
@@ -362,8 +381,7 @@ class UnstableTimelineEffect(CardEffect):
             PlaceTokenBatchStep(
                 token_type=TokenType.GLITCH,
                 count=count,
-                hex_filters=[RangeFilter(max_range=radius, origin_id=str(hero.id))],
-                min_spacing=GLITCH_SPACING,
+                slot_filters=_glitch_slot_filters(count, radius, str(hero.id), "ut"),
                 owner_id=str(hero.id),
                 placed_flag_key="ut_placed",
                 key_prefix="ut",

@@ -8,7 +8,7 @@ before, during, and after the split.
 import inspect
 
 from goa2.domain.board import Board
-from goa2.domain.models import Team, TeamColor
+from goa2.domain.models import Team, TeamColor, TokenType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -251,6 +251,42 @@ def test_round_trip_respawn_minion_at_hex_with_filters():
     assert type(s).__name__ == "RespawnMinionAtHexStep"
     assert len(s.hex_filters) == 1
     assert type(s.hex_filters[0]).__name__ == "RangeFilter"
+
+
+def test_round_trip_place_token_batch_with_slot_filters():
+    """PlaceTokenBatchStep.slot_filters round-trips nested filter lists."""
+    from goa2.engine.filters_hex import HexBatchCompletableFilter
+    from goa2.engine.steps import PlaceTokenBatchStep
+
+    state = _make_state()
+    slot_keys = ["tkb_hex_0", "tkb_hex_1"]
+    slot_filters = [
+        [RangeFilter(max_range=4)],
+        [RangeFilter(max_range=4), RangeFilter(min_range=3, origin_hex_key="tkb_hex_0")],
+    ]
+    step = PlaceTokenBatchStep(
+        token_type=TokenType.GLITCH,
+        count=2,
+        slot_filters=slot_filters,
+    )
+    step.slot_filters[0].append(
+        HexBatchCompletableFilter(
+            slot_index=0,
+            slot_keys=slot_keys,
+            slot_filters=slot_filters,
+        )
+    )
+    push_steps(state, [step])
+
+    data = state.model_dump(mode="json")
+    restored = GameState.model_validate(data)
+
+    s = restored.execution_stack[0]
+    assert type(s).__name__ == "PlaceTokenBatchStep"
+    assert len(s.slot_filters) == 2
+    assert type(s.slot_filters[0][0]).__name__ == "RangeFilter"
+    assert type(s.slot_filters[0][1]).__name__ == "HexBatchCompletableFilter"
+    assert type(s.slot_filters[0][1]._slot_filter_objects(1)[1]).__name__ == "RangeFilter"
 
 
 def test_round_trip_check_unit_on_board_step():
