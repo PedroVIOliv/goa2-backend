@@ -178,6 +178,7 @@ def rebuild_serialization_models() -> None:
     steps_mod.ForEachStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = list[AnyStep]
     steps_mod.RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = list[AnyFilter]
+    steps_mod.PlaceTokenBatchStep.model_fields["hex_filters"].annotation = list[AnyFilter]
     ActiveEffect.model_fields["finishing_steps"].annotation = list[AnyStep]
     StatAura.model_fields["count_filters"].annotation = list[AnyFilter]
     OrFilter.model_fields["filters"].annotation = list[AnyFilter]
@@ -186,6 +187,7 @@ def rebuild_serialization_models() -> None:
 
     for model_cls in (
         steps_mod.RespawnMinionAtHexStep,
+        steps_mod.PlaceTokenBatchStep,
         OrFilter,
         AndFilter,
         CountMatchFilter,

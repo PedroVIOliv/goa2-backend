@@ -94,7 +94,7 @@ per repo convention.
 | P7 | Aura immunity: `is_immune()` evaluates RADIUS-scoped `IMMUNITY_ENEMY_ACTIONS` (origin = Emmitt, affects FRIENDLY_HEROES) in addition to the existing per-unit `source_id` form | `engine/rules.py` |
 | P8 | `TokenType.GLITCH`, supply 3 | `domain/models/enums.py`, `token.py` |
 | P9 | Two-card planning commit + post-reveal retrieve step for the ultimate | `engine/phases.py`, `engine/session.py`, server routes |
-| P10 | Glitch batch placement with feasibility precheck (all-or-nothing, pairwise dist ≥ 3) | effect-side helper or small step |
+| P10 | Glitch batch placement: `PlaceTokenBatchStep` (per user 2026-07-06) — fails if count > TOTAL supply; all-or-nothing feasibility precheck (pairwise dist ≥ 3); optional opt-in prompt (never shown when infeasible); then prompts removal of on-board tokens until `count` are free BEFORE any placement (so removal can only hit pre-existing tokens — U7b by construction); then spaced hex selects + `PlaceTokenStep` each; sets a placed-flag for "if you do" riders | `engine/steps/markers.py` + new `StepType` |
 
 P3/P4 are new `GameState` fields → must round-trip persistence
 (`engine/persistence.py` save/load test).
@@ -235,8 +235,8 @@ unless stated.
 - **U4** Enemy hero outside radius → not selectable for the swap.
 - **U5** Immune enemy hero → excluded from the swap.
 - **U6** Tokens are obstacles while on board (block movement through/placement onto).
-- **U7** Supply interplay: Glitch tokens already on board from Unstable Timeline used as defense earlier this turn → `PlaceTokenStep` overflow kicks in (remove-and-replace), batch spacing checked within the new batch only (S1).
-- **U7b** Overflow must remove a **pre-existing** token, never a batch member: supply 3, 1 Glitch already on board, place a batch of 3 → tokens 1 and 2 come from supply; the 3rd triggers overflow and the removal MUST target the pre-existing token (batch-placed token ids are excluded from the overflow selection — with one legal candidate it auto-resolves). Generalizes: with 3 pre-existing and a batch of 2, both removals hit pre-existing tokens only.
+- **U7** Supply interplay (REVISED per user 2026-07-06, implemented in `PlaceTokenBatchStep`): before any placement, if the free supply is short the owner is prompted to remove on-board Glitch tokens until `count` are free; batch spacing checked within the new batch only (S1).
+- **U7b** Removal must hit a **pre-existing** token, never a batch member — satisfied BY CONSTRUCTION: all removals happen before the first placement (supply 3, 1 Glitch on board, batch of 3 → one removal prompt whose only candidates are pre-existing tokens, then 3 placements).
 - **U8** Swap rider requires "if you do": impossible to reach the swap without all N placed (guarded by U3's precheck).
 
 ## 11. Unstable Timeline

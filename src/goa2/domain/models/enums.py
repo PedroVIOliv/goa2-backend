@@ -30,6 +30,7 @@ class TokenType(StrEnum):
     TREE = "tree"
     ROCK = "rock"
     MAGMA = "magma"
+    GLITCH = "glitch"
 
 
 class CardTier(StrEnum):
@@ -128,6 +129,7 @@ class StepType(StrEnum):
     PLACE_UNIT = "place_unit"
     PLACE_TOKEN = "place_token"
     PLACE_TOKENS_IN_LINE = "place_tokens_in_line"
+    PLACE_TOKEN_BATCH = "place_token_batch"
     OFFER_ROCK_ULTIMATE = "offer_rock_ultimate"
     PLACE_TURRET = "place_turret"
     SWAP_UNITS = "swap_units"

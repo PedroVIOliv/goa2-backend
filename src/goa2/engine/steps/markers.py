@@ -14,6 +14,7 @@ from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine import rules
+from goa2.engine.filters_base import FilterCondition
 from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -161,6 +162,189 @@ class PlaceTokenStep(GameStep):
             )
         )
         return StepResult(is_finished=True, events=events)
+
+
+class PlaceTokenBatchStep(GameStep):
+    """Places ``count`` tokens of one type as a single batch with upfront
+    supply reconciliation.
+
+    1. ``count`` greater than the TOTAL supply → fail (abort when mandatory).
+    2. All-or-nothing feasibility precheck: there must exist ``count`` empty
+       hexes passing ``hex_filters`` that are pairwise ``min_spacing`` apart
+       (topology distance). Infeasible → skip silently — with an opt-in
+       prompt configured it is simply never shown ("option unavailable") —
+       or abort when mandatory.
+    3. Optional opt-in prompt ("You may place …"); declining skips the batch.
+    4. If the free supply is short, the owner removes on-board tokens of the
+       type until ``count`` are free. Removal happens BEFORE any placement,
+       so only pre-existing tokens are ever removed — never batch members.
+    5. One hex-selection + PlaceTokenStep pair per token; each selection
+       enforces ``min_spacing`` from the batch's earlier picks.
+    6. ``placed_flag_key`` is set only when the batch goes through, for
+       downstream "if you do" riders (gate with ``active_if_key``).
+
+    The feasibility precheck runs before removals, so hexes occupied by
+    soon-to-be-removed tokens are conservatively treated as unavailable.
+    """
+
+    type: StepType = StepType.PLACE_TOKEN_BATCH
+    token_type: TokenType
+    count: int
+    hex_filters: list[FilterCondition] = Field(default_factory=list)
+    min_spacing: int = 0
+    opt_in_prompt: str | None = None
+    owner_id: str | None = None
+    placed_flag_key: str | None = None
+    key_prefix: str = "tkb"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.filters_hex import ObstacleFilter, RangeFilter
+        from goa2.engine.filters_units import ExcludeIdentityFilter
+        from goa2.engine.steps.selection import SelectStep
+        from goa2.engine.steps.utility import CheckContextConditionStep, SetContextFlagStep
+
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        pool = state.token_pool.get(self.token_type, [])
+        if self.count > len(pool):
+            logger.debug(
+                f"   [TOKEN BATCH] {self.count} {self.token_type.value} exceeds supply "
+                f"({len(pool)})."
+            )
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        if not self._is_feasible(state, context):
+            logger.debug(
+                f"   [TOKEN BATCH] No placement of {self.count} {self.token_type.value} "
+                f"tokens with spacing {self.min_spacing} fits."
+            )
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        owner_key = f"{self.key_prefix}_owner"
+        context[owner_key] = str(self.owner_id or state.current_actor_id or "")
+
+        gate_key: str | None = None
+        new_steps: list[GameStep] = []
+        if self.opt_in_prompt:
+            choice_key = f"{self.key_prefix}_optin"
+            gate_key = f"{self.key_prefix}_go"
+            new_steps += [
+                SelectStep(
+                    target_type=TargetType.NUMBER,
+                    prompt=self.opt_in_prompt,
+                    output_key=choice_key,
+                    number_options=[1, 0],
+                    number_labels={1: "Place tokens", 0: "Skip"},
+                    override_player_id_key=owner_key,
+                    is_mandatory=True,
+                ),
+                CheckContextConditionStep(
+                    input_key=choice_key, operator="==", threshold=1, output_key=gate_key
+                ),
+            ]
+
+        on_board = sum(1 for t in pool if BoardEntityID(str(t.id)) in state.entity_locations)
+        free = len(pool) - on_board
+        for j in range(self.count - free):
+            rm_key = f"{self.key_prefix}_rm_{j}"
+            new_steps += [
+                SelectStep(
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt=f"Select a {self.token_type.value} token to remove from the board.",
+                    output_key=rm_key,
+                    skip_immunity_filter=True,
+                    skip_self_filter=True,
+                    is_mandatory=True,
+                    filters=[
+                        UnitTypeFilter(unit_type="TOKEN"),
+                        TokenTypeFilter(token_type=self.token_type),
+                    ],
+                    override_player_id_key=owner_key,
+                    active_if_key=gate_key,
+                ),
+                RemoveTokenStep(token_key=rm_key, active_if_key=gate_key),
+            ]
+
+        prior_keys: list[str] = []
+        for i in range(self.count):
+            hex_key = f"{self.key_prefix}_hex_{i}"
+            filters: list[FilterCondition] = [
+                *self.hex_filters,
+                ObstacleFilter(is_obstacle=False),
+            ]
+            if self.min_spacing > 1:
+                filters += [
+                    RangeFilter(min_range=self.min_spacing, max_range=None, origin_hex_key=pk)
+                    for pk in prior_keys
+                ]
+            elif prior_keys:
+                filters.append(
+                    ExcludeIdentityFilter(exclude_self=False, exclude_keys=list(prior_keys))
+                )
+            new_steps += [
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt=f"Place {self.token_type.value} token {i + 1}/{self.count}",
+                    output_key=hex_key,
+                    filters=filters,
+                    is_mandatory=True,
+                    override_player_id_key=owner_key,
+                    active_if_key=gate_key,
+                ),
+                PlaceTokenStep(
+                    token_type=self.token_type,
+                    hex_key=hex_key,
+                    owner_id_key=owner_key,
+                    output_key=f"{self.key_prefix}_token_{i}",
+                    active_if_key=gate_key,
+                ),
+            ]
+            prior_keys.append(hex_key)
+
+        if self.placed_flag_key:
+            new_steps.append(
+                SetContextFlagStep(key=self.placed_flag_key, value=True, active_if_key=gate_key)
+            )
+
+        return StepResult(is_finished=True, new_steps=new_steps)
+
+    def _is_feasible(self, state: GameState, context: dict[str, Any]) -> bool:
+        """Does a set of ``count`` empty, filter-passing hexes exist that is
+        pairwise ``min_spacing`` apart? Backtracking with early pruning."""
+        from goa2.engine.topology import get_topology_service
+
+        candidates: list[Hex] = []
+        for hex_pos in state.board.tiles:
+            tile = state.board.get_tile(hex_pos)
+            if tile is None or tile.is_obstacle:
+                continue
+            if all(f.apply(hex_pos, state, context) for f in self.hex_filters):
+                candidates.append(hex_pos)
+
+        if len(candidates) < self.count:
+            return False
+        if self.count <= 1 or self.min_spacing <= 1:
+            return True
+
+        topology = get_topology_service()
+
+        def backtrack(start: int, chosen: list[Hex]) -> bool:
+            if len(chosen) == self.count:
+                return True
+            for k in range(start, len(candidates)):
+                candidate = candidates[k]
+                if all(
+                    topology.distance(candidate, picked, state) >= self.min_spacing
+                    for picked in chosen
+                ):
+                    chosen.append(candidate)
+                    if backtrack(k + 1, chosen):
+                        return True
+                    chosen.pop()
+            return False
+
+        return backtrack(0, [])
 
 
 class PlaceTokensInLineStep(GameStep):

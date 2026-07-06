@@ -218,6 +218,207 @@ class FutureProofEffect(TimeCapsuleEffect):
 
 
 # =============================================================================
+# GLITCH TOKENS (Flashback / Déjà Vu / Unstable Timeline)
+# Shared pieces: pairwise spacing ≥ 3, all-or-nothing batch placement,
+# end-of-turn removal of ALL Glitch tokens.
+# =============================================================================
+
+GLITCH_SPACING = 3
+
+
+def _glitch_cleanup_step(active_if_key: str | None = None) -> GameStep:
+    """'End of turn: Remove all Glitch tokens' — a THIS_TURN timer whose
+    finishing steps sweep every Glitch token off the board (Min's grenade
+    DELAYED_TRIGGER pattern)."""
+    from goa2.domain.models import TokenType
+    from goa2.engine.filters import TokenTypeFilter, UnitTypeFilter
+    from goa2.engine.steps import CollectUnitsStep, RemoveTokenStep
+
+    return CreateEffectStep(
+        effect_type=EffectType.DELAYED_TRIGGER,
+        scope=EffectScope(shape=Shape.GLOBAL),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+        finishing_steps=[
+            CollectUnitsStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.GLITCH),
+                ],
+                output_key="_glitch_cleanup_ids",
+                skip_immunity_filter=True,
+                skip_self_filter=True,
+            ),
+            ForEachStep(
+                list_key="_glitch_cleanup_ids",
+                item_key="_glitch_cleanup_id",
+                steps_template=[RemoveTokenStep(token_key="_glitch_cleanup_id")],
+            ),
+        ],
+        active_if_key=active_if_key,
+    )
+
+
+@register_effect("flashback")
+class FlashbackEffect(CardEffect):
+    """Attack adjacent. After the attack: you may place 3 Glitch tokens in
+    radius (pairwise spacing ≥ 3, all-or-nothing); if you do, up to 1 enemy
+    hero in radius swaps with a Glitch token of THEIR choice. End of turn:
+    remove all Glitch tokens."""
+
+    token_count = 3
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        from goa2.domain.models import TokenType
+        from goa2.engine.filters import RangeFilter, TeamFilter, TokenTypeFilter, UnitTypeFilter
+        from goa2.engine.steps import AttackSequenceStep, PlaceTokenBatchStep, SwapUnitsStep
+
+        radius = stats.radius or 0
+        return [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            PlaceTokenBatchStep(
+                token_type=TokenType.GLITCH,
+                count=self.token_count,
+                hex_filters=[RangeFilter(max_range=radius, origin_id=str(hero.id))],
+                min_spacing=GLITCH_SPACING,
+                opt_in_prompt=f"Place {self.token_count} Glitch tokens in radius?",
+                owner_id=str(hero.id),
+                placed_flag_key="glitch_placed",
+                key_prefix="glitch",
+                is_mandatory=False,
+            ),
+            _glitch_cleanup_step(active_if_key="glitch_placed"),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Up to 1 enemy hero in radius swaps with a Glitch token",
+                output_key="glitch_victim",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=radius, origin_id=str(hero.id)),
+                ],
+                is_mandatory=False,
+                active_if_key="glitch_placed",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Choose the Glitch token to swap with",
+                output_key="glitch_swap_token",
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.GLITCH),
+                ],
+                skip_immunity_filter=True,
+                skip_self_filter=True,
+                override_player_id_key="glitch_victim",
+                is_mandatory=True,
+                active_if_key="glitch_victim",
+            ),
+            SwapUnitsStep(
+                unit_a_key="glitch_victim",
+                unit_b_key="glitch_swap_token",
+                active_if_key="glitch_swap_token",
+            ),
+        ]
+
+
+@register_effect("deja_vu")
+class DejaVuEffect(FlashbackEffect):
+    """Déjà Vu — same as Flashback with 2 Glitch tokens."""
+
+    token_count = 2
+
+
+@register_effect("unstable_timeline")
+class UnstableTimelineEffect(CardEffect):
+    """Place 2 Glitch tokens in radius (3 when used as a defense); an enemy
+    hero in play — Emmitt picks which — chooses one of the Glitch tokens and
+    EMMITT swaps with it (mandatory, no range limit). End of turn: remove all
+    Glitch tokens.
+
+    If the tokens cannot all be placed the whole text stops (flag gating, no
+    abort) — as a defense the card's defense value 6 still counts. During
+    defense resolution the defender is the current actor (SetActorStep wrap
+    in ResolveDefenseTextStep), so TeamFilter/default routing are correct."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return self._timeline_steps(hero, stats, count=2)
+
+    def build_defense_steps(self, state, defender, card, stats, context):
+        return self._timeline_steps(defender, stats, count=3)
+
+    def _timeline_steps(self, hero: Hero, stats: CardStats, count: int) -> list[GameStep]:
+        from goa2.domain.models import TokenType
+        from goa2.engine.filters import RangeFilter, TeamFilter, TokenTypeFilter, UnitTypeFilter
+        from goa2.engine.steps import CountStep, PlaceTokenBatchStep, SwapUnitsStep
+
+        radius = stats.radius or 0
+        return [
+            PlaceTokenBatchStep(
+                token_type=TokenType.GLITCH,
+                count=count,
+                hex_filters=[RangeFilter(max_range=radius, origin_id=str(hero.id))],
+                min_spacing=GLITCH_SPACING,
+                owner_id=str(hero.id),
+                placed_flag_key="ut_placed",
+                key_prefix="ut",
+                is_mandatory=False,
+            ),
+            _glitch_cleanup_step(active_if_key="ut_placed"),
+            # "An enemy hero in play" — no range limit; skipped (not aborted)
+            # when none exists so a defense block still resolves normally.
+            CountStep(
+                target_type=TargetType.UNIT,
+                filters=[UnitTypeFilter(unit_type="HERO"), TeamFilter(relation="ENEMY")],
+                output_key="ut_enemy_count",
+                skip_immunity_filter=True,
+                active_if_key="ut_placed",
+            ),
+            CheckContextConditionStep(
+                input_key="ut_enemy_count",
+                operator=">=",
+                threshold=1,
+                output_key="ut_has_chooser",
+                active_if_key="ut_placed",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Choose the enemy hero who will pick a Glitch token",
+                output_key="ut_chooser",
+                filters=[UnitTypeFilter(unit_type="HERO"), TeamFilter(relation="ENEMY")],
+                skip_immunity_filter=True,  # they only choose; not targeted
+                is_mandatory=True,
+                override_player_id_key="ut_owner",
+                active_if_key="ut_has_chooser",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Choose one of the Glitch tokens",
+                output_key="ut_token",
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.GLITCH),
+                ],
+                skip_immunity_filter=True,
+                skip_self_filter=True,
+                override_player_id_key="ut_chooser",
+                is_mandatory=True,
+                active_if_key="ut_chooser",
+            ),
+            SwapUnitsStep(
+                unit_a_id=str(hero.id),
+                unit_b_key="ut_token",
+                active_if_key="ut_token",
+            ),
+        ]
+
+
+# =============================================================================
 # TIME LOOP (Blue II — range 4)
 # "Swap with an enemy hero in range who has already resolved a card this turn."
 # =============================================================================

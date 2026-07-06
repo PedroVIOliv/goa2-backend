@@ -807,3 +807,542 @@ class TestTimeWarp:
         enemy = state.get_hero("hero_enemy")
         assert enemy.current_turn_card is not None
         assert enemy.current_turn_card.id == "enemy_pending"
+
+
+# =============================================================================
+# P8 primitive: TokenType.GLITCH, supply 3, non-persistent
+# =============================================================================
+
+
+@pytest.mark.effect_contract
+def test_glitch_token_supply_is_three():
+    from goa2.domain.models import TokenType
+    from goa2.domain.models.token import TOKEN_SUPPLY
+    from goa2.engine.setup import GameSetup
+
+    assert TOKEN_SUPPLY[TokenType.GLITCH] == 3
+
+    state = (
+        EffectScenarioBuilder()
+        .line_board(4)
+        .red_hero("hero_a", at=(0, 0, 0))
+        .blue_hero("hero_b", at=(2, 0, -2))
+        .build()
+    )
+    GameSetup._initialize_token_pool(state)
+    glitch = state.token_pool[TokenType.GLITCH]
+    assert len(glitch) == 3
+    assert all(not t.persists_end_of_round for t in glitch)
+    assert all(not t.is_passable for t in glitch)  # tokens are obstacles (U6)
+
+
+# =============================================================================
+# P10 primitive: PlaceTokenBatchStep — upfront supply reconciliation, batch
+# spacing, all-or-nothing feasibility, optional opt-in prompt
+# =============================================================================
+
+
+def _add_glitch_pool(state, on_board=()) -> list[str]:
+    from goa2.domain.models import TokenType
+    from goa2.domain.models.token import Token
+
+    state.token_pool[TokenType.GLITCH] = []
+    ids: list[str] = []
+    for i in range(3):
+        token = Token(id=f"glitch_{i + 1}", name="Glitch", token_type=TokenType.GLITCH)
+        state.register_entity(token)
+        state.token_pool[TokenType.GLITCH].append(token)
+        ids.append(f"glitch_{i + 1}")
+    for i, at in enumerate(on_board):
+        state.place_entity(f"glitch_{i + 1}", Hex(q=at[0], r=at[1], s=at[2]))
+    return ids
+
+
+def _glitch_on_board(state) -> dict[str, Hex]:
+    from goa2.domain.models import TokenType
+
+    out = {}
+    for token in state.token_pool.get(TokenType.GLITCH, []):
+        pos = state.get_position(str(token.id))
+        if pos is not None:
+            out[str(token.id)] = pos
+    return out
+
+
+def _batch_state(board_len: int = 12, on_board=(), actor: str = "hero_emmitt"):
+    state = (
+        EffectScenarioBuilder()
+        .line_board(board_len)
+        .red_hero("hero_emmitt", at=(0, 0, 0))
+        .blue_hero("hero_enemy", at=(board_len - 1, 0, -(board_len - 1)))
+        .with_actor(actor)
+        .build()
+    )
+    _add_glitch_pool(state, on_board=on_board)
+    return state
+
+
+def _push_batch(state, **kwargs):
+    from goa2.domain.models import TokenType
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.steps import PlaceTokenBatchStep
+
+    kwargs.setdefault("token_type", TokenType.GLITCH)
+    kwargs.setdefault("min_spacing", 3)
+    kwargs.setdefault("is_mandatory", False)
+    kwargs.setdefault("placed_flag_key", "glitch_placed")
+    push_steps(state, [PlaceTokenBatchStep(**kwargs)])
+    return process_stack(state)
+
+
+def _answer(state, value):
+    from goa2.engine.handler import process_stack
+
+    state.execution_stack[-1].pending_input = {"selection": value}
+    return process_stack(state)
+
+
+def _hex_dict(q: int) -> dict:
+    return {"q": q, "r": 0, "s": -q}
+
+
+def _option_qs(request) -> set[int]:
+    """Extract q coordinates from a SELECT_HEX request's options."""
+    qs = set()
+    for option in request.options:
+        meta = getattr(option, "metadata", None) or {}
+        raw = meta.get("hex") or meta.get("raw")
+        if raw is None:
+            continue
+        qs.add(raw["q"] if isinstance(raw, dict) else raw.q)
+    return qs
+
+
+@pytest.mark.effect_contract
+class TestPlaceTokenBatchStep:
+    def test_count_exceeding_total_supply_fails(self):
+        state = _batch_state()
+        result = _push_batch(state, count=4)
+        assert result.input_request is None
+        assert _glitch_on_board(state) == {}
+        assert state.execution_context.get("glitch_placed") is None
+
+    def test_places_all_from_free_supply(self):
+        state = _batch_state()
+        result = _push_batch(state, count=3)
+        for q in (1, 4, 7):
+            assert result.input_request is not None
+            assert result.input_request.request_type.value == "SELECT_HEX"
+            result = _answer(state, _hex_dict(q))
+        assert result.input_request is None
+        placed = _glitch_on_board(state)
+        assert len(placed) == 3
+        assert {h.q for h in placed.values()} == {1, 4, 7}
+        assert state.execution_context.get("glitch_placed") is True
+
+    def test_spacing_enforced_between_batch_picks(self):
+        state = _batch_state()
+        result = _push_batch(state, count=2)
+        result = _answer(state, _hex_dict(4))  # first token at q=4
+        assert result.input_request is not None
+        qs = _option_qs(result.input_request)
+        # distance ≥ 3 from q=4: q ∈ {1, 7, 8, 9, 10} (0 and 11 occupied)
+        assert qs == {1, 7, 8, 9, 10}
+
+    def test_removal_of_preexisting_prompted_before_placement(self):
+        state = _batch_state(on_board=[(9, 0, -9)])
+        result = _push_batch(state, count=3)
+        # Free supply is 2 < 3 → first prompt removes a pre-existing token.
+        assert result.input_request is not None
+        assert result.input_request.request_type.value != "SELECT_HEX"
+        option_ids = {o.id for o in result.input_request.options}
+        assert option_ids == {"glitch_1"}  # only the pre-existing token
+        result = _answer(state, "glitch_1")
+        for q in (1, 4, 7):
+            assert result.input_request is not None
+            assert result.input_request.request_type.value == "SELECT_HEX"
+            result = _answer(state, _hex_dict(q))
+        placed = _glitch_on_board(state)
+        assert len(placed) == 3
+        assert {h.q for h in placed.values()} == {1, 4, 7}  # q=9 freed
+        assert state.execution_context.get("glitch_placed") is True
+
+    def test_infeasible_spacing_skips_without_prompts(self):
+        state = _batch_state(board_len=4)  # q 0..3, 0 and 3 occupied
+        result = _push_batch(state, count=2)  # q1/q2 are distance 1 apart
+        assert result.input_request is None
+        assert _glitch_on_board(state) == {}
+        assert state.execution_context.get("glitch_placed") is None
+
+    def test_opt_in_decline_places_nothing(self):
+        state = _batch_state()
+        result = _push_batch(state, count=2, opt_in_prompt="Place Glitch tokens?")
+        assert result.input_request is not None
+        assert result.input_request.request_type.value == "SELECT_NUMBER"
+        result = _answer(state, 0)
+        assert result.input_request is None
+        assert _glitch_on_board(state) == {}
+        assert state.execution_context.get("glitch_placed") is None
+
+    def test_opt_in_accept_flows_to_placement(self):
+        state = _batch_state()
+        result = _push_batch(state, count=2, opt_in_prompt="Place Glitch tokens?")
+        result = _answer(state, 1)
+        for q in (1, 4):
+            assert result.input_request is not None
+            assert result.input_request.request_type.value == "SELECT_HEX"
+            result = _answer(state, _hex_dict(q))
+        assert len(_glitch_on_board(state)) == 2
+        assert state.execution_context.get("glitch_placed") is True
+
+    def test_opt_in_not_offered_when_infeasible(self):
+        state = _batch_state(board_len=4)
+        result = _push_batch(state, count=2, opt_in_prompt="Place Glitch tokens?")
+        assert result.input_request is None
+        assert _glitch_on_board(state) == {}
+
+    def test_prompts_routed_to_owner_not_actor(self):
+        """Defense mode: the enemy is the current actor but Emmitt owns the
+        placement — every prompt goes to Emmitt."""
+        state = _batch_state(on_board=[(9, 0, -9)], actor="hero_enemy")
+        result = _push_batch(state, count=3, owner_id="hero_emmitt")
+        assert result.input_request is not None
+        assert result.input_request.player_id == "hero_emmitt"  # removal
+        result = _answer(state, "glitch_1")
+        assert result.input_request is not None
+        assert result.input_request.player_id == "hero_emmitt"  # hex select
+
+
+# =============================================================================
+# FLASHBACK / DÉJÀ VU (§10): attack adjacent; after the attack you may place
+# 3/2 Glitch tokens in radius (spacing ≥ 3); if you do, up to 1 enemy hero in
+# radius swaps with a Glitch token of their choice. End of turn: remove all.
+# =============================================================================
+
+
+def _disc_hexes(radius: int) -> list[tuple[int, int, int]]:
+    return [
+        (q, r, -q - r)
+        for q in range(-radius, radius + 1)
+        for r in range(max(-radius, -radius - q), min(radius, radius - q) + 1)
+    ]
+
+
+_TOKEN_SPOTS = [(3, 0, -3), (0, 3, -3), (-3, 0, 3)]  # pairwise distance ≥ 3
+
+
+def _glitch_card_state(
+    card_id: str = "flashback",
+    *,
+    board_radius: int = 4,
+    with_minion: bool = True,
+    with_far_hero: bool = False,
+):
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(_disc_hexes(board_radius))
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", card_id))
+        .blue_hero("hero_victim", at=(0, -2, 2))
+        .with_actor("hero_emmitt")
+    )
+    if with_minion:
+        builder = builder.blue_minion("minion_target", at=(1, 0, -1))
+    if with_far_hero:
+        builder = builder.blue_hero("hero_far", at=(4, 0, -4))
+    state = builder.build()
+    _add_glitch_pool(state)
+    return state
+
+
+@pytest.mark.effect_flow
+class TestFlashback:
+    def _run_through_placement(self, state, count: int = 3):
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.expect_input("SELECT_NUMBER")  # opt-in
+        assert run.latest_request.player_id == "hero_emmitt"
+        run.choose(1)
+        for q, r, s in _TOKEN_SPOTS[:count]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        return run
+
+    def test_full_flow_place_three_then_enemy_swaps(self):
+        state = _glitch_card_state(with_far_hero=True)
+        run = self._run_through_placement(state)
+
+        # Rider: Emmitt may pick 1 enemy hero in radius (far hero excluded, U4)
+        run.expect_input("SELECT_UNIT")
+        victim_options = {o.id for o in run.latest_request.options}
+        assert "hero_victim" in victim_options
+        assert "hero_far" not in victim_options
+        run.choose("hero_victim")
+
+        # That hero's player picks the Glitch token (U3-style routing)
+        run.expect_input("SELECT_UNIT_OR_TOKEN")
+        assert run.latest_request.player_id == "hero_victim"
+        run.choose("glitch_1")  # placed at (3, 0, -3)
+        run.finish()
+
+        assert state.get_position("hero_victim") == Hex(q=3, r=0, s=-3)
+        assert state.get_position("glitch_1") == Hex(q=0, r=-2, s=2)
+        assert len(_glitch_on_board(state)) == 3
+
+    def test_rider_is_optional(self):
+        """H4: 'up to 1' — Emmitt may skip the swap after placing."""
+        state = _glitch_card_state()
+        run = self._run_through_placement(state)
+        run.expect_input("SELECT_UNIT").skip()
+        run.finish()
+        assert state.get_position("hero_victim") == Hex(q=0, r=-2, s=2)
+        assert len(_glitch_on_board(state)) == 3
+
+    def test_decline_placement_no_tokens_no_rider(self):
+        """U2: opting out places nothing and never offers the swap."""
+        state = _glitch_card_state()
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.expect_input("SELECT_NUMBER").choose(0)
+        run.finish()
+        assert _glitch_on_board(state) == {}
+
+    def test_attack_abort_skips_everything(self):
+        """U1: no adjacent unit → attack aborts → no placement offer."""
+        state = _glitch_card_state(with_minion=False)  # victim is 2 away
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.finish()
+        assert _glitch_on_board(state) == {}
+
+    def test_infeasible_board_never_offers_placement(self):
+        """U3/U8: board can't fit all 3 with spacing → option unavailable."""
+        state = _glitch_card_state(board_radius=1)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.finish()  # no opt-in prompt, no rider
+        assert _glitch_on_board(state) == {}
+
+    def test_end_of_turn_removes_all_glitch_tokens(self):
+        """H5: THIS_TURN cleanup through the real end_turn."""
+        from goa2.engine.handler import process_stack
+        from goa2.engine.phases import end_turn
+
+        state = _glitch_card_state()
+        run = self._run_through_placement(state)
+        run.expect_input("SELECT_UNIT").skip()
+        run.finish()
+        assert len(_glitch_on_board(state)) == 3
+
+        state.unresolved_hero_ids = []
+        end_turn(state)
+        process_stack(state)
+        assert _glitch_on_board(state) == {}
+
+
+@pytest.mark.effect_flow
+class TestDejaVu:
+    def test_places_two_tokens_then_rider(self):
+        state = _glitch_card_state("deja_vu")
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("minion_target")
+        run.expect_input("SELECT_NUMBER").choose(1)
+        for q, r, s in _TOKEN_SPOTS[:2]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        run.expect_input("SELECT_UNIT").skip()  # rider offered after 2 tokens
+        run.finish()
+        assert len(_glitch_on_board(state)) == 2
+
+
+# =============================================================================
+# UNSTABLE TIMELINE (§11): place 2 Glitch tokens in radius (3 as a defense);
+# an enemy hero in play (Emmitt picks which) chooses one; EMMITT swaps with
+# that token. End of turn: remove all Glitch tokens.
+# =============================================================================
+
+
+def _attack_card(card_id: str = "enemy_attack", value: int = 5):
+    from goa2.domain.models import ActionType, Card, CardColor, CardTier
+
+    return Card(
+        id=card_id,
+        name="Enemy Attack",
+        tier=CardTier.I,
+        color=CardColor.RED,
+        initiative=5,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=value,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=1,
+        effect_id="",
+        effect_text="",
+        is_facedown=False,
+    )
+
+
+def _timeline_skill_state(*, board_radius: int = 5, with_enemy: bool = True):
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(_disc_hexes(board_radius))
+        .red_hero(
+            "hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "unstable_timeline")
+        )
+        .with_actor("hero_emmitt")
+    )
+    if with_enemy:
+        # Distance 5 from Emmitt — outside the card's radius 4, proving the
+        # chooser has no range limit ("an enemy hero in play").
+        builder = builder.blue_hero("hero_enemy", at=(0, -5, 5))
+    state = builder.build()
+    _add_glitch_pool(state)
+    return state
+
+
+@pytest.mark.effect_flow
+class TestUnstableTimelineSkill:
+    def test_place_two_enemy_chooses_emmitt_swaps(self):
+        state = _timeline_skill_state()
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        for q, r, s in _TOKEN_SPOTS[:2]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        # Emmitt picks the chooser — even beyond any range (distance 5)
+        run.expect_input("SELECT_UNIT")
+        assert run.latest_request.player_id == "hero_emmitt"
+        run.choose("hero_enemy")
+        # The chosen enemy picks the token
+        run.expect_input("SELECT_UNIT_OR_TOKEN")
+        assert run.latest_request.player_id == "hero_enemy"
+        run.choose("glitch_2")  # placed at (0, 3, -3)
+        run.finish()
+
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=3, s=-3)
+        assert state.get_position("glitch_2") == Hex(q=0, r=0, s=0)
+        assert len(_glitch_on_board(state)) == 2
+
+    def test_infeasible_placement_stops_text(self):
+        """U1: tokens can't all be placed → whole text stops, no swap."""
+        state = _timeline_skill_state(board_radius=1)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()  # no placement, no chooser
+        assert _glitch_on_board(state) == {}
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+    def test_no_enemy_hero_in_play_stops_before_swap(self):
+        """U2: tokens are placed but stay; no chooser, no swap."""
+        state = _timeline_skill_state()
+        state.remove_entity("hero_enemy")  # defeated / not in play
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        for q, r, s in _TOKEN_SPOTS[:2]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        run.finish()  # no chooser prompt
+        assert len(_glitch_on_board(state)) == 2  # tokens remain (U2)
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+    def test_end_of_turn_removes_tokens(self):
+        from goa2.engine.handler import process_stack
+        from goa2.engine.phases import end_turn
+
+        state = _timeline_skill_state()
+        state.remove_entity("hero_enemy")
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        for q, r, s in _TOKEN_SPOTS[:2]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        run.finish()
+
+        state.unresolved_hero_ids = []
+        end_turn(state)
+        process_stack(state)
+        assert _glitch_on_board(state) == {}
+
+
+@pytest.mark.effect_flow
+class TestUnstableTimelineDefense:
+    def _state(self, *, board_radius: int = 4):
+        from goa2.domain.models.enums import CardState
+
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes(_disc_hexes(board_radius))
+            .blue_hero("hero_enemy", at=(1, 0, -1), current_card=_attack_card())
+            .red_hero("hero_emmitt", at=(0, 0, 0))
+            .with_actor("hero_enemy")
+            .build()
+        )
+        emmitt = state.get_hero("hero_emmitt")
+        defense = hero_card("Emmitt", "unstable_timeline")
+        defense.state = CardState.HAND
+        emmitt.hand = [defense]
+        _add_glitch_pool(state)
+        return state
+
+    def test_defense_places_three_swaps_then_blocks(self):
+        """H2: defense text resolves before the combat total; 3 tokens; the
+        attack then resolves vs defense 6 with Emmitt at his new location."""
+        state = self._state()
+        run = run_card(state, "hero_enemy")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+        run.expect_input("SELECT_CARD_OR_PASS")
+        assert run.latest_request.player_id == "hero_emmitt"
+        run.choose("unstable_timeline")
+
+        for q, r, s in _TOKEN_SPOTS[:3]:  # defense mode: 3 tokens
+            run.expect_input("SELECT_HEX")
+            assert run.latest_request.player_id == "hero_emmitt"
+            run.choose({"q": q, "r": r, "s": s})
+
+        run.expect_input("SELECT_UNIT")  # Emmitt picks the chooser
+        assert run.latest_request.player_id == "hero_emmitt"
+        run.choose("hero_enemy")
+        run.expect_input("SELECT_UNIT_OR_TOKEN")  # attacker picks the token
+        assert run.latest_request.player_id == "hero_enemy"
+        run.choose("glitch_1")  # at (3, 0, -3)
+        run.finish()
+
+        # Swap happened before combat; attack 5 vs defense 6 → blocked.
+        assert state.get_position("hero_emmitt") == Hex(q=3, r=0, s=-3)
+        assert state.get_position("glitch_1") == Hex(q=0, r=0, s=0)
+        assert len(_glitch_on_board(state)) == 3
+
+    def test_defense_infeasible_still_blocks_with_value_six(self):
+        """U1 (defense): text stops but the defense value 6 still counts."""
+        state = self._state(board_radius=1)
+        run = run_card(state, "hero_enemy")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+        run.expect_input("SELECT_CARD_OR_PASS").choose("unstable_timeline")
+        run.finish()  # no placement prompts; combat resolves
+
+        assert _glitch_on_board(state) == {}
+        # Attack 5 < defense 6 → blocked; Emmitt survives in place.
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+    def test_defense_tokens_removed_at_end_of_enemy_turn(self):
+        """H3: tokens placed during the enemy's turn are removed at the end
+        of THAT turn."""
+        from goa2.engine.handler import process_stack
+        from goa2.engine.phases import end_turn
+
+        state = self._state()
+        run = run_card(state, "hero_enemy")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+        run.expect_input("SELECT_CARD_OR_PASS").choose("unstable_timeline")
+        for q, r, s in _TOKEN_SPOTS[:3]:
+            run.expect_input("SELECT_HEX").choose({"q": q, "r": r, "s": s})
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_UNIT_OR_TOKEN").choose("glitch_1")
+        run.finish()
+        assert len(_glitch_on_board(state)) == 3
+
+        state.unresolved_hero_ids = []
+        end_turn(state)
+        process_stack(state)
+        assert _glitch_on_board(state) == {}
