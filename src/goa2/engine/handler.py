@@ -61,7 +61,7 @@ def process_stack(state: GameState) -> StackResult:
         collected_events.extend(result.events)
 
         if result.abort_action:
-            _clear_to_finalize(state)
+            _clear_after_abort(state)
             continue
 
         if result.requires_input:
@@ -90,6 +90,64 @@ def process_stack(state: GameState) -> StackResult:
             state.execution_stack.extend(reversed(result.new_steps))
 
     return StackResult(events=collected_events)
+
+
+def _clear_after_abort(state: GameState):
+    """Clear skipped work after a mandatory step aborts.
+
+    If the abort happened during a defense/reaction sequence before combat has
+    resolved, keep the actor-restore step immediately before ResolveCombatStep
+    so the attack still resolves with the selected defense value.
+    """
+    if _clear_to_pending_combat(state):
+        return
+    _clear_to_finalize(state)
+
+
+def _clear_to_pending_combat(state: GameState) -> bool:
+    """Skip remaining pre-combat reaction work while preserving combat.
+
+    Defense text runs with ``current_actor_id`` temporarily set to the defender.
+    The stack contains a ``SetActorStep(actor_key="_pre_defense_actor")`` just
+    above ``ResolveCombatStep`` to restore the attacker. Stop there when it is
+    present; otherwise stop at ``ResolveCombatStep`` itself.
+    """
+    if not state.execution_context.get("defense_card_id") or not state.execution_context.get(
+        "is_primary_defense"
+    ):
+        return False
+
+    from goa2.engine.steps import ConfirmResolutionStep, FinalizeHeroTurnStep
+    from goa2.engine.steps.combat import ResolveCombatStep
+    from goa2.engine.steps.utility import SetActorStep
+
+    combat_index: int | None = None
+    for index in range(len(state.execution_stack) - 1, -1, -1):
+        step = state.execution_stack[index]
+        if isinstance(
+            step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+        ):
+            break
+        if isinstance(step, ResolveCombatStep):
+            combat_index = index
+            break
+
+    if combat_index is None:
+        return False
+
+    target_index = combat_index
+    if combat_index + 1 < len(state.execution_stack):
+        maybe_restore = state.execution_stack[combat_index + 1]
+        if (
+            isinstance(maybe_restore, SetActorStep)
+            and maybe_restore.actor_key == "_pre_defense_actor"
+        ):
+            target_index = combat_index + 1
+
+    while len(state.execution_stack) - 1 > target_index:
+        step = state.execution_stack.pop()
+        logger.debug("Skipped step before pending combat: %s", step.type)
+    return True
 
 
 def _clear_to_finalize(state: GameState):

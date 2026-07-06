@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 import goa2.scripts.emmitt_effects  # noqa: F401
+from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.models import TeamColor
 from goa2.domain.models.effect import (
@@ -1282,6 +1283,36 @@ class TestUnstableTimelineDefense:
         _add_glitch_pool(state)
         return state
 
+    def _corner_paint_state(self):
+        from goa2.domain.models.enums import CardState
+
+        # The three non-X token hexes are mutually spacing-valid, so the batch
+        # precheck passes. X itself is individually legal but too close to all
+        # remaining legal hexes, so choosing it first makes token 2 impossible.
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes(
+                [
+                    (0, 0, 0),
+                    (1, 0, -1),
+                    (-4, 2, 2),  # X
+                    (-4, 0, 4),
+                    (-4, 4, 0),
+                    (-2, 1, 1),
+                ]
+            )
+            .blue_hero("hero_enemy", at=(1, 0, -1), current_card=_attack_card())
+            .red_hero("hero_emmitt", at=(0, 0, 0))
+            .with_actor("hero_enemy")
+            .build()
+        )
+        emmitt = state.get_hero("hero_emmitt")
+        defense = hero_card("Emmitt", "unstable_timeline")
+        defense.state = CardState.HAND
+        emmitt.hand = [defense]
+        _add_glitch_pool(state)
+        return state
+
     def test_defense_places_three_swaps_then_blocks(self):
         """H2: defense text resolves before the combat total; 3 tokens; the
         attack then resolves vs defense 6 with Emmitt at his new location."""
@@ -1322,6 +1353,27 @@ class TestUnstableTimelineDefense:
 
         assert _glitch_on_board(state) == {}
         # Attack 5 < defense 6 → blocked; Emmitt survives in place.
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+    def test_defense_mid_placement_abort_returns_to_combat(self):
+        """A failed mandatory sub-step in defense text skips the remaining
+        defense text, not the pending combat resolution."""
+        state = self._corner_paint_state()
+        run = run_card(state, "hero_enemy")
+        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+        run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+        run.expect_input("SELECT_CARD_OR_PASS").choose("unstable_timeline")
+
+        run.expect_input("SELECT_HEX").choose({"q": -4, "r": 2, "s": 2})
+        run.finish()
+
+        combat_events = [
+            event for event in run.events if event.event_type == GameEventType.COMBAT_RESOLVED
+        ]
+        assert combat_events
+        assert combat_events[-1].metadata["outcome"] == "BLOCKED"
+        assert state.execution_context["block_succeeded"] is True
+        assert state.current_actor_id == "hero_enemy"
         assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
 
     def test_defense_tokens_removed_at_end_of_enemy_turn(self):
