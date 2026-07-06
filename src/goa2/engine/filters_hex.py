@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import Field, field_serializer
+
 from goa2.domain.hex import Hex
-from goa2.domain.models import FilterType
+from goa2.domain.models import FilterType, TokenType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
-from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_base import FilterCondition, dump_filter_grid, revalidate_filters
 from goa2.engine.topology import get_topology_service
 
 
@@ -43,12 +45,32 @@ class HexBatchCompletableFilter(FilterCondition):
     The current candidate is treated as the choice for ``slot_index``. The
     filter then searches for any assignment of legal, distinct hexes to the
     remaining slots using ``slot_filters`` and ``slot_keys`` as scratch context.
+
+    The removal-aware fields serve ``PlaceTokenBatchStep``'s feasibility
+    precheck and removal steering (via :meth:`feasible`), never its placement
+    selections:
+
+    - ``free_hexes`` are treated as empty at no cost (occupied by a token
+      whose removal is already decided).
+    - ``removable_hexes`` are treated as empty too, but each one an
+      assignment uses consumes one unit of ``removal_budget`` (occupied by a
+      token that COULD still be removed).
+
+    Treating those hexes as empty is only sound under the removal
+    monotonicity assumption documented on ``PlaceTokenBatchStep``.
     """
 
     type: FilterType = FilterType.HEX_BATCH_COMPLETABLE
     slot_index: int
     slot_keys: list[str]
     slot_filters: list[list[FilterCondition]]
+    free_hexes: list[Hex] = Field(default_factory=list)
+    removable_hexes: list[Hex] = Field(default_factory=list)
+    removal_budget: int = 0
+
+    @field_serializer("slot_filters", mode="plain")
+    def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
+        return dump_filter_grid(value)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -63,10 +85,26 @@ class HexBatchCompletableFilter(FilterCondition):
         chosen = self._chosen_hexes(scratch, through_slot=self.slot_index)
         if len(chosen) != self.slot_index + 1:
             return False
-        return self._can_complete(state, scratch, self.slot_index + 1, chosen)
+        budget_used = sum(self._hex_cost(h) for h in chosen)
+        if budget_used > self.removal_budget:
+            return False
+        return self._can_complete(
+            state, scratch, self.slot_index + 1, chosen, self.removal_budget - budget_used
+        )
+
+    def feasible(self, state: GameState, context: dict) -> bool:
+        """Does at least one full slot assignment exist, starting from slot 0?"""
+        if len(self.slot_keys) != len(self.slot_filters):
+            return False
+        return self._can_complete(state, dict(context), 0, [], self.removal_budget)
 
     def _can_complete(
-        self, state: GameState, context: dict, slot_index: int, chosen: list[Hex]
+        self,
+        state: GameState,
+        context: dict,
+        slot_index: int,
+        chosen: list[Hex],
+        budget_left: int,
     ) -> bool:
         if slot_index >= len(self.slot_keys):
             return True
@@ -74,44 +112,40 @@ class HexBatchCompletableFilter(FilterCondition):
         for hex_pos in state.board.tiles:
             if hex_pos in chosen:
                 continue
+            cost = self._hex_cost(hex_pos)
+            if cost > budget_left:
+                continue
             if not self._passes_slot_filters(hex_pos, state, context, slot_index):
                 continue
             scratch = dict(context)
             scratch[self.slot_keys[slot_index]] = hex_pos
-            if self._can_complete(state, scratch, slot_index + 1, [*chosen, hex_pos]):
+            if self._can_complete(
+                state, scratch, slot_index + 1, [*chosen, hex_pos], budget_left - cost
+            ):
                 return True
         return False
+
+    def _hex_cost(self, hex_pos: Hex) -> int:
+        if hex_pos in self.free_hexes:
+            return 0
+        return 1 if hex_pos in self.removable_hexes else 0
+
+    def _treated_as_empty(self, hex_pos: Hex) -> bool:
+        return hex_pos in self.free_hexes or hex_pos in self.removable_hexes
 
     def _passes_slot_filters(
         self, candidate: Hex, state: GameState, context: dict, slot_index: int
     ) -> bool:
-        return all(
-            f.apply(candidate, state, context) for f in self._slot_filter_objects(slot_index)
-        )
+        treat_empty = self._treated_as_empty(candidate)
+        for f in self._slot_filter_objects(slot_index):
+            if treat_empty and isinstance(f, ObstacleFilter) and not f.is_obstacle:
+                continue
+            if not f.apply(candidate, state, context):
+                return False
+        return True
 
     def _slot_filter_objects(self, slot_index: int) -> list[FilterCondition]:
-        adapter = None
-        filters: list[FilterCondition] = []
-        for raw in self.slot_filters[slot_index]:
-            if type(raw) is FilterCondition:
-                if adapter is None:
-                    from pydantic import TypeAdapter
-
-                    from goa2.engine.step_types import AnyFilter
-
-                    adapter = TypeAdapter(AnyFilter)
-                filters.append(adapter.validate_python(raw.model_dump(mode="json")))
-            elif isinstance(raw, dict):
-                if adapter is None:
-                    from pydantic import TypeAdapter
-
-                    from goa2.engine.step_types import AnyFilter
-
-                    adapter = TypeAdapter(AnyFilter)
-                filters.append(adapter.validate_python(raw))
-            else:
-                filters.append(raw)
-        return filters
+        return revalidate_filters(self.slot_filters[slot_index])
 
     def _chosen_hexes(self, context: dict, *, through_slot: int) -> list[Hex]:
         chosen: list[Hex] = []
@@ -127,6 +161,54 @@ class HexBatchCompletableFilter(FilterCondition):
                 return []
             chosen.append(hex_pos)
         return chosen
+
+
+class TokenRemovalCompletableFilter(FilterCondition):
+    """Steers supply-short token-batch removals away from dead ends.
+
+    The candidate is an on-board token (by id) about to be removed for a
+    ``PlaceTokenBatchStep``. It passes if — after removing it, and choosing
+    the remaining ``remaining_removals - 1`` forced removals among the other
+    on-board tokens of ``token_type`` — a full slot assignment still exists.
+
+    Evaluated live, so earlier removals in the same batch are already off the
+    board. Relies on the removal monotonicity assumption documented on
+    ``PlaceTokenBatchStep``.
+    """
+
+    type: FilterType = FilterType.TOKEN_REMOVAL_COMPLETABLE
+    token_type: TokenType
+    slot_keys: list[str]
+    slot_filters: list[list[FilterCondition]]
+    remaining_removals: int = 1
+
+    @field_serializer("slot_filters", mode="plain")
+    def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
+        return dump_filter_grid(value)
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        candidate_hex = state.entity_locations.get(BoardEntityID(candidate))
+        if candidate_hex is None:
+            return False
+        other_hexes = [
+            pos
+            for token in state.token_pool.get(self.token_type, [])
+            if str(token.id) != candidate
+            and (pos := state.entity_locations.get(BoardEntityID(str(token.id)))) is not None
+        ]
+        search = HexBatchCompletableFilter(
+            slot_index=0,
+            slot_keys=self.slot_keys,
+            # Revalidate: after a save/load these may be degraded base
+            # instances, which the AnyFilter annotation would reject.
+            slot_filters=[revalidate_filters(slot) for slot in self.slot_filters],
+            free_hexes=[candidate_hex],
+            removable_hexes=other_hexes,
+            removal_budget=max(0, self.remaining_removals - 1),
+        )
+        return search.feasible(state, context)
 
 
 class TerrainFilter(FilterCondition):

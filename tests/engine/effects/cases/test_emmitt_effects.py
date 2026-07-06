@@ -1038,6 +1038,114 @@ class TestPlaceTokenBatchStep:
         assert result.input_request.player_id == "hero_emmitt"  # hex select
 
 
+@pytest.mark.effect_contract
+class TestPlaceTokenBatchRemovalFeasibility:
+    """Rules fidelity for supply-short batches: the feasibility precheck counts
+    hexes freed by the forced removals (within the removal budget), and each
+    removal prompt only offers tokens from which the batch can still complete.
+    """
+
+    def test_batch_feasible_only_via_removed_token_hex_proceeds(self):
+        # Board q0..8, heroes at 0/8, glitch_1 at q4. The empty hexes
+        # {1,2,3,5,6,7} admit no triple with pairwise spacing >= 3; freeing
+        # q4 admits (1,4,7), and one removal is forced (free supply 2 < 3).
+        state = _batch_state(board_len=9, on_board=[(4, 0, -4)])
+        result = _push_batch(state, count=3)
+        assert result.input_request is not None
+        assert result.input_request.request_type.value != "SELECT_HEX"  # removal first
+        assert {o.id for o in result.input_request.options} == {"glitch_1"}
+        result = _answer(state, "glitch_1")
+        for q in (1, 4, 7):
+            assert result.input_request is not None
+            assert result.input_request.request_type.value == "SELECT_HEX"
+            result = _answer(state, _hex_dict(q))
+        assert result.input_request is None
+        placed = _glitch_on_board(state)
+        assert {h.q for h in placed.values()} == {1, 4, 7}
+        assert state.execution_context.get("glitch_placed") is True
+
+    def test_removal_prompt_excludes_dead_end_tokens(self):
+        # Board q0..5, heroes at 0/5, glitch_1 at q1, glitch_2 at q2; empty
+        # {3,4}. One removal is forced. Only freeing q1 enables a spaced pair
+        # (1,4); freeing q2 leaves {2,3,4} with max distance 2 — so glitch_2
+        # must not be offered.
+        state = _batch_state(board_len=6, on_board=[(1, 0, -1), (2, 0, -2)])
+        result = _push_batch(state, count=2)
+        assert result.input_request is not None
+        assert {o.id for o in result.input_request.options} == {"glitch_1"}
+        result = _answer(state, "glitch_1")
+        result = _answer(state, _hex_dict(1))
+        result = _answer(state, _hex_dict(4))
+        assert result.input_request is None
+        # glitch_2 stays at q2; the batch pair lands on q1 (freed) and q4.
+        assert {h.q for h in _glitch_on_board(state).values()} == {1, 2, 4}
+
+    def test_freed_hexes_beyond_removal_budget_do_not_count(self):
+        # glitch_1 at q1, glitch_2 at q4; empty {2,3}. The only spaced pair
+        # (1,4) needs BOTH token hexes freed, but only one removal is forced —
+        # the batch must be skipped and both tokens stay on the board.
+        state = _batch_state(board_len=6, on_board=[(1, 0, -1), (4, 0, -4)])
+        result = _push_batch(state, count=2)
+        assert result.input_request is None
+        assert {h.q for h in _glitch_on_board(state).values()} == {1, 4}
+        assert state.execution_context.get("glitch_placed") is None
+
+    def test_sequential_removals_track_remaining_budget(self):
+        # All three tokens on board (q1, q2, q3); empty {4,5}; count 2 forces
+        # two removals. Every first removal keeps a completion reachable; the
+        # second prompt re-evaluates against the post-removal board.
+        state = _batch_state(board_len=7, on_board=[(1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        result = _push_batch(state, count=2)
+        assert result.input_request is not None
+        assert {o.id for o in result.input_request.options} == {
+            "glitch_1",
+            "glitch_2",
+            "glitch_3",
+        }
+        result = _answer(state, "glitch_3")  # frees q3
+        assert result.input_request is not None
+        assert {o.id for o in result.input_request.options} == {"glitch_1", "glitch_2"}
+        result = _answer(state, "glitch_1")  # frees q1
+        result = _answer(state, _hex_dict(1))
+        result = _answer(state, _hex_dict(4))
+        assert result.input_request is None
+        placed = _glitch_on_board(state)
+        assert {h.q for h in placed.values()} == {1, 2, 4}  # glitch_2 untouched at q2
+        assert state.execution_context.get("glitch_placed") is True
+
+    def test_removal_steering_survives_save_load(self):
+        # Persistence restores steps whose nested slot filters deserialize as
+        # base FilterCondition; the steering filter must still evaluate.
+        from goa2.domain.state import GameState
+        from goa2.engine.handler import process_stack
+
+        state = _batch_state(board_len=6, on_board=[(1, 0, -1), (2, 0, -2)])
+        result = _push_batch(state, count=2)
+        assert result.input_request is not None
+
+        restored = GameState.model_validate(state.model_dump(mode="json"))
+        result = process_stack(restored)  # re-resolve the pending removal select
+        assert result.input_request is not None
+        assert {o.id for o in result.input_request.options} == {"glitch_1"}
+        result = _answer(restored, "glitch_1")
+        result = _answer(restored, _hex_dict(1))
+        result = _answer(restored, _hex_dict(4))
+        assert result.input_request is None
+        assert {h.q for h in _glitch_on_board(restored).values()} == {1, 2, 4}
+
+    def test_opt_in_shown_when_feasible_only_via_removal(self):
+        # The opt-in prompt must appear (the batch IS feasible thanks to the
+        # forced removal), and declining must leave the board untouched.
+        state = _batch_state(board_len=9, on_board=[(4, 0, -4)])
+        result = _push_batch(state, count=3, opt_in_prompt="Place Glitch tokens?")
+        assert result.input_request is not None
+        assert result.input_request.request_type.value == "SELECT_NUMBER"
+        result = _answer(state, 0)  # decline
+        assert result.input_request is None
+        assert {h.q for h in _glitch_on_board(state).values()} == {4}  # nothing removed
+        assert state.execution_context.get("glitch_placed") is None
+
+
 # =============================================================================
 # FLASHBACK / DÉJÀ VU (§10): attack adjacent; after the attack you may place
 # 3/2 Glitch tokens in radius (spacing ≥ 3); if you do, up to 1 enemy hero in

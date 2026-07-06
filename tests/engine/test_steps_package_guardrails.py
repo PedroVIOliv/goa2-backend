@@ -286,7 +286,54 @@ def test_round_trip_place_token_batch_with_slot_filters():
     assert len(s.slot_filters) == 2
     assert type(s.slot_filters[0][0]).__name__ == "RangeFilter"
     assert type(s.slot_filters[0][1]).__name__ == "HexBatchCompletableFilter"
-    assert type(s.slot_filters[0][1]._slot_filter_objects(1)[1]).__name__ == "RangeFilter"
+    inner = s.slot_filters[0][1]._slot_filter_objects(1)[1]
+    assert type(inner).__name__ == "RangeFilter"
+    # Field VALUES must survive the round-trip, not just the filter's tag.
+    assert inner.min_range == 3
+    assert inner.origin_hex_key == "tkb_hex_0"
+
+
+def test_round_trip_token_removal_completable_filter():
+    """TokenRemovalCompletableFilter (in a removal SelectStep) round-trips
+    its nested slot_filters."""
+    from goa2.domain.models import TargetType
+    from goa2.engine.filters_hex import TokenRemovalCompletableFilter
+    from goa2.engine.steps import SelectStep
+
+    state = _make_state()
+    slot_filters = [
+        [RangeFilter(max_range=4)],
+        [RangeFilter(min_range=3, origin_hex_key="tkb_hex_0")],
+    ]
+    step = SelectStep(
+        target_type=TargetType.UNIT_OR_TOKEN,
+        prompt="Select a token to remove.",
+        output_key="tkb_rm_0",
+        filters=[
+            TokenRemovalCompletableFilter(
+                token_type=TokenType.GLITCH,
+                slot_keys=["tkb_hex_0", "tkb_hex_1"],
+                slot_filters=slot_filters,
+                remaining_removals=2,
+            )
+        ],
+    )
+    push_steps(state, [step])
+
+    data = state.model_dump(mode="json")
+    restored = GameState.model_validate(data)
+
+    f = restored.execution_stack[0].filters[0]
+    assert type(f).__name__ == "TokenRemovalCompletableFilter"
+    assert f.remaining_removals == 2
+    # Nested slot filters may deserialize as base FilterCondition; consumers
+    # re-validate them lazily. What must survive the round-trip is the DATA.
+    from goa2.engine.filters_base import revalidate_filters
+
+    inner = revalidate_filters(f.slot_filters[1])[0]
+    assert type(inner).__name__ == "RangeFilter"
+    assert inner.min_range == 3
+    assert inner.origin_hex_key == "tkb_hex_0"
 
 
 def test_round_trip_check_unit_on_board_step():

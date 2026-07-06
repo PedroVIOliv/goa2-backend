@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
@@ -14,7 +14,7 @@ from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine import rules
-from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_base import FilterCondition, dump_filter_grid, revalidate_filters
 from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -169,21 +169,42 @@ class PlaceTokenBatchStep(GameStep):
     supply reconciliation.
 
     1. ``count`` greater than the TOTAL supply → fail (abort when mandatory).
-    2. All-or-nothing feasibility precheck: there must exist ``count`` empty
-       hexes passing each slot's filters. Infeasible → skip silently — with
-       an opt-in prompt configured it is simply never shown ("option
-       unavailable") — or abort when mandatory.
+    2. All-or-nothing feasibility precheck: there must exist ``count`` hexes
+       passing each slot's filters, counting empty hexes plus hexes the
+       forced removals of step 4 could free — at most ``count - free_supply``
+       of those. Infeasible → skip silently — with an opt-in prompt
+       configured it is simply never shown ("option unavailable") — or abort
+       when mandatory.
     3. Optional opt-in prompt ("You may place …"); declining skips the batch.
     4. If the free supply is short, the owner removes on-board tokens of the
        type until ``count`` are free. Removal happens BEFORE any placement,
        so only pre-existing tokens are ever removed — never batch members.
+       Each removal prompt offers only tokens from which the remaining
+       removals and placements can still complete
+       (``TokenRemovalCompletableFilter``), so no removal choice can
+       dead-end the batch.
     5. One hex-selection + PlaceTokenStep pair per token; each selection
        offers only choices from which the remaining slots can still complete.
     6. ``placed_flag_key`` is set only when the batch goes through, for
        downstream "if you do" riders (gate with ``active_if_key``).
 
-    The feasibility precheck runs before removals, so hexes occupied by
-    soon-to-be-removed tokens are conservatively treated as unavailable.
+    Assumptions — revisit the design if either stops holding:
+
+    - **Removal monotonicity.** Slot filters must never REQUIRE the presence
+      of on-board tokens of this type (e.g. "adjacent to an existing X
+      token"); removing a token may only ever ADD legal placement hexes. The
+      precheck and removal steering treat token hexes as empty-with-budget,
+      which is unsound for such filters. If one is ever introduced, replace
+      the budgeted search with subset simulation: enumerate the C(M, R)
+      removal subsets, apply each to a deep-copied state through the real
+      removal helper (so linked active_effects are stripped too), and run
+      the assignment search per subset. Removals commute, so subsets — not
+      orderings — suffice.
+    - **``count`` <= 4.** The completability search is
+      O(candidates ** count) per evaluation. For larger batches, memoize on
+      the chosen-hex set, or — when all slots share identical filters with
+      no cross-slot constraints — replace the search with a simple count of
+      legal hexes.
     """
 
     type: StepType = StepType.PLACE_TOKEN_BATCH
@@ -195,8 +216,15 @@ class PlaceTokenBatchStep(GameStep):
     placed_flag_key: str | None = None
     key_prefix: str = "tkb"
 
+    @field_serializer("slot_filters", mode="plain")
+    def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
+        return dump_filter_grid(value)
+
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        from goa2.engine.filters_hex import HexBatchCompletableFilter
+        from goa2.engine.filters_hex import (
+            HexBatchCompletableFilter,
+            TokenRemovalCompletableFilter,
+        )
         from goa2.engine.steps.selection import SelectStep
         from goa2.engine.steps.utility import CheckContextConditionStep, SetContextFlagStep
 
@@ -220,7 +248,17 @@ class PlaceTokenBatchStep(GameStep):
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
 
-        if not self._is_feasible(state, context, slot_keys, normalized_slot_filters):
+        on_board_hexes = [
+            pos
+            for t in pool
+            if (pos := state.entity_locations.get(BoardEntityID(str(t.id)))) is not None
+        ]
+        free = len(pool) - len(on_board_hexes)
+        removal_count = max(0, self.count - free)
+
+        if not self._is_feasible(
+            state, context, slot_keys, normalized_slot_filters, on_board_hexes, removal_count
+        ):
             logger.debug(
                 f"   [TOKEN BATCH] No placement of {self.count} {self.token_type.value} "
                 "tokens fits the slot filters."
@@ -250,9 +288,7 @@ class PlaceTokenBatchStep(GameStep):
                 ),
             ]
 
-        on_board = sum(1 for t in pool if BoardEntityID(str(t.id)) in state.entity_locations)
-        free = len(pool) - on_board
-        for j in range(self.count - free):
+        for j in range(removal_count):
             rm_key = f"{self.key_prefix}_rm_{j}"
             new_steps += [
                 SelectStep(
@@ -265,6 +301,12 @@ class PlaceTokenBatchStep(GameStep):
                     filters=[
                         UnitTypeFilter(unit_type="TOKEN"),
                         TokenTypeFilter(token_type=self.token_type),
+                        TokenRemovalCompletableFilter(
+                            token_type=self.token_type,
+                            slot_keys=slot_keys,
+                            slot_filters=normalized_slot_filters,
+                            remaining_removals=removal_count - j,
+                        ),
                     ],
                     override_player_id_key=owner_key,
                     active_if_key=gate_key,
@@ -316,7 +358,12 @@ class PlaceTokenBatchStep(GameStep):
         raw_slot_filters = self.slot_filters or [[] for _ in range(self.count)]
         if len(raw_slot_filters) != self.count:
             return None
-        return [[*filters, ObstacleFilter(is_obstacle=False)] for filters in raw_slot_filters]
+        # Revalidate: after a save/load the entries may be degraded base
+        # FilterCondition instances (see filters_base.revalidate_filter).
+        return [
+            [*revalidate_filters(filters), ObstacleFilter(is_obstacle=False)]
+            for filters in raw_slot_filters
+        ]
 
     def _is_feasible(
         self,
@@ -324,23 +371,22 @@ class PlaceTokenBatchStep(GameStep):
         context: dict[str, Any],
         slot_keys: list[str],
         slot_filters: list[list[FilterCondition]],
+        removable_hexes: list[Hex],
+        removal_budget: int,
     ) -> bool:
-        """Does at least one full slot assignment exist?"""
+        """Does at least one full slot assignment exist, counting hexes the
+        forced removals could free (at most ``removal_budget`` of them)?"""
         from goa2.engine.filters_hex import HexBatchCompletableFilter
 
         if self.count == 0:
             return True
-        completion_filter = HexBatchCompletableFilter(
+        return HexBatchCompletableFilter(
             slot_index=0,
             slot_keys=slot_keys,
             slot_filters=slot_filters,
-        )
-        for hex_pos in state.board.tiles:
-            if not all(f.apply(hex_pos, state, context) for f in slot_filters[0]):
-                continue
-            if completion_filter.apply(hex_pos, state, context):
-                return True
-        return False
+            removable_hexes=removable_hexes,
+            removal_budget=removal_budget,
+        ).feasible(state, context)
 
 
 class PlaceTokensInLineStep(GameStep):

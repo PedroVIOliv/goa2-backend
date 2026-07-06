@@ -274,6 +274,7 @@ class FilterType(StrEnum):
     HAS_RESOLVED_CARD = "has_resolved_card_filter"
     HERO_PIECE = "hero_piece_filter"
     HEX_BATCH_COMPLETABLE = "hex_batch_completable_filter"
+    TOKEN_REMOVAL_COMPLETABLE = "token_removal_completable_filter"
 
 
 class TargetType(StrEnum):

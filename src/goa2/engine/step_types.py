@@ -187,6 +187,9 @@ def rebuild_serialization_models() -> None:
     _filters_hex.HexBatchCompletableFilter.model_fields["slot_filters"].annotation = list[
         list[AnyFilter]
     ]
+    _filters_hex.TokenRemovalCompletableFilter.model_fields["slot_filters"].annotation = list[
+        list[AnyFilter]
+    ]
 
     for model_cls in (
         steps_mod.RespawnMinionAtHexStep,
@@ -195,6 +198,7 @@ def rebuild_serialization_models() -> None:
         AndFilter,
         CountMatchFilter,
         _filters_hex.HexBatchCompletableFilter,
+        _filters_hex.TokenRemovalCompletableFilter,
         steps_mod.SelectStep,
         steps_mod.MultiSelectStep,
         steps_mod.AttackSequenceStep,

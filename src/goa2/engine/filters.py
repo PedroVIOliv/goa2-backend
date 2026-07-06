@@ -40,6 +40,7 @@ from goa2.engine.filters_hex import (
     SpawnPointFilter,
     SpawnPointTeamFilter,
     TerrainFilter,
+    TokenRemovalCompletableFilter,
 )
 from goa2.engine.filters_units import (
     AdjacencyFilter,
@@ -70,6 +71,7 @@ for _name in [
     "SpawnPointTeamFilter",
     "HasEmptyNeighborFilter",
     "HexBatchCompletableFilter",
+    "TokenRemovalCompletableFilter",
     "MovementPathFilter",
     "FastTravelDestinationFilter",
     "TeamFilter",
@@ -151,6 +153,7 @@ __all__ = [
     "StraightLinePathFilter",
     "TeamFilter",
     "TerrainFilter",
+    "TokenRemovalCompletableFilter",
     "TokenTypeFilter",
     "UnitOnSpawnPointFilter",
     "UnitTypeFilter",
