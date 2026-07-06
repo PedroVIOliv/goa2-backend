@@ -217,6 +217,139 @@ class FutureProofEffect(TimeCapsuleEffect):
         ]
 
 
+# =============================================================================
+# TIME LOOP (Blue II — range 4)
+# "Swap with an enemy hero in range who has already resolved a card this turn."
+# =============================================================================
+
+
+@register_effect("time_loop")
+class TimeLoopEffect(CardEffect):
+    """Position swap with a resolved enemy hero. SwapUnitsStep runs the
+    displacement validation (swap prevention → mandatory abort)."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return self._swap_position_steps(hero, stats)
+
+    def _swap_position_steps(
+        self, hero: Hero, stats: CardStats, active_if_key: str | None = None
+    ) -> list[GameStep]:
+        from goa2.engine.filters import (
+            HasResolvedCardFilter,
+            RangeFilter,
+            TeamFilter,
+            UnitTypeFilter,
+        )
+        from goa2.engine.steps import SwapUnitsStep
+
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Swap with an enemy hero who has already resolved a card this turn",
+                output_key="tl_target",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                    HasResolvedCardFilter(),
+                ],
+                is_mandatory=True,
+                active_if_key=active_if_key,
+            ),
+            SwapUnitsStep(
+                unit_a_id=str(hero.id),
+                unit_b_key="tl_target",
+                is_mandatory=True,
+                active_if_key=active_if_key,
+            ),
+        ]
+
+
+# =============================================================================
+# TIME WARP (Blue III — range 4)
+# "Choose one —
+#  • Swap with an enemy hero in range who has already resolved a card this
+#    turn.
+#  • An enemy hero in range swaps their unresolved card with one of their
+#    resolved cards of their choice."
+# =============================================================================
+
+
+@register_effect("time_warp")
+class TimeWarpEffect(TimeLoopEffect):
+    """Bullet A inherits Time Loop's position swap. Bullet B reuses
+    SwapCardStep (Hero.swap_cards exchanges location + state + facedown +
+    played_this_round): the target needs an unresolved card AND ≥1 resolved
+    card; THAT enemy picks which resolved card swaps in. The swapped-out card
+    sits RESOLVED in the played slot and never resolves; turn order
+    self-corrects because resolve_next_action re-scans unresolved cards."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        from goa2.domain.models.enums import CardContainerType
+        from goa2.engine.filters import (
+            CardsInContainerFilter,
+            HasUnresolvedCardFilter,
+            RangeFilter,
+            TeamFilter,
+            UnitTypeFilter,
+        )
+        from goa2.engine.steps import SwapCardStep
+
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Time Warp: choose one",
+                output_key="tw_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Swap positions with an enemy hero who has already resolved a card",
+                    2: "An enemy hero swaps their unresolved card with a resolved card",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key="tw_choice", operator="==", threshold=1, output_key="tw_positions"
+            ),
+            CheckContextConditionStep(
+                input_key="tw_choice", operator="==", threshold=2, output_key="tw_cards"
+            ),
+            *self._swap_position_steps(hero, stats, active_if_key="tw_positions"),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero to swap their unresolved card",
+                output_key="tw_victim",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                    HasUnresolvedCardFilter(),
+                    CardsInContainerFilter(container=CardContainerType.PLAYED, min_cards=1),
+                ],
+                is_mandatory=True,
+                active_if_key="tw_cards",
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                prompt="Time Warp: choose one of your resolved cards to swap in",
+                output_key="tw_swap_card",
+                card_container=CardContainerType.PLAYED,
+                context_hero_id_key="tw_victim",
+                override_player_id_key="tw_victim",
+                is_mandatory=True,
+                active_if_key="tw_cards",
+            ),
+            SwapCardStep(
+                target_card_key="tw_swap_card",
+                context_hero_id_key="tw_victim",
+                active_if_key="tw_cards",
+            ),
+        ]
+
+
 @register_effect("alternative_timelines")
 class AlternativeTimelinesEffect(CardEffect):
     """Planning-phase passive: enables the two-card commit flow.

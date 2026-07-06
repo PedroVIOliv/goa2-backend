@@ -269,6 +269,7 @@ class FilterType(StrEnum):
     SAME_DIRECTION_FROM_ORIGIN = "same_direction_from_origin_filter"
     FARTHEST_EMPTY_ADJACENT = "farthest_empty_adjacent_filter"
     HAS_UNRESOLVED_CARD = "has_unresolved_card_filter"
+    HAS_RESOLVED_CARD = "has_resolved_card_filter"
     HERO_PIECE = "hero_piece_filter"
 
 

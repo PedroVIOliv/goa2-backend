@@ -34,6 +34,37 @@ class HasUnresolvedCardFilter(FilterCondition):
         return card is not None and card.state == CardState.UNRESOLVED
 
 
+class HasResolvedCardFilter(FilterCondition):
+    """Passes hero candidates who have already resolved a card THIS TURN.
+
+    Inverse of HasUnresolvedCardFilter, with PlayedCardFilter's turn-index
+    logic: the current turn index is the acting hero's resolved_turn_count
+    (the actor hasn't finalized yet), so a hero resolved this turn iff their
+    played slot at that index is filled — or their current_turn_card is
+    RESOLVED but not yet finalized (own-turn / action-control windows).
+    Used by Emmitt's Time Loop / Time Warp / Time Snare / Time Trap /
+    Time Bomb ("who has already resolved a card this turn")."""
+
+    type: FilterType = FilterType.HAS_RESOLVED_CARD
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        hero = state.get_hero(HeroID(candidate))
+        if not hero:
+            return False
+        card = hero.current_turn_card
+        if card is not None and card.state == CardState.RESOLVED:
+            return True
+        if state.current_actor_id is None:
+            return False
+        actor = state.get_hero(state.current_actor_id)
+        if not actor:
+            return False
+        turn_index = actor.resolved_turn_count
+        return turn_index < len(hero.played_cards) and hero.played_cards[turn_index] is not None
+
+
 class CardsInContainerFilter(FilterCondition):
     """
     Filters unit candidates to heroes with a card count in a given container

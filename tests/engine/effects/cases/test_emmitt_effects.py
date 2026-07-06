@@ -490,3 +490,320 @@ class TestReverseTime:
         assert not [
             e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE
         ]
+
+
+# =============================================================================
+# P1 primitive: HasResolvedCardFilter — "has already resolved a card this turn"
+# =============================================================================
+
+
+def _resolved_card(card_id: str, initiative: int = 5):
+    from goa2.domain.models.enums import CardState
+
+    from ..builders import skill_card
+
+    card = skill_card(card_id, initiative=initiative)
+    card.state = CardState.RESOLVED
+    return card
+
+
+def _unresolved_card(card_id: str, initiative: int = 5):
+    from goa2.domain.models.enums import CardState
+
+    from ..builders import skill_card
+
+    card = skill_card(card_id, initiative=initiative)
+    card.state = CardState.UNRESOLVED
+    return card
+
+
+@pytest.mark.effect_contract
+class TestHasResolvedCardFilterPrimitive:
+    def _state(self):
+        return (
+            EffectScenarioBuilder()
+            .line_board(8)
+            .red_hero("hero_emmitt", at=(0, 0, 0))
+            .blue_hero("hero_enemy", at=(3, 0, -3))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+
+    def _passes(self, state, candidate="hero_enemy"):
+        from goa2.engine.filters import HasResolvedCardFilter
+
+        return HasResolvedCardFilter().apply(candidate, state, {})
+
+    def test_enemy_finalized_this_turn_passes(self):
+        """Turn 1 (actor resolved_turn_count=0): enemy's slot 0 is filled →
+        they resolved a card this turn."""
+        state = self._state()
+        enemy = state.get_hero("hero_enemy")
+        enemy.played_cards = [_resolved_card("prev_resolved")]
+        enemy.resolved_turn_count = 1
+        assert self._passes(state) is True
+
+    def test_enemy_with_only_unresolved_card_fails(self):
+        state = self._state()
+        state.get_hero("hero_enemy").current_turn_card = _unresolved_card("pending")
+        assert self._passes(state) is False
+
+    def test_resolved_on_earlier_turn_only_fails(self):
+        """Turn 2 (actor resolved_turn_count=1): enemy resolved on turn 1 but
+        has an unresolved card THIS turn → 'this turn' condition fails."""
+        state = self._state()
+        state.get_hero("hero_emmitt").resolved_turn_count = 1
+        enemy = state.get_hero("hero_enemy")
+        enemy.played_cards = [_resolved_card("turn1_card")]
+        enemy.resolved_turn_count = 1
+        enemy.current_turn_card = _unresolved_card("pending")
+        assert self._passes(state) is False
+
+    def test_resolved_but_not_yet_finalized_passes(self):
+        """current_turn_card RESOLVED (mid-finalization / action-control
+        window) counts as resolved this turn."""
+        state = self._state()
+        state.get_hero("hero_enemy").current_turn_card = _resolved_card("just_done")
+        assert self._passes(state) is True
+
+    def test_non_hero_candidate_fails(self):
+        state = self._state()
+        assert self._passes(state, candidate="minion_1") is False
+
+
+# =============================================================================
+# TIME LOOP (§4): "Swap with an enemy hero in range who has already resolved
+# a card this turn." (range 4)
+# =============================================================================
+
+
+def _swap_block_effect(origin_id: str) -> ActiveEffect:
+    """Bulwark-style area effect: enemy actors cannot SWAP covered heroes."""
+    from goa2.domain.models.enums import DisplacementType
+
+    return ActiveEffect(
+        id="swap_block_test",
+        source_id=origin_id,
+        effect_type=EffectType.PLACEMENT_PREVENTION,
+        scope=EffectScope(
+            shape=Shape.RADIUS,
+            range=1,
+            origin_id=origin_id,
+            affects=AffectsFilter.FRIENDLY_HEROES,
+        ),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+        created_at_turn=1,
+        created_at_round=1,
+        displacement_blocks=[DisplacementType.SWAP],
+        blocks_enemy_actors=True,
+    )
+
+
+def _loop_state(card_id: str = "time_loop", *, enemy_resolved: bool = True, enemy_at=(3, 0, -3)):
+    state = (
+        EffectScenarioBuilder()
+        .line_board(8)
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", card_id))
+        .blue_hero("hero_enemy", at=enemy_at)
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    enemy = state.get_hero("hero_enemy")
+    if enemy_resolved:
+        enemy.played_cards = [_resolved_card("prev_resolved", initiative=9)]
+        enemy.resolved_turn_count = 1
+    else:
+        enemy.current_turn_card = _unresolved_card("pending")
+    return state
+
+
+@pytest.mark.effect_flow
+class TestTimeLoop:
+    def test_swap_with_resolved_enemy(self):
+        from goa2.domain.events import GameEventType
+
+        state = _loop_state()
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+
+        assert state.get_position("hero_emmitt") == Hex(q=3, r=0, s=-3)
+        assert state.get_position("hero_enemy") == Hex(q=0, r=0, s=0)
+        assert any(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events)
+
+    def test_no_resolved_enemy_aborts(self):
+        state = _loop_state(enemy_resolved=False)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()  # mandatory select has no candidates → abort
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_enemy_out_of_range_aborts(self):
+        state = _loop_state(enemy_at=(5, 0, -5))  # range 4
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+    def test_swap_prevention_denies_and_aborts(self):
+        """Displacement validation: a swap-blocking area effect on the target
+        denies the swap; mandatory → abort, positions unchanged."""
+        state = _loop_state()
+        # Guard next to the enemy projects the swap-blocking aura over them.
+        state = (
+            EffectScenarioBuilder()
+            .line_board(8)
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_loop"))
+            .blue_hero("hero_enemy", at=(3, 0, -3))
+            .blue_hero("hero_guard", at=(4, 0, -4))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        enemy = state.get_hero("hero_enemy")
+        enemy.played_cards = [_resolved_card("prev_resolved")]
+        enemy.resolved_turn_count = 1
+        state.active_effects.append(_swap_block_effect("hero_guard"))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_immune_enemy_excluded(self):
+        state = _loop_state()
+        state.active_effects.append(
+            ActiveEffect(
+                id="imm_test",
+                source_id="hero_enemy",
+                effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+                scope=EffectScope(shape=Shape.POINT, origin_id="hero_enemy"),
+                duration=DurationType.THIS_ROUND,
+                is_active=True,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()  # only candidate immune → abort
+        assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
+
+
+# =============================================================================
+# TIME WARP (§5): Choose one — (A) Time Loop position swap / (B) enemy swaps
+# their unresolved card with one of their resolved cards, of THEIR choice.
+# =============================================================================
+
+
+def _warp_state(*, enemy_has_resolved: bool = True, enemy_at=(3, 0, -3)):
+    """Enemy with an unresolved card this turn (bullet B shape); optionally
+    one resolved card from an earlier turn to swap in."""
+    state = (
+        EffectScenarioBuilder()
+        .line_board(8)
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_warp"))
+        .blue_hero("hero_enemy", at=enemy_at)
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    enemy = state.get_hero("hero_enemy")
+    enemy.current_turn_card = _unresolved_card("enemy_pending", initiative=7)
+    if enemy_has_resolved:
+        enemy.played_cards = [_resolved_card("enemy_prev", initiative=2)]
+        enemy.resolved_turn_count = 1
+    return state
+
+
+@pytest.mark.effect_flow
+class TestTimeWarp:
+    def test_bullet_a_swaps_positions_like_time_loop(self):
+        state = _loop_state("time_warp")
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(1)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+        assert state.get_position("hero_emmitt") == Hex(q=3, r=0, s=-3)
+        assert state.get_position("hero_enemy") == Hex(q=0, r=0, s=0)
+
+    def test_bullet_b_enemy_picks_resolved_card_and_swaps(self):
+        from goa2.domain.models.enums import CardState
+
+        state = _warp_state()
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(2)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_CARD")
+        assert run.latest_request.player_id == "hero_enemy"  # THEIR choice
+        run.choose("enemy_prev")
+        run.finish()
+
+        enemy = state.get_hero("hero_enemy")
+        # Old resolved card is now the (unresolved) current turn card…
+        assert enemy.current_turn_card is not None
+        assert enemy.current_turn_card.id == "enemy_prev"
+        assert enemy.current_turn_card.state == CardState.UNRESOLVED
+        # …and the swapped-out card sits RESOLVED in the played slot (U3:
+        # it never resolves its action).
+        assert [c.id for c in enemy.played_cards if c is not None] == ["enemy_pending"]
+        assert enemy.played_cards[0].state == CardState.RESOLVED
+
+    def test_bullet_b_resolution_order_follows_swapped_in_card(self):
+        """H3/H4: after the swap the enemy still acts this turn, ordered by
+        the swapped-in card's initiative (7→2 drops them behind an init-5
+        hero)."""
+        state = (
+            EffectScenarioBuilder()
+            .line_board(8)
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_warp"))
+            .blue_hero("hero_enemy", at=(3, 0, -3))
+            .blue_hero("hero_other", at=(5, 0, -5))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        enemy = state.get_hero("hero_enemy")
+        enemy.current_turn_card = _unresolved_card("enemy_pending", initiative=7)
+        enemy.played_cards = [_resolved_card("enemy_prev", initiative=2)]
+        enemy.resolved_turn_count = 1
+        state.get_hero("hero_other").current_turn_card = _unresolved_card(
+            "other_card", initiative=5
+        )
+
+        run = run_card(state, "hero_emmitt", finalize_turn=True)
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(2)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_CARD").choose("enemy_prev")
+
+        # Finalizing Emmitt's turn hands over to the next actor: without the
+        # swap hero_enemy (init 7) would act before hero_other (init 5); with
+        # the swapped-in init-2 card, hero_other goes first.
+        run.expect_input("CHOOSE_ACTION")
+        assert run.latest_request.player_id == "hero_other"
+        assert str(state.current_actor_id) == "hero_other"
+
+    def test_bullet_b_enemy_without_resolved_card_not_targetable(self):
+        state = _warp_state(enemy_has_resolved=False)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(2)
+        run.finish()  # no valid target → mandatory → abort
+        enemy = state.get_hero("hero_enemy")
+        assert enemy.current_turn_card is not None
+        assert enemy.current_turn_card.id == "enemy_pending"
+
+    def test_bullet_b_no_enemy_in_range_aborts(self):
+        state = _warp_state(enemy_at=(6, 0, -6))  # beyond range 4
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(2)
+        run.finish()
+        enemy = state.get_hero("hero_enemy")
+        assert enemy.current_turn_card is not None
+        assert enemy.current_turn_card.id == "enemy_pending"

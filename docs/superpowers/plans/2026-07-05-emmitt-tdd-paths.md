@@ -89,7 +89,7 @@ per repo convention.
 | P2 | `defense_uses_initiative` context flag consumed by `ReactionWindowStep` (value + option labels) | `engine/steps/reactions.py` |
 | P3 | Position snapshot: `state.last_turn_positions: dict[str, Hex]`, recorded just before PLANNING (and at game creation) | `domain/state.py`, `engine/phases.py` |
 | P4 | Turn discard log: `state.turn_discard_log: list[{hero_id, card_id}]`, appended in `DiscardCardStep`, cleared in `end_turn` | `domain/state.py`, `engine/steps/cards.py`, `engine/phases.py` |
-| P5 | `SwapUnresolvedCardStep` (swap `current_turn_card` ↔ chosen `played_cards[slot]`, states swap) | new step + `StepType` |
+| P5 | Card swap: REUSE existing `SwapCardStep` (`engine/steps/cards.py`) — `Hero.swap_cards` already swaps location + state + facedown + `played_this_round`; precedent: `rogue_skill_gold`. Only additions: `HasResolvedCardFilter` (P1-style) and `override_player_id_key` so the ENEMY picks the resolved card | no new step |
 | P6 | `EffectType.REVERSED_INITIATIVE` + ascending sort in `resolve_next_action`; NEXT_TURN round-boundary fizzle | `domain/models/effect.py`, `engine/phases.py` |
 | P7 | Aura immunity: `is_immune()` evaluates RADIUS-scoped `IMMUNITY_ENEMY_ACTIONS` (origin = Emmitt, affects FRIENDLY_HEROES) in addition to the existing per-unit `source_id` form | `engine/rules.py` |
 | P8 | `TokenType.GLITCH`, supply 3 | `domain/models/enums.py`, `token.py` |

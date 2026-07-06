@@ -3,6 +3,7 @@
 from goa2.engine.filters_base import FilterCondition
 from goa2.engine.filters_cards import (
     CardsInContainerFilter,
+    HasResolvedCardFilter,
     HasUnresolvedCardFilter,
     PlayedCardFilter,
 )
@@ -95,6 +96,7 @@ for _name in [
     "BetweenHexesFilter",
     "CoMoverValidHexFilter",
     "CardsInContainerFilter",
+    "HasResolvedCardFilter",
     "HasUnresolvedCardFilter",
     "PlayedCardFilter",
     "OrFilter",
@@ -124,6 +126,7 @@ __all__ = [
     "ForcedMovementByEnemyFilter",
     "HasEmptyNeighborFilter",
     "HasMarkerFilter",
+    "HasResolvedCardFilter",
     "HasUnresolvedCardFilter",
     "HeroPieceFilter",
     "ImmunityFilter",
