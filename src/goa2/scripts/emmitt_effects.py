@@ -403,8 +403,6 @@ class UnstableTimelineEffect(CardEffect):
                     UnitTypeFilter(unit_type="TOKEN"),
                     TokenTypeFilter(token_type=TokenType.GLITCH),
                 ],
-                skip_immunity_filter=True,
-                skip_self_filter=True,
                 override_player_id_key="ut_chooser",
                 is_mandatory=True,
                 active_if_key="ut_chooser",
@@ -416,6 +414,69 @@ class UnstableTimelineEffect(CardEffect):
             ),
             _glitch_cleanup_step(),
         ]
+
+
+# =============================================================================
+# TIME SNARE / TIME TRAP / TIME BOMB
+# "An enemy hero in range who has already resolved a card this turn discards
+#  a card, if able." / "…discards a card, or is defeated."
+# =============================================================================
+
+
+@register_effect("time_snare")
+class TimeSnareEffect(CardEffect):
+    """Force a resolved enemy hero in range to discard, if able."""
+
+    discard_or_defeat = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return self._discard_resolved_enemy_steps(card.id, stats)
+
+    def _discard_resolved_enemy_steps(self, card_id: str, stats: CardStats) -> list[GameStep]:
+        from goa2.engine.filters import (
+            HasResolvedCardFilter,
+            RangeFilter,
+            TeamFilter,
+            UnitTypeFilter,
+        )
+        from goa2.engine.steps import ForceDiscardOrDefeatStep, ForceDiscardStep
+
+        victim_key = f"{card_id}_victim"
+        discard_step: GameStep
+        if self.discard_or_defeat:
+            discard_step = ForceDiscardOrDefeatStep(victim_key=victim_key)
+        else:
+            discard_step = ForceDiscardStep(victim_key=victim_key)
+
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero who has already resolved a card this turn",
+                output_key=victim_key,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                    HasResolvedCardFilter(),
+                ],
+                is_mandatory=True,
+            ),
+            discard_step,
+        ]
+
+
+@register_effect("time_trap")
+class TimeTrapEffect(TimeSnareEffect):
+    """Same effect as Time Snare, with Time Trap's printed range."""
+
+
+@register_effect("time_bomb")
+class TimeBombEffect(TimeSnareEffect):
+    """Force a resolved enemy hero in range to discard, or be defeated."""
+
+    discard_or_defeat = True
 
 
 # =============================================================================

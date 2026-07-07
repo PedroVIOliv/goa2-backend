@@ -518,6 +518,16 @@ def _unresolved_card(card_id: str, initiative: int = 5):
     return card
 
 
+def _hand_card(card_id: str):
+    from goa2.domain.models.enums import CardState
+
+    from ..builders import skill_card
+
+    card = skill_card(card_id)
+    card.state = CardState.HAND
+    return card
+
+
 @pytest.mark.effect_contract
 class TestHasResolvedCardFilterPrimitive:
     def _state(self):
@@ -570,6 +580,192 @@ class TestHasResolvedCardFilterPrimitive:
     def test_non_hero_candidate_fails(self):
         state = self._state()
         assert self._passes(state, candidate="minion_1") is False
+
+
+# =============================================================================
+# TIME SNARE / TIME TRAP (§2): "An enemy hero in range who has already resolved
+# a card this turn discards a card, if able."
+# TIME BOMB (§3): same targeting, but "discards a card, or is defeated."
+# =============================================================================
+
+
+def _discard_state(
+    card_id: str = "time_snare",
+    *,
+    enemy_at=(2, 0, -2),
+    enemy_status: str = "resolved",
+    hand_count: int = 1,
+):
+    state = (
+        EffectScenarioBuilder()
+        .line_board(8)
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", card_id))
+        .blue_hero("hero_enemy", at=enemy_at)
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    enemy = state.get_hero("hero_enemy")
+    if enemy_status == "resolved":
+        enemy.played_cards = [_resolved_card("enemy_resolved", initiative=9)]
+        enemy.resolved_turn_count = 1
+    elif enemy_status == "unresolved":
+        enemy.current_turn_card = _unresolved_card("enemy_pending", initiative=9)
+    elif enemy_status != "passed":
+        raise ValueError(f"Unknown enemy status: {enemy_status}")
+    enemy.hand = [_hand_card(f"enemy_hand_{i}") for i in range(hand_count)]
+    return state
+
+
+@pytest.mark.effect_flow
+class TestTimeSnareTrap:
+    def test_time_snare_forces_victim_to_discard_if_able(self):
+        state = _discard_state("time_snare", hand_count=2)
+        enemy = state.get_hero("hero_enemy")
+        discarded = enemy.hand[1]
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_CARD")
+        assert run.latest_request.player_id == "hero_enemy"
+        run.choose(discarded.id)
+        run.finish()
+
+        assert discarded in enemy.discard_pile
+        assert discarded not in enemy.hand
+        assert state.turn_discard_log["hero_enemy"] == [discarded.id]
+        assert state.get_position("hero_enemy") == Hex(q=2, r=0, s=-2)
+
+    def test_time_snare_two_valid_targets_emmitt_chooses_which(self):
+        state = (
+            EffectScenarioBuilder()
+            .line_board(8)
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_snare"))
+            .blue_hero("hero_enemy_a", at=(1, 0, -1))
+            .blue_hero("hero_enemy_b", at=(2, 0, -2))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        for suffix in ("a", "b"):
+            enemy = state.get_hero(f"hero_enemy_{suffix}")
+            enemy.played_cards = [_resolved_card(f"enemy_{suffix}_resolved")]
+            enemy.resolved_turn_count = 1
+            enemy.hand = [_hand_card(f"enemy_{suffix}_hand")]
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT")
+        assert {o.id for o in run.latest_request.options} == {"hero_enemy_a", "hero_enemy_b"}
+        run.choose("hero_enemy_b")
+        run.expect_input("SELECT_CARD")
+        assert run.latest_request.player_id == "hero_enemy_b"
+        run.choose("enemy_b_hand")
+        run.finish()
+
+        assert [c.id for c in state.get_hero("hero_enemy_a").hand] == ["enemy_a_hand"]
+        assert [c.id for c in state.get_hero("hero_enemy_b").discard_pile] == ["enemy_b_hand"]
+
+    def test_time_trap_reaches_range_three(self):
+        state = _discard_state("time_trap", enemy_at=(3, 0, -3))
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_CARD").choose("enemy_hand_0")
+        run.finish()
+
+        assert [c.id for c in state.get_hero("hero_enemy").discard_pile] == ["enemy_hand_0"]
+
+    def test_time_snare_out_of_range_aborts(self):
+        state = _discard_state("time_snare", enemy_at=(3, 0, -3))
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        enemy = state.get_hero("hero_enemy")
+        assert [c.id for c in enemy.hand] == ["enemy_hand_0"]
+
+    def test_unresolved_or_passed_enemy_not_targetable(self):
+        for status in ("unresolved", "passed"):
+            state = _discard_state("time_snare", enemy_status=status)
+            run = run_card(state, "hero_emmitt")
+            run.expect_input("CHOOSE_ACTION").choose("SKILL")
+            run.finish()
+            assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
+
+    def test_empty_hand_has_no_penalty_for_if_able_cards(self):
+        state = _discard_state("time_snare", hand_count=0)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=2, r=0, s=-2)
+        assert not any(e.event_type == GameEventType.UNIT_DEFEATED for e in run.events)
+
+    def test_immune_enemy_excluded(self):
+        state = _discard_state("time_snare")
+        state.active_effects.append(
+            ActiveEffect(
+                id="snare_immune",
+                source_id="hero_enemy",
+                effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+                scope=EffectScope(shape=Shape.POINT, origin_id="hero_enemy"),
+                duration=DurationType.THIS_ROUND,
+                is_active=True,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
+
+
+@pytest.mark.effect_flow
+class TestTimeBomb:
+    def test_victim_with_cards_discards_instead_of_defeat(self):
+        state = _discard_state("time_bomb", enemy_at=(3, 0, -3), hand_count=1)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_CARD")
+        assert run.latest_request.player_id == "hero_enemy"
+        run.choose("enemy_hand_0")
+        run.finish()
+
+        enemy = state.get_hero("hero_enemy")
+        assert [c.id for c in enemy.discard_pile] == ["enemy_hand_0"]
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+        assert not any(e.event_type == GameEventType.UNIT_DEFEATED for e in run.events)
+
+    def test_victim_with_empty_hand_is_defeated(self):
+        state = _discard_state("time_bomb", enemy_at=(3, 0, -3), hand_count=0)
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+
+        defeated = [
+            e
+            for e in run.events
+            if e.event_type == GameEventType.UNIT_DEFEATED and e.target_id == "hero_enemy"
+        ]
+        assert defeated
+        assert defeated[-1].actor_id == "hero_emmitt"
+        assert state.get_position("hero_enemy") is None
+        assert state.get_hero("hero_emmitt").gold == 1
+
+    def test_same_targeting_gate_as_time_snare(self):
+        state = _discard_state("time_bomb", enemy_status="unresolved")
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=2, r=0, s=-2)
+        assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
 
 
 # =============================================================================
