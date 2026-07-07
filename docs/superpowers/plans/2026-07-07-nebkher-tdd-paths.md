@@ -1,6 +1,16 @@
 # NebKher — TDD Test Paths (for review)
 
-Status: **PENDING REVIEW** — do not implement until approved.
+Status: **PARTIALLY IMPLEMENTED** (2026-07-07). Approved by Pedro; the
+critical-infrastructure half is DONE — primitives P1–P7 plus the effects
+crack_in_reality, shift_reality, mind_grip, diabolical_laughter, and the
+ultimate (commits 1594e42, 3952bc1, 15ca706, ad5088c, a7464cc; tests in
+`tests/engine/nebkher/` + `tests/engine/effects/cases/test_nebkher_effects.py`).
+The **delegable families remain to be implemented by others**: Imbue Doubt /
+Time to Reconsider / An Illusion of Choice bodies, Fleeting Image /
+Multiple Projections / Master of Illusions, Illusionary Force / Army
+(placement halves — the equivalence EffectType exists), Phantasmal
+Sentry / Warrior / Champion, Twist Fate / Devious Scheme. Use the per-card
+paths below as their TDD spec; all needed primitives are in place.
 
 NebKher is an illusion/topology hero: 17 cards + ultimate, 10 unique effect
 classes. Data: `src/goa2/data/heroes/nebkher.py`. Effects will live in
