@@ -601,6 +601,61 @@ class OfferPassiveStep(GameStep):
         )
 
 
+class LaughStep(GameStep):
+    """NebKher's diabolical laugh: a YES/NO confirm routed to the acting hero.
+
+    On YES: stores True under ``output_key``, emits HERO_LAUGHED, and fires
+    AFTER_LAUGH passives immediately — before any steps queued after this one
+    (the ultimate reacts to the laugh itself, not the rest of the action).
+    On NO: nothing happens (downstream steps gate on ``output_key``).
+    """
+
+    type: StepType = StepType.LAUGH
+    output_key: str = "laughed"
+    prompt: str = "Laugh diabolically?"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        actor_id = str(state.current_actor_id) if state.current_actor_id else None
+        if not actor_id:
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            choice = self.pending_input.get("selection")
+            if choice != "YES":
+                logger.debug("   [LAUGH] Player declined to laugh.")
+                return StepResult(is_finished=True)
+
+            context[self.output_key] = True
+            from goa2.domain.models.enums import PassiveTrigger
+
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.HERO_LAUGHED,
+                        actor_id=actor_id,
+                    )
+                ],
+                new_steps=[CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_LAUGH.value)],
+            )
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.CONFIRM_PASSIVE,
+                player_id=actor_id,
+                prompt=self.prompt,
+                options=[
+                    InputOption(id="YES", text="Yes"),
+                    InputOption(id="NO", text="No"),
+                ],
+            ),
+        )
+
+
 class MarkPassiveUsedStep(GameStep):
     """Marks a passive ability as used for this turn."""
 

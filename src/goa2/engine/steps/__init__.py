@@ -23,6 +23,7 @@ from goa2.engine.steps.cards import (  # noqa: F401
     SetCardInitiativeStep,
     StealCoinsStep,
     SwapCardStep,
+    SwapResolvedCardsStep,
     apply_hero_upgrade,
 )
 from goa2.engine.steps.combat import (  # noqa: F401
@@ -46,6 +47,7 @@ from goa2.engine.steps.effects import (  # noqa: F401
     CheckPassiveAbilitiesStep,
     CreateEffectStep,
     FinishedExpiringEffectStep,
+    LaughStep,
     MarkPassiveUsedStep,
     OfferPassiveStep,
     ScheduleActionControlStep,

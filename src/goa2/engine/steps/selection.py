@@ -133,6 +133,17 @@ class SelectStep(GameStep):
             # Filter entity_locations for things that are actually Units
             all_entities = list(state.entity_locations.keys())
             candidates = [eid for eid in all_entities if state.get_unit(UnitID(str(eid)))]
+            # Illusion tokens count as friendly melee minions while the
+            # equivalence effect's source acts (NebKher Illusionary Force /
+            # Army) — they must be OFFERED as unit candidates, not merely
+            # pass filters.
+            from goa2.engine.rules import is_equivalent_illusion
+
+            candidates.extend(
+                eid
+                for eid in all_entities
+                if eid not in candidates and is_equivalent_illusion(state, str(eid))
+            )
         elif self.target_type == TargetType.UNIT_OR_TOKEN:
             # Use helper method that filters for Units and Tokens only
             # (excludes future entity types like Structures, Hazards, etc.)
@@ -194,17 +205,17 @@ class SelectStep(GameStep):
         effective_filters = self._get_effective_filters()
         for c in candidates:
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
-            # For UNIT_OR_TOKEN, only validate if the candidate is actually a unit
-            if self.target_type == TargetType.UNIT and actor_id:
+            # Only actual units are validated — tokens skip it in both modes
+            # (UNIT candidates can include equivalence Illusion tokens, which
+            # skip unit-targeting validation like tokens do).
+            if (
+                self.target_type in (TargetType.UNIT, TargetType.UNIT_OR_TOKEN)
+                and actor_id
+                and state.get_unit(UnitID(str(c)))
+            ):
                 val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
                 if not val_res.allowed:
                     continue
-            elif self.target_type == TargetType.UNIT_OR_TOKEN and actor_id:
-                # Only apply targeting validation to units, not tokens
-                if state.get_unit(UnitID(str(c))):
-                    val_res = state.validator.can_be_targeted(state, str(actor_id), str(c), context)
-                    if not val_res.allowed:
-                        continue
 
             is_valid = True
             for f in effective_filters:

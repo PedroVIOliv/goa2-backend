@@ -31,6 +31,7 @@ class TokenType(StrEnum):
     ROCK = "rock"
     MAGMA = "magma"
     GLITCH = "glitch"
+    ILLUSION = "illusion"
 
 
 class CardTier(StrEnum):
@@ -134,6 +135,7 @@ class StepType(StrEnum):
     PLACE_TURRET = "place_turret"
     SWAP_UNITS = "swap_units"
     SWAP_CARD = "swap_card"
+    SWAP_RESOLVED_CARDS = "swap_resolved_cards"
     PUSH_UNIT = "push_unit"
     RESPAWN_HERO = "respawn_hero"
     RESPAWN_MINION = "respawn_minion"
@@ -164,6 +166,7 @@ class StepType(StrEnum):
     CHECK_PASSIVE_ABILITIES = "check_passive_abilities"
     OFFER_PASSIVE = "offer_passive"
     MARK_PASSIVE_USED = "mark_passive_used"
+    LAUGH = "laugh"
     MULTI_SELECT = "multi_select"
     FOR_EACH = "for_each"
     CHECK_UNIT_TYPE = "check_unit_type"
@@ -314,3 +317,6 @@ class PassiveTrigger(StrEnum):
     # regardless of whether it was the primary or a secondary action (Wuk -
     # March of Nature). Does not fire on defense reactions.
     AFTER_RESOLVE_CARD = "after_resolve_card"
+    # Fires immediately after a hero laughs diabolically as part of
+    # performing an action (NebKher - LaughStep / What the Hell Are You?).
+    AFTER_LAUGH = "after_laugh"

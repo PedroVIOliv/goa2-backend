@@ -460,3 +460,45 @@ def find_reachable_with_mines(
             queue.append((neighbor, dist + 1, new_mines, (*path, neighbor)))
 
     return all_options
+
+
+def illusion_minion_team(state: GameState) -> TeamColor | None:
+    """Team for which Illusion tokens currently count as friendly melee
+    minions, or None when no ILLUSION_MINION_EQUIVALENCE effect applies.
+
+    "While you are performing actions" — active only while the effect's
+    SOURCE hero is the current actor. Gated on the performer (whoever
+    performed the card), never hardcoded to NebKher, so copy/perform
+    mechanics bind the equivalence to the copier. Piece-safe via
+    hero_owner_id (multi-piece heroes compare at owner level).
+    """
+    from goa2.domain.models.effect import EffectType
+
+    actor_id = state.current_actor_id
+    if not actor_id:
+        return None
+    actor_owner = state.hero_owner_id(str(actor_id))
+
+    for effect in state.active_effects:
+        if effect.effect_type != EffectType.ILLUSION_MINION_EQUIVALENCE or not effect.is_active:
+            continue
+        if state.hero_owner_id(str(effect.source_id)) != actor_owner:
+            continue
+        from goa2.domain.types import HeroID
+
+        source = state.get_hero(HeroID(state.hero_owner_id(str(effect.source_id))))
+        if source is not None and source.team is not None:
+            return source.team
+    return None
+
+
+def is_equivalent_illusion(state: GameState, entity_id: str) -> bool:
+    """True when ``entity_id`` is an Illusion token that currently counts as
+    a friendly melee minion (see illusion_minion_team)."""
+    from goa2.domain.models import TokenType
+    from goa2.domain.models.token import Token
+
+    if illusion_minion_team(state) is None:
+        return False
+    entity = state.get_entity(BoardEntityID(str(entity_id)))
+    return isinstance(entity, Token) and entity.token_type == TokenType.ILLUSION

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import ActionType, Hero, Minion, MinionType, StatType
+from goa2.domain.models import ActionType, Hero, Minion, MinionType, StatType, TokenType
 from goa2.domain.models.effect import (
     ActiveEffect,
     AffectsFilter,
@@ -12,6 +12,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.models.token import Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.topology import (
@@ -309,10 +310,32 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
             return state.get_unit(UnitID(str(tile.occupant_id)))
         return None
 
+    # Illusion tokens count as melee minions of the equivalence team while
+    # the effect's source acts (NebKher Illusionary Force/Army).
+    from goa2.engine.rules import illusion_minion_team
+
+    equivalence_team = illusion_minion_team(state)
+
+    def illusion_team_at(hex_coord):
+        if equivalence_team is None:
+            return None
+        tile = state.board.tiles.get(hex_coord)
+        if not tile or not tile.occupant_id:
+            return None
+        entity = state.get_entity(BoardEntityID(str(tile.occupant_id)))
+        if isinstance(entity, Token) and entity.token_type == TokenType.ILLUSION:
+            return equivalence_team
+        return None
+
     # --- RANGE 1 (Ring 1) ---
     for hex_coord in get_connected_ring(target_loc, 1, state):
         unit = get_unit_at(hex_coord)
         if not unit or not isinstance(unit, Minion):
+            illusion_team = illusion_team_at(hex_coord)
+            if illusion_team is not None:
+                # Counts as a melee minion: +1 for its own team's units,
+                # -1 against the other team.
+                total_mod += 1 if illusion_team == target_team else -1
             continue
 
         if unit.team == target_team:

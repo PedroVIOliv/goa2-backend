@@ -1045,6 +1045,85 @@ class SwapCardStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class SwapResolvedCardsStep(GameStep):
+    """
+    Swaps the slot positions of two RESOLVED cards of one hero, WITHOUT
+    canceling active effects (NebKher's Diabolical Laughter — "Swap two
+    resolved cards of an enemy hero in radius, without canceling active
+    effects").
+
+    Contrast with SwapCardStep, which swaps the current turn card with
+    another card and intentionally expires both cards' active effects.
+    Effects bind by card id (``source_card_id``), so a pure slot reorder
+    leaves them untouched; previous-turn-slot lookups see the new order.
+    No-ops if either card is missing from the hero's played slots or is
+    not RESOLVED.
+    """
+
+    type: StepType = StepType.SWAP_RESOLVED_CARDS
+    hero_id: str | None = None
+    hero_key: str | None = None  # Context key holding the hero ID
+    card_a_key: str = "swap_card_a"
+    card_b_key: str = "swap_card_b"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        h_id = self.hero_id
+        if not h_id and self.hero_key:
+            h_val = context.get(self.hero_key)
+            if h_val:
+                h_id = str(h_val)
+        if not h_id:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(h_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        card_a_id = context.get(self.card_a_key)
+        card_b_id = context.get(self.card_b_key)
+        if not card_a_id or not card_b_id or card_a_id == card_b_id:
+            return StepResult(is_finished=True)
+
+        def find_resolved(card_id: str) -> Card | None:
+            for c in hero.played_cards:
+                if c is not None and c.id == card_id and c.state == CardState.RESOLVED:
+                    return c
+            return None
+
+        card_a = find_resolved(str(card_a_id))
+        card_b = find_resolved(str(card_b_id))
+        if not card_a or not card_b:
+            logger.debug(
+                "   [SWAP RESOLVED] Cards %s/%s not both resolved on %s; skipping.",
+                card_a_id,
+                card_b_id,
+                h_id,
+            )
+            return StepResult(is_finished=True)
+
+        hero.swap_cards(card_a, card_b)
+        logger.debug(
+            "   [SWAP RESOLVED] %s's resolved cards %s and %s traded slots.",
+            h_id,
+            card_a.name,
+            card_b.name,
+        )
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.RESOLVED_CARDS_SWAPPED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(h_id),
+                    metadata={"card_a_id": card_a.id, "card_b_id": card_b.id},
+                )
+            ],
+        )
+
+
 class RetrieveCardStep(GameStep):
     """
     Retrieves a card from discard pile back to hand.

@@ -51,6 +51,13 @@ class EffectType(StrEnum):
 
     # Delayed trigger (carries finishing_steps, no spatial effect)
     DELAYED_TRIGGER = "delayed_trigger"
+
+    # Illusion tokens count as friendly melee minions while the effect's
+    # SOURCE hero performs actions (NebKher - Illusionary Force/Army). Gated
+    # on the performer (not hardcoded NebKher): consulted via
+    # rules.illusion_minion_team() by stats' minion defense modifier, unit
+    # filters, and SelectStep UNIT enumeration.
+    ILLUSION_MINION_EQUIVALENCE = "illusion_minion_equivalence"
     # Coin bounty when an enemy minion in radius is defeated (Swift Mark for
     # Death / Hunting Season). max_value tracks remaining payouts.
     MINION_DEFEAT_BOUNTY = "minion_defeat_bounty"

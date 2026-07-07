@@ -40,13 +40,17 @@ class TeamFilter(FilterCondition):
             # Only warn if strict logic required. For now, fail silently (filter mismatch)
             return False
 
-        # Ensure both have 'team' attribute (Tokens might not)
-        if not hasattr(actor, "team") or not hasattr(target, "team"):
-            return False
-
         # Explicitly check if attributes are not None for Mypy
         actor_team = getattr(actor, "team", None)
         target_team = getattr(target, "team", None)
+
+        # Illusion tokens count as minions of the equivalence team while the
+        # effect's source performs actions (NebKher Illusionary Force/Army).
+        if target_team is None and isinstance(candidate, str):
+            from goa2.engine.rules import illusion_minion_team, is_equivalent_illusion
+
+            if is_equivalent_illusion(state, candidate):
+                target_team = illusion_minion_team(state)
 
         if actor_team is None or target_team is None:
             return False
@@ -85,7 +89,13 @@ class UnitTypeFilter(FilterCondition):
         if self.unit_type == "HERO":
             return is_hero_unit(entity)
         elif self.unit_type == "MINION":
-            return isinstance(entity, Minion)
+            if isinstance(entity, Minion):
+                return True
+            # Illusion tokens count as minions while equivalence is active
+            # for the current actor (NebKher Illusionary Force/Army).
+            from goa2.engine.rules import is_equivalent_illusion
+
+            return is_equivalent_illusion(state, str(candidate))
         elif self.unit_type == "TOKEN":
             return isinstance(entity, Token)
         return False
@@ -132,8 +142,16 @@ class MinionTypesFilter(FilterCondition):
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         entity = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
-        if not entity or not isinstance(entity, Minion):
+        if not entity:
             return False
+        if not isinstance(entity, Minion):
+            # Illusion tokens count as MELEE minions while equivalence is
+            # active for the current actor (NebKher Illusionary Force/Army).
+            from goa2.engine.rules import is_equivalent_illusion
+
+            return MinionType.MELEE in self.minion_types and is_equivalent_illusion(
+                state, str(candidate)
+            )
 
         return entity.type in self.minion_types
 

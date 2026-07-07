@@ -43,6 +43,8 @@ class GameEventType(StrEnum):
     # Cards
     CARD_RETRIEVED = "CARD_RETRIEVED"
     CARD_REVEALED = "CARD_REVEALED"
+    # NebKher: two resolved cards traded turn slots (active effects preserved)
+    RESOLVED_CARDS_SWAPPED = "RESOLVED_CARDS_SWAPPED"
     # Protection
     MINION_PROTECTED = "MINION_PROTECTED"
     # Turn flow
@@ -50,6 +52,8 @@ class GameEventType(StrEnum):
     GAME_OVER = "GAME_OVER"
     # Mines
     MINE_TRIGGERED = "MINE_TRIGGERED"
+    # NebKher: a hero laughed diabolically as part of performing an action
+    HERO_LAUGHED = "HERO_LAUGHED"
 
     TIE_BREAKER_FLIPPED = "TIE_BREAKER_FLIPPED"
 
