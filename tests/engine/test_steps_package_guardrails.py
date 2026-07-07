@@ -74,6 +74,7 @@ EXPECTED_STEP_CLASSES = {
     "GuessCardColorStep",
     "LanePushStep",
     "LaughStep",
+    "PerformCardActionStep",
     "LogMessageStep",
     "MarkPassiveUsedStep",
     "MayRepeatNTimesStep",

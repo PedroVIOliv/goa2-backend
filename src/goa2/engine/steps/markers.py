@@ -42,6 +42,20 @@ def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Hex | Non
     return from_hex, removed_effects
 
 
+TOKEN_TYPE_OVERRIDE_KEY = "token_type_override"
+SKIP_MARKERS_KEY = "skip_markers"
+
+
+def effective_token_type(context: dict[str, Any], default: TokenType) -> TokenType:
+    """Token-type override for copied actions (NebKher's Mind Grip: "if you
+    would place any tokens this way, place Illusion tokens instead").
+    PerformCardActionStep sets the override flag around the copied steps; every
+    token-placing step resolves its type through this helper so the
+    substitution reaches nested templates and runtime-built steps."""
+    override = context.get(TOKEN_TYPE_OVERRIDE_KEY)
+    return TokenType(str(override)) if override else default
+
+
 class RemoveTokenStep(GameStep):
     type: StepType = StepType.REMOVE_TOKEN
     token_id: str | None = None
@@ -88,6 +102,7 @@ class PlaceTokenStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
+        token_type = effective_token_type(context, self.token_type)
         dest_val = context.get(self.hex_key)
         if not dest_val:
             return StepResult(is_finished=True)
@@ -95,16 +110,14 @@ class PlaceTokenStep(GameStep):
         dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
         tile = state.board.get_tile(dest_hex)
         if tile and tile.is_occupied:
-            logger.debug(
-                f"   [TOKEN] Cannot place {self.token_type.value} at {dest_hex}: occupied."
-            )
+            logger.debug(f"   [TOKEN] Cannot place {token_type.value} at {dest_hex}: occupied.")
             return StepResult(is_finished=True)
 
         owner_id = context.get(self.owner_id_key) if self.owner_id_key else None
         if owner_id is None:
             owner_id = state.current_actor_id
 
-        pool = state.token_pool.get(self.token_type, [])
+        pool = state.token_pool.get(token_type, [])
         available = next(
             (t for t in pool if BoardEntityID(str(t.id)) not in state.entity_locations),
             None,
@@ -121,20 +134,20 @@ class PlaceTokenStep(GameStep):
                 new_steps=[
                     SelectStep(
                         target_type=TargetType.UNIT_OR_TOKEN,
-                        prompt=f"Select a {self.token_type.value} token to remove from the board.",
+                        prompt=f"Select a {token_type.value} token to remove from the board.",
                         output_key=self.overflow_selection_key,
                         skip_immunity_filter=True,
                         skip_self_filter=True,
                         is_mandatory=True,
                         filters=[
                             UnitTypeFilter(unit_type="TOKEN"),
-                            TokenTypeFilter(token_type=self.token_type),
+                            TokenTypeFilter(token_type=token_type),
                         ],
                         override_player_id_key=self.owner_id_key,
                     ),
                     RemoveTokenStep(token_key=self.overflow_selection_key),
                     PlaceTokenStep(
-                        token_type=self.token_type,
+                        token_type=token_type,
                         hex_key=self.hex_key,
                         owner_id_key=self.owner_id_key,
                         output_key=self.output_key,
@@ -158,7 +171,7 @@ class PlaceTokenStep(GameStep):
                 actor_id=str(owner_id) if owner_id else None,
                 target_id=str(available.id),
                 to_hex=_hex_dict(dest_hex),
-                metadata={"token_type": self.token_type.value},
+                metadata={"token_type": token_type.value},
             )
         )
         return StepResult(is_finished=True, events=events)
@@ -271,10 +284,11 @@ class PlaceTokenBatchStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        pool = state.token_pool.get(self.token_type, [])
+        token_type = effective_token_type(context, self.token_type)
+        pool = state.token_pool.get(token_type, [])
         if self.count > len(pool):
             logger.debug(
-                f"   [TOKEN BATCH] {self.count} {self.token_type.value} exceeds supply "
+                f"   [TOKEN BATCH] {self.count} {token_type.value} exceeds supply "
                 f"({len(pool)})."
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
@@ -284,7 +298,7 @@ class PlaceTokenBatchStep(GameStep):
         if normalized_slot_filters is None:
             logger.debug(
                 f"   [TOKEN BATCH] Invalid slot filter count for {self.count} "
-                f"{self.token_type.value} tokens."
+                f"{token_type.value} tokens."
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
 
@@ -300,7 +314,7 @@ class PlaceTokenBatchStep(GameStep):
             state, context, slot_keys, normalized_slot_filters, on_board_hexes, removal_count
         ):
             logger.debug(
-                f"   [TOKEN BATCH] No placement of {self.count} {self.token_type.value} "
+                f"   [TOKEN BATCH] No placement of {self.count} {token_type.value} "
                 "tokens fits the slot filters."
             )
             return StepResult(is_finished=True, abort_action=self.is_mandatory)
@@ -333,16 +347,16 @@ class PlaceTokenBatchStep(GameStep):
             new_steps += [
                 SelectStep(
                     target_type=TargetType.UNIT_OR_TOKEN,
-                    prompt=f"Select a {self.token_type.value} token to remove from the board.",
+                    prompt=f"Select a {token_type.value} token to remove from the board.",
                     output_key=rm_key,
                     skip_immunity_filter=True,
                     skip_self_filter=True,
                     is_mandatory=True,
                     filters=[
                         UnitTypeFilter(unit_type="TOKEN"),
-                        TokenTypeFilter(token_type=self.token_type),
+                        TokenTypeFilter(token_type=token_type),
                         TokenRemovalCompletableFilter(
-                            token_type=self.token_type,
+                            token_type=token_type,
                             slot_keys=slot_keys,
                             slot_filters=normalized_slot_filters,
                             remaining_removals=removal_count - j,
@@ -367,7 +381,7 @@ class PlaceTokenBatchStep(GameStep):
             new_steps += [
                 SelectStep(
                     target_type=TargetType.HEX,
-                    prompt=f"Place {self.token_type.value} token {i + 1}/{self.count}",
+                    prompt=f"Place {token_type.value} token {i + 1}/{self.count}",
                     output_key=hex_key,
                     filters=filters,
                     is_mandatory=True,
@@ -375,7 +389,7 @@ class PlaceTokenBatchStep(GameStep):
                     active_if_key=gate_key,
                 ),
                 PlaceTokenStep(
-                    token_type=self.token_type,
+                    token_type=token_type,
                     hex_key=hex_key,
                     owner_id_key=owner_key,
                     output_key=f"{self.key_prefix}_token_{i}",
@@ -457,6 +471,7 @@ class PlaceTokensInLineStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
+        token_type = effective_token_type(context, self.token_type)
         origin_uid = self.origin_id
         if not origin_uid and self.origin_key:
             origin_uid = context.get(self.origin_key)
@@ -491,7 +506,7 @@ class PlaceTokensInLineStep(GameStep):
 
         removal_steps = _token_shortfall_removal_steps(
             state,
-            token_type=self.token_type,
+            token_type=token_type,
             needed=len(target_hexes),
             key_prefix="_line_token",
             owner_id_key=self.owner_id_key,
@@ -507,9 +522,7 @@ class PlaceTokensInLineStep(GameStep):
             key = f"_line_rock_hex_{i}"
             context[key] = h.model_dump()
             new_steps.append(
-                PlaceTokenStep(
-                    token_type=self.token_type, hex_key=key, owner_id_key=self.owner_id_key
-                )
+                PlaceTokenStep(token_type=token_type, hex_key=key, owner_id_key=self.owner_id_key)
             )
         if self.output_key is not None:
             context[self.output_key] = [h.model_dump() for h in target_hexes]
@@ -540,6 +553,7 @@ class PlaceTokenTrailStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
+        token_type = effective_token_type(context, self.token_type)
         raw_origin = context.get(self.origin_hex_key)
         raw_dest = context.get(self.dest_key)
         if not raw_origin or not raw_dest:
@@ -563,7 +577,7 @@ class PlaceTokenTrailStep(GameStep):
 
         removal_steps = _token_shortfall_removal_steps(
             state,
-            token_type=self.token_type,
+            token_type=token_type,
             needed=len(target_hexes),
             key_prefix="_trail_token",
             owner_id_key=self.owner_id_key,
@@ -579,9 +593,7 @@ class PlaceTokenTrailStep(GameStep):
             key = f"_trail_hex_{i}"
             context[key] = current.model_dump()
             new_steps.append(
-                PlaceTokenStep(
-                    token_type=self.token_type, hex_key=key, owner_id_key=self.owner_id_key
-                )
+                PlaceTokenStep(token_type=token_type, hex_key=key, owner_id_key=self.owner_id_key)
             )
         return StepResult(is_finished=True, new_steps=new_steps)
 
@@ -861,6 +873,12 @@ class PlaceMarkerStep(GameStep):
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
 
         if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # Copied actions may skip marker giving entirely (NebKher's Mind
+        # Grip: "skip giving markers") — the rest of the effect continues.
+        if context.get(SKIP_MARKERS_KEY):
+            logger.debug(f"   [MARKER] Skipping {self.marker_type.value} (skip_markers active).")
             return StepResult(is_finished=True)
 
         # Resolve target

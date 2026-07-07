@@ -11,6 +11,7 @@ from goa2.engine.steps.cards import (  # noqa: F401
     ForceDiscardStep,
     GainCoinsStep,
     GainItemStep,
+    PerformCardActionStep,
     PerformPrimaryActionStep,
     ResolveCardStep,
     ResolveCardTextStep,

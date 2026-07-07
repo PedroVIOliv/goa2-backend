@@ -17,9 +17,11 @@ from goa2.domain.models import (
     CardState,
     CardTier,
     GamePhase,
+    Hero,
     StepType,
     TargetType,
     TeamColor,
+    TokenType,
 )
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
@@ -1565,6 +1567,275 @@ class PerformPrimaryActionStep(GameStep):
                 # action) builds its steps at runtime, so push the exclusion down
                 # via the step's own key — it will inject it when it resolves.
                 step.exclude_target_key = exclude_key
+
+
+class PerformCardActionStep(GameStep):
+    """
+    Performs ANY action of an arbitrary card as the acting hero — the normal
+    card-resolution menu minus defense (NebKher's Mind Grip: "Perform an
+    action on the card in the previous turn slot of an enemy hero").
+
+    Differences from PerformPrimaryActionStep:
+    - Offers a chooser over the card's printed options (primary unless
+      DEFENSE, secondaries minus DEFENSE — HOLD is always present, so at
+      least one action always exists; DEFENSE_SKILL primaries are offered as
+      SKILL).
+    - Values come from THAT card, computed with the PERFORMER as actor.
+    - Optional substitution flags for copied effects: ``token_type_override``
+      (all token placements place that type instead — Mind Grip places
+      Illusions) and ``skip_markers`` (marker steps are skipped, the rest of
+      the effect continues). The flags are context-scoped around the copied
+      steps so they reach nested templates and runtime-built sub-steps.
+    """
+
+    type: StepType = StepType.PERFORM_CARD_ACTION
+    card_key: str = "selected_card"
+    card_owner_key: str | None = None  # context key: whose card list to search
+    hero_id: str | None = None  # performer (default: current actor)
+    token_type_override: TokenType | None = None
+    skip_markers: bool = False
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.stats import get_computed_stat
+
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        performer_id = self.hero_id or (
+            str(state.current_actor_id) if state.current_actor_id else None
+        )
+        if not performer_id:
+            return StepResult(is_finished=True)
+        performer = state.get_hero(HeroID(performer_id))
+        if not performer:
+            return StepResult(is_finished=True)
+
+        owner = performer
+        if self.card_owner_key:
+            owner_val = context.get(self.card_owner_key)
+            if owner_val:
+                owner = state.get_hero(HeroID(str(owner_val))) or performer
+
+        card_id = context.get(self.card_key)
+        if not card_id:
+            return StepResult(is_finished=True)
+        card: Card | None = None
+        for c in [
+            owner.current_turn_card,
+            *owner.played_cards,
+            *owner.discard_pile,
+            *owner.hand,
+            *owner.deck,
+        ]:
+            if c is not None and c.id == card_id:
+                card = c
+                break
+        if not card:
+            logger.debug(f"   [PERFORM ANY] Card {card_id} not found on {owner.id}.")
+            return StepResult(is_finished=True)
+
+        def is_action_available(act_type: ActionType) -> bool:
+            val_res = state.validator.can_perform_action(
+                state, performer_id, act_type, context={"card": card}
+            )
+            return bool(val_res.allowed)
+
+        def compute_option(act_type: ActionType, base_val: int | None) -> tuple[int, str]:
+            final_val = base_val or 0
+            text_val = str(final_val) if base_val is not None else "-"
+            stat_type = None
+            if act_type == ActionType.MOVEMENT:
+                stat_type = StatType.MOVEMENT
+            elif act_type == ActionType.ATTACK:
+                stat_type = StatType.ATTACK
+            if stat_type:
+                final_val = get_computed_stat(state, UnitID(performer_id), stat_type, base_val or 0)
+                text_val = str(final_val)
+            return final_val, text_val
+
+        # Build the normal resolution menu minus defense.
+        options: list[dict[str, Any]] = []
+        primary_action = card.current_primary_action
+        if primary_action and primary_action not in (
+            ActionType.DEFENSE,
+            ActionType.DEFENSE_SKILL,
+        ):
+            if is_action_available(primary_action):
+                c_val, c_text = compute_option(primary_action, card.current_primary_action_value)
+                options.append(
+                    {
+                        "id": primary_action.name,
+                        "type": primary_action,
+                        "value": c_val,
+                        "text": f"Primary: {primary_action.name} ({c_text})",
+                    }
+                )
+        elif primary_action == ActionType.DEFENSE_SKILL and is_action_available(ActionType.SKILL):
+            c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
+            options.append(
+                {
+                    "id": ActionType.SKILL.name,
+                    "type": ActionType.SKILL,
+                    "value": c_val,
+                    "text": f"Primary: SKILL ({c_text})",
+                }
+            )
+
+        for action_type, val in card.current_secondary_actions.items():
+            if action_type == ActionType.DEFENSE:
+                continue  # defense is never performable this way
+            if is_action_available(action_type):
+                c_val, c_text = compute_option(action_type, val)
+                options.append(
+                    {
+                        "id": action_type.name,
+                        "type": action_type,
+                        "value": c_val,
+                        "text": f"Secondary: {action_type.name} ({c_text})",
+                    }
+                )
+
+        if self.pending_input:
+            choice_id = self.pending_input.get("selection")
+            selected_opt = next((o for o in options if o["id"] == choice_id), None)
+            if not selected_opt:
+                return StepResult(is_finished=True)
+
+            act_type = cast(ActionType, selected_opt["type"])
+            val = cast(int, selected_opt["value"])
+            is_primary = act_type == primary_action or (
+                primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL
+            )
+
+            action_steps = self._build_action_steps(
+                state, context, performer_id, performer, card, act_type, val, is_primary
+            )
+            return StepResult(
+                is_finished=True,
+                new_steps=self._wrap_with_substitution_flags(action_steps),
+            )
+
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.CHOOSE_ACTION,
+                player_id=performer_id,
+                prompt=f"Choose an action to perform on {card.name}",
+                options=options,
+            ),
+        )
+
+    def _build_action_steps(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        performer_id: str,
+        performer: Hero,
+        card: Card,
+        act_type: ActionType,
+        val: int,
+        is_primary: bool,
+    ) -> list[GameStep]:
+        from goa2.engine.stats import compute_card_stats
+        from goa2.engine.steps.combat import AttackSequenceStep
+        from goa2.engine.steps.movement import FastTravelSequenceStep, MoveSequenceStep
+        from goa2.engine.steps.utility import LogMessageStep
+
+        if is_primary:
+            context["reperforming_card_id"] = card.id
+            stats = compute_card_stats(state, UnitID(performer_id), card)
+            if card.current_effect_id:
+                from goa2.engine.effects import CardEffectRegistry
+
+                effect = CardEffectRegistry.get(card.current_effect_id)
+                if effect:
+                    return effect.build_steps(state, performer, card, stats)
+            # No registered effect — fall back to bare primitives.
+            if act_type == ActionType.ATTACK:
+                return [AttackSequenceStep(damage=stats.primary_value, range_val=stats.range or 1)]
+            if act_type == ActionType.MOVEMENT:
+                return [MoveSequenceStep(unit_id=performer_id, range_val=stats.primary_value)]
+            return []
+
+        # Secondary primitives, mirroring ResolveCardStep.
+        if act_type == ActionType.MOVEMENT:
+            move_base = card.current_secondary_actions.get(act_type, val)
+            return [
+                MoveSequenceStep(
+                    unit_id=performer_id,
+                    range_val=move_base,
+                    range_stat_type=StatType.MOVEMENT,
+                )
+            ]
+        if act_type == ActionType.FAST_TRAVEL:
+            return [FastTravelSequenceStep(unit_id=performer_id)]
+        if act_type == ActionType.ATTACK:
+            attack_base = card.current_secondary_actions.get(act_type, val)
+            base_rng = card.get_base_stat_value(StatType.RANGE)
+            if base_rng == 0:
+                base_rng = 1
+            return [
+                AttackSequenceStep(
+                    damage=attack_base,
+                    range_val=base_rng,
+                    damage_stat_type=StatType.ATTACK,
+                    range_stat_type=StatType.RANGE,
+                )
+            ]
+        if act_type == ActionType.CLEAR:
+            from goa2.engine.steps.markers import RemoveTokenStep
+            from goa2.engine.steps.selection import MultiSelectStep
+            from goa2.engine.steps.utility import ForEachStep
+
+            if not state.has_board_presence(performer_id):
+                return [
+                    LogMessageStep(message=f"{performer_id} attempted clear but is not on board.")
+                ]
+            return [
+                MultiSelectStep(
+                    min_selections=0,
+                    max_selections=6,
+                    filters=[
+                        UnitTypeFilter(unit_type="TOKEN"),
+                        RangeFilter(max_range=1),
+                        ImmunityFilter(),
+                    ],
+                    output_key="clear_targets",
+                    target_type=TargetType.UNIT_OR_TOKEN,
+                    prompt="Select tokens to clear.",
+                ),
+                ForEachStep(
+                    list_key="clear_targets",
+                    item_key="target_id",
+                    steps_template=[RemoveTokenStep(token_key="target_id")],
+                ),
+            ]
+        # HOLD (or anything unhandled): nothing to do.
+        return [LogMessageStep(message=f"{performer_id} performs {act_type.name}.")]
+
+    def _wrap_with_substitution_flags(self, steps: list[GameStep]) -> list[GameStep]:
+        """Bracket the copied action with the substitution context flags so
+        every token placement / marker step resolving inside it — including
+        nested templates and runtime-built sub-steps — sees them."""
+        if not self.token_type_override and not self.skip_markers:
+            return steps
+
+        from goa2.engine.steps.markers import SKIP_MARKERS_KEY, TOKEN_TYPE_OVERRIDE_KEY
+        from goa2.engine.steps.utility import SetContextFlagStep
+
+        pre: list[GameStep] = []
+        post: list[GameStep] = []
+        if self.token_type_override:
+            pre.append(
+                SetContextFlagStep(
+                    key=TOKEN_TYPE_OVERRIDE_KEY, value=self.token_type_override.value
+                )
+            )
+            post.append(SetContextFlagStep(key=TOKEN_TYPE_OVERRIDE_KEY, value=None))
+        if self.skip_markers:
+            pre.append(SetContextFlagStep(key=SKIP_MARKERS_KEY, value=True))
+            post.append(SetContextFlagStep(key=SKIP_MARKERS_KEY, value=None))
+        return [*pre, *steps, *post]
 
 
 class ConvertCardToItemStep(GameStep):

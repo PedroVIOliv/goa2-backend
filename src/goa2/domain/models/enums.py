@@ -136,6 +136,7 @@ class StepType(StrEnum):
     SWAP_UNITS = "swap_units"
     SWAP_CARD = "swap_card"
     SWAP_RESOLVED_CARDS = "swap_resolved_cards"
+    PERFORM_CARD_ACTION = "perform_card_action"
     PUSH_UNIT = "push_unit"
     RESPAWN_HERO = "respawn_hero"
     RESPAWN_MINION = "respawn_minion"
