@@ -842,6 +842,33 @@ def test_path_of_ashes_blue_moving_zero_places_nothing() -> None:
 
 
 @pytest.mark.effect_flow
+def test_path_blue_supply_short_removes_board_magma_before_trail() -> None:
+    # Two pool Magma tokens sit off-path; free supply is 2 < 3 trail hexes.
+    # The shortfall removal is prompted BEFORE any trail placement, offering
+    # only the pre-existing board tokens (never this trail's own tokens).
+    state = _path_state("path_of_cinders")
+    _set_coin(state, "BLUE")
+    from goa2.domain.hex import Hex
+
+    state.place_entity("magma_pool_0", Hex(q=0, r=2, s=-2))
+    state.place_entity("magma_pool_1", Hex(q=0, r=-2, s=2))
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    assert _option_set(run) == {"magma_pool_0", "magma_pool_1"}
+    run.choose("magma_pool_0").finish()
+
+    assert _pos(state, "hero_ignatia") == (3, 0, -3)
+    for coord in ((0, 0, 0), (1, 0, -1), (2, 0, -2)):
+        assert _magma_at(state, coord)
+    assert not _magma_at(state, (3, 0, -3))  # destination excluded
+    assert not _magma_at(state, (0, 2, -2))  # removed for the shortfall
+    assert _magma_at(state, (0, -2, 2))  # the other board token stays
+
+
+@pytest.mark.effect_flow
 def test_path_of_ashes_orange_places_up_to_two_magma_in_radius() -> None:
     state = _path_state("path_of_ashes")
     _set_coin(state, "ORANGE")

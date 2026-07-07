@@ -12,7 +12,12 @@ from goa2.domain.types import BoardEntityID, UnitID
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
-from goa2.engine.filters_base import FilterCondition, dump_filter_grid, revalidate_filters
+from goa2.engine.filters_base import (
+    BATCH_FREED_HEXES_KEY,
+    FilterCondition,
+    dump_filter_grid,
+    revalidate_filters,
+)
 from goa2.engine.topology import get_topology_service
 
 
@@ -56,8 +61,20 @@ class HexBatchCompletableFilter(FilterCondition):
       assignment uses consumes one unit of ``removal_budget`` (occupied by a
       token that COULD still be removed).
 
-    Treating those hexes as empty is only sound under the removal
-    monotonicity assumption documented on ``PlaceTokenBatchStep``.
+    The search publishes the hexes its current hypothesis treats as empty
+    into the scratch context under ``BATCH_FREED_HEXES_KEY``: the definitely
+    freed ones (``free_hexes``, plus all ``removable_hexes`` when the budget
+    covers them all — then every removal is forced) and the ones the current
+    assignment path spends budget on. Occupancy-deriving slot filters (e.g.
+    ``FarthestEmptyAdjacentFilter``) read that hint to stay consistent with
+    the hypothesis; chosen-slot hexes reach them via their configured context
+    keys (``occupied_hex_keys``).
+
+    Residual assumption (see ``PlaceTokenBatchStep``): when ``removal_budget``
+    is below the number of ``removable_hexes``, the unforced extra removals
+    are assumed not to disturb slot filters. For batches whose ``count``
+    equals the total supply (every current user), the budget always covers
+    all removable hexes, so the case cannot arise.
     """
 
     type: FilterType = FilterType.HEX_BATCH_COMPLETABLE
@@ -88,15 +105,18 @@ class HexBatchCompletableFilter(FilterCondition):
         budget_used = sum(self._hex_cost(h) for h in chosen)
         if budget_used > self.removal_budget:
             return False
+        freed = self._extend_freed(self._definitely_freed(), chosen)
         return self._can_complete(
-            state, scratch, self.slot_index + 1, chosen, self.removal_budget - budget_used
+            state, scratch, self.slot_index + 1, chosen, self.removal_budget - budget_used, freed
         )
 
     def feasible(self, state: GameState, context: dict) -> bool:
         """Does at least one full slot assignment exist, starting from slot 0?"""
         if len(self.slot_keys) != len(self.slot_filters):
             return False
-        return self._can_complete(state, dict(context), 0, [], self.removal_budget)
+        return self._can_complete(
+            state, dict(context), 0, [], self.removal_budget, self._definitely_freed()
+        )
 
     def _can_complete(
         self,
@@ -105,6 +125,7 @@ class HexBatchCompletableFilter(FilterCondition):
         slot_index: int,
         chosen: list[Hex],
         budget_left: int,
+        freed: list[Hex],
     ) -> bool:
         if slot_index >= len(self.slot_keys):
             return True
@@ -115,15 +136,31 @@ class HexBatchCompletableFilter(FilterCondition):
             cost = self._hex_cost(hex_pos)
             if cost > budget_left:
                 continue
-            if not self._passes_slot_filters(hex_pos, state, context, slot_index):
+            cand_freed = self._extend_freed(freed, [hex_pos]) if cost else freed
+            eval_ctx = dict(context)
+            eval_ctx[BATCH_FREED_HEXES_KEY] = cand_freed
+            if not self._passes_slot_filters(hex_pos, state, eval_ctx, slot_index):
                 continue
-            scratch = dict(context)
+            scratch = dict(eval_ctx)
             scratch[self.slot_keys[slot_index]] = hex_pos
             if self._can_complete(
-                state, scratch, slot_index + 1, [*chosen, hex_pos], budget_left - cost
+                state, scratch, slot_index + 1, [*chosen, hex_pos], budget_left - cost, cand_freed
             ):
                 return True
         return False
+
+    def _definitely_freed(self) -> list[Hex]:
+        """Hexes every consistent removal scenario leaves empty: the committed
+        removals, plus all removable hexes when the budget covers them all
+        (then every one of those removals is forced)."""
+        freed = list(self.free_hexes)
+        if self.removal_budget >= len(self.removable_hexes):
+            freed = self._extend_freed(freed, self.removable_hexes)
+        return freed
+
+    def _extend_freed(self, freed: list[Hex], hexes: list[Hex]) -> list[Hex]:
+        extra = [h for h in hexes if self._hex_cost(h) and h not in freed]
+        return [*freed, *extra] if extra else freed
 
     def _hex_cost(self, hex_pos: Hex) -> int:
         if hex_pos in self.free_hexes:

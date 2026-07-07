@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import Field
+
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType
 from goa2.domain.state import GameState
@@ -10,8 +12,16 @@ from goa2.domain.types import BoardEntityID, UnitID
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
-from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_base import BATCH_FREED_HEXES_KEY, FilterCondition
 from goa2.engine.topology import get_topology_service
+
+
+def _hexes_from_context_value(raw: Any) -> list[Hex]:
+    """Normalize a context value into a list of Hex (accepts Hex or dict items)."""
+    if not raw:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    return [Hex(**h) if isinstance(h, dict) else h for h in items]
 
 
 class LineBehindTargetFilter(FilterCondition):
@@ -241,12 +251,24 @@ class FarthestEmptyAdjacentFilter(FilterCondition):
     as possible." Recomputed per call, so after each placement (which occupies a
     hex) the next-farthest empties become eligible. Ties at the max distance all
     pass (the actor picks among them).
+
+    Batch-search hints: because this filter derives emptiness itself, the batch
+    completability search (which cannot mutate the board while exploring) feeds
+    it hypotheses through context —
+
+    - hexes at ``occupied_hex_keys`` (earlier batch slots) count as occupied;
+    - hexes under ``BATCH_FREED_HEXES_KEY`` (removals assumed by the search)
+      count as empty.
+
+    Both adjust the candidate set AND the max-distance computation, keeping the
+    search consistent with what the live board will look like at placement time.
     """
 
     type: FilterType = FilterType.FARTHEST_EMPTY_ADJACENT
     origin_id: str | None = None
     origin_key: str | None = None
     anchor_key: str = "anchor_unit"
+    occupied_hex_keys: list[str] = Field(default_factory=list)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -266,11 +288,18 @@ class FarthestEmptyAdjacentFilter(FilterCondition):
         if not origin_hex or not anchor_hex:
             return False
 
+        freed = _hexes_from_context_value(context.get(BATCH_FREED_HEXES_KEY))
+        occupied: list[Hex] = []
+        for key in self.occupied_hex_keys:
+            occupied.extend(_hexes_from_context_value(context.get(key)))
+
         topology = get_topology_service()
         empties = [
             h
             for h in topology.get_connected_ring(anchor_hex, 1, state)
-            if state.board.is_on_map(h) and not state.board.get_tile(h).is_obstacle
+            if state.board.is_on_map(h)
+            and h not in occupied
+            and (not state.board.get_tile(h).is_obstacle or h in freed)
         ]
         if candidate not in empties:
             return False

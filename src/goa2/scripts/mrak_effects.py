@@ -30,8 +30,6 @@ from goa2.engine.filters_units import (
 )
 from goa2.engine.steps import (
     AttackSequenceStep,
-    CheckContextConditionStep,
-    CountStep,
     CreateEffectStep,
     ForceDiscardOrDefeatStep,
     GameStep,
@@ -39,6 +37,7 @@ from goa2.engine.steps import (
     MoveSequenceStep,
     MoveUnitStep,
     OfferRockUltimateStep,
+    PlaceTokenBatchStep,
     PlaceTokensInLineStep,
     PlaceTokenStep,
     PushUnitStep,
@@ -398,7 +397,7 @@ class StoneGripEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         hero_id = str(hero.id)
-        steps: list[GameStep] = [
+        return [
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Target an enemy hero in range",
@@ -410,42 +409,30 @@ class StoneGripEffect(CardEffect):
                     RangeFilter(max_range=stats.range or 0),
                 ],
             ),
-            # "exactly 3 or none": require at least 3 empty adjacent hexes.
-            CountStep(
-                target_type=TargetType.HEX,
-                filters=[
-                    RangeFilter(min_range=1, max_range=1, origin_key="grip_hero"),
-                    ObstacleFilter(is_obstacle=False),
+            # "exactly 3 or none": the batch's all-or-nothing feasibility
+            # precheck (which also counts hexes the forced supply removals
+            # would free) replaces the old empty-neighbour count gate.
+            PlaceTokenBatchStep(
+                token_type=TokenType.ROCK,
+                count=3,
+                key_prefix="grip",
+                slot_filters=[
+                    [
+                        FarthestEmptyAdjacentFilter(
+                            origin_id=hero_id,
+                            anchor_key="grip_hero",
+                            occupied_hex_keys=[f"grip_hex_{j}" for j in range(i)],
+                        )
+                    ]
+                    for i in range(3)
                 ],
-                output_key="grip_empty_count",
+                is_mandatory=False,
             ),
-            CheckContextConditionStep(
-                input_key="grip_empty_count", operator=">=", threshold=3, output_key="grip_ok"
-            ),
+            # Ultimate: after this single placement batch (all 3 rocks),
+            # affected enemy heroes discard. key_prefix="grip" makes the batch
+            # write the same grip_hex_i keys the offer reads.
+            OfferRockUltimateStep(rock_hex_keys=["grip_hex_0", "grip_hex_1", "grip_hex_2"]),
         ]
-        for i in range(3):
-            hex_key = f"grip_hex_{i}"
-            steps.append(
-                SelectStep(
-                    target_type=TargetType.HEX,
-                    prompt="Place a Rock token adjacent to the hero, as far from you as possible",
-                    output_key=hex_key,
-                    is_mandatory=True,
-                    active_if_key="grip_ok",
-                    filters=[
-                        FarthestEmptyAdjacentFilter(origin_id=hero_id, anchor_key="grip_hero")
-                    ],
-                )
-            )
-            steps.append(
-                PlaceTokenStep(token_type=TokenType.ROCK, hex_key=hex_key, active_if_key=hex_key)
-            )
-        # Ultimate: after this single placement batch (all 3 rocks), affected
-        # enemy heroes discard.
-        steps.append(
-            OfferRockUltimateStep(rock_hex_keys=["grip_hex_0", "grip_hex_1", "grip_hex_2"])
-        )
-        return steps
 
 
 # ---------------------------------------------------------------------------

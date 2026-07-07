@@ -164,6 +164,46 @@ class PlaceTokenStep(GameStep):
         return StepResult(is_finished=True, events=events)
 
 
+def _token_shortfall_removal_steps(
+    state: GameState,
+    *,
+    token_type: TokenType,
+    needed: int,
+    key_prefix: str,
+    owner_id_key: str | None = None,
+) -> list[GameStep]:
+    """Prompt removals needed to free enough supply before a multi-token placement."""
+    from goa2.engine.steps.selection import SelectStep
+
+    pool = state.token_pool.get(token_type, [])
+    on_board_ids = [
+        str(t.id) for t in pool if state.entity_locations.get(BoardEntityID(str(t.id))) is not None
+    ]
+    free = len(pool) - len(on_board_ids)
+    removal_count = min(max(0, needed - free), len(on_board_ids))
+
+    steps: list[GameStep] = []
+    for i in range(removal_count):
+        rm_key = f"{key_prefix}_rm_{i}"
+        steps += [
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt=f"Select a {token_type.value} token to remove from the board.",
+                output_key=rm_key,
+                skip_immunity_filter=True,
+                skip_self_filter=True,
+                is_mandatory=True,
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=token_type),
+                ],
+                override_player_id_key=owner_id_key,
+            ),
+            RemoveTokenStep(token_key=rm_key),
+        ]
+    return steps
+
+
 class PlaceTokenBatchStep(GameStep):
     """Places ``count`` tokens of one type as a single batch with upfront
     supply reconciliation.
@@ -396,8 +436,12 @@ class PlaceTokensInLineStep(GameStep):
     Scans indefinitely past obstacles (which are skipped, not landed on),
     stopping only at the board edge. Used by Fissure: "Place a Rock token in
     each of the first three empty spaces in the straight line from you in the
-    direction of the attack." Placement is delegated to PlaceTokenStep so supply
-    overflow and TOKEN_PLACED events are handled consistently.
+    direction of the attack."
+
+    When free supply is short, removals are prompted before any placement and
+    this step is re-run afterward. Re-running is intentional: a removed token
+    may itself have occupied one of the line hexes, so the "first empty spaces"
+    must be computed against the post-removal board.
     """
 
     type: StepType = StepType.PLACE_TOKENS_IN_LINE
@@ -445,6 +489,19 @@ class PlaceTokensInLineStep(GameStep):
                 if len(target_hexes) >= self.count:
                     break
 
+        removal_steps = _token_shortfall_removal_steps(
+            state,
+            token_type=self.token_type,
+            needed=len(target_hexes),
+            key_prefix="_line_token",
+            owner_id_key=self.owner_id_key,
+        )
+        if removal_steps:
+            return StepResult(
+                is_finished=True,
+                new_steps=[*removal_steps, self.model_copy(deep=True)],
+            )
+
         new_steps: list[GameStep] = []
         for i, h in enumerate(target_hexes):
             key = f"_line_rock_hex_{i}"
@@ -467,8 +524,10 @@ class PlaceTokenTrailStep(GameStep):
     Used by Ignatia's Path cards: after moving up to N in a straight line, drop a
     Magma token in each empty space moved through or out of. If origin == dest
     (moved zero) or the two are not in a straight line, nothing is placed.
-    Placement is delegated to PlaceTokenStep so supply overflow and occupied-hex
-    skipping are handled consistently.
+
+    When free supply is short, removals are prompted before any placement, then
+    the trail placement resumes. This keeps newly placed trail tokens from being
+    offered as overflow removals for later tokens in the same trail.
     """
 
     type: StepType = StepType.PLACE_TOKEN_TRAIL
@@ -496,9 +555,27 @@ class PlaceTokenTrailStep(GameStep):
         dr = (dest.r - origin.r) // dist
         ds = (dest.s - origin.s) // dist
 
-        new_steps: list[GameStep] = []
+        target_hexes: list[Hex] = []
         current = origin
-        for i in range(dist):  # origin, origin+1, ..., dest-1 (destination excluded)
+        for _ in range(dist):  # origin, origin+1, ..., dest-1 (destination excluded)
+            target_hexes.append(current)
+            current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
+
+        removal_steps = _token_shortfall_removal_steps(
+            state,
+            token_type=self.token_type,
+            needed=len(target_hexes),
+            key_prefix="_trail_token",
+            owner_id_key=self.owner_id_key,
+        )
+        if removal_steps:
+            return StepResult(
+                is_finished=True,
+                new_steps=[*removal_steps, self.model_copy(deep=True)],
+            )
+
+        new_steps: list[GameStep] = []
+        for i, current in enumerate(target_hexes):
             key = f"_trail_hex_{i}"
             context[key] = current.model_dump()
             new_steps.append(
@@ -506,7 +583,6 @@ class PlaceTokenTrailStep(GameStep):
                     token_type=self.token_type, hex_key=key, owner_id_key=self.owner_id_key
                 )
             )
-            current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
         return StepResult(is_finished=True, new_steps=new_steps)
 
 

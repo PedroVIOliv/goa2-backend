@@ -627,6 +627,107 @@ def test_stone_grip_places_nothing_with_fewer_than_three_empty_hexes() -> None:
     assert not _rock_at(state, 3, 0, -3)
 
 
+def test_stone_grip_supply_short_removes_board_rock_before_placing() -> None:
+    # A pool rock from an earlier turn sits at (0,1,-1), not adjacent to the
+    # target. Free supply is 2 < 3, so one removal is forced — prompted BEFORE
+    # any placement, and never offering rocks placed by this batch.
+    board = [
+        (0, 0, 0),
+        (1, 0, -1),
+        (2, 0, -2),
+        (3, 0, -3),
+        (2, 1, -3),
+        (2, -1, -1),
+        (0, 1, -1),
+    ]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(board)
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "stone_grip"))
+        .blue_hero("hero_arien", at=(2, 0, -2))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    _add_rock_pool(state)
+    state.place_entity("rock_pool_0", Hex(q=0, r=1, s=-1))
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("hero_arien").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)  # removal
+    assert _option_set(run) == {"rock_pool_0"}
+    run.choose("rock_pool_0").expect_input(InputRequestType.SELECT_HEX)
+    assert _option_set(run) == {Hex(q=3, r=0, s=-3), Hex(q=2, r=1, s=-3)}
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    assert _option_set(run) == {Hex(q=2, r=-1, s=-1)}
+    run.choose({"q": 2, "r": -1, "s": -1}).finish()
+
+    assert _rock_at(state, 3, 0, -3)
+    assert _rock_at(state, 2, 1, -3)
+    assert _rock_at(state, 2, -1, -1)
+    assert not _rock_at(state, 0, 1, -1)  # the pre-existing rock was recycled
+
+
+def test_stone_grip_counts_removal_freed_hex_adjacent_to_target() -> None:
+    # Only 2 empty hexes adjacent to the target; the 3rd neighbour holds a pool
+    # rock from an earlier turn. Free supply is 2 < 3, so the forced removal
+    # frees that hex — per the remove-then-place rule, "exactly 3" is possible.
+    board = [(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3), (2, 1, -3)]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(board)
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "stone_grip"))
+        .blue_hero("hero_arien", at=(2, 0, -2))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    _add_rock_pool(state)
+    state.place_entity("rock_pool_0", Hex(q=3, r=0, s=-3))
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("hero_arien").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)  # removal
+    assert _option_set(run) == {"rock_pool_0"}
+    run.choose("rock_pool_0").expect_input(InputRequestType.SELECT_HEX)
+    # Post-removal the freed hex is empty again and ties for farthest.
+    assert _option_set(run) == {Hex(q=3, r=0, s=-3), Hex(q=2, r=1, s=-3)}
+    run.choose({"q": 3, "r": 0, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 2, "r": 1, "s": -3}).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 1, "r": 0, "s": -1}).finish()
+
+    assert _rock_at(state, 3, 0, -3)
+    assert _rock_at(state, 2, 1, -3)
+    assert _rock_at(state, 1, 0, -1)
+
+
+def test_stone_grip_skips_when_freed_hex_would_not_be_adjacent() -> None:
+    # Two empty hexes adjacent to the target and a board rock whose removal
+    # frees a NON-adjacent hex: still impossible -> place nothing, remove
+    # nothing, show no prompts.
+    board = [(0, 0, 0), (1, 0, -1), (2, 0, -2), (2, 1, -3), (0, 1, -1)]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(board)
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "stone_grip"))
+        .blue_hero("hero_arien", at=(2, 0, -2))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    _add_rock_pool(state)
+    state.place_entity("rock_pool_0", Hex(q=0, r=1, s=-1))
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("hero_arien").finish()  # infeasible even with removal -> none
+
+    assert _rock_at(state, 0, 1, -1)  # untouched
+    assert not _rock_at(state, 1, 0, -1)
+    assert not _rock_at(state, 2, 1, -3)
+
+
 # =============================================================================
 # Fissure (Gold): Attack 4 adjacent; "After the attack: Place a Rock token in
 # each of the first three empty spaces in the straight line from you in the
@@ -663,6 +764,64 @@ def test_fissure_attacks_then_places_rocks_along_the_attack_line() -> None:
         if state.entity_locations.get(str(t.id)) is not None
     )
     assert placed == 3
+
+
+def test_fissure_supply_short_removes_board_rock_before_placing() -> None:
+    # A pool rock sits off-line at (0,1,-1); free supply is 2 < 3 line spaces.
+    # The shortfall removal is prompted BEFORE any placement (never offering
+    # rocks this card just placed), then all three line hexes get rocks.
+    board = [(q, 0, -q) for q in range(6)] + [(0, 1, -1)]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(board)
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "fissure"))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    _add_rock_pool(state)
+    state.place_entity("rock_pool_0", Hex(q=0, r=1, s=-1))
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)  # removal
+    assert _option_set(run) == {"rock_pool_0"}
+    run.choose("rock_pool_0").finish()
+
+    # Attack 4 defeats the minion (value 2), so the line starts at q=1.
+    assert state.entity_locations.get("blue_minion") is None
+    for q in (1, 2, 3):
+        assert _rock_at(state, q, 0, -q)
+    assert not _rock_at(state, 0, 1, -1)  # the pre-existing rock was recycled
+
+
+def test_fissure_removed_line_rock_rejoins_the_line() -> None:
+    # The only board rock sits ON the attack line at q=2. Removing it for the
+    # supply shortfall happens BEFORE the line is evaluated, so its hex counts
+    # again among "the first three empty spaces" (remove-then-place order).
+    state = (
+        EffectScenarioBuilder()
+        .line_board(length=6)
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "fissure"))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    _add_rock_pool(state)
+    state.place_entity("rock_pool_0", Hex(q=2, r=0, s=-2))
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)  # removal
+    assert _option_set(run) == {"rock_pool_0"}
+    run.choose("rock_pool_0").finish()
+
+    assert state.entity_locations.get("blue_minion") is None
+    for q in (1, 2, 3):
+        assert _rock_at(state, q, 0, -q)
+    assert not _rock_at(state, 4, 0, -4)  # line no longer skips past q=2
 
 
 # =============================================================================

@@ -7,6 +7,14 @@ from pydantic import BaseModel, ConfigDict
 from goa2.domain.models import FilterType
 from goa2.domain.state import GameState
 
+# Context key under which the batch completability search publishes the hexes
+# its current hypothesis treats as empty (tokens whose removal is assumed).
+# The search cannot mutate the board while exploring assignments, so filters
+# that derive emptiness themselves (e.g. FarthestEmptyAdjacentFilter) must
+# read this hint to stay consistent with the hypothesis. Absent outside the
+# search, where the live board is authoritative.
+BATCH_FREED_HEXES_KEY = "_batch_freed_hexes"
+
 
 class FilterCondition(BaseModel):
     """
