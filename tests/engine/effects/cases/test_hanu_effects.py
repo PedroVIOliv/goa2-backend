@@ -1101,8 +1101,8 @@ def test_controlled_heroes_inputs_reroute_to_hanu() -> None:
     assert run.latest_request.context["controlled_hero_id"] == "blue_enemy"
     # Client contract: to_dict() surfaces the controlled hero.
     assert run.latest_request.to_dict()["controlled_hero_id"] == "blue_enemy"
-    # The remap must not disable rollback: Hanu confirms/rolls back this action.
-    assert state.execution_context.get("rollback_disabled") is None
+    # The remap must not freeze rollback: Hanu confirms/rolls back this action.
+    assert state.execution_context.get("rollback_frozen") is None
 
 
 @pytest.mark.effect_flow

@@ -276,7 +276,9 @@ Rollback the current actor's resolution to the action choice step. Only the play
 - `400` — No active resolution or no rollback snapshot available
 - `403` — Not the player the current input is addressed to, or spectator token used
 
-**When rollback is disabled:** If another player was prompted during the current actor's resolution (e.g., for defense card selection), rollback is permanently disabled for that resolution. The `can_rollback` field on `InputRequest` will be `false`.
+**When rollback is re-anchored or frozen:**
+- **Re-anchoring:** If a foreign player is prompted during the current actor's resolution (e.g., for defense card selection), a segment boundary is reached. The actor's previous snapshot is cleared, and `can_rollback` is `false` for the foreign choice. However, the actor can roll back past that foreign player's committed decision once it is the actor's own turn to act again (a fresh snapshot is re-anchored on their next own input).
+- **Frozen:** Certain hidden events (like mine explosions/detonations) permanently freeze rollback for the rest of the actor's turn. In this case, `can_rollback` will remain `false` for the actor, and the confirmation step at the end of resolution is auto-confirmed.
 
 ### `POST /games/{game_id}/cheats/gold`
 
@@ -1043,7 +1045,8 @@ resolves.
 
 If `can_rollback` is `true` in the input request, the client should show a rollback button. When clicked, send a `POST /games/{game_id}/rollback` request (REST) or a `{"type": "ROLLBACK"}` message (WebSocket). This restores the game state to the action choice moment so the player can choose a different action.
 
-Rollback is automatically disabled when another player is prompted during the current actor's turn (e.g., defense card selection). This prevents abuse of information gained from opponent choices. When rollback is disabled, the confirmation step at the end of resolution is also skipped.
+Rollback is re-anchored past foreign player inputs: when an opponent is prompted (e.g., for defense card selection), the previous snapshot is cleared so that the actor cannot undo the opponent's committed choices. However, once the opponent's decision is made and it is the actor's own turn to act again, a fresh rollback snapshot is re-anchored. This allows the actor to rollback their post-foreign inputs, but never across the opponent's committed decision.
+Rollback is permanently frozen (disabled) for the rest of the turn only when a hidden event occurs, such as a mine detonation. When rollback is frozen, the confirmation step at the end of resolution is auto-confirmed.
 
 Under action control (Hanu's ultimate), a control remap does **not** disable rollback: because the controlled action's inputs are addressed to the controller, `can_rollback` is offered to the controller, who owns the confirm/rollback for that action. The controlled hero cannot rollback it.
 

@@ -187,9 +187,11 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
 
     # 5. Rogue Reaction -> Pass
     state.execution_stack[-1].pending_input = {"selection": "PASS"}
-    _ = process_stack(state).input_request
+    req = process_stack(state).input_request
 
-    # Finalize Arien
+    # Confirm Arien's turn (rollback is not permanently frozen)
+    assert req["type"] == "CHOOSE_ACTION"
+    state.execution_stack[-1].pending_input = {"selection": "CONFIRM"}
     _ = process_stack(state).input_request
 
     # --- CHECK NEXT ACTOR ---

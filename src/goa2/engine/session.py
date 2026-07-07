@@ -149,9 +149,9 @@ class GameSession:
             return
 
         actor_id = str(self.state.current_actor_id)
-        rollback_disabled = self.state.execution_context.get("rollback_disabled", False)
+        rollback_frozen = self.state.execution_context.get("rollback_frozen", False)
 
-        if rollback_disabled:
+        if rollback_frozen:
             self._rollback_snapshot = None
             self._rollback_actor_id = None
             return
@@ -168,6 +168,11 @@ class GameSession:
         is_actor_action_input = request.player_id == actor_id or (
             request.context.get("controlled_hero_id") == actor_id
         )
+
+        if not is_actor_action_input:
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+            return
 
         # Take snapshot on the first input request for the current actor's action
         if self._rollback_snapshot is None and is_actor_action_input:

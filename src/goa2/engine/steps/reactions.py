@@ -348,15 +348,15 @@ class ResolveOnBlockEffectStep(GameStep):
 class ConfirmResolutionStep(GameStep):
     """
     Prompts the acting player to confirm their resolution or rollback.
-    Auto-confirms when rollback is disabled (another player was prompted during this turn).
+    Auto-confirms when rollback is frozen (e.g. mine exploded).
     """
 
     type: StepType = StepType.CONFIRM_RESOLUTION
     hero_id: str
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        # Auto-confirm when rollback is disabled
-        if context.get("rollback_disabled"):
+        # Auto-confirm when rollback is frozen
+        if context.get("rollback_frozen"):
             return StepResult(is_finished=True)
 
         if self.pending_input:

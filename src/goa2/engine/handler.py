@@ -71,16 +71,6 @@ def process_stack(state: GameState) -> StackResult:
             if request is not None and controller_id is not None:
                 request.context["controlled_hero_id"] = request.player_id
                 request.player_id = controller_id
-            # Track rollback disabled: if input targets someone other than the
-            # current actor. A control remap does NOT disable rollback — the
-            # controller confirms/rolls back the controlled action.
-            if (
-                request is not None
-                and controller_id is None
-                and state.current_actor_id is not None
-                and request.player_id != str(state.current_actor_id)
-            ):
-                state.execution_context["rollback_disabled"] = True
             return StackResult(input_request=request, events=collected_events)
 
         if not result.is_finished:

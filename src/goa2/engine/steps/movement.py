@@ -662,7 +662,7 @@ class TriggerMineStep(GameStep):
                 )
 
         context[self.mine_ids_key] = []
-        context["rollback_disabled"] = True
+        context["rollback_frozen"] = True
 
         # Each blast mine forces the moved hero to discard a card (if able)
         new_steps: list[GameStep] = []
