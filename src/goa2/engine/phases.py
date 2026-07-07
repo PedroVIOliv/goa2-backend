@@ -220,17 +220,66 @@ def start_resolution_phase(state: GameState):
         for h_id in state.unresolved_hero_ids
         if (hero := state.get_hero(h_id)) and hero.extra_turn_card is not None
     ]
-    if dual_hero_ids:
+
+    # "Next turn, after playing cards:" payloads (NebKher's Imbue Doubt
+    # family) fire here — after reveal (and after any two-card retrieval
+    # settles hands), before the first actor. Fires after retrieval so a
+    # retrieved card is back in hand when e.g. a forced discard resolves.
+    trigger_steps = _collect_after_cards_played_steps(state)
+
+    if dual_hero_ids or trigger_steps:
         from goa2.engine.steps import FindNextActorStep, RetrieveUnresolvedCardStep
 
         steps: list[GameStep] = [
             RetrieveUnresolvedCardStep(hero_id=str(h_id)) for h_id in dual_hero_ids
         ]
+        steps.extend(trigger_steps)
         steps.append(FindNextActorStep())
         push_steps(state, steps)
         return
 
     resolve_next_action(state)
+
+
+def _collect_after_cards_played_steps(state: GameState) -> list[GameStep]:
+    """Pop due AFTER_CARDS_PLAYED_TRIGGER effects and build their payload
+    steps.
+
+    Due = scheduled last turn in the SAME round (created_at_turn + 1 ==
+    current turn). Anything else — a cross-round leftover or a stale copy —
+    is dropped without firing (NEXT_TURN never crosses rounds). Each payload
+    runs with the scheduling hero as current actor so prompts and relational
+    filters resolve from the scheduler's perspective; FindNextActorStep
+    re-establishes normal initiative afterwards.
+    """
+    from goa2.domain.models.effect import EffectType
+
+    triggers = [
+        e for e in state.active_effects if e.effect_type == EffectType.AFTER_CARDS_PLAYED_TRIGGER
+    ]
+    if not triggers:
+        return []
+
+    state.active_effects = [
+        e for e in state.active_effects if e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
+    ]
+
+    from goa2.engine.steps import SetActorStep
+
+    steps: list[GameStep] = []
+    for effect in triggers:
+        due = state.round == effect.created_at_round and state.turn == effect.created_at_turn + 1
+        if not due:
+            logger.info(
+                "After-cards-played trigger from %s fizzles (round boundary).",
+                effect.source_id,
+            )
+            continue
+        if not effect.finishing_steps:
+            continue
+        steps.append(SetActorStep(actor_id=str(effect.source_id)))
+        steps.extend(effect.finishing_steps)
+    return steps
 
 
 def resolve_next_action(state: GameState):

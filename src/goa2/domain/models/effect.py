@@ -58,6 +58,14 @@ class EffectType(StrEnum):
     # rules.illusion_minion_team() by stats' minion defense modifier, unit
     # filters, and SelectStep UNIT enumeration.
     ILLUSION_MINION_EQUIVALENCE = "illusion_minion_equivalence"
+
+    # "Next turn, after playing cards:" delayed payload (NebKher - Imbue
+    # Doubt family). Fired ONLY by phases.start_resolution_phase at the
+    # revelation→resolution boundary of created_at_turn + 1 (same round),
+    # with the effect's source as acting player. The generic turn/round
+    # expiry paths intentionally NEVER run its finishing_steps — cross-round
+    # or stale copies fizzle silently.
+    AFTER_CARDS_PLAYED_TRIGGER = "after_cards_played_trigger"
     # Coin bounty when an enemy minion in radius is defeated (Swift Mark for
     # Death / Hunting Season). max_value tracks remaining payouts.
     MINION_DEFEAT_BOUNTY = "minion_defeat_bounty"

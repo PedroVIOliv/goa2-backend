@@ -177,8 +177,13 @@ class EffectManager:
             return False
 
         expiring = [e for e in state.active_effects if is_expiring_this_turn(e)]
+        # AFTER_CARDS_PLAYED_TRIGGER payloads fire only at their dedicated
+        # firing point (start_resolution_phase); expiring here means the
+        # window was missed (round boundary etc.) → fizzle silently.
         finishing: list[tuple[str, list]] = [
-            (e.source_id, e.finishing_steps) for e in expiring if e.finishing_steps
+            (e.source_id, e.finishing_steps)
+            for e in expiring
+            if e.finishing_steps and e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
         ]
         affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
         state.active_effects = [e for e in state.active_effects if not is_expiring_this_turn(e)]
@@ -195,7 +200,9 @@ class EffectManager:
         """
         expiring = [e for e in state.active_effects if e.duration == duration]
         finishing: list[tuple[str, list]] = [
-            (e.source_id, e.finishing_steps) for e in expiring if e.finishing_steps
+            (e.source_id, e.finishing_steps)
+            for e in expiring
+            if e.finishing_steps and e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
         ]
         affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
         state.active_effects = [e for e in state.active_effects if e.duration != duration]
