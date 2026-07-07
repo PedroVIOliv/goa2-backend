@@ -1127,7 +1127,9 @@ Events describe what happened during a game action. They are meant for animation
 | `TOKEN_REMOVED` | A token was removed from the board | `target_id`, `from_hex` |
 | `BOARD_ENTITY_REMOVED` | A non-unit, non-token board entity was removed from the board | `actor_id`, `target_id`, `from_hex`, `metadata.entity_kind` |
 | `MINE_TRIGGERED` | A mine token was triggered by hero movement | `actor_id` (current actor), `target_id` (mine ID), `from_hex`, `metadata.token_type`, `metadata.is_blast` |
-| `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details) |
+| `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details). For NebKher's reality splits (`topology_split` / `topology_isolation`) also `metadata.split_axis` (`"q"`/`"r"`/`"s"`) and `metadata.split_value` — the line of hexes where that cube coordinate equals the value; draw the split there |
+| `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
+| `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |

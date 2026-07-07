@@ -20,6 +20,7 @@ from goa2.domain.models import (
     ActionType,
     CardColor,
     CardContainerType,
+    CardState,
     StepType,
     TargetType,
     TeamColor,
@@ -85,6 +86,11 @@ class SelectStep(GameStep):
     card_is_basic: bool | None = None  # Only include basic (True) or non-basic (False)
     card_is_active: bool | None = None  # Only include active (True) or inactive (False) cards
     allowed_card_ids: list[str] | None = None  # Whitelist: only include cards with these IDs
+    # Context keys holding card IDs to EXCLUDE (e.g. "pick two different
+    # cards": the second select excludes the first pick's key).
+    exclude_card_id_keys: list[str] | None = None
+    # Only include cards whose state is in this list (e.g. RESOLVED only).
+    card_states: list[CardState] | None = None
 
     def _get_effective_filters(self) -> list[FilterCondition]:
         """
@@ -198,6 +204,13 @@ class SelectStep(GameStep):
                     source_list = [c for c in source_list if c.is_active == self.card_is_active]
                 if self.allowed_card_ids is not None:
                     source_list = [c for c in source_list if c.id in self.allowed_card_ids]
+                if self.exclude_card_id_keys:
+                    excluded = {
+                        str(context.get(k)) for k in self.exclude_card_id_keys if context.get(k)
+                    }
+                    source_list = [c for c in source_list if c.id not in excluded]
+                if self.card_states is not None:
+                    source_list = [c for c in source_list if c.state in self.card_states]
 
                 candidates = [c.id for c in source_list]
 

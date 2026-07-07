@@ -65,6 +65,35 @@ class HasResolvedCardFilter(FilterCondition):
         return turn_index < len(hero.played_cards) and hero.played_cards[turn_index] is not None
 
 
+class HasPreviousSlotCardFilter(FilterCondition):
+    """Passes hero candidates with a card in their PREVIOUS turn slot.
+
+    Turn indexing follows the repo convention (PlayedCardFilter /
+    HasResolvedCardFilter): the current turn index is the ACTING hero's
+    resolved_turn_count, so the previous slot is index
+    ``actor.resolved_turn_count - 1``. On the first turn of a round there is
+    no previous slot and nothing passes. Used by NebKher's Mind Grip
+    ("the card in the previous turn slot of an enemy hero")."""
+
+    type: FilterType = FilterType.HAS_PREVIOUS_SLOT_CARD
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+        hero = state.get_hero(HeroID(candidate))
+        if not hero:
+            return False
+        if state.current_actor_id is None:
+            return False
+        actor = state.get_hero(state.current_actor_id)
+        if not actor:
+            return False
+        prev_index = actor.resolved_turn_count - 1
+        if prev_index < 0 or prev_index >= len(hero.played_cards):
+            return False
+        return hero.played_cards[prev_index] is not None
+
+
 class CardsInContainerFilter(FilterCondition):
     """
     Filters unit candidates to heroes with a card count in a given container

@@ -276,6 +276,7 @@ class FilterType(StrEnum):
     FARTHEST_EMPTY_ADJACENT = "farthest_empty_adjacent_filter"
     HAS_UNRESOLVED_CARD = "has_unresolved_card_filter"
     HAS_RESOLVED_CARD = "has_resolved_card_filter"
+    HAS_PREVIOUS_SLOT_CARD = "has_previous_slot_card_filter"
     HERO_PIECE = "hero_piece_filter"
     HEX_BATCH_COMPLETABLE = "hex_batch_completable_filter"
     TOKEN_REMOVAL_COMPLETABLE = "token_removal_completable_filter"

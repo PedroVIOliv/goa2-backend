@@ -1592,6 +1592,10 @@ class PerformCardActionStep(GameStep):
     card_key: str = "selected_card"
     card_owner_key: str | None = None  # context key: whose card list to search
     hero_id: str | None = None  # performer (default: current actor)
+    # Instead of card_key, use the OWNER's previous turn slot (Mind Grip).
+    # Slot index = performer.resolved_turn_count - 1 (repo turn-index
+    # convention; see HasPreviousSlotCardFilter).
+    previous_slot: bool = False
     token_type_override: TokenType | None = None
     skip_markers: bool = False
 
@@ -1616,23 +1620,31 @@ class PerformCardActionStep(GameStep):
             if owner_val:
                 owner = state.get_hero(HeroID(str(owner_val))) or performer
 
-        card_id = context.get(self.card_key)
-        if not card_id:
-            return StepResult(is_finished=True)
         card: Card | None = None
-        for c in [
-            owner.current_turn_card,
-            *owner.played_cards,
-            *owner.discard_pile,
-            *owner.hand,
-            *owner.deck,
-        ]:
-            if c is not None and c.id == card_id:
-                card = c
-                break
-        if not card:
-            logger.debug(f"   [PERFORM ANY] Card {card_id} not found on {owner.id}.")
-            return StepResult(is_finished=True)
+        if self.previous_slot:
+            prev_index = performer.resolved_turn_count - 1
+            if 0 <= prev_index < len(owner.played_cards):
+                card = owner.played_cards[prev_index]
+            if not card:
+                logger.debug(f"   [PERFORM ANY] {owner.id} has no previous-slot card.")
+                return StepResult(is_finished=True)
+        else:
+            card_id = context.get(self.card_key)
+            if not card_id:
+                return StepResult(is_finished=True)
+            for c in [
+                owner.current_turn_card,
+                *owner.played_cards,
+                *owner.discard_pile,
+                *owner.hand,
+                *owner.deck,
+            ]:
+                if c is not None and c.id == card_id:
+                    card = c
+                    break
+            if not card:
+                logger.debug(f"   [PERFORM ANY] Card {card_id} not found on {owner.id}.")
+                return StepResult(is_finished=True)
 
         def is_action_available(act_type: ActionType) -> bool:
             val_res = state.validator.can_perform_action(
