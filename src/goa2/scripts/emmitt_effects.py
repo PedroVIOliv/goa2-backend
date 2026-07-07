@@ -246,7 +246,7 @@ def _glitch_slot_filters(count: int, radius: int, hero_id: str, key_prefix: str)
     ]
 
 
-def _glitch_cleanup_step(active_if_key: str | None = None) -> GameStep:
+def _glitch_cleanup_step() -> GameStep:
     """'End of turn: Remove all Glitch tokens' — a THIS_TURN timer whose
     finishing steps sweep every Glitch token off the board (Min's grenade
     DELAYED_TRIGGER pattern)."""
@@ -276,7 +276,6 @@ def _glitch_cleanup_step(active_if_key: str | None = None) -> GameStep:
                 steps_template=[RemoveTokenStep(token_key="_glitch_cleanup_id")],
             ),
         ],
-        active_if_key=active_if_key,
     )
 
 
@@ -309,7 +308,6 @@ class FlashbackEffect(CardEffect):
                 key_prefix="glitch",
                 is_mandatory=False,
             ),
-            _glitch_cleanup_step(active_if_key="glitch_placed"),
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Up to 1 enemy hero in radius swaps with a Glitch token",
@@ -341,6 +339,7 @@ class FlashbackEffect(CardEffect):
                 unit_b_key="glitch_swap_token",
                 active_if_key="glitch_swap_token",
             ),
+            _glitch_cleanup_step(),
         ]
 
 
@@ -374,7 +373,7 @@ class UnstableTimelineEffect(CardEffect):
     def _timeline_steps(self, hero: Hero, stats: CardStats, count: int) -> list[GameStep]:
         from goa2.domain.models import TokenType
         from goa2.engine.filters import TeamFilter, TokenTypeFilter, UnitTypeFilter
-        from goa2.engine.steps import CountStep, PlaceTokenBatchStep, SwapUnitsStep
+        from goa2.engine.steps import PlaceTokenBatchStep, SwapUnitsStep
 
         radius = stats.radius or 0
         return [
@@ -385,25 +384,9 @@ class UnstableTimelineEffect(CardEffect):
                 owner_id=str(hero.id),
                 placed_flag_key="ut_placed",
                 key_prefix="ut",
-                is_mandatory=False,
             ),
-            _glitch_cleanup_step(active_if_key="ut_placed"),
             # "An enemy hero in play" — no range limit; skipped (not aborted)
             # when none exists so a defense block still resolves normally.
-            CountStep(
-                target_type=TargetType.UNIT,
-                filters=[UnitTypeFilter(unit_type="HERO"), TeamFilter(relation="ENEMY")],
-                output_key="ut_enemy_count",
-                skip_immunity_filter=True,
-                active_if_key="ut_placed",
-            ),
-            CheckContextConditionStep(
-                input_key="ut_enemy_count",
-                operator=">=",
-                threshold=1,
-                output_key="ut_has_chooser",
-                active_if_key="ut_placed",
-            ),
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Choose the enemy hero who will pick a Glitch token",
@@ -411,8 +394,6 @@ class UnstableTimelineEffect(CardEffect):
                 filters=[UnitTypeFilter(unit_type="HERO"), TeamFilter(relation="ENEMY")],
                 skip_immunity_filter=True,  # they only choose; not targeted
                 is_mandatory=True,
-                override_player_id_key="ut_owner",
-                active_if_key="ut_has_chooser",
             ),
             SelectStep(
                 target_type=TargetType.UNIT_OR_TOKEN,
@@ -433,6 +414,7 @@ class UnstableTimelineEffect(CardEffect):
                 unit_b_key="ut_token",
                 active_if_key="ut_token",
             ),
+            _glitch_cleanup_step(),
         ]
 
 
