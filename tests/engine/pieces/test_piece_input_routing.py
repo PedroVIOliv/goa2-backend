@@ -6,7 +6,7 @@ from goa2.domain.models.enums import TargetType
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.hero_pieces import create_hero_pieces, piece_id
-from goa2.engine.steps.cards import ForceDiscardOrDefeatStep
+from goa2.engine.steps.cards import ForceDiscardOrDefeatStep, ForceDiscardStep
 from goa2.engine.steps.selection import (
     AskConfirmationStep,
     GuessCardColorStep,
@@ -60,6 +60,26 @@ def test_forced_discard_on_piece_shows_owner_hand_and_routes_to_owner():
     # And the options come from Razzle's hand.
     option_ids = {o.id for o in result.input_request.options}
     assert option_ids == {"card_a", "card_b"}
+
+
+def test_forced_discard_on_piece_logs_owner_hero_for_this_turn():
+    state = _state()
+    razzle = state.get_hero("hero_razzle")
+    razzle.hand = [skill_card("card_a")]
+    victim_piece = piece_id("hero_razzle", 2)
+    state.execution_context["victim_id"] = victim_piece
+
+    push_steps(state, [ForceDiscardStep(victim_key="victim_id")])
+    result = process_stack(state)
+    assert result.input_request is not None
+    assert result.input_request.player_id == "hero_razzle"
+
+    state.execution_stack[-1].pending_input = {"selection": "card_a"}
+    result = process_stack(state)
+
+    assert result.input_request is None
+    assert state.turn_discard_log.get("hero_razzle") == ["card_a"]
+    assert victim_piece not in state.turn_discard_log
 
 
 def test_confirmation_step_with_piece_player_id_routes_to_owner():

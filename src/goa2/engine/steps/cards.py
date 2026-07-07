@@ -140,6 +140,7 @@ class DiscardCardStep(GameStep):
         hero = state.get_hero(HeroID(str(h_id)))
         if not hero:
             return StepResult(is_finished=True)
+        owner_id = HeroID(str(hero.id))
 
         # Resolve Card
         c_id = self.card_id
@@ -204,7 +205,7 @@ class DiscardCardStep(GameStep):
 
         # Record in the turn-scoped discard log (cleared at end_turn); read by
         # "retrieve all cards discarded this turn" effects (Emmitt).
-        state.turn_discard_log.setdefault(HeroID(str(h_id)), []).append(target_card.id)
+        state.turn_discard_log.setdefault(owner_id, []).append(target_card.id)
 
         # Changing a card's state cancels its active effect (premature end, so
         # finishing_steps do not run). Harmless no-op for hand cards.
@@ -218,7 +219,7 @@ class DiscardCardStep(GameStep):
         from goa2.domain.models.enums import PassiveTrigger
 
         context["discarded_card_id"] = target_card.id
-        context["discarded_card_owner_id"] = str(h_id)
+        context["discarded_card_owner_id"] = str(owner_id)
         context["discard_source"] = discard_source
         return StepResult(
             is_finished=True,
