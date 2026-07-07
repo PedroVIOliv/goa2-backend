@@ -86,6 +86,13 @@ class CreateEffectStep(GameStep):
     # PRE_ACTION_DISCARD payload (Trinkets - Disruptor family)
     discard_or_defeat: bool = False
 
+    # Topology payload (NebKher - Crack in Reality / Shift Reality).
+    # split_axis/split_value define the line; isolated_hex is the Tier-3
+    # fallback anchor (the live source position takes precedence — S6).
+    split_axis: str | None = None
+    split_value: int = 0
+    isolated_hex: Hex | None = None
+
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -146,10 +153,22 @@ class CreateEffectStep(GameStep):
             sacrifice_origin_token=self.sacrifice_origin_token,
             grants_pass_through_obstacles=self.grants_pass_through_obstacles,
             discard_or_defeat=self.discard_or_defeat,
+            split_axis=self.split_axis,
+            split_value=self.split_value,
+            isolated_hex=self.isolated_hex,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
         logger.debug(f"   [EFFECT] Created {self.effect_type.value} from {source}")
+
+        metadata: dict[str, Any] = {
+            "effect_type": self.effect_type.value,
+            "duration": self.duration.value,
+        }
+        # Advertise the split geometry so clients can draw the line.
+        if self.split_axis is not None:
+            metadata["split_axis"] = self.split_axis
+            metadata["split_value"] = self.split_value
 
         return StepResult(
             is_finished=True,
@@ -157,10 +176,7 @@ class CreateEffectStep(GameStep):
                 GameEvent(
                     event_type=GameEventType.EFFECT_CREATED,
                     actor_id=source,
-                    metadata={
-                        "effect_type": self.effect_type.value,
-                        "duration": self.duration.value,
-                    },
+                    metadata=metadata,
                 )
             ],
         )

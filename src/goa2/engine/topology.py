@@ -91,7 +91,7 @@ class TopologyService:
                 if not self._check_split(origin, target, effect):
                     return False
             elif effect.effect_type == EffectType.TOPOLOGY_ISOLATION and not self._check_isolation(
-                origin, target, effect
+                origin, target, effect, state
             ):
                 return False
         return True
@@ -326,13 +326,22 @@ class TopologyService:
             return False
         return not (origin_region == "NEGATIVE" and target_region == "POSITIVE")
 
-    def _check_isolation(self, origin: Hex, target: Hex, effect: ActiveEffect) -> bool:
+    def _check_isolation(
+        self, origin: Hex, target: Hex, effect: ActiveEffect, state: GameState
+    ) -> bool:
         """
-        Tier 3 (Shift Reality): Same as split + isolated_hex only reachable from ZERO.
+        Tier 3 (Shift Reality): Same as split + the caster's hex only
+        reachable from ZERO.
 
-        This adds an additional rule: the caster's hex (isolated_hex) can only
-        be interacted with from the ZERO region. Units on either side cannot
-        target or reach the caster directly.
+        This adds an additional rule: the caster's hex can only be
+        interacted with from the ZERO region. Units on either side cannot
+        target or reach the caster directly — and the isolation is mutual
+        (the caster can only interact with the bridge too).
+
+        The isolation is bound to the UNIT, not the cast-time hex: the
+        source's live board position takes precedence, with the stored
+        ``isolated_hex`` as fallback when the source has no position
+        (defeated / synthetic effects).
 
         Returns:
             True if connected (can interact), False if blocked
@@ -341,17 +350,19 @@ class TopologyService:
         if not self._check_split(origin, target, effect):
             return False
 
-        # Then check isolation of the specific hex (typically Nebkher's position)
-        if effect.isolated_hex:
+        isolated = state.get_position(str(effect.source_id)) or effect.isolated_hex
+
+        # Then check isolation of the caster's hex
+        if isolated:
             # If targeting the isolated hex, origin must be in ZERO region
-            if target == effect.isolated_hex:
+            if target == isolated:
                 origin_region = self._get_region(origin, effect)
                 if origin_region != "ZERO":
                     return False
 
             # If originating from the isolated hex, target must be in ZERO region
-            # (Nebkher can only interact with the bridge too)
-            if origin == effect.isolated_hex:
+            # (the caster can only interact with the bridge too)
+            if origin == isolated:
                 target_region = self._get_region(target, effect)
                 if target_region != "ZERO":
                     return False
