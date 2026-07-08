@@ -1722,12 +1722,23 @@ class PerformCardActionStep(GameStep):
                 primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL
             )
 
+            # Track current action type for the reperformed action
+            action_stack = context.setdefault("action_type_stack", [])
+            current_action = context.get("current_action_type")
+            if current_action:
+                action_stack.append(current_action)
+            context["current_action_type"] = act_type
+
             action_steps = self._build_action_steps(
                 state, context, performer_id, performer, card, act_type, val, is_primary
             )
+            from goa2.engine.steps.phases import RestoreActionTypeStep
+
             return StepResult(
                 is_finished=True,
-                new_steps=self._wrap_with_substitution_flags(action_steps),
+                new_steps=self._wrap_with_substitution_flags(
+                    [*action_steps, RestoreActionTypeStep()]
+                ),
             )
 
         return StepResult(
