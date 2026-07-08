@@ -163,6 +163,179 @@ def test_blast_mine_forces_discard():
     assert any(c.id == "card_1" for c in hero.discard_pile)
 
 
+def test_second_move_in_same_turn_triggers_mine():
+    """A second movement in the same turn must still trigger mines.
+
+    Regression: multi-piece heroes (e.g. Razzle's "another you") move several
+    pieces in one turn sharing one execution_context. The first move used to
+    leave ``triggered_mine_ids`` in the context (even as an empty list), which
+    made the second move's mine detection short-circuit and walk over a mine
+    without triggering it.
+    """
+    board = Board()
+    # Corridor A: hero_a moves here, no mine. Corridor B: hero_b crosses a mine.
+    for h in [
+        Hex(q=0, r=0, s=0),
+        Hex(q=1, r=-1, s=0),
+        Hex(q=2, r=-2, s=0),
+        Hex(q=0, r=2, s=-2),
+        Hex(q=1, r=1, s=-2),
+        Hex(q=2, r=0, s=-2),
+    ]:
+        board.tiles[h] = Tile(hex=h)
+
+    a = Hero(id=HeroID("hero_a"), name="A", team=TeamColor.BLUE, deck=[])
+    b = Hero(id=HeroID("hero_b"), name="B", team=TeamColor.BLUE, deck=[])
+    mine_owner = Hero(id=HeroID("hero_min"), name="Min", team=TeamColor.RED, deck=[])
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[a, b], minions=[]),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[mine_owner], minions=[]),
+        },
+        current_actor_id=HeroID("hero_a"),
+    )
+    state.place_entity(BoardEntityID("hero_a"), Hex(q=0, r=0, s=0))
+    state.place_entity(BoardEntityID("hero_b"), Hex(q=0, r=2, s=-2))
+
+    mine = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=HeroID("hero_min"),
+        is_passable=True,
+        is_facedown=True,
+    )
+    state.token_pool[TokenType.MINE_DUD] = [mine]
+    state.misc_entities[BoardEntityID("mine_1")] = mine
+    state.place_entity(BoardEntityID("mine_1"), Hex(q=1, r=1, s=-2))
+
+    # First move: hero_a, no mine on its path (populates execution_context).
+    state.execution_context["target_a"] = {"q": 2, "r": -2, "s": 0}
+    push_steps(
+        state,
+        [MoveUnitStep(unit_id="hero_a", destination_key="target_a", range_val=2)],
+    )
+    process_stack(state)
+
+    # Second move (same turn/context): hero_b walks across the mine.
+    state.execution_context["target_b"] = {"q": 2, "r": 0, "s": -2}
+    push_steps(
+        state,
+        [MoveUnitStep(unit_id="hero_b", destination_key="target_b", range_val=2)],
+    )
+    process_stack(state)
+
+    assert state.entity_locations[BoardEntityID("hero_b")] == Hex(q=2, r=0, s=-2)
+    assert BoardEntityID("mine_1") not in state.entity_locations
+
+
+def test_two_moves_each_trigger_own_blast_mine():
+    """Two separate moves in one turn each trigger their own blast mine.
+
+    Guards against regressions where per-move mine state leaks across moves:
+    each mine must be removed and each move's blast must force *its own*
+    victim (not the previous mover) to discard.
+    """
+
+    def _card(cid: str) -> Card:
+        return Card(
+            id=cid,
+            name="Test Card",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            secondary_actions={},
+            effect_id="e",
+            effect_text="t",
+            initiative=5,
+            state=CardState.HAND,
+            is_facedown=False,
+        )
+
+    board = Board()
+    # Corridor A: hero_a crosses mine_1. Corridor B: hero_b crosses mine_2.
+    for h in [
+        Hex(q=0, r=0, s=0),
+        Hex(q=1, r=-1, s=0),
+        Hex(q=2, r=-2, s=0),
+        Hex(q=0, r=2, s=-2),
+        Hex(q=1, r=1, s=-2),
+        Hex(q=2, r=0, s=-2),
+    ]:
+        board.tiles[h] = Tile(hex=h)
+
+    a = Hero(id=HeroID("hero_a"), name="A", team=TeamColor.BLUE, deck=[])
+    b = Hero(id=HeroID("hero_b"), name="B", team=TeamColor.BLUE, deck=[])
+    a.hand.append(_card("a_card"))
+    b.hand.append(_card("b_card"))
+    mine_owner = Hero(id=HeroID("hero_min"), name="Min", team=TeamColor.RED, deck=[])
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[a, b], minions=[]),
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[mine_owner], minions=[]),
+        },
+        current_actor_id=HeroID("hero_a"),
+    )
+    state.place_entity(BoardEntityID("hero_a"), Hex(q=0, r=0, s=0))
+    state.place_entity(BoardEntityID("hero_b"), Hex(q=0, r=2, s=-2))
+
+    m1 = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_BLAST,
+        owner_id=HeroID("hero_min"),
+        is_passable=True,
+        is_facedown=True,
+    )
+    m2 = Token(
+        id=BoardEntityID("mine_2"),
+        name="Mine",
+        token_type=TokenType.MINE_BLAST,
+        owner_id=HeroID("hero_min"),
+        is_passable=True,
+        is_facedown=True,
+    )
+    state.token_pool[TokenType.MINE_BLAST] = [m1, m2]
+    state.misc_entities[BoardEntityID("mine_1")] = m1
+    state.misc_entities[BoardEntityID("mine_2")] = m2
+    state.place_entity(BoardEntityID("mine_1"), Hex(q=1, r=-1, s=0))
+    state.place_entity(BoardEntityID("mine_2"), Hex(q=1, r=1, s=-2))
+
+    # Move 1: hero_a across mine_1 -> blast forces hero_a to discard.
+    state.execution_context["target_a"] = {"q": 2, "r": -2, "s": 0}
+    push_steps(
+        state,
+        [MoveUnitStep(unit_id="hero_a", destination_key="target_a", range_val=2)],
+    )
+    req = process_stack(state).input_request
+    assert req is not None and req["type"] == "SELECT_CARD"
+    assert req["player_id"] == "hero_a"
+    state.execution_stack[-1].pending_input = {"selection": "a_card"}
+    process_stack(state)
+
+    assert BoardEntityID("mine_1") not in state.entity_locations
+    assert a.hand == []
+
+    # Move 2 (same turn/context): hero_b across mine_2 -> blast forces hero_b.
+    state.execution_context["target_b"] = {"q": 2, "r": 0, "s": -2}
+    push_steps(
+        state,
+        [MoveUnitStep(unit_id="hero_b", destination_key="target_b", range_val=2)],
+    )
+    req = process_stack(state).input_request
+    assert req is not None and req["type"] == "SELECT_CARD"
+    # The second blast must target the second mover, not hero_a.
+    assert req["player_id"] == "hero_b"
+    state.execution_stack[-1].pending_input = {"selection": "b_card"}
+    process_stack(state)
+
+    assert BoardEntityID("mine_2") not in state.entity_locations
+    assert b.hand == []
+
+
 def test_dud_mine_no_discard():
     """Walking through a dud mine does NOT force a discard."""
     board = Board()

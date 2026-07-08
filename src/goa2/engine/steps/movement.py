@@ -54,6 +54,11 @@ class MoveUnitStep(GameStep):
     range_val: int = 1
     is_movement_action: bool = False
     pass_through_obstacles: bool = False
+    # Set on the re-queued copy after MinePathChoiceStep has resolved which
+    # mines this move triggers, so the re-run skips detection instead of
+    # re-prompting. Scoped to this step (not the shared context) so it never
+    # leaks into a later move in the same turn.
+    mine_path_prechosen: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -138,49 +143,55 @@ class MoveUnitStep(GameStep):
             )
             return StepResult(is_finished=True)
 
-        # Mine detection: only enemy heroes trigger mines
+        # Mine detection: only enemy heroes trigger mines.
         moving_entity = state.get_entity(BoardEntityID(target_unit_id))
         moving_team = moving_entity.team if isinstance(moving_entity, (Hero, HeroPiece)) else None
-        if moving_team and "triggered_mine_ids" not in context and start_hex != dest_hex:
-            has_enemy_mines = any(
-                token.is_passable
-                and token.owner_id
-                and getattr(state.get_hero(token.owner_id), "team", None) != moving_team
-                for tokens in state.token_pool.values()
-                for token in tokens
-                if BoardEntityID(str(token.id)) in state.entity_locations
-            )
-            if has_enemy_mines:
-                from goa2.engine.rules import find_reachable_with_mines
-
-                current_actor = str(state.current_actor_id) if state.current_actor_id else None
-                reachable = find_reachable_with_mines(
-                    board=state.board,
-                    start=start_hex,
-                    max_steps=self.range_val,
-                    state=state,
-                    actor_id=current_actor,
-                    moving_team=moving_team,
-                    topology_unit_ids=[target_unit_id],
+        triggered_mines: list[str]
+        if self.mine_path_prechosen:
+            # MinePathChoiceStep already resolved which mines this move hits.
+            triggered_mines = list(context.get("triggered_mine_ids", []))
+        else:
+            triggered_mines = []
+            if moving_team and start_hex != dest_hex:
+                has_enemy_mines = any(
+                    token.is_passable
+                    and token.owner_id
+                    and getattr(state.get_hero(token.owner_id), "team", None) != moving_team
+                    for tokens in state.token_pool.values()
+                    for token in tokens
+                    if BoardEntityID(str(token.id)) in state.entity_locations
                 )
+                if has_enemy_mines:
+                    from goa2.engine.rules import find_reachable_with_mines
 
-                mine_options = reachable.get(dest_hex, [])
-                if len(mine_options) > 1:
-                    # Multiple paths — need player choice, re-queue
-                    return StepResult(
-                        is_finished=True,
-                        new_steps=[
-                            MinePathChoiceStep(
-                                destination_key=self.destination_key,
-                                range_val=self.range_val,
-                                unit_id=target_unit_id,
-                            ),
-                            self.model_copy(),
-                        ],
+                    current_actor = str(state.current_actor_id) if state.current_actor_id else None
+                    reachable = find_reachable_with_mines(
+                        board=state.board,
+                        start=start_hex,
+                        max_steps=self.range_val,
+                        state=state,
+                        actor_id=current_actor,
+                        moving_team=moving_team,
+                        topology_unit_ids=[target_unit_id],
                     )
-                context["triggered_mine_ids"] = (
-                    list(mine_options[0].mine_ids) if mine_options else []
-                )
+
+                    mine_options = reachable.get(dest_hex, [])
+                    if len(mine_options) > 1:
+                        # Multiple paths — need player choice, re-queue. The copy
+                        # carries mine_path_prechosen so its re-run consumes the
+                        # chosen mines instead of re-detecting.
+                        return StepResult(
+                            is_finished=True,
+                            new_steps=[
+                                MinePathChoiceStep(
+                                    destination_key=self.destination_key,
+                                    range_val=self.range_val,
+                                    unit_id=target_unit_id,
+                                ),
+                                self.model_copy(update={"mine_path_prechosen": True}),
+                            ],
+                        )
+                    triggered_mines = list(mine_options[0].mine_ids) if mine_options else []
 
         logger.debug(
             f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
@@ -190,8 +201,8 @@ class MoveUnitStep(GameStep):
         state.move_unit(UnitID(target_unit_id), dest_hex)
 
         new_steps: list[GameStep] = []
-        triggered_mines = context.get("triggered_mine_ids", [])
         if triggered_mines:
+            context["triggered_mine_ids"] = triggered_mines
             context["mine_victim_id"] = target_unit_id
             new_steps.append(TriggerMineStep())
 
