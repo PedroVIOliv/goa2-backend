@@ -63,7 +63,12 @@ def _get_origin_hex(effect: ActiveEffect, state: GameState) -> Hex | None:
     return state.get_position(origin_id)
 
 
-def _hex_in_scope(effect: ActiveEffect, hex: Hex, state: GameState) -> bool:
+def _hex_in_scope(
+    effect: ActiveEffect,
+    hex: Hex,
+    state: GameState,
+    unit_id: str | None = None,
+) -> bool:
     """Check if a hex is within effect's spatial scope (topology-aware)."""
     scope = effect.scope
 
@@ -79,6 +84,7 @@ def _hex_in_scope(effect: ActiveEffect, hex: Hex, state: GameState) -> bool:
         scope.range,
         state,
         scope.direction,
+        unit_ids=[unit_id] if unit_id else None,
     )
 
 
@@ -144,7 +150,7 @@ def is_unit_in_effect_scope(effect: ActiveEffect, unit_id: str, state: GameState
     if not _matches_affects_filter(effect, unit_id, state):
         return False
 
-    return _hex_in_scope(effect, unit_hex, state)
+    return _hex_in_scope(effect, unit_hex, state, unit_id=unit_id)
 
 
 def get_computed_stat(
@@ -207,6 +213,8 @@ def get_computed_stat(
         total += item_bonus
 
     # 2. Add AREA_STAT_MODIFIER effects
+    from goa2.engine.rules import unit_ignores_effect_due_to_immunity
+
     for effect in state.active_effects:
         if effect.effect_type != EffectType.AREA_STAT_MODIFIER:
             continue
@@ -214,7 +222,11 @@ def get_computed_stat(
             continue
         if not _is_effect_active(effect, state):
             continue
-        if not any(is_unit_in_effect_scope(effect, sid, state) for sid in scope_ids):
+        if not any(
+            not unit_ignores_effect_due_to_immunity(effect, sid, state)
+            and is_unit_in_effect_scope(effect, sid, state)
+            for sid in scope_ids
+        ):
             continue
         total += effect.stat_value
 

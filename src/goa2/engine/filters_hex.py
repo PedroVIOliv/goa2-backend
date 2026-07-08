@@ -401,6 +401,7 @@ class RangeFilter(FilterCondition):
                 min_r = raw_min
 
         origin_hex: Hex | None = None
+        origin_uid: Any = None
 
         # Priority: origin_hex_key (direct hex) > origin_id > origin_key > actor
         if self.origin_hex_key:
@@ -411,7 +412,6 @@ class RangeFilter(FilterCondition):
                 origin_hex = Hex(**raw)
 
         if origin_hex is None:
-            origin_uid = None
             if self.origin_id:
                 origin_uid = self.origin_id
             elif self.origin_key:
@@ -428,9 +428,11 @@ class RangeFilter(FilterCondition):
                 return False
 
         target_hex = None
+        target_uid = None
         if isinstance(candidate, Hex):
             target_hex = candidate
         elif isinstance(candidate, str):  # EntityID
+            target_uid = candidate
             target_hex = state.entity_locations.get(BoardEntityID(candidate))
 
         if not target_hex:
@@ -438,7 +440,8 @@ class RangeFilter(FilterCondition):
 
         # Use topology-aware distance (respects reality splits)
         topology = get_topology_service()
-        dist = topology.distance(origin_hex, target_hex, state)
+        unit_ids = [str(uid) for uid in (origin_uid, target_uid) if uid]
+        dist = topology.distance(origin_hex, target_hex, state, unit_ids=unit_ids)
         if min_r is not None and dist < min_r:
             return False
         return max_r is None or dist <= max_r
@@ -670,6 +673,7 @@ class MovementPathFilter(FilterCondition):
             state=state,
             actor_id=str(state.current_actor_id) if state.current_actor_id else None,
             pass_through_obstacles=self.pass_through_obstacles,
+            topology_unit_ids=[str(uid)],
         )
         object.__setattr__(self, "_reachable_cache", result)
         return result

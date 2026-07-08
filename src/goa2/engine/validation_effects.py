@@ -79,9 +79,22 @@ class EffectValidationMixin:
             return False
 
         # Check spatial shape
-        return self._hex_in_scope(effect, target_hex, state)
+        return self._hex_in_scope(effect, target_hex, state, target_id=target_id)
 
-    def _hex_in_scope(self, effect: ActiveEffect, hex: Hex, state: GameState) -> bool:
+    def _unit_ignores_effect_due_to_immunity(
+        self, effect: ActiveEffect, target_id: str, state: GameState
+    ) -> bool:
+        from goa2.engine.rules import unit_ignores_effect_due_to_immunity
+
+        return unit_ignores_effect_due_to_immunity(effect, target_id, state)
+
+    def _hex_in_scope(
+        self,
+        effect: ActiveEffect,
+        hex: Hex,
+        state: GameState,
+        target_id: str | None = None,
+    ) -> bool:
         """Check if a hex is within effect's spatial scope (topology-aware)."""
         scope = effect.scope
 
@@ -98,6 +111,7 @@ class EffectValidationMixin:
             scope.range,
             state,
             scope.direction,
+            unit_ids=[target_id] if target_id else None,
         )
 
     def _get_origin_hex(self, effect: ActiveEffect, state: GameState) -> Hex | None:

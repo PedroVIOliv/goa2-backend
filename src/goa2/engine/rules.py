@@ -3,9 +3,10 @@ from collections import deque
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import ActionType, Minion, TeamColor
+from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.unit import Unit
 from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.topology import get_topology_service
 
 
@@ -17,6 +18,7 @@ def find_reachable_hexes(
     state: GameState | None = None,
     actor_id: str | None = None,
     pass_through_obstacles: bool = False,
+    topology_unit_ids: list[str] | None = None,
 ) -> set[Hex]:
     """
     Returns all hexes reachable from start within max_steps via a single BFS.
@@ -45,6 +47,7 @@ def find_reachable_hexes(
                 end_hex=None,
                 actor_id=actor_id,
                 pass_through_obstacles=pass_through_obstacles,
+                unit_ids=topology_unit_ids,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -91,6 +94,7 @@ def validate_movement_path(
     state: GameState | None = None,
     actor_id: str | None = None,
     pass_through_obstacles: bool = False,
+    topology_unit_ids: list[str] | None = None,
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -138,6 +142,7 @@ def validate_movement_path(
                 end,
                 actor_id,
                 pass_through_obstacles=pass_through_obstacles,
+                unit_ids=topology_unit_ids,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -167,12 +172,44 @@ def validate_movement_path(
     return False
 
 
-def is_immune(target: Unit, state: GameState) -> bool:
+def _controller_id(entity_id: str, state: GameState) -> str:
+    """Return the player-level owner/controller for an entity when known."""
+    entity = state.get_entity(BoardEntityID(str(entity_id)))
+    owner_id = getattr(entity, "owner_id", None)
+    if owner_id is not None:
+        return str(owner_id)
+    return state.hero_owner_id(str(entity_id))
+
+
+def _entity_team(entity_id: str, state: GameState):
+    entity = state.get_entity(BoardEntityID(str(entity_id)))
+    team = getattr(entity, "team", None) if entity else None
+    if team is not None:
+        return team
+
+    owner_id = getattr(entity, "owner_id", None) if entity else None
+    if owner_id is not None:
+        owner = state.get_hero(HeroID(str(owner_id)))
+        return getattr(owner, "team", None) if owner else None
+
+    hero = state.get_hero(HeroID(str(entity_id)))
+    return getattr(hero, "team", None) if hero else None
+
+
+def is_immune_to_actor(target: Unit, state: GameState, actor_id: str | None = None) -> bool:
     """
     Checks if a target unit has Immunity.
     Rule 3.2: "Heavy Immunity: Immune to all Actions... until no more friendly minions are present."
     Also checks IMMUNITY_ENEMY_ACTIONS effects (e.g., Death Seeker).
     """
+    actor_id = (
+        str(actor_id)
+        if actor_id is not None
+        else (str(state.current_actor_id) if state.current_actor_id else None)
+    )
+    if actor_id and _controller_id(actor_id, state) == _controller_id(str(target.id), state):
+        return False
+
     if isinstance(target, Minion) and target.is_heavy:
         # "until no more friendly minions are present" — checked in the heavy's
         # own lane's Battle Zone (minions are bound to the lane they spawned in).
@@ -214,12 +251,10 @@ def is_immune(target: Unit, state: GameState) -> bool:
     #    entering the radius gains protection, leaving loses it)
     from goa2.domain.models.effect import EffectType, Shape
 
-    actor_id = state.current_actor_id
     if actor_id:
-        actor = state.get_entity(actor_id)
         target_team = getattr(target, "team", None)
-        actor_team = getattr(actor, "team", None) if actor else None
-        is_self = str(actor_id) == str(target.id)
+        actor_team = _entity_team(str(actor_id), state)
+        is_self = _controller_id(str(actor_id), state) == _controller_id(str(target.id), state)
         if not is_self and target_team is not None and actor_team is not None:
             is_enemy_actor = target_team != actor_team
             for effect in state.active_effects:
@@ -242,6 +277,28 @@ def is_immune(target: Unit, state: GameState) -> bool:
                     return True
 
     return False
+
+
+def is_immune(target: Unit, state: GameState) -> bool:
+    """Check immunity against the current actor."""
+    return is_immune_to_actor(target, state)
+
+
+def unit_ignores_effect_due_to_immunity(
+    effect: ActiveEffect, unit_id: str, state: GameState
+) -> bool:
+    """Whether an active effect from its source cannot affect this unit.
+
+    Immune units are not affected by another unit's actions. The source's own
+    units still receive self effects because a unit is never immune to its own
+    actions.
+    """
+    target = state.get_unit(UnitID(str(unit_id)))
+    if target is None:
+        return False
+    if _controller_id(effect.source_id, state) == _controller_id(str(unit_id), state):
+        return False
+    return is_immune_to_actor(target, state, actor_id=effect.source_id)
 
 
 def validate_target(
@@ -273,10 +330,13 @@ def validate_target(
     # Use topology-aware distance (respects reality splits)
     topology = get_topology_service()
 
-    if requires_straight_line and not topology.is_straight_line(s_loc, t_loc, state):
+    target_unit_ids = [str(source.id), str(target.id)]
+    if requires_straight_line and not topology.is_straight_line(
+        s_loc, t_loc, state, unit_ids=target_unit_ids
+    ):
         return False
 
-    dist = topology.distance(s_loc, t_loc, state)
+    dist = topology.distance(s_loc, t_loc, state, unit_ids=target_unit_ids)
 
     # Rule 4.1: "No 'Line of Sight' obstructions" is standard for Range/Radius.
     # However, some specific rules might require it.
@@ -319,7 +379,12 @@ def validate_attack_target(
     # Use topology if state is available, otherwise pure geometry
     if state:
         topology = get_topology_service()
-        dist = topology.distance(attacker_pos, target_pos, state)
+        unit_ids = []
+        if attacker:
+            unit_ids.append(str(attacker.id))
+        if target:
+            unit_ids.append(str(target.id))
+        dist = topology.distance(attacker_pos, target_pos, state, unit_ids=unit_ids)
     else:
         dist = attacker_pos.distance(target_pos)
     return not (dist > range_val)
@@ -393,6 +458,7 @@ def find_reachable_with_mines(
     state: GameState,
     actor_id: str | None = None,
     moving_team: TeamColor | None = None,
+    topology_unit_ids: list[str] | None = None,
 ) -> dict[Hex, list[MinePathOption]]:
     if max_steps <= 0:
         return {}
@@ -425,7 +491,7 @@ def find_reachable_with_mines(
             continue
 
         for neighbor in current.neighbors():
-            if not topology.are_connected(current, neighbor, state):
+            if not topology.are_connected(current, neighbor, state, unit_ids=topology_unit_ids):
                 continue
             if not state.board.is_on_map(neighbor):
                 continue

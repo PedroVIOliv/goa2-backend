@@ -30,6 +30,9 @@ class MovementValidationMixin:
             target_hex: Hex,
             state: GameState,
         ) -> bool: ...
+        def _unit_ignores_effect_due_to_immunity(
+            self, effect: ActiveEffect, target_id: str, state: GameState
+        ) -> bool: ...
 
     def can_move(
         self,
@@ -65,6 +68,8 @@ class MovementValidationMixin:
             if not self._is_effect_active(effect, state):
                 continue
             if not self._is_in_scope(effect, unit_id, unit_loc, state):
+                continue
+            if self._unit_ignores_effect_due_to_immunity(effect, unit_id, state):
                 continue
 
             # Logic: If effect caps ONLY actions, and this is NOT an action -> Skip

@@ -16,6 +16,9 @@ class TargetingValidationMixin:
         # Provided at runtime by sibling EffectValidationMixin in ValidationService.
         def _is_effect_active(self, effect: ActiveEffect, state: GameState) -> bool: ...
         def _get_origin_hex(self, effect: ActiveEffect, state: GameState) -> Hex | None: ...
+        def _unit_ignores_effect_due_to_immunity(
+            self, effect: ActiveEffect, target_id: str, state: GameState
+        ) -> bool: ...
         def _actor_blocked_by_effect(
             self, effect: ActiveEffect, actor: Any, target: Any, state: GameState
         ) -> bool: ...
@@ -58,6 +61,8 @@ class TargetingValidationMixin:
             if blocker_hex.is_on_segment(actor_loc, target_loc, exclusive=True):
                 actor_entity = state.get_entity(BoardEntityID(actor_id))
                 target_entity = state.get_entity(BoardEntityID(target_id))
+                if self._unit_ignores_effect_due_to_immunity(effect, actor_id, state):
+                    continue
                 if not self._actor_blocked_by_effect(effect, actor_entity, target_entity, state):
                     continue
                 return ValidationResult.deny(

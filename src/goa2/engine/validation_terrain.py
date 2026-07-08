@@ -22,6 +22,9 @@ class TerrainValidationMixin:
             target_hex: Hex,
             state: GameState,
         ) -> bool: ...
+        def _unit_ignores_effect_due_to_immunity(
+            self, effect: ActiveEffect, target_id: str, state: GameState
+        ) -> bool: ...
 
     def is_obstacle_for_actor(
         self,
@@ -80,6 +83,8 @@ class TerrainValidationMixin:
                 continue
             if actor_team == source_team:
                 continue  # Friendly actors not affected
+            if self._unit_ignores_effect_due_to_immunity(effect, actor_id, state):
+                continue
 
             # Get barrier origin position
             origin_id = effect.barrier_origin_id or effect.source_id
@@ -155,6 +160,8 @@ class TerrainValidationMixin:
             occupant_loc = state.entity_locations.get(BoardEntityID(str(occupant_id)))
             if not occupant_loc:
                 return False
+            if self._unit_ignores_effect_due_to_immunity(effect, str(occupant_id), state):
+                continue
             if self._is_in_scope(effect, str(occupant_id), occupant_loc, state):
                 return True
 

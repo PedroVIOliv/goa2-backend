@@ -398,7 +398,7 @@ class RazzleMirroredPushStep(GameStep):
             next_hex = prev.neighbor(direction_idx)
             if next_hex not in state.board.tiles:
                 break
-            if not are_connected(prev, next_hex, state):
+            if not are_connected(prev, next_hex, state, unit_ids=[target_id]):
                 break
 
             is_obstacle = state.validator.is_obstacle_for_actor(
@@ -453,7 +453,7 @@ class RazzleMirroredPushStep(GameStep):
             next_hex = current.neighbor(direction_idx)
             if next_hex not in state.board.tiles:
                 return None
-            if not are_connected(current, next_hex, state):
+            if not are_connected(current, next_hex, state, unit_ids=[actor_piece]):
                 return None
             if state.validator.is_obstacle_for_actor(state, next_hex, actor_id, context):
                 return None

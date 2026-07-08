@@ -24,6 +24,9 @@ class ActionValidationMixin:
             target_hex: Hex,
             state: GameState,
         ) -> bool: ...
+        def _unit_ignores_effect_due_to_immunity(
+            self, effect: ActiveEffect, target_id: str, state: GameState
+        ) -> bool: ...
         def _actor_blocked_by_effect(
             self, effect: ActiveEffect, actor: Any, target: Any, state: GameState
         ) -> bool: ...
@@ -64,6 +67,8 @@ class ActionValidationMixin:
                 if matches_exception(effect.except_card_colors):
                     continue
                 if not self._is_in_scope(effect, check_id, check_hex, state):
+                    continue
+                if self._unit_ignores_effect_due_to_immunity(effect, check_id, state):
                     continue
                 if self._actor_blocked_by_effect(effect, actor_unit, None, state):
                     return effect
@@ -140,6 +145,8 @@ class ActionValidationMixin:
                 if not self._is_effect_active(effect, state):
                     continue
                 if not self._is_in_scope(effect, check_id, check_hex, state):
+                    continue
+                if self._unit_ignores_effect_due_to_immunity(effect, check_id, state):
                     continue
                 if self._actor_blocked_by_effect(effect, actor_unit, None, state):
                     return effect

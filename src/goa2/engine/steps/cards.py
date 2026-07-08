@@ -263,6 +263,7 @@ class ResolvePreActionDiscardStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.domain.models.effect import EffectType
         from goa2.engine.effect_manager import EffectManager
+        from goa2.engine.rules import unit_ignores_effect_due_to_immunity
         from goa2.engine.stats import _is_effect_active, is_unit_in_effect_scope
         from goa2.engine.steps.combat import DefeatUnitStep
 
@@ -297,6 +298,8 @@ class ResolvePreActionDiscardStep(GameStep):
             if not _is_effect_active(effect, state):
                 continue
             if not is_unit_in_effect_scope(effect, board_actor_id, state):
+                continue
+            if unit_ignores_effect_due_to_immunity(effect, board_actor_id, state):
                 continue
 
             self.processed_effect_ids.append(effect.id)

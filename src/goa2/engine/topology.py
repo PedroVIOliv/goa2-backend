@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from goa2.domain.hex import Hex
@@ -57,7 +58,13 @@ class TopologyService:
     # Primary API - Use these methods in game logic
     # -------------------------------------------------------------------------
 
-    def distance(self, origin: Hex, target: Hex, state: GameState) -> int | float:
+    def distance(
+        self,
+        origin: Hex,
+        target: Hex,
+        state: GameState,
+        unit_ids: Iterable[str] | None = None,
+    ) -> int | float:
         """
         Returns topology-aware distance between two hexes.
 
@@ -70,11 +77,17 @@ class TopologyService:
             if dist <= attack_range:
                 # Can attack
         """
-        if not self.are_connected(origin, target, state):
+        if not self.are_connected(origin, target, state, unit_ids=unit_ids):
             return math.inf
         return origin.distance(target)
 
-    def are_connected(self, origin: Hex, target: Hex, state: GameState) -> bool:
+    def are_connected(
+        self,
+        origin: Hex,
+        target: Hex,
+        state: GameState,
+        unit_ids: Iterable[str] | None = None,
+    ) -> bool:
         """
         Check if two hexes can interact given active topology constraints.
 
@@ -86,17 +99,24 @@ class TopologyService:
         Returns:
             True if hexes can interact, False if blocked by topology
         """
+        query_unit_ids = self._query_unit_ids(origin, target, state, unit_ids)
+
         for effect in state.active_effects:
             if effect.effect_type == EffectType.TOPOLOGY_SPLIT:
+                if self._ignored_for_units(effect, state, query_unit_ids):
+                    continue
                 if not self._check_split(origin, target, effect):
                     return False
-            elif effect.effect_type == EffectType.TOPOLOGY_ISOLATION and not self._check_isolation(
-                origin, target, effect, state
-            ):
-                return False
+            elif effect.effect_type == EffectType.TOPOLOGY_ISOLATION:
+                if self._ignored_for_units(effect, state, query_unit_ids):
+                    continue
+                if not self._check_isolation(origin, target, effect, state):
+                    return False
         return True
 
-    def are_adjacent(self, a: Hex, b: Hex, state: GameState) -> bool:
+    def are_adjacent(
+        self, a: Hex, b: Hex, state: GameState, unit_ids: Iterable[str] | None = None
+    ) -> bool:
         """
         Game-aware adjacency check: geometric adjacency + connectivity.
 
@@ -109,9 +129,11 @@ class TopologyService:
         """
         if a.distance(b) != 1:
             return False
-        return self.are_connected(a, b, state)
+        return self.are_connected(a, b, state, unit_ids=unit_ids)
 
-    def get_connected_neighbors(self, hex: Hex, state: GameState) -> list[Hex]:
+    def get_connected_neighbors(
+        self, hex: Hex, state: GameState, unit_ids: Iterable[str] | None = None
+    ) -> list[Hex]:
         """
         Returns geometric neighbors that are connected (not split off).
 
@@ -121,9 +143,15 @@ class TopologyService:
         Note: Does NOT check for obstacles or map boundaries.
         Use get_traversable_neighbors() for movement.
         """
-        return [n for n in hex.neighbors() if self.are_connected(hex, n, state)]
+        return [n for n in hex.neighbors() if self.are_connected(hex, n, state, unit_ids=unit_ids)]
 
-    def get_connected_ring(self, center: Hex, radius: int, state: GameState) -> list[Hex]:
+    def get_connected_ring(
+        self,
+        center: Hex,
+        radius: int,
+        state: GameState,
+        unit_ids: Iterable[str] | None = None,
+    ) -> list[Hex]:
         """
         Returns hexes at exactly `radius` distance that are connected.
 
@@ -139,7 +167,11 @@ class TopologyService:
         Returns:
             List of hexes at exactly `radius` distance that are connected
         """
-        return [h for h in center.ring(radius) if self.are_connected(center, h, state)]
+        return [
+            h
+            for h in center.ring(radius)
+            if self.are_connected(center, h, state, unit_ids=unit_ids)
+        ]
 
     def get_traversable_neighbors(
         self,
@@ -148,6 +180,7 @@ class TopologyService:
         end_hex: Hex | None = None,
         actor_id: str | None = None,
         pass_through_obstacles: bool = False,
+        unit_ids: Iterable[str] | None = None,
     ) -> list[Hex]:
         """
         Returns neighbors that can be traversed during movement.
@@ -171,9 +204,10 @@ class TopologyService:
             List of hexes that can be moved to from the current position
         """
         result = []
+        topology_unit_ids = unit_ids if unit_ids is not None else ([actor_id] if actor_id else None)
         for n in hex.neighbors():
             # Must be connected (topology check)
-            if not self.are_connected(hex, n, state):
+            if not self.are_connected(hex, n, state, unit_ids=topology_unit_ids):
                 continue
 
             # Must be on the map
@@ -202,7 +236,13 @@ class TopologyService:
             result.append(n)
         return result
 
-    def is_straight_line(self, origin: Hex, target: Hex, state: GameState) -> bool:
+    def is_straight_line(
+        self,
+        origin: Hex,
+        target: Hex,
+        state: GameState,
+        unit_ids: Iterable[str] | None = None,
+    ) -> bool:
         """
         Check if two hexes form a straight line and are in the same reality.
 
@@ -220,7 +260,7 @@ class TopologyService:
         """
         if not origin.is_straight_line(target):
             return False
-        return self.are_connected(origin, target, state)
+        return self.are_connected(origin, target, state, unit_ids=unit_ids)
 
     def hex_in_scope(
         self,
@@ -230,6 +270,7 @@ class TopologyService:
         scope_range: int,
         state: GameState,
         direction: int | None = None,
+        unit_ids: Iterable[str] | None = None,
     ) -> bool:
         """
         Consolidated scope check for effects/auras.
@@ -251,22 +292,22 @@ class TopologyService:
         if scope_shape == Shape.GLOBAL:
             # "Global" means "everywhere connected to source"
             # This is the key change: Global no longer means entire map
-            return self.are_connected(origin, target, state)
+            return self.are_connected(origin, target, state, unit_ids=unit_ids)
 
         if scope_shape == Shape.POINT:
             return origin == target
 
         if scope_shape == Shape.ADJACENT:
-            return self.are_adjacent(origin, target, state)
+            return self.are_adjacent(origin, target, state, unit_ids=unit_ids)
 
         if scope_shape == Shape.RADIUS:
-            dist = self.distance(origin, target, state)
+            dist = self.distance(origin, target, state, unit_ids=unit_ids)
             return dist <= scope_range
 
         if scope_shape == Shape.LINE:
-            if not self.is_straight_line(origin, target, state):
+            if not self.is_straight_line(origin, target, state, unit_ids=unit_ids):
                 return False
-            dist = self.distance(origin, target, state)
+            dist = self.distance(origin, target, state, unit_ids=unit_ids)
             return dist <= scope_range
 
         if scope_shape == Shape.ZONE:
@@ -281,6 +322,33 @@ class TopologyService:
     # -------------------------------------------------------------------------
     # Internal Helpers
     # -------------------------------------------------------------------------
+
+    def _query_unit_ids(
+        self,
+        origin: Hex,
+        target: Hex,
+        state: GameState,
+        unit_ids: Iterable[str] | None,
+    ) -> tuple[str, ...]:
+        ids: list[str] = [str(uid) for uid in unit_ids or [] if uid]
+        for hex_pos in (origin, target):
+            tile = state.board.get_tile(hex_pos)
+            if tile and tile.occupant_id:
+                ids.append(str(tile.occupant_id))
+        return tuple(dict.fromkeys(ids))
+
+    def _ignored_for_units(
+        self,
+        effect: ActiveEffect,
+        state: GameState,
+        unit_ids: Iterable[str],
+    ) -> bool:
+        if not unit_ids:
+            return False
+
+        from goa2.engine.rules import unit_ignores_effect_due_to_immunity
+
+        return any(unit_ignores_effect_due_to_immunity(effect, uid, state) for uid in unit_ids)
 
     def _get_region(self, hex: Hex, effect: ActiveEffect) -> str:
         """
@@ -393,24 +461,36 @@ def get_topology_service() -> TopologyService:
 # These allow `from goa2.engine.topology import topology_distance` usage
 
 
-def topology_distance(origin: Hex, target: Hex, state: GameState) -> int | float:
+def topology_distance(
+    origin: Hex,
+    target: Hex,
+    state: GameState,
+    unit_ids: Iterable[str] | None = None,
+) -> int | float:
     """Module-level convenience for TopologyService.distance()."""
-    return get_topology_service().distance(origin, target, state)
+    return get_topology_service().distance(origin, target, state, unit_ids=unit_ids)
 
 
-def are_connected(origin: Hex, target: Hex, state: GameState) -> bool:
+def are_connected(
+    origin: Hex,
+    target: Hex,
+    state: GameState,
+    unit_ids: Iterable[str] | None = None,
+) -> bool:
     """Module-level convenience for TopologyService.are_connected()."""
-    return get_topology_service().are_connected(origin, target, state)
+    return get_topology_service().are_connected(origin, target, state, unit_ids=unit_ids)
 
 
-def are_adjacent(a: Hex, b: Hex, state: GameState) -> bool:
+def are_adjacent(a: Hex, b: Hex, state: GameState, unit_ids: Iterable[str] | None = None) -> bool:
     """Module-level convenience for TopologyService.are_adjacent()."""
-    return get_topology_service().are_adjacent(a, b, state)
+    return get_topology_service().are_adjacent(a, b, state, unit_ids=unit_ids)
 
 
-def get_connected_neighbors(hex: Hex, state: GameState) -> list[Hex]:
+def get_connected_neighbors(
+    hex: Hex, state: GameState, unit_ids: Iterable[str] | None = None
+) -> list[Hex]:
     """Module-level convenience for TopologyService.get_connected_neighbors()."""
-    return get_topology_service().get_connected_neighbors(hex, state)
+    return get_topology_service().get_connected_neighbors(hex, state, unit_ids=unit_ids)
 
 
 def get_traversable_neighbors(
@@ -419,21 +499,32 @@ def get_traversable_neighbors(
     end_hex: Hex | None = None,
     actor_id: str | None = None,
     pass_through_obstacles: bool = False,
+    unit_ids: Iterable[str] | None = None,
 ) -> list[Hex]:
     """Module-level convenience for TopologyService.get_traversable_neighbors()."""
     return get_topology_service().get_traversable_neighbors(
-        hex, state, end_hex, actor_id, pass_through_obstacles
+        hex, state, end_hex, actor_id, pass_through_obstacles, unit_ids=unit_ids
     )
 
 
-def get_connected_ring(center: Hex, radius: int, state: GameState) -> list[Hex]:
+def get_connected_ring(
+    center: Hex,
+    radius: int,
+    state: GameState,
+    unit_ids: Iterable[str] | None = None,
+) -> list[Hex]:
     """Module-level convenience for TopologyService.get_connected_ring()."""
-    return get_topology_service().get_connected_ring(center, radius, state)
+    return get_topology_service().get_connected_ring(center, radius, state, unit_ids=unit_ids)
 
 
-def is_straight_line(origin: Hex, target: Hex, state: GameState) -> bool:
+def is_straight_line(
+    origin: Hex,
+    target: Hex,
+    state: GameState,
+    unit_ids: Iterable[str] | None = None,
+) -> bool:
     """Module-level convenience for TopologyService.is_straight_line()."""
-    return get_topology_service().is_straight_line(origin, target, state)
+    return get_topology_service().is_straight_line(origin, target, state, unit_ids=unit_ids)
 
 
 def hex_in_scope(
@@ -443,8 +534,9 @@ def hex_in_scope(
     scope_range: int,
     state: GameState,
     direction: int | None = None,
+    unit_ids: Iterable[str] | None = None,
 ) -> bool:
     """Module-level convenience for TopologyService.hex_in_scope()."""
     return get_topology_service().hex_in_scope(
-        origin, target, scope_shape, scope_range, state, direction
+        origin, target, scope_shape, scope_range, state, direction, unit_ids=unit_ids
     )

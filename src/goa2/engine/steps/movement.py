@@ -101,7 +101,7 @@ class MoveUnitStep(GameStep):
         # Calculate actual distance for MOVEMENT_ZONE effect validation
         from goa2.engine.topology import topology_distance
 
-        actual_distance = topology_distance(start_hex, dest_hex, state)
+        actual_distance = topology_distance(start_hex, dest_hex, state, unit_ids=[target_unit_id])
         if actual_distance == float("inf"):
             actual_distance = 0  # Unreachable, will fail pathfinding check below
 
@@ -129,6 +129,7 @@ class MoveUnitStep(GameStep):
                 state=state,
                 actor_id=(str(state.current_actor_id) if state.current_actor_id else None),
                 pass_through_obstacles=self.pass_through_obstacles,
+                topology_unit_ids=[target_unit_id],
             )
 
         if not is_valid:
@@ -160,6 +161,7 @@ class MoveUnitStep(GameStep):
                     state=state,
                     actor_id=current_actor,
                     moving_team=moving_team,
+                    topology_unit_ids=[target_unit_id],
                 )
 
                 mine_options = reachable.get(dest_hex, [])
@@ -233,6 +235,7 @@ class MoveSequenceStep(GameStep):
     def _get_effective_range(self, state: GameState, unit_id: str, range_val: int) -> int:
         """Get effective movement range, considering MOVEMENT_ZONE effects."""
         from goa2.domain.models.effect import EffectType
+        from goa2.engine.rules import unit_ignores_effect_due_to_immunity
 
         max_range = range_val
 
@@ -246,6 +249,8 @@ class MoveSequenceStep(GameStep):
             if not state.validator._is_effect_active(effect, state):
                 continue
             if not state.validator._is_in_scope(effect, unit_id, unit_loc, state):
+                continue
+            if unit_ignores_effect_due_to_immunity(effect, unit_id, state):
                 continue
             # Only applies to movement actions (MoveSequenceStep is always a movement action)
             if effect.max_value is not None:
@@ -292,6 +297,7 @@ class MoveSequenceStep(GameStep):
         # per-pathfinding-step (matches other auras).
         if not pass_through and actor_id:
             from goa2.domain.models.effect import EffectType as _EffectType
+            from goa2.engine.rules import unit_ignores_effect_due_to_immunity
 
             actor_loc = state.entity_locations.get(BoardEntityID(str(actor_id)))
             if actor_loc:
@@ -303,6 +309,8 @@ class MoveSequenceStep(GameStep):
                     if not state.validator._is_effect_active(effect, state):
                         continue
                     if not state.validator._is_in_scope(effect, str(actor_id), actor_loc, state):
+                        continue
+                    if unit_ignores_effect_due_to_immunity(effect, str(actor_id), state):
                         continue
                     pass_through = True
                     break
@@ -569,6 +577,7 @@ class MinePathChoiceStep(GameStep):
             state=state,
             actor_id=current_actor,
             moving_team=moving_team,
+            topology_unit_ids=[moving_id],
         )
 
         mine_options = reachable.get(dest_hex, [])
@@ -955,7 +964,9 @@ class MoveTowardTargetStep(GameStep):
         target = Hex(**raw_target) if isinstance(raw_target, dict) else raw_target
 
         # Straight line AND same reality (topology split would block the pull).
-        if not origin.is_straight_line(target) or not are_connected(origin, target, state):
+        if not origin.is_straight_line(target) or not are_connected(
+            origin, target, state, unit_ids=[mover_id]
+        ):
             return StepResult(is_finished=True)
 
         try:
@@ -1075,7 +1086,7 @@ class PushUnitStep(GameStep):
                 was_stopped_by_obstacle = True
                 break
 
-            if not are_connected(prev, next_hex, state):
+            if not are_connected(prev, next_hex, state, unit_ids=[actual_target_id]):
                 logger.debug(
                     f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
                 )
@@ -1325,7 +1336,10 @@ class DirectionalMoveUnitsStep(GameStep):
                 continue
             if getattr(unit, "team", None) == origin_team:
                 continue
-            if topology_distance(origin_hex, loc, state) > self.radius:
+            if (
+                topology_distance(origin_hex, loc, state, unit_ids=[origin_id, unit_id])
+                > self.radius
+            ):
                 continue
             if not immunity_filter.apply(unit_id, state, context):
                 continue
@@ -1354,7 +1368,7 @@ class DirectionalMoveUnitsStep(GameStep):
             dest = start_hex.neighbor(direction)
             if not state.board.is_on_map(dest):
                 continue
-            if not are_connected(start_hex, dest, state):
+            if not are_connected(start_hex, dest, state, unit_ids=[unit_id]):
                 continue
             tile = state.board.get_tile(dest)
             if tile.is_terrain:
