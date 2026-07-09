@@ -265,7 +265,13 @@ class ResolveCombatStep(GameStep):
                 new_steps=[DefeatUnitStep(victim_id=target_id, killer_id=actor_id)],
                 events=[_combat_event("DEFEATED")],
             )
-        defense_bonus = int(context.get("defense_bonus", 0))
+        # Card-granted bonuses ("+2 Defense if...") are Defense-stat bonuses, so
+        # they contribute nothing when the block is made with a different stat.
+        # This keeps them consistent with Defense auras, which already drop out
+        # because get_computed_stat looks up modifiers by the stat in use.
+        defense_bonus = (
+            0 if context.get("defense_uses_initiative") else int(context.get("defense_bonus", 0))
+        )
         total_defense = defense_card_val + defense_bonus + mod_val
 
         logger.debug(

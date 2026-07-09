@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+import goa2.scripts.dodger_effects  # registers shield_of_decay for the defense tests
 import goa2.scripts.emmitt_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
@@ -32,6 +33,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.types import BoardEntityID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.rules import is_immune
 from goa2.engine.steps import AttackSequenceStep
@@ -2643,3 +2645,81 @@ def test_all_three_temporal_tiers_use_initiative_as_defense(card_id: str, attack
 
     assert run.latest_request.context["attack_value"] == attack
     assert _block_option(run).metadata["defense_value"] == 10
+
+
+# =============================================================================
+# Card-granted "+N Defense" bonuses vs initiative-as-defense
+# =============================================================================
+
+_JUDGMENT_ATTACK = 12  # temporal_judgment primary_action_value
+
+
+def _dodger_defense_state():
+    """Emmitt attacks Dodger, who holds Shield of Decay (+2 Defense).
+
+    Two empty spawn points sit within the card's radius 2 of the defender, so
+    the bonus clause is satisfied and really does fire.
+    """
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (1, -1, 0), (0, 1, -1), (2, -1, -1)])
+        .spawn_point((2, 0, -2))
+        .spawn_point((1, -1, 0))
+        .red_hero(
+            "hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "temporal_judgment")
+        )
+        .blue_hero("hero_dodger", at=(1, 0, -1))
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    state.battle_zones = {"lane1": "z1"}
+    shield = hero_card("Dodger", "shield_of_decay")
+    shield.is_facedown = False
+    state.get_hero("hero_dodger").hand = [shield]
+    return state
+
+
+def _defender_is_alive(state) -> bool:
+    return BoardEntityID("hero_dodger") in state.entity_locations
+
+
+@pytest.mark.effect_flow
+def test_defense_bonus_does_not_apply_when_blocking_with_initiative() -> None:
+    """Shield of Decay's "+2 Defense" must not raise an Initiative block.
+
+    Temporal Judgment attacks for 12. Shield of Decay blocks with Initiative 10.
+    The card's +2 is a Defense bonus, so it contributes nothing here: 10 < 12
+    and the defender falls. If the bonus leaked in, 10 + 2 = 12 would block.
+    """
+    state = _dodger_defense_state()
+
+    run = run_card(state, "hero_emmitt")
+    run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+    run.expect_input("SELECT_UNIT").choose("hero_dodger")
+    run.expect_input("SELECT_CARD_OR_PASS").choose("shield_of_decay")
+    run.finish()
+
+    assert not _defender_is_alive(state)
+
+
+@pytest.mark.effect_flow
+def test_defense_bonus_still_applies_when_blocking_with_defense() -> None:
+    """Control: under an ordinary attack the same +2 is load-bearing.
+
+    Shield of Decay blocks with Defense 3. Against a 5-damage attack the bare
+    card fails and only the +2 saves the defender, so this test fails if the
+    bonus is dropped for every attack rather than only initiative ones.
+    """
+    state = _dodger_defense_state()
+
+    push_steps(state, [AttackSequenceStep(damage=5, range_val=1)])
+    result = process_stack(state)
+    assert result.input_request.request_type.value == "SELECT_UNIT"
+    state.execution_stack[-1].pending_input = {"selection": "hero_dodger"}
+    result = process_stack(state)
+
+    assert result.input_request.request_type.value == "SELECT_CARD_OR_PASS"
+    state.execution_stack[-1].pending_input = {"selection": "shield_of_decay"}
+    process_stack(state)
+
+    assert _defender_is_alive(state)

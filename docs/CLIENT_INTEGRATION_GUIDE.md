@@ -1137,6 +1137,14 @@ Stat auras follow the stat actually being used: a Defense aura (Trinkets'
 Barrier) does not raise `defense_value` under these cards, while an Initiative
 aura (Tali's Ice) does change it.
 
+Card-granted Defense bonuses follow the same rule. A defense card whose text
+reads "+2 Defense if ..." (Dodger's Shield of Decay, Vampiric Shield, Aegis of
+Doom; Razzle's Crowd Control) contributes nothing when the block is made with
+Initiative. Such bonuses are never reflected in `defense_value` either way —
+they are applied when combat resolves, not when the option is offered — so a
+client cannot and should not try to predict the final block total from the
+request.
+
 ---
 
 ## Events
