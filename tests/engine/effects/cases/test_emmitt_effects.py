@@ -12,7 +12,18 @@ import pytest
 import goa2.scripts.emmitt_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
-from goa2.domain.models import TeamColor
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Minion,
+    MinionType,
+    StatType,
+    TeamColor,
+    Token,
+    TokenType,
+)
 from goa2.domain.models.effect import (
     ActiveEffect,
     AffectsFilter,
@@ -21,7 +32,9 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.rules import is_immune
+from goa2.engine.steps import AttackSequenceStep
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -2337,3 +2350,296 @@ class TestBackToTheFutureShove:
         run.expect_input("SELECT_UNIT")
 
         assert {o.id for o in run.latest_request.options} == {"hero_enemy"}
+
+
+# =============================================================================
+# P2 primitive + Temporal Punch / Slam / Judgment (initiative-as-defense)
+# =============================================================================
+
+_TEMPORAL_ATTACK = 9  # temporal_punch primary_action_value
+
+
+def _defense_card() -> Card:
+    """A defense card with high Initiative and low Defense.
+
+    The two values must differ so the block value reveals which stat was used.
+    """
+    return Card(
+        id="def_card",
+        name="Def Card",
+        tier=CardTier.I,
+        color=CardColor.GREEN,
+        initiative=10,
+        primary_action=ActionType.DEFENSE,
+        primary_action_value=2,
+        secondary_actions={},
+        effect_id="",
+        effect_text="",
+        is_facedown=False,
+    )
+
+
+def _temporal_state(card_id: str = "temporal_punch"):
+    """Emmitt attacks an adjacent enemy hero who holds one defense card."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (1, -1, 0), (0, 1, -1)])
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", card_id))
+        .blue_hero("hero_enemy", at=(1, 0, -1))
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    state.get_hero("hero_enemy").hand = [_defense_card()]
+    return state
+
+
+def _block_option(run):
+    """The defender's reaction option for `def_card`."""
+    assert run.latest_request is not None
+    option = next(o for o in run.latest_request.options if o.id == "def_card")
+    return option
+
+
+def _drive_to_reaction(state):
+    run = run_card(state, "hero_emmitt")
+    run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+    run.expect_input("SELECT_UNIT").choose("hero_enemy")
+    run.expect_input("SELECT_CARD_OR_PASS")
+    return run
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_defender_blocks_with_initiative_not_defense() -> None:
+    """H2: the block value is the card's Initiative (10), not its Defense (2)."""
+    state = _temporal_state()
+
+    run = _drive_to_reaction(state)
+    option = _block_option(run)
+
+    assert option.metadata["defense_value"] == 10
+
+
+_TOKEN_HEX = Hex(q=2, r=0, s=-2)  # adjacent to the defender at (1,0,-1)
+
+
+def _place_token_aura(
+    state,
+    *,
+    token_id: str,
+    token_type: TokenType,
+    at: Hex,
+    source_id: str,
+    affects: AffectsFilter,
+    stat_type: StatType,
+    stat_value: int,
+) -> None:
+    """Place a token and hang an adjacent stat aura on it.
+
+    Mirrors how Tali's Ice (INITIATIVE -1, enemy heroes) and Trinkets' Barrier
+    (DEFENSE +1, self and friendly heroes) are built by their effects: a
+    PASSIVE AREA_STAT_MODIFIER whose scope origin is the token.
+    """
+    token = Token(id=token_id, name=token_id, token_type=token_type)
+    state.register_entity(token)
+    state.place_entity(token_id, at)
+    state.active_effects.append(
+        ActiveEffect(
+            id=f"{token_id}_aura",
+            source_id=source_id,
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.ADJACENT, origin_id=token_id, affects=affects),
+            duration=DurationType.PASSIVE,
+            stat_type=stat_type,
+            stat_value=stat_value,
+            is_active=True,
+            created_at_turn=1,
+            created_at_round=1,
+        )
+    )
+
+
+def _add_ice_token(state, at: Hex = _TOKEN_HEX) -> None:
+    """Tali's Ice: -1 INITIATIVE to adjacent enemy heroes."""
+    _place_token_aura(
+        state,
+        token_id="ice_1",
+        token_type=TokenType.ICE,
+        at=at,
+        source_id="hero_emmitt",  # RED, so hero_enemy (BLUE) is an enemy hero
+        affects=AffectsFilter.ENEMY_HEROES,
+        stat_type=StatType.INITIATIVE,
+        stat_value=-1,
+    )
+
+
+def _add_barrier_token(state, at: Hex = _TOKEN_HEX) -> None:
+    """Trinkets' Barrier: +1 DEFENSE to itself and adjacent friendly heroes."""
+    _place_token_aura(
+        state,
+        token_id="barrier_1",
+        token_type=TokenType.BARRIER,
+        at=at,
+        source_id="hero_enemy",  # BLUE, so the defender is covered by SELF_AND_FRIENDLY
+        affects=AffectsFilter.SELF_AND_FRIENDLY_HEROES,
+        stat_type=StatType.DEFENSE,
+        stat_value=1,
+    )
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_initiative_aura_changes_the_block_value() -> None:
+    """H4: an Initiative aura (Tali's Ice) lowers what the defender can block with.
+
+    Base Initiative 10, one adjacent Ice token -> 9.
+    """
+    state = _temporal_state()
+    _add_ice_token(state)
+
+    run = _drive_to_reaction(state)
+
+    assert _block_option(run).metadata["defense_value"] == 9
+
+
+@pytest.mark.effect_flow
+def test_defense_aura_helps_against_a_normal_attack() -> None:
+    """Control for the Barrier test below: the aura really is wired up and adjacent.
+
+    Under an ordinary attack the defender blocks with Defense 2 + Barrier 1 = 3.
+    Without this control, the Barrier test could pass simply because the token
+    was misplaced and contributed nothing to either stat.
+    """
+    state = _temporal_state(card_id="time_walk")  # any non-Temporal card
+    _add_barrier_token(state)
+
+    # Drive a plain attack rather than the Temporal effect.
+    push_steps(state, [AttackSequenceStep(damage=_TEMPORAL_ATTACK, range_val=1)])
+    result = process_stack(state)
+
+    assert result.input_request is not None
+    assert result.input_request.request_type.value == "SELECT_UNIT"
+    state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
+    result = process_stack(state)
+
+    assert result.input_request.request_type.value == "SELECT_CARD_OR_PASS"
+    option = next(o for o in result.input_request.options if o.id == "def_card")
+    assert option.metadata["defense_value"] == 3
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_defense_aura_does_not_help() -> None:
+    """A Defense aura (Trinkets' Barrier) is irrelevant when blocking with Initiative.
+
+    The same Barrier that grants +1 in the control above contributes nothing
+    here: the block value stays at the defender's bare Initiative of 10.
+    """
+    state = _temporal_state()
+    _add_barrier_token(state)
+
+    run = _drive_to_reaction(state)
+
+    assert _block_option(run).metadata["defense_value"] == 10
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_reaction_option_is_labelled_with_initiative() -> None:
+    """H5: the defending client sees the value it would actually block with."""
+    state = _temporal_state()
+
+    run = _drive_to_reaction(state)
+
+    assert _block_option(run).text == "Def Card (Init: 10)"
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_minion_defense_modifiers_still_apply() -> None:
+    """H3: "Minion defense modifiers are applied as normal."
+
+    A friendly melee minion adjacent to the defender still lowers the attack
+    they need to survive. The modifier is subtracted from the attack value
+    rather than added to the defender's stat, so the Initiative swap must not
+    disturb it.
+    """
+    state = _temporal_state()
+    state.teams[TeamColor.BLUE].minions.append(
+        Minion(id="blue_guard", name="Blue Guard", team=TeamColor.BLUE, type=MinionType.MELEE)
+    )
+    state.place_entity("blue_guard", Hex(q=1, r=-1, s=0))
+
+    run = _drive_to_reaction(state)
+
+    assert run.latest_request.context["minion_modifier"] == 1
+    assert run.latest_request.context["defense_needed"] == _TEMPORAL_ATTACK - 1
+    # ...and the block value is still Initiative, not Defense.
+    assert _block_option(run).metadata["defense_value"] == 10
+
+
+@pytest.mark.effect_flow
+def test_initiative_as_defense_does_not_leak_into_a_later_attack() -> None:
+    """U4 / S5: the flag is scoped to the attack sequence that set it.
+
+    Emmitt's Temporal Punch is blocked (Initiative 10 >= attack 9), leaving the
+    defender alive. A second, ordinary attack in the same turn must fall back
+    to Defense (2) -- the execution context survives the first attack, so a
+    flag that is only ever set to True would leak here.
+    """
+    second_card = _defense_card()
+    second_card.id = "def_card_2"
+
+    state = _temporal_state()
+    state.get_hero("hero_enemy").hand = [_defense_card(), second_card]
+
+    run = _drive_to_reaction(state)
+    assert _block_option(run).metadata["defense_value"] == 10
+    run.choose("def_card").finish()
+
+    assert "hero_enemy" in state.entity_locations, "defender should have blocked and survived"
+
+    push_steps(state, [AttackSequenceStep(damage=_TEMPORAL_ATTACK, range_val=1)])
+    result = process_stack(state)
+    assert result.input_request.request_type.value == "SELECT_UNIT"
+    state.execution_stack[-1].pending_input = {"selection": "hero_enemy"}
+    result = process_stack(state)
+
+    assert result.input_request.request_type.value == "SELECT_CARD_OR_PASS"
+    option = next(o for o in result.input_request.options if o.id == "def_card_2")
+    assert option.metadata["defense_value"] == 2, "second attack must use Defense"
+
+
+@pytest.mark.effect_flow
+def test_temporal_punch_high_defense_low_initiative_card_fails_to_block() -> None:
+    """H2 outcome: the swap decides the combat, not just the displayed number.
+
+    Defense 12 would comfortably block the attack of 9; Initiative 5 does not.
+    """
+    state = _temporal_state()
+    tank_card = _defense_card()
+    tank_card.id = "tank_card"
+    tank_card.initiative = 5
+    tank_card.primary_action_value = 12
+    state.get_hero("hero_enemy").hand = [tank_card]
+
+    run = _drive_to_reaction(state)
+    assert (
+        next(o for o in run.latest_request.options if o.id == "tank_card").metadata["defense_value"]
+        == 5
+    )
+
+    run.choose("tank_card").finish()
+
+    defeated = [e for e in run.events if e.event_type == GameEventType.UNIT_DEFEATED]
+    assert [e.target_id for e in defeated] == ["hero_enemy"]
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    ("card_id", "attack"),
+    [("temporal_punch", 9), ("temporal_slam", 11), ("temporal_judgment", 12)],
+)
+def test_all_three_temporal_tiers_use_initiative_as_defense(card_id: str, attack: int) -> None:
+    """One effect, three cards: only the attack value differs."""
+    state = _temporal_state(card_id=card_id)
+
+    run = _drive_to_reaction(state)
+
+    assert run.latest_request.context["attack_value"] == attack
+    assert _block_option(run).metadata["defense_value"] == 10

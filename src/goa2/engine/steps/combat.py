@@ -49,6 +49,10 @@ class AttackSequenceStep(GameStep):
     range_bonus_key: str | None = None  # Add int from context to range_val
     damage_stat_type: StatType | None = None  # Recompute damage after actor binding
     range_stat_type: StatType | None = None  # Recompute range after actor binding
+    # Emmitt's Temporal line: the defender blocks with their card+items
+    # Initiative instead of Defense. Written to context on every resolve (not
+    # only when True) so it can never leak into a later attack this turn.
+    defense_uses_initiative: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.cards import ResolvePreActionDiscardStep
@@ -100,6 +104,7 @@ class AttackSequenceStep(GameStep):
         context["attack_is_ranged"] = self.is_ranged
         context["attacker_id"] = str(state.current_actor_id) if state.current_actor_id else None
         context["attack_damage"] = effective_damage
+        context["defense_uses_initiative"] = self.defense_uses_initiative
         logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )

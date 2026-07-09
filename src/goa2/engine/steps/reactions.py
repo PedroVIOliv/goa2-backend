@@ -86,15 +86,24 @@ class ReactionWindowStep(GameStep):
 
         [c.id for c in valid_defense_cards]
 
+        # Emmitt's Temporal line makes the defender block with Initiative. The
+        # stat_type drives both the card's base value and get_computed_stat's
+        # item/aura lookup, so a Defense aura stops applying and an Initiative
+        # aura starts, with no further branching.
+        block_stat = (
+            StatType.INITIATIVE if context.get("defense_uses_initiative") else StatType.DEFENSE
+        )
+        block_label = "Init" if block_stat == StatType.INITIATIVE else "Def"
+
         # Build InputOption objects with computed defense values
         options = []
         for card in valid_defense_cards:
-            base_def = card.get_base_stat_value(StatType.DEFENSE)
-            total_def = get_computed_stat(state, target_id, StatType.DEFENSE, base_def)
+            base_def = card.get_base_stat_value(block_stat)
+            total_def = get_computed_stat(state, target_id, block_stat, base_def)
             options.append(
                 InputOption(
                     id=card.id,
-                    text=f"{card.name} (Def: {total_def})",
+                    text=f"{card.name} ({block_label}: {total_def})",
                     metadata={"defense_value": total_def, "base_defense": base_def},
                 )
             )
@@ -120,12 +129,12 @@ class ReactionWindowStep(GameStep):
 
                 # Get Base Value
                 if selected_card:
-                    def_val = selected_card.get_base_stat_value(StatType.DEFENSE)
+                    def_val = selected_card.get_base_stat_value(block_stat)
                 elif not selected_card:
                     raise ValueError("Selected card is not a valid defense card.")
 
                 # Compute Total Defense (Base + Items + Modifiers)
-                total_def = get_computed_stat(state, target_id, StatType.DEFENSE, def_val)
+                total_def = get_computed_stat(state, target_id, block_stat, def_val)
 
                 # Determine if primary defense (triggers effect text)
                 # block_primary_defense forces all cards to secondary-only

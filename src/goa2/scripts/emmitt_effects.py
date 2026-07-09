@@ -37,6 +37,54 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# TEMPORAL PUNCH / TEMPORAL SLAM / TEMPORAL JUDGMENT (Red I/II/III)
+# "Target a unit adjacent to you; when defending, the enemy hero must use the
+#  Initiative value of their card and items instead of the Defense value."
+# =============================================================================
+
+
+class _InitiativeAsDefenseAttack(CardEffect):
+    """Adjacent attack where the defender blocks with Initiative, not Defense.
+
+    One class for all three tiers: only the attack value differs, and that
+    already arrives via `stats.primary_value`. Range is hardcoded to 1
+    (adjacent-only, not buffable), matching the Noble Blade precedent.
+
+    Minion defense modifiers still apply as normal: they are subtracted from
+    the attack value in ReactionWindowStep rather than folded into the
+    defender's stat, so the Initiative swap does not touch them.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        from goa2.engine.steps import AttackSequenceStep
+
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                defense_uses_initiative=True,
+            ),
+        ]
+
+
+@register_effect("temporal_punch")
+class TemporalPunchEffect(_InitiativeAsDefenseAttack):
+    """Tier I — attack 9."""
+
+
+@register_effect("temporal_slam")
+class TemporalSlamEffect(_InitiativeAsDefenseAttack):
+    """Tier II — attack 11."""
+
+
+@register_effect("temporal_judgment")
+class TemporalJudgmentEffect(_InitiativeAsDefenseAttack):
+    """Tier III — attack 12."""
+
+
+# =============================================================================
 # TIME CAPSULE (Green II — radius 4)
 # "You, and friendly heroes in radius, may retrieve all cards discarded
 #  this turn."
