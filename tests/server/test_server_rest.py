@@ -784,6 +784,45 @@ def test_planning_done_before_commit_rejected(client, emmitt_game):
     assert resp.status_code == 400
 
 
+def _hero_view(client, game_id, token, hero_id):
+    view = client.get(f"/games/{game_id}", headers=_auth(token)).json()["view"]
+    return next(h for t in view["teams"].values() for h in t["heroes"] if h["id"] == hero_id)
+
+
+def test_can_commit_second_card_flag(client, emmitt_game):
+    """The own-hero view exposes can_commit_second_card across the two-card window."""
+    game_id = emmitt_game["game_id"]
+    em_token = _token_for(emmitt_game, "hero_emmitt")
+    wa_token = _token_for(emmitt_game, "hero_wasp")
+
+    # Before committing: not yet open.
+    assert _hero_view(client, game_id, em_token, "hero_emmitt")["can_commit_second_card"] is False
+
+    # After the first commit: open in Emmitt's own view...
+    client.post(
+        f"/games/{game_id}/cards", json={"card_id": "reverse_time"}, headers=_auth(em_token)
+    )
+    assert _hero_view(client, game_id, em_token, "hero_emmitt")["can_commit_second_card"] is True
+    # ...but never leaked to the opponent's view of Emmitt.
+    assert _hero_view(client, game_id, wa_token, "hero_emmitt")["can_commit_second_card"] is False
+
+    # After the second commit: closed again.
+    client.post(
+        f"/games/{game_id}/cards", json={"card_id": "unstable_timeline"}, headers=_auth(em_token)
+    )
+    assert _hero_view(client, game_id, em_token, "hero_emmitt")["can_commit_second_card"] is False
+
+
+def test_can_commit_second_card_false_for_normal_hero(client, game_data):
+    """A hero without the two-card ultimate never sees the flag set."""
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+    assert _hero_view(client, game_id, token, "hero_arien")["can_commit_second_card"] is False
+    card = _first_hand_card_id(client, game_data, "hero_arien")
+    client.post(f"/games/{game_id}/cards", json={"card_id": card}, headers=_auth(token))
+    assert _hero_view(client, game_id, token, "hero_arien")["can_commit_second_card"] is False
+
+
 def test_second_commit_without_ultimate_still_409(client, game_data):
     """Regression: a normal hero's second commit is still rejected."""
     game_id = game_data["game_id"]

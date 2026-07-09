@@ -47,7 +47,7 @@ def build_view(
     # Build teams view
     teams_view: dict[str, Any] = {}
     for team_color, team in state.teams.items():
-        teams_view[team_color.value] = _build_team_view(team, for_hero_id, reveal_all)
+        teams_view[team_color.value] = _build_team_view(state, team, for_hero_id, reveal_all)
 
     # Build board view (public info)
     board_view = _build_board_view(state)
@@ -147,18 +147,20 @@ def _build_unresolved_cards_view(
     return entries
 
 
-def _build_team_view(team, for_hero_id: HeroID | None, reveal_all: bool = False) -> dict[str, Any]:
+def _build_team_view(
+    state: GameState, team, for_hero_id: HeroID | None, reveal_all: bool = False
+) -> dict[str, Any]:
     """Build a view for a single team."""
     return {
         "color": team.color.value,
         "life_counters": team.life_counters,
-        "heroes": [_build_hero_view(hero, for_hero_id, reveal_all) for hero in team.heroes],
+        "heroes": [_build_hero_view(state, hero, for_hero_id, reveal_all) for hero in team.heroes],
         "minions": [_build_minion_view(minion) for minion in team.minions],
     }
 
 
 def _build_hero_view(
-    hero: Hero, for_hero_id: HeroID | None, reveal_all: bool = False
+    state: GameState, hero: Hero, for_hero_id: HeroID | None, reveal_all: bool = False
 ) -> dict[str, Any]:
     """
     Build a view for a single hero.
@@ -169,6 +171,15 @@ def _build_hero_view(
     - Discard pile: Always visible (public info)
     """
     is_own_hero = reveal_all or hero.id == for_hero_id
+
+    # Whether this hero may still commit a second card (or call planning-done)
+    # this turn — Emmitt's Alternative Timelines. Secret planning progress, so
+    # only ever True for the genuine requesting hero, never for opponents.
+    from goa2.engine.phases import planning_open_for_second_card
+
+    can_commit_second_card = hero.id == for_hero_id and planning_open_for_second_card(
+        state, hero.id
+    )
 
     return {
         "id": hero.id,
@@ -205,6 +216,10 @@ def _build_hero_view(
             if hero.extra_turn_card
             else None
         ),
+        # Two-card Planning (Emmitt's Alternative Timelines): True only for the
+        # requesting hero while they may still commit a second card or call
+        # planning-done. Always False for opponents and outside Planning.
+        "can_commit_second_card": can_commit_second_card,
         # Discard pile: Always visible (public info) - use is_own_hero=True so all cards show full info
         "discard_pile": [_build_card_view(card, is_own_hero=True) for card in hero.discard_pile],
         # Ultimate card: Own hero sees it, others see faceup only

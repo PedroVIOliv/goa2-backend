@@ -134,9 +134,12 @@ def finish_planning(state: GameState, hero_id: HeroID):
     _check_phase_transition(state)
 
 
-def _planning_open_for(state: GameState, hero_id: HeroID) -> bool:
+def planning_open_for_second_card(state: GameState, hero_id: HeroID) -> bool:
     """A two-card-capable hero keeps planning open after their first commit
-    until they commit a second card, signal done, or run out of cards."""
+    until they commit a second card, signal done, or run out of cards.
+
+    Also drives the client's ``can_commit_second_card`` hero-view flag: while
+    this is True the hero may POST a second card or call planning-done."""
     card = state.pending_inputs.get(hero_id)
     if card is None:  # passed (or not committed — caller checks count)
         return False
@@ -157,7 +160,7 @@ def _check_phase_transition(state: GameState):
         return
     # Two-card-capable heroes must close planning explicitly (second commit,
     # done-signal, or empty hand)
-    if any(_planning_open_for(state, h_id) for h_id in state.pending_inputs):
+    if any(planning_open_for_second_card(state, h_id) for h_id in state.pending_inputs):
         return
     start_revelation_phase(state)
 

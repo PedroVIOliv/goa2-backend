@@ -672,10 +672,21 @@ Each team contains:
   "played_cards": [ ... ],
   "current_turn_card": null,
   "extra_turn_card": null,
+  "can_commit_second_card": false,
   "discard_pile": [ ... ],
   "ultimate_card": null
 }
 ```
+
+**`can_commit_second_card`** (bool) — relevant only to a hero whose active
+ultimate lets them play two cards per turn (Emmitt's *Alternative Timelines*,
+level >= 8). It is `true` while, during the PLANNING phase, this hero has
+committed their first card and may still either `POST .../cards` a second time
+or call `.../planning-done`. It flips back to `false` once the second card is
+committed, planning-done is called, the hand empties, or planning ends. For
+secrecy it is **only ever `true` in the requesting hero's own view** — it is
+always `false` for opponents and for spectators, so use it to drive the local
+player's "commit second card / done" UI, not opponents'.
 
 ### Card data
 
