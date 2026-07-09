@@ -23,8 +23,8 @@ from goa2.engine.filters_hex import (
 )
 from goa2.engine.filters_units import (
     AdjacencyToContextFilter,
+    CanBeMovedByActorFilter,
     ExcludeIdentityFilter,
-    ForcedMovementByEnemyFilter,
     TeamFilter,
     UnitTypeFilter,
 )
@@ -110,7 +110,7 @@ class NobleBladeEffect(CardEffect):
                     AdjacencyToContextFilter(target_key="victim_id"),
                     ExcludeIdentityFilter(exclude_self=True, exclude_keys=["victim_id"]),
                     HasEmptyNeighborFilter(),  # Must have somewhere to go
-                    ForcedMovementByEnemyFilter(),  # Cannot move if protected
+                    CanBeMovedByActorFilter(),  # Cannot move if protected
                 ],
             ),
             # 3. Select Destination (Active If Nudge Selected)

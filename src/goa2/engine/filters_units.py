@@ -429,29 +429,6 @@ class RemainedInPlaceFilter(FilterCondition):
         return state.get_position(candidate) == snapshot_hex
 
 
-class ForcedMovementByEnemyFilter(FilterCondition):
-    """
-    Checks if the candidate is protected from forced movement by enemies.
-    Delegates to ValidationService.
-    """
-
-    type: FilterType = FilterType.FORCED_MOVEMENT_BY_ENEMY
-
-    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        if not isinstance(candidate, str):
-            return False
-
-        actor_id = state.current_actor_id
-        if not actor_id:
-            return True
-
-        result = state.validator.can_be_placed(
-            state=state, unit_id=candidate, actor_id=actor_id, context=context
-        )
-
-        return result.allowed
-
-
 class CanBePlacedByActorFilter(FilterCondition):
     """
     Filters out units that cannot be placed by the current actor.

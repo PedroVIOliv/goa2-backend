@@ -25,7 +25,7 @@ from goa2.engine.filters_geometry import CoMoverValidHexFilter, InStraightLineFi
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import (
     AdjacencyToContextFilter,
-    ForcedMovementByEnemyFilter,
+    CanBeMovedByActorFilter,
     TeamFilter,
     TokenTypeFilter,
     UnitTypeFilter,
@@ -270,7 +270,7 @@ def _drag_steps(*, ignore_obstacles: bool) -> list[GameStep]:
             filters=[
                 TeamFilter(relation="ENEMY"),
                 AdjacencyToContextFilter(target_key="drag_pyro_id"),
-                ForcedMovementByEnemyFilter(),
+                CanBeMovedByActorFilter(),
             ],
         ),
         SelectStep(

@@ -248,7 +248,6 @@ class FilterType(StrEnum):
     ADJACENCY_TO_CONTEXT = "adjacency_to_context_filter"
     EXCLUDE_IDENTITY = "exclude_identity_filter"
     HAS_EMPTY_NEIGHBOR = "has_empty_neighbor_filter"
-    FORCED_MOVEMENT_BY_ENEMY = "forced_movement_by_enemy_filter"
     CAN_BE_PLACED_BY_ACTOR = "can_be_placed_filter"
     CAN_BE_MOVED_BY_ACTOR = "can_be_moved_filter"
     MOVEMENT_PATH = "movement_path_filter"

@@ -23,8 +23,8 @@ from goa2.engine.filters_hex import (
     RangeFilter,
 )
 from goa2.engine.filters_units import (
+    CanBeMovedByActorFilter,
     ExcludeIdentityFilter,
-    ForcedMovementByEnemyFilter,
     MinionTypesFilter,
     TeamFilter,
     UnitTypeFilter,
@@ -238,7 +238,7 @@ class SirensCallEffect(CardEffect):
                 filters=[
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.range, min_range=2),
-                    ForcedMovementByEnemyFilter(),
+                    CanBeMovedByActorFilter(),
                 ],
                 is_mandatory=True,
             ),

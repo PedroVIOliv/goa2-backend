@@ -16,8 +16,8 @@ from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters import (
     AdjacentToObstaclesFilter,
     AndFilter,
+    CanBeMovedByActorFilter,
     ExcludeIdentityFilter,
-    ForcedMovementByEnemyFilter,
     ImmunityFilter,
     MovementPathFilter,
     ObstacleFilter,
@@ -590,7 +590,7 @@ def _decoy_target_filters(radius: int | None) -> list:
                 ),
             ]
         ),
-        ForcedMovementByEnemyFilter(),
+        CanBeMovedByActorFilter(),
     ]
 
 

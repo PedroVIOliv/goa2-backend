@@ -119,7 +119,7 @@ class TestSirensCallEffect:
         filter_classes = [f.__class__.__name__ for f in target_step.filters]
         assert "TeamFilter" in filter_classes
         assert "RangeFilter" in filter_classes
-        assert "ForcedMovementByEnemyFilter" in filter_classes
+        assert "CanBeMovedByActorFilter" in filter_classes
         assert target_step.is_mandatory is True
 
     def test_target_selection_not_adjacent(self, sirens_call_state):
