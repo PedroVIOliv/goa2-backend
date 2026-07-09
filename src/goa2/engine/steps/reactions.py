@@ -15,6 +15,18 @@ from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
 
+# Written by the defending card's build_defense_steps(), read by
+# ResolveCombatStep. They describe one defense of one attack. A card that
+# attacks more than once shares a single execution_context across its attacks
+# (it is only cleared by FinalizeHeroTurnStep), so each reaction window has to
+# start from a clean slate or the previous defender's card decides this one.
+_PER_DEFENSE_KEYS = (
+    "auto_block",
+    "defense_invalid",
+    "defense_bonus",
+    "ignore_minion_defense",
+)
+
 
 class ReactionWindowStep(GameStep):
     """
@@ -31,6 +43,12 @@ class ReactionWindowStep(GameStep):
     target_player_key: str = "target_id"  # The player being attacked
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        # Safe to do on every entry, including the re-resolve that carries
+        # pending_input: the defending card's text runs later, in
+        # ResolveDefenseTextStep, once this window has closed.
+        for key in _PER_DEFENSE_KEYS:
+            context.pop(key, None)
+
         target_id = context.get(self.target_player_key)
         if not target_id:
             return StepResult(is_finished=True)  # Should not happen

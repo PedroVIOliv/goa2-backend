@@ -157,7 +157,14 @@ AttackSequenceStep
 | `ignore_minion_defense` | get_defense_steps | ResolveCombatStep | Skip minion modifier calc |
 | `auto_block` | get_defense_steps | ResolveCombatStep | Block succeeds regardless of values |
 | `defense_invalid` | get_defense_steps | ResolveCombatStep | Defense fails (e.g., melee vs stop_projectiles) |
+| `defense_bonus` | get_defense_steps | ResolveCombatStep | Flat bonus added to the block value (Defense blocks only) |
 | `block_succeeded` | ResolveCombatStep | ResolveOnBlockEffectStep | True if attack was blocked |
+
+`ignore_minion_defense`, `auto_block`, `defense_invalid` and `defense_bonus`
+describe a single defense of a single attack. `ReactionWindowStep` clears all
+four when it opens, because a card that attacks more than once shares one
+`execution_context` across its attacks — without the clear, the first
+defender's card would decide the second defender's fate.
 
 ## New Steps
 
