@@ -503,10 +503,10 @@ class AdjacentSpawnPointFilter(FilterCondition):
                 if self.minion_only and not tile.spawn_point.is_minion_spawn:
                     continue
                 if self.battle_zone_only:
-                    from goa2.scripts.dodger_effects import _has_tide_of_darkness
+                    from goa2.scripts.dodger_effects import _actor_has_tide_of_darkness
 
                     # "the Battle Zone" reads as "a Battle Zone" on multi-lane maps
-                    if not _has_tide_of_darkness(state) and (
+                    if not _actor_has_tide_of_darkness(state) and (
                         not tile.zone_id or tile.zone_id not in state.battle_zone_ids()
                     ):
                         continue
@@ -544,9 +544,9 @@ class BattleZoneFilter(FilterCondition):
             if not tile:
                 return False
             # Tide of Darkness: all spaces count as battle zone
-            from goa2.scripts.dodger_effects import _has_tide_of_darkness
+            from goa2.scripts.dodger_effects import _actor_has_tide_of_darkness
 
-            if _has_tide_of_darkness(state):
+            if _actor_has_tide_of_darkness(state):
                 return True
             if not tile.zone_id:
                 return False
@@ -574,9 +574,9 @@ class SpawnPointTeamFilter(FilterCondition):
             return False
 
         # Tide of Darkness: all spaces have friendly minion spawn point
-        from goa2.scripts.dodger_effects import _has_tide_of_darkness
+        from goa2.scripts.dodger_effects import _actor_has_tide_of_darkness
 
-        if _has_tide_of_darkness(state):
+        if _actor_has_tide_of_darkness(state):
             if self.relation == "FRIENDLY":
                 return not tile.is_terrain
             return False

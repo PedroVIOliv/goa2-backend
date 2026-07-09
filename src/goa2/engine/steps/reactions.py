@@ -282,7 +282,12 @@ class ResolveDefenseTextStep(GameStep):
 
         effect = CardEffectRegistry.get(card.current_effect_id)
         if effect:
-            # Try defense-specific steps first
+            # Try defense-specific steps first.
+            #
+            # This call runs with current_actor_id still set to the ATTACKER —
+            # the SetActorStep below only wraps the steps it returns. So a
+            # build_defense_steps() that inspects state directly must name the
+            # defender rather than ask who is acting.
             defense_steps = effect.get_defense_steps(state, defender, card, context)
 
             # If None, fall back to get_steps() (for DEFENSE_SKILL cards)

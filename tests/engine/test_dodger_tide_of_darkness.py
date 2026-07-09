@@ -21,6 +21,7 @@ from goa2.engine.filters import BattleZoneFilter, SpawnPointTeamFilter
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import compute_card_stats
 from goa2.scripts.dodger_effects import (
+    _actor_has_tide_of_darkness,
     _count_empty_spawn_points,
     _has_tide_of_darkness,
     _is_adjacent_to_empty_spawn_in_battle_zone,
@@ -116,33 +117,33 @@ def _make_state(*, hero_level: int = 8, num_spawn_points: int = 0, with_ultimate
 # =============================================================================
 
 
-class TestHasTideOfDarkness:
+class TestActorHasTideOfDarkness:
     def test_true_when_dodger_level_8_with_ultimate(self):
         state = _make_state(hero_level=8, with_ultimate=True)
-        assert _has_tide_of_darkness(state) is True
+        assert _actor_has_tide_of_darkness(state) is True
 
     def test_true_at_level_9(self):
         state = _make_state(hero_level=9, with_ultimate=True)
-        assert _has_tide_of_darkness(state) is True
+        assert _actor_has_tide_of_darkness(state) is True
 
     def test_false_at_level_7(self):
         state = _make_state(hero_level=7, with_ultimate=True)
-        assert _has_tide_of_darkness(state) is False
+        assert _actor_has_tide_of_darkness(state) is False
 
     def test_false_without_ultimate_card(self):
         state = _make_state(hero_level=8, with_ultimate=False)
-        assert _has_tide_of_darkness(state) is False
+        assert _actor_has_tide_of_darkness(state) is False
 
     def test_false_when_no_current_actor(self):
         state = _make_state(hero_level=8, with_ultimate=True)
         state.current_actor_id = None
-        assert _has_tide_of_darkness(state) is False
+        assert _actor_has_tide_of_darkness(state) is False
 
     def test_false_for_different_hero_as_actor(self):
         """Even if Dodger is level 8 with ult, override doesn't apply for other actors."""
         state = _make_state(hero_level=8, with_ultimate=True)
         state.current_actor_id = "enemy"
-        assert _has_tide_of_darkness(state) is False
+        assert _actor_has_tide_of_darkness(state) is False
 
 
 # =============================================================================
@@ -199,7 +200,7 @@ class TestIsAdjacentToEmptySpawnWithOverride:
         """With Tide active, any non-occupied non-terrain neighbor qualifies."""
         state = _make_state(hero_level=8, num_spawn_points=0)
         hero_hex = Hex(q=0, r=0, s=0)
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is True
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "hero_dodger") is True
 
     def test_false_when_all_neighbors_occupied_with_override(self):
         """Even with Tide, if all neighbors are occupied, returns False."""
@@ -219,20 +220,20 @@ class TestIsAdjacentToEmptySpawnWithOverride:
             b = Hero(id=bid, name=bid, team=TeamColor.BLUE, deck=[], level=1)
             state.teams[TeamColor.BLUE].heroes.append(b)
             state.place_entity(bid, n)
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is False
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "hero_dodger") is False
 
     def test_without_override_needs_spawn_point(self):
         """Without Tide, only spawn points qualify."""
         state = _make_state(hero_level=7, num_spawn_points=0)
         hero_hex = Hex(q=0, r=0, s=0)
         # No spawn points, so should be False even though neighbors are empty
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is False
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "hero_dodger") is False
 
     def test_without_override_with_spawn_point(self):
         state = _make_state(hero_level=7, num_spawn_points=1)
         hero_hex = Hex(q=0, r=0, s=0)
         # spawn point at (1,0,-1) which is adjacent
-        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex) is True
+        assert _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, "hero_dodger") is True
 
 
 # =============================================================================
@@ -423,7 +424,7 @@ class TestTideScopingToCurrentActor:
         state.current_actor_id = "enemy"  # Enemy is acting, not Dodger
 
         # _has_tide_of_darkness should be False
-        assert _has_tide_of_darkness(state) is False
+        assert _actor_has_tide_of_darkness(state) is False
 
         # Spawn point filter should use normal path
         f = SpawnPointTeamFilter(relation="FRIENDLY")
@@ -458,3 +459,32 @@ class TestTideOfDarknessEffectRegistration:
         stats = compute_card_stats(state, hero.id, card)
         steps = effect.build_steps(state, hero, card, stats)
         assert steps == []
+
+
+class TestTideAppliesWhileDodgerDefends:
+    """The ultimate applies "while you are performing an action".
+
+    Blocking with a primary DEFENSE card is performing an action, but the
+    current actor throughout a defense is the ATTACKER. Effect code that reads
+    state while building its defense steps must therefore name Dodger rather
+    than ask who is acting.
+    """
+
+    def test_hero_form_is_true_even_when_the_enemy_is_acting(self):
+        state = _make_state(hero_level=8, with_ultimate=True)
+        state.current_actor_id = "enemy"  # as it is during any defense
+
+        assert _has_tide_of_darkness(state, "hero_dodger") is True
+        assert _actor_has_tide_of_darkness(state) is False
+
+    def test_spawn_points_counted_for_dodger_while_the_enemy_is_acting(self):
+        state = _make_state(hero_level=8, with_ultimate=True, num_spawn_points=0)
+        state.current_actor_id = "enemy"
+
+        # Tide makes every free space count, so the "2+ empty spawn points"
+        # clause on her defense cards holds even on a board with none.
+        assert _count_empty_spawn_points(state, "hero_dodger", radius=1) >= 2
+
+    def test_hero_form_is_false_for_a_hero_without_the_ultimate(self):
+        state = _make_state(hero_level=8, with_ultimate=False)
+        assert _has_tide_of_darkness(state, "hero_dodger") is False

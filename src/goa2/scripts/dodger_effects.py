@@ -14,6 +14,7 @@ from goa2.domain.models.enums import (
     StatType,
     TargetType,
 )
+from goa2.domain.types import HeroID
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_hex import (
@@ -55,18 +56,38 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-def _has_tide_of_darkness(state: GameState) -> bool:
-    """Check if current actor has Tide of Darkness active (Dodger ultimate, level >= 8)."""
-    actor_id = state.current_actor_id
-    if not actor_id:
+def _has_tide_of_darkness(state: GameState, hero_id: str) -> bool:
+    """Check if `hero_id` has Tide of Darkness active (Dodger ultimate, level >= 8).
+
+    Takes the hero explicitly rather than reading state.current_actor_id. The
+    ultimate applies "while you are performing an action", and blocking with a
+    primary DEFENSE card is performing one — but during a defense the current
+    actor is the attacker, so the actor is the wrong hero to ask about.
+    """
+    if not hero_id:
         return False
-    hero = state.get_hero(actor_id)
+    hero = state.get_hero(HeroID(hero_id))
     if not hero or hero.level < 8:
         return False
     ult = hero.ultimate_card
     if not ult:
         return False
     return ult.effect_id == "tide_of_darkness"
+
+
+def _actor_has_tide_of_darkness(state: GameState) -> bool:
+    """Actor-relative form, for filters.
+
+    Filters run as steps, and ResolveDefenseTextStep wraps a defense card's
+    steps in SetActorStep(defender_id) — so by the time a filter applies, the
+    actor really is the hero performing the action. Effect code that inspects
+    state while *building* its steps has no such guarantee and must name the
+    hero: see _has_tide_of_darkness.
+    """
+    actor_id = state.current_actor_id
+    if not actor_id:
+        return False
+    return _has_tide_of_darkness(state, str(actor_id))
 
 
 def _count_empty_spawn_points(
@@ -83,7 +104,7 @@ def _count_empty_spawn_points(
     if not hero_hex:
         return 0
 
-    override = _has_tide_of_darkness(state)
+    override = _has_tide_of_darkness(state, str(hero_id))
 
     battle_zone_ids = state.battle_zone_ids()
     if not battle_zone_ids and not override:
@@ -109,16 +130,18 @@ def _count_empty_spawn_points(
     return count
 
 
-def _is_adjacent_to_empty_spawn_in_battle_zone(state: GameState, unit_hex) -> bool:
+def _is_adjacent_to_empty_spawn_in_battle_zone(state: GameState, unit_hex, hero_id: str) -> bool:
     """Check if a hex is adjacent to an empty spawn point in a battle zone.
 
     With Tide of Darkness active, any non-occupied non-terrain neighbor qualifies.
+    `unit_hex` may belong to an enemy; `hero_id` is always the Dodger whose
+    ultimate is being consulted.
     """
     from goa2.engine.topology import get_topology_service
 
     topology = get_topology_service()
     neighbors = topology.get_connected_neighbors(unit_hex, state)
-    override = _has_tide_of_darkness(state)
+    override = _has_tide_of_darkness(state, hero_id)
     battle_zone_ids = state.battle_zone_ids()
     for n in neighbors:
         tile = state.board.get_tile(n)
@@ -317,7 +340,7 @@ class DeathTrapEffect(CardEffect):
                     dist = topology.distance(hero_hex, enemy_hex, state)
                     if dist > radius:
                         continue
-                    if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex):
+                    if _is_adjacent_to_empty_spawn_in_battle_zone(state, enemy_hex, str(hero.id)):
                         valid_target_ids.append(board_id)
 
         if not valid_target_ids:
@@ -579,7 +602,7 @@ class DreadRazorEffect(CardEffect):
 
         can_ranged = False
         if hero_hex and state.battle_zone_ids():
-            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex)
+            can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, str(hero.id))
 
         if not can_ranged:
             # Only melee option available
@@ -913,7 +936,10 @@ class TideOfDarknessEffect(CardEffect):
     were in the battle zone and had a friendly minion spawn point."
 
     This is a persistent passive — no build_steps needed. The effect is
-    implemented via _has_tide_of_darkness() checks in helpers and filters.
+    implemented via _has_tide_of_darkness(state, hero_id) checks in helpers and
+    filters. Defending with a primary DEFENSE card counts as performing an
+    action, so those helpers must be asked about Dodger, not the current actor
+    (who is the attacker while she defends).
     """
 
     pass

@@ -16,7 +16,7 @@ class MyCardEffect(CardEffect):
 ```
 
 **Other override methods:**
-- `build_defense_steps(state, defender, card, stats, context)` — When used as primary DEFENSE in reaction. Return `None` to fall back to `build_steps()`.
+- `build_defense_steps(state, defender, card, stats, context)` — When used as primary DEFENSE in reaction. Return `None` to fall back to `build_steps()`. **`state.current_actor_id` is the attacker inside this method.** The engine swaps the actor to the defender only for the steps you return, so read `defender` for "you"; never `current_actor_id`. Filters inside your returned steps are fine — they run after the swap.
 - `build_on_block_steps(state, defender, card, stats, context)` — After successful block ("if you do" effects).
 - `get_passive_config()` — Return `PassiveConfig(trigger, uses_per_turn, is_optional, prompt)` for passive abilities.
 - `get_passive_steps(state, hero, card, trigger, context)` — Steps when passive triggers.
