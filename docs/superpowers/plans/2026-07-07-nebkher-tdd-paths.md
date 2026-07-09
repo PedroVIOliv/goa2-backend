@@ -1,16 +1,6 @@
 # NebKher — TDD Test Paths (for review)
 
-Status: **PARTIALLY IMPLEMENTED** (2026-07-07). Approved by Pedro; the
-critical-infrastructure half is DONE — primitives P1–P7 plus the effects
-crack_in_reality, shift_reality, mind_grip, diabolical_laughter, and the
-ultimate (commits 1594e42, 3952bc1, 15ca706, ad5088c, a7464cc; tests in
-`tests/engine/nebkher/` + `tests/engine/effects/cases/test_nebkher_effects.py`).
-The **delegable families remain to be implemented by others**: Imbue Doubt /
-Time to Reconsider / An Illusion of Choice bodies, Fleeting Image /
-Multiple Projections / Master of Illusions, Illusionary Force / Army
-(placement halves — the equivalence EffectType exists), Phantasmal
-Sentry / Warrior / Champion, Twist Fate / Devious Scheme. Use the per-card
-paths below as their TDD spec; all needed primitives are in place.
+Status: **FULLY IMPLEMENTED** (2026-07-08). All 18 card effects (including the critical infrastructure and all delegable families: Imbue Doubt family, Fleeting Image family, Illusionary Force family, Phantasmal Sentry/Warrior family, and Twist Fate family) have been fully implemented in [nebkher_effects.py](file:///Users/pedrooliveira/Documents/goa2/goa2-backend/src/goa2/scripts/nebkher_effects.py) and verified with comprehensive test coverage in [test_nebkher_effects.py](file:///Users/pedrooliveira/Documents/goa2/goa2-backend/tests/engine/effects/cases/test_nebkher_effects.py).
 
 NebKher is an illusion/topology hero: 17 cards + ultimate, 10 unique effect
 classes. Data: `src/goa2/data/heroes/nebkher.py`. Effects will live in
@@ -255,12 +245,12 @@ Placement paths as family 5 (H1/H2/U1). Equivalence paths:
 > spaces to a space adjacent to an enemy hero in range. Target that hero.
 > • Target a unit adjacent to you."
 
-- **H1** Bullet 1: select Illusion in range → select enemy hero in range → move token (≤ N, path-constrained) to an empty hex adjacent to that hero → attack is forced onto that hero.
+- **H1** Bullet 1: select Illusion in range → select empty hex adjacent to a target enemy hero in range (≤ N, path-constrained) → select that target enemy hero adjacent to the hex → move token to hex → attack is forced onto that hero.
 - **H2** Token already adjacent to the chosen hero → move 0 allowed (S12).
 - **H3** Bullet 2: attack a unit adjacent to NebKher (still ranged, as family 7 H3).
 - **U1** Token move is path-constrained: a wall of obstacles between token and destination → destination invalid even within N.
 - **U2** Destination must be empty (not the hero's own hex, no units/tokens/terrain).
-- **U3** Enemy hero at range 6 → not selectable even if an Illusion could reach a hex adjacent to them.
+- **U3** Enemy hero at range 6 → destination hex adjacent to them not selectable even if reachable by the token.
 - **U4** Forced target: after the move, the attack cannot be redirected to any other unit.
 - **U5** Bullet 1 chosen but no (token, hero, path) combination exists → mandatory failure → abort.
 - **U6** Immune hero not selectable.

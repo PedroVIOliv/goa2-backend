@@ -28,7 +28,12 @@ from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Sha
 from goa2.domain.models.enums import PassiveTrigger, TargetType
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters import (
+    AdjacentToTokenFilter,
+    CountMatchFilter,
+    ExcludeIdentityFilter,
     HasPreviousSlotCardFilter,
+    ImmunityFilter,
+    MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
     TeamFilter,
@@ -36,15 +41,18 @@ from goa2.engine.filters import (
     UnitTypeFilter,
 )
 from goa2.engine.steps import (
+    AttackSequenceStep,
     CheckContextConditionStep,
+    ChooseCardColorStep,
     CollectUnitsStep,
     CreateEffectStep,
     DefeatUnitStep,
+    ForceDiscardByColorStep,
     ForceDiscardOrDefeatStep,
     ForEachStep,
     GameStep,
     LaughStep,
-    MayRepeatNTimesStep,
+    MoveUnitStep,
     PerformCardActionStep,
     PlaceTokenStep,
     SelectStep,
@@ -213,30 +221,33 @@ class MindGripEffect(CardEffect):
 # =============================================================================
 
 
-def _laughter_menu_steps(hero_id: str, radius: int) -> list[GameStep]:
+def _laughter_menu_steps(
+    hero_id: str, radius: int, prefix: str, active_if_key: str | None = None
+) -> list[GameStep]:
     return [
         SelectStep(
             target_type=TargetType.NUMBER,
             prompt="Diabolical Laughter — choose an option",
-            output_key="dl_pick",
+            output_key=f"{prefix}_pick",
             number_options=[1, 2, 3],
             number_labels={
                 1: "Swap with an Illusion token in radius",
                 2: "Place an Illusion token in an adjacent space",
                 3: "Swap two resolved cards of an enemy hero in radius",
             },
-            is_mandatory=True,
+            is_mandatory=False,
+            active_if_key=active_if_key,
         ),
         # Bullet 1: swap self with an Illusion token in radius.
         CheckContextConditionStep(
-            input_key="dl_pick", operator="==", threshold=1, output_key="dl_b1"
+            input_key=f"{prefix}_pick", operator="==", threshold=1, output_key=f"{prefix}_b1"
         ),
         SelectStep(
             target_type=TargetType.UNIT_OR_TOKEN,
             prompt="Select an Illusion token in radius",
-            output_key="dl_swap_token",
+            output_key=f"{prefix}_swap_token",
             is_mandatory=True,
-            active_if_key="dl_b1",
+            active_if_key=f"{prefix}_b1",
             filters=[
                 UnitTypeFilter(unit_type="TOKEN"),
                 TokenTypeFilter(token_type=TokenType.ILLUSION),
@@ -245,19 +256,19 @@ def _laughter_menu_steps(hero_id: str, radius: int) -> list[GameStep]:
         ),
         SwapUnitsStep(
             unit_a_id=hero_id,
-            unit_b_key="dl_swap_token",
-            active_if_key="dl_swap_token",
+            unit_b_key=f"{prefix}_swap_token",
+            active_if_key=f"{prefix}_swap_token",
         ),
         # Bullet 2: place an Illusion token in an adjacent empty space.
         CheckContextConditionStep(
-            input_key="dl_pick", operator="==", threshold=2, output_key="dl_b2"
+            input_key=f"{prefix}_pick", operator="==", threshold=2, output_key=f"{prefix}_b2"
         ),
         SelectStep(
             target_type=TargetType.HEX,
             prompt="Select an adjacent space for the Illusion token",
-            output_key="dl_place_hex",
+            output_key=f"{prefix}_place_hex",
             is_mandatory=True,
-            active_if_key="dl_b2",
+            active_if_key=f"{prefix}_b2",
             filters=[
                 RangeFilter(max_range=1),
                 ObstacleFilter(is_obstacle=False),
@@ -265,19 +276,19 @@ def _laughter_menu_steps(hero_id: str, radius: int) -> list[GameStep]:
         ),
         PlaceTokenStep(
             token_type=TokenType.ILLUSION,
-            hex_key="dl_place_hex",
-            active_if_key="dl_place_hex",
+            hex_key=f"{prefix}_place_hex",
+            active_if_key=f"{prefix}_place_hex",
         ),
         # Bullet 3: swap two resolved cards of an enemy hero in radius.
         CheckContextConditionStep(
-            input_key="dl_pick", operator="==", threshold=3, output_key="dl_b3"
+            input_key=f"{prefix}_pick", operator="==", threshold=3, output_key=f"{prefix}_b3"
         ),
         SelectStep(
             target_type=TargetType.UNIT,
             prompt="Select an enemy hero in radius with two resolved cards",
-            output_key="dl_victim",
+            output_key=f"{prefix}_victim",
             is_mandatory=True,
-            active_if_key="dl_b3",
+            active_if_key=f"{prefix}_b3",
             filters=[
                 UnitTypeFilter(unit_type="HERO"),
                 TeamFilter(relation="ENEMY"),
@@ -288,29 +299,29 @@ def _laughter_menu_steps(hero_id: str, radius: int) -> list[GameStep]:
         SelectStep(
             target_type=TargetType.CARD,
             prompt="Select the first resolved card to swap",
-            output_key="dl_card_a",
+            output_key=f"{prefix}_card_a",
             card_container=CardContainerType.PLAYED,
             card_states=[CardState.RESOLVED],
-            context_hero_id_key="dl_victim",
+            context_hero_id_key=f"{prefix}_victim",
             is_mandatory=True,
-            active_if_key="dl_victim",
+            active_if_key=f"{prefix}_victim",
         ),
         SelectStep(
             target_type=TargetType.CARD,
             prompt="Select the second resolved card to swap",
-            output_key="dl_card_b",
+            output_key=f"{prefix}_card_b",
             card_container=CardContainerType.PLAYED,
             card_states=[CardState.RESOLVED],
-            exclude_card_id_keys=["dl_card_a"],
-            context_hero_id_key="dl_victim",
+            exclude_card_id_keys=[f"{prefix}_card_a"],
+            context_hero_id_key=f"{prefix}_victim",
             is_mandatory=True,
-            active_if_key="dl_card_a",
+            active_if_key=f"{prefix}_card_a",
         ),
         SwapResolvedCardsStep(
-            hero_key="dl_victim",
-            card_a_key="dl_card_a",
-            card_b_key="dl_card_b",
-            active_if_key="dl_card_b",
+            hero_key=f"{prefix}_victim",
+            card_a_key=f"{prefix}_card_a",
+            card_b_key=f"{prefix}_card_b",
+            active_if_key=f"{prefix}_card_b",
         ),
     ]
 
@@ -327,15 +338,21 @@ class DiabolicalLaughterEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         radius = stats.radius or 0
-        return [
-            LaughStep(output_key="dl_laughed"),
-            MayRepeatNTimesStep(
-                max_repeats=3,
-                prompt="Diabolical Laughter: choose an option?",
-                steps_template=_laughter_menu_steps(str(hero.id), radius),
-                active_if_key="dl_laughed",
-            ),
-        ]
+        hero_id_str = str(hero.id)
+
+        steps: list[GameStep] = [LaughStep(output_key="dl_laughed")]
+
+        # We generate 3 iterations of optional choice steps
+        # Chain them so choice_i is only active if choice_{i-1} was made.
+        previous_key = "dl_laughed"
+        for i in range(3):
+            prefix = f"dl_choice_{i}"
+            steps.extend(
+                _laughter_menu_steps(hero_id_str, radius, prefix, active_if_key=previous_key)
+            )
+            previous_key = f"{prefix}_pick"
+
+        return steps
 
 
 # =============================================================================
@@ -385,3 +402,478 @@ class WhatTheHellAreYouEffect(CardEffect):
                 steps_template=[ForceDiscardOrDefeatStep(victim_key="wthau_victim")],
             ),
         ]
+
+
+# =============================================================================
+# IMBUE DOUBT FAMILY (blue cards)
+# "Name a color. Next turn, after playing cards:
+#  An enemy hero in radius discards a card of that color, if able."
+# =============================================================================
+
+
+@register_effect("imbue_doubt")
+class ImbueDoubtEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        radius = stats.radius or 3
+        return [
+            ChooseCardColorStep(output_key="chosen_color", prompt="Imbue Doubt: Name a card color"),
+            CreateEffectStep(
+                effect_type=EffectType.AFTER_CARDS_PLAYED_TRIGGER,
+                scope=EffectScope(shape=Shape.GLOBAL, origin_id=str(hero.id)),
+                duration=DurationType.NEXT_TURN,
+                is_active=True,
+                finishing_steps=[
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Select an enemy hero in radius to discard",
+                        output_key="doubt_victim",
+                        filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(max_range=radius),
+                            ImmunityFilter(),
+                        ],
+                    ),
+                    ForceDiscardByColorStep(
+                        victim_key="doubt_victim",
+                        color_key="chosen_color",
+                        active_if_key="doubt_victim",
+                    ),
+                ],
+            ),
+        ]
+
+
+@register_effect("time_to_reconsider")
+class TimeToReconsiderEffect(ImbueDoubtEffect):
+    pass
+
+
+@register_effect("an_illusion_of_choice")
+class AnIllusionOfChoiceEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        radius = stats.radius or 4
+        return [
+            ChooseCardColorStep(
+                output_key="chosen_color", prompt="An Illusion of Choice: Name a card color"
+            ),
+            CreateEffectStep(
+                effect_type=EffectType.AFTER_CARDS_PLAYED_TRIGGER,
+                scope=EffectScope(shape=Shape.GLOBAL, origin_id=str(hero.id)),
+                duration=DurationType.NEXT_TURN,
+                is_active=True,
+                finishing_steps=[
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Select first enemy hero in radius to discard",
+                        output_key="choice_victim_1",
+                        is_mandatory=False,
+                        filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(max_range=radius),
+                        ],
+                    ),
+                    ForceDiscardByColorStep(
+                        victim_key="choice_victim_1",
+                        color_key="chosen_color",
+                        active_if_key="choice_victim_1",
+                    ),
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Select second enemy hero in radius to discard",
+                        output_key="choice_victim_2",
+                        is_mandatory=False,
+                        active_if_key="choice_victim_1",
+                        filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(max_range=radius),
+                            ExcludeIdentityFilter(exclude_keys=["choice_victim_1"]),
+                        ],
+                    ),
+                    ForceDiscardByColorStep(
+                        victim_key="choice_victim_2",
+                        color_key="chosen_color",
+                        active_if_key="choice_victim_2",
+                    ),
+                ],
+            ),
+        ]
+
+
+# =============================================================================
+# FLEETING IMAGE FAMILY (green placement & swap cards)
+# "Place up to N Illusion tokens in radius.
+#  You may swap with an Illusion token in play."
+# =============================================================================
+
+
+@register_effect("fleeting_image")
+class FleetingImageEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        if card.id == "fleeting_image":
+            n = 1
+        elif card.id == "multiple_projections":
+            n = 2
+        else:
+            n = 3
+
+        radius = stats.radius or 2
+        steps: list[GameStep] = []
+
+        for i in range(n):
+            hex_key = f"fi_place_hex_{i}"
+            steps.append(
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt=f"Place Illusion token {i+1}/{n} in radius",
+                    output_key=hex_key,
+                    is_mandatory=False,
+                    filters=[
+                        RangeFilter(max_range=radius),
+                        ObstacleFilter(is_obstacle=False),
+                    ],
+                    active_if_key=f"fi_place_hex_{i-1}" if i > 0 else None,
+                )
+            )
+            steps.append(
+                PlaceTokenStep(
+                    token_type=TokenType.ILLUSION,
+                    hex_key=hex_key,
+                    active_if_key=hex_key,
+                )
+            )
+
+        steps.append(
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select an Illusion token in play to swap with",
+                output_key="fi_swap_token",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.ILLUSION),
+                ],
+            )
+        )
+        steps.append(
+            SwapUnitsStep(
+                unit_a_id=str(hero.id),
+                unit_b_key="fi_swap_token",
+                active_if_key="fi_swap_token",
+            )
+        )
+        return steps
+
+
+@register_effect("multiple_projections")
+class MultipleProjectionsEffect(FleetingImageEffect):
+    pass
+
+
+@register_effect("master_of_illusions")
+class MasterOfIllusionsEffect(FleetingImageEffect):
+    pass
+
+
+# =============================================================================
+# ILLUSIONARY FORCE FAMILY (green equivalence cards)
+# "Place up to N Illusion tokens in radius.
+#  This round: While you are performing actions, all Illusion tokens count
+#  as both tokens and friendly melee minions."
+# =============================================================================
+
+
+@register_effect("illusionary_force")
+class IllusionaryForceEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        n = 2 if card.id == "illusionary_force" else 3
+
+        radius = stats.radius or 4
+        steps: list[GameStep] = []
+
+        for i in range(n):
+            hex_key = f"if_place_hex_{i}"
+            steps.append(
+                SelectStep(
+                    target_type=TargetType.HEX,
+                    prompt=f"Place Illusion token {i+1}/{n} in radius",
+                    output_key=hex_key,
+                    is_mandatory=False,
+                    filters=[
+                        RangeFilter(max_range=radius),
+                        ObstacleFilter(is_obstacle=False),
+                    ],
+                    active_if_key=f"if_place_hex_{i-1}" if i > 0 else None,
+                )
+            )
+            steps.append(
+                PlaceTokenStep(
+                    token_type=TokenType.ILLUSION,
+                    hex_key=hex_key,
+                    active_if_key=hex_key,
+                )
+            )
+
+        steps.append(
+            CreateEffectStep(
+                effect_type=EffectType.ILLUSION_MINION_EQUIVALENCE,
+                scope=EffectScope(shape=Shape.GLOBAL, origin_id=str(hero.id)),
+                duration=DurationType.THIS_ROUND,
+                is_active=True,
+            )
+        )
+        return steps
+
+
+@register_effect("illusionary_army")
+class IllusionaryArmyEffect(IllusionaryForceEffect):
+    pass
+
+
+# =============================================================================
+# PHANTASMAL FAMILY (red cards)
+# =============================================================================
+
+
+@register_effect("phantasmal_sentry")
+class PhantasmalSentryEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Phantasmal Sentry — choose one",
+                output_key="ps_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: "Target a hero adjacent to an Illusion token",
+                    2: "Target adjacent unit",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key="ps_choice", operator="==", threshold=1, output_key="ps_bullet1"
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select target hero adjacent to an Illusion token",
+                output_key="ps_target_1",
+                is_mandatory=True,
+                active_if_key="ps_bullet1",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                    AdjacentToTokenFilter(
+                        token_type=TokenType.ILLUSION, max_range=stats.range or 0
+                    ),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range or 0,
+                is_ranged=True,
+                target_id_key="ps_target_1",
+                active_if_key="ps_target_1",
+            ),
+            CheckContextConditionStep(
+                input_key="ps_choice", operator="==", threshold=2, output_key="ps_bullet2"
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select adjacent unit to target",
+                output_key="ps_target_2",
+                is_mandatory=True,
+                active_if_key="ps_bullet2",
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=1),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                target_id_key="ps_target_2",
+                active_if_key="ps_target_2",
+            ),
+        ]
+
+
+@register_effect("phantasmal_warrior")
+class PhantasmalWarriorEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        n_spaces = 1 if card.id == "phantasmal_warrior" else 2
+
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Phantasmal Warrior — choose one",
+                output_key="pw_choice",
+                number_options=[1, 2],
+                number_labels={
+                    1: f"Move Illusion token up to {n_spaces} spaces to target hero",
+                    2: "Target a unit adjacent to you",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key="pw_choice", operator="==", threshold=1, output_key="pw_bullet1"
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select an Illusion token in range to move",
+                output_key="pw_token",
+                is_mandatory=True,
+                active_if_key="pw_bullet1",
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.ILLUSION),
+                    RangeFilter(max_range=stats.range or 0),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="Select destination hex adjacent to a target hero",
+                output_key="pw_dest",
+                is_mandatory=True,
+                active_if_key="pw_token",
+                filters=[
+                    ObstacleFilter(is_obstacle=False, exclude_id_key="pw_token"),
+                    MovementPathFilter(range_val=n_spaces, unit_key="pw_token"),
+                    CountMatchFilter(
+                        min_count=1,
+                        sub_filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            TeamFilter(relation="ENEMY"),
+                            ImmunityFilter(),
+                            RangeFilter(max_range=1, origin_hex_key="_cmf_origin_hex"),
+                            RangeFilter(max_range=stats.range or 0, origin_id=hero.id),
+                        ],
+                    ),
+                ],
+            ),
+            MoveUnitStep(
+                unit_key="pw_token",
+                destination_key="pw_dest",
+                range_val=n_spaces,
+                is_movement_action=False,
+                active_if_key="pw_dest",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero in range to target",
+                output_key="pw_hero",
+                is_mandatory=True,
+                active_if_key="pw_dest",
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    ImmunityFilter(),
+                    RangeFilter(max_range=stats.range or 0),
+                    RangeFilter(max_range=1, origin_hex_key="pw_dest"),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range or 0,
+                is_ranged=True,
+                target_id_key="pw_hero",
+                active_if_key="pw_hero",
+            ),
+            CheckContextConditionStep(
+                input_key="pw_choice", operator="==", threshold=2, output_key="pw_bullet2"
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select adjacent unit to target",
+                output_key="ps_target_2",
+                is_mandatory=True,
+                active_if_key="pw_bullet2",
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=1),
+                    ImmunityFilter(),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                is_ranged=True,
+                target_id_key="ps_target_2",
+                active_if_key="ps_target_2",
+            ),
+        ]
+
+
+@register_effect("phantasmal_champion")
+class PhantasmalChampionEffect(PhantasmalWarriorEffect):
+    pass
+
+
+# =============================================================================
+# TWIST FATE FAMILY (red swap cards)
+# =============================================================================
+
+
+@register_effect("twist_fate")
+class TwistFateEffect(CardEffect):
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        is_twist_fate = card.id == "twist_fate"
+
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range or 0,
+                is_ranged=True,
+                target_id_key="tf_victim",
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy unit in range to swap",
+                output_key="tf_swap_enemy",
+                is_mandatory=False,
+                active_if_key="tf_victim",
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Select an Illusion token to swap with",
+                output_key="tf_swap_token",
+                is_mandatory=False,
+                active_if_key="tf_swap_enemy",
+                filters=[
+                    UnitTypeFilter(unit_type="TOKEN"),
+                    TokenTypeFilter(token_type=TokenType.ILLUSION),
+                    RangeFilter(max_range=1 if is_twist_fate else (stats.range or 0)),
+                ],
+            ),
+            SwapUnitsStep(
+                unit_a_key="tf_swap_enemy",
+                unit_b_key="tf_swap_token",
+                active_if_key="tf_swap_token",
+            ),
+        ]
+
+
+@register_effect("devious_scheme")
+class DeviousSchemeEffect(TwistFateEffect):
+    pass

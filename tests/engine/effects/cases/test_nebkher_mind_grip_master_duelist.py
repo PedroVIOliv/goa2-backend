@@ -22,7 +22,8 @@ from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 from goa2.engine.steps.combat import AttackSequenceStep
-from tests.engine.effects.builders import hero_card
+
+from ..builders import hero_card
 
 
 @pytest.fixture

@@ -125,6 +125,28 @@ class CreateEffectStep(GameStep):
                     update={"origin_id": str(origin_id_from_ctx)}
                 )
 
+        def resolve_steps(steps: list[GameStep]) -> list[GameStep]:
+            resolved = []
+            for step in steps:
+                if (
+                    hasattr(step, "color_key")
+                    and step.color_key
+                    and getattr(step, "color", None) is None
+                ):
+                    color_val = context.get(step.color_key)
+                    if color_val:
+                        step = step.model_copy(update={"color": CardColor(str(color_val))})
+                if hasattr(step, "steps_template") and step.steps_template:
+                    template = resolve_steps(step.steps_template)
+                    step = step.model_copy(update={"steps_template": template})
+                if hasattr(step, "new_steps") and step.new_steps:
+                    new_s = resolve_steps(step.new_steps)
+                    step = step.model_copy(update={"new_steps": new_s})
+                resolved.append(step)
+            return resolved
+
+        resolved_finishing = resolve_steps(self.finishing_steps)
+
         EffectManager.create_effect(
             state=state,
             source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
@@ -147,7 +169,7 @@ class CreateEffectStep(GameStep):
             origin_action_type=action_type,
             barrier_radius=self.barrier_radius,
             barrier_origin_id=self.barrier_origin_id,
-            finishing_steps=self.finishing_steps,
+            finishing_steps=resolved_finishing,
             allowed_discard_colors=self.allowed_discard_colors,
             protected_minion_types=self.protected_minion_types,
             sacrifice_origin_token=self.sacrifice_origin_token,

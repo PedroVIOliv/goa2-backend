@@ -792,7 +792,7 @@ class PlaceUnitStep(GameStep):
             logger.debug("   [ERROR] No unit for place.")
             return StepResult(is_finished=True)
 
-        if not dest_val:
+        if not dest_val or dest_val == "SKIP":
             logger.debug("   [ERROR] No destination for place.")
             return StepResult(is_finished=True)
 
@@ -881,8 +881,13 @@ class SwapUnitsStep(GameStep):
         if not actual_unit_b and self.unit_b_key:
             actual_unit_b = context.get(self.unit_b_key)
 
-        if not actual_unit_a or not actual_unit_b:
-            logger.debug("   [SKIP] SwapUnitsStep: Missing unit ID(s).")
+        if (
+            not actual_unit_a
+            or actual_unit_a == "SKIP"
+            or not actual_unit_b
+            or actual_unit_b == "SKIP"
+        ):
+            logger.debug("   [SKIP] SwapUnitsStep: Missing or skipped unit ID(s).")
             return StepResult(is_finished=True)
 
         # Get current locations from Unified Dict

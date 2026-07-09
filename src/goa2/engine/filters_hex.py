@@ -25,6 +25,7 @@ class ObstacleFilter(FilterCondition):
     type: FilterType = FilterType.OCCUPIED
     is_obstacle: bool = False  # False = Must be empty, True = Must be occupied
     exclude_id: str | None = None  # If set, ignore this entity when checking occupancy
+    exclude_id_key: str | None = None  # If set, read from context
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if isinstance(candidate, Hex):
@@ -37,7 +38,10 @@ class ObstacleFilter(FilterCondition):
             is_obs = state.validator.is_obstacle_for_actor(state, candidate, actor_id, context)
 
             # Handle exclude_id (for "ignore self" scenarios)
-            if self.exclude_id and tile.occupant_id == self.exclude_id:
+            ex_id = self.exclude_id
+            if not ex_id and self.exclude_id_key:
+                ex_id = context.get(self.exclude_id_key)
+            if ex_id and tile and tile.occupant_id == ex_id:
                 return True
 
             return is_obs == self.is_obstacle

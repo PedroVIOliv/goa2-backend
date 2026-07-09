@@ -280,6 +280,7 @@ class FilterType(StrEnum):
     HERO_PIECE = "hero_piece_filter"
     HEX_BATCH_COMPLETABLE = "hex_batch_completable_filter"
     TOKEN_REMOVAL_COMPLETABLE = "token_removal_completable_filter"
+    ADJACENT_TO_TOKEN_IN_RANGE = "adjacent_to_token_in_range_filter"
 
 
 class TargetType(StrEnum):

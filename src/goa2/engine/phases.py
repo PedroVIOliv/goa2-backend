@@ -279,6 +279,7 @@ def _collect_after_cards_played_steps(state: GameState) -> list[GameStep]:
             continue
         steps.append(SetActorStep(actor_id=str(effect.source_id)))
         steps.extend(effect.finishing_steps)
+        steps.append(FinishedExpiringEffectStep())
     return steps
 
 

@@ -451,3 +451,56 @@ class HasMarkerFilter(FilterCondition):
         if marker is None or not marker.is_placed:
             return False
         return marker.target_id == candidate
+
+
+class AdjacentToTokenFilter(FilterCondition):
+    """
+    Passes only if the candidate is adjacent to a token of `token_type`
+    which is itself within `max_range` of the actor.
+    """
+
+    type: FilterType = FilterType.ADJACENT_TO_TOKEN_IN_RANGE
+    token_type: TokenType = TokenType.ILLUSION
+    max_range: int
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        cand_hex = None
+        if isinstance(candidate, Hex):
+            cand_hex = candidate
+        elif isinstance(candidate, str):
+            cand_hex = state.entity_locations.get(BoardEntityID(candidate))
+
+        if not cand_hex:
+            return False
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return False
+        actor_hex = state.entity_locations.get(BoardEntityID(str(actor_id)))
+        if not actor_hex:
+            return False
+
+        topology = get_topology_service()
+        # Find all neighbor hexes of the candidate (connected to respect splits)
+        neighbors = topology.get_connected_neighbors(cand_hex, state)
+
+        for n in neighbors:
+            tile = state.board.get_tile(n)
+            if not tile or not tile.occupant_id:
+                continue
+
+            # Check if occupant is a token of the correct type
+            occupant = state.get_entity(tile.occupant_id)
+            if (
+                not occupant
+                or not isinstance(occupant, Token)
+                or occupant.token_type != self.token_type
+            ):
+                continue
+
+            # Check if this token is within range of the actor (respecting topology)
+            dist = topology.distance(actor_hex, n, state)
+            if dist <= self.max_range:
+                return True
+
+        return False

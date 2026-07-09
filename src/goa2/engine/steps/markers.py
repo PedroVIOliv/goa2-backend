@@ -104,7 +104,7 @@ class PlaceTokenStep(GameStep):
 
         token_type = effective_token_type(context, self.token_type)
         dest_val = context.get(self.hex_key)
-        if not dest_val:
+        if not dest_val or dest_val == "SKIP":
             return StepResult(is_finished=True)
 
         dest_hex = Hex(**dest_val) if isinstance(dest_val, dict) else dest_val
