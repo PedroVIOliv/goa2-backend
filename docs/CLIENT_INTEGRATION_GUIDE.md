@@ -989,7 +989,7 @@ The `type` field determines what kind of input is needed and what options fields
 | `SELECT_CARD` | `valid_options` | `"card_id"` | Choose a card by ID |
 | `CHOOSE_ACTION` | `options` (list of `{id, text}`) | `"ATTACK"` | Choose from named actions |
 | `SELECT_OPTION` | `options` (list of `{id, text}`) | `"option_id"` | Choose from generic options |
-| `SELECT_CARD_OR_PASS` | `options` (list of `{id, text, ...}`) | `"card_id"` or `"PASS"` | Choose a defense card in reaction. Includes combat context fields and per-card metadata (see below) |
+| `SELECT_CARD_OR_PASS` | `options` (list of `{id, text, ...}`) | `"card_id"` or `"PASS"` | Choose a defense card in reaction. Includes combat context fields and per-card metadata. Some cards make the defender block with a stat other than Defense — always render `defense_value` (see below) |
 | `CHOOSE_ACTOR` | `player_ids` | `"hero_arien"` | Choose which hero acts next |
 | `UPGRADE_PHASE` | `players` (special structure) | upgrade selection | Choose card upgrades |
 | `CONFIRM_PASSIVE` | `options` (`["YES", "NO"]`) | `"YES"` or `"NO"` | Confirm a passive ability |
@@ -1099,10 +1099,43 @@ When a `SELECT_CARD_OR_PASS` input request is sent for defense, it includes addi
 |-------|------|-------------|
 | `id` | string | Card ID (or `"PASS"`) |
 | `text` | string | Display text for the option |
-| `defense_value` | int | Total computed defense (base + items + modifiers). Only on card options, not `"PASS"`. |
-| `base_defense` | int | Card's base defense stat before modifiers. Only on card options, not `"PASS"`. |
+| `defense_value` | int | Total computed block value (base + items + modifiers). Only on card options, not `"PASS"`. |
+| `base_defense` | int | Card's base block stat before modifiers. Only on card options, not `"PASS"`. |
 
 The `"PASS"` option is always available — submit `"PASS"` if the player chooses not to defend.
+
+#### Cards that change which stat defends
+
+Some cards make the defender block with a stat other than Defense. Emmitt's
+Temporal Punch / Temporal Slam / Temporal Judgment force the defending hero to
+use the **Initiative** value of their card and items instead of the Defense
+value.
+
+The request shape does not change. `defense_value` and `base_defense` keep
+their names but carry the initiative-derived numbers, and the option's `text`
+reads `(Init: N)` rather than `(Def: N)`:
+
+```json
+{
+  "id": "knight_shield_wall_1",
+  "text": "Shield Wall (Init: 9)",
+  "defense_value": 9,
+  "base_defense": 9
+}
+```
+
+**Always render `defense_value` — never recompute the block value from the
+card's own Defense stat.** A client that displays its local copy of the card's
+Defense will show the wrong number against these cards.
+
+`defense_needed` still means what it always did (`attack_value -
+minion_modifier`), and it stays comparable against `defense_value`. Minion
+defense modifiers apply as normal — they are subtracted from the attack rather
+than folded into the defender's stat, so this card does not change them.
+
+Stat auras follow the stat actually being used: a Defense aura (Trinkets'
+Barrier) does not raise `defense_value` under these cards, while an Initiative
+aura (Tali's Ice) does change it.
 
 ---
 
