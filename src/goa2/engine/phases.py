@@ -381,6 +381,18 @@ def resolve_next_action(state: GameState):
     state.execution_stack.append(ResolveTieBreakerStep(tied_hero_ids=tied_hero_ids))
 
 
+def record_position_snapshot(state: GameState):
+    """
+    Snapshot every entity's position at the turn boundary.
+
+    Call this wherever the phase becomes PLANNING (turn advance, round reset,
+    game creation). Planning moves nothing, so this single snapshot answers
+    both "where was that unit at the start of this turn" and "has this unit
+    remained in the same space since the last turn" (Emmitt).
+    """
+    state.last_turn_positions = dict(state.entity_locations)
+
+
 def end_turn(state: GameState):
     """
     Called when all players have acted in the Resolution Phase.
@@ -414,6 +426,7 @@ def end_turn(state: GameState):
     # No finishing steps — advance synchronously (existing behavior)
     if state.turn < 4:
         state.turn += 1
+        record_position_snapshot(state)
         state.phase = GamePhase.PLANNING
         logger.info("Start of turn %s. Phase: planning.", state.turn)
         # Auto-pass heroes with no cards in hand

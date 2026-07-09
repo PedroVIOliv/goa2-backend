@@ -759,6 +759,46 @@ class ResolvePreActionMovementStep(GameStep):
         )
 
 
+class ResolveTurnStartHexStep(GameStep):
+    """
+    Publishes the hex a unit occupied at the turn boundary as a placement
+    destination, for effects that send a unit back where it started.
+
+    The space has to still be free. A unit that never left it is standing on it
+    itself, which counts as occupied — so recalling a unit that hasn't moved
+    fails rather than resolving as a no-op. PlaceUnitStep would happily place a
+    unit onto its own hex, so the check lives here.
+    """
+
+    type: StepType = StepType.RESOLVE_TURN_START_HEX
+    unit_key: str
+    output_key: str = "target_hex"
+
+    def _fail(self) -> StepResult:
+        return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        unit_id = context.get(self.unit_key)
+        if not unit_id:
+            return self._fail()
+
+        start_hex = state.last_turn_positions.get(BoardEntityID(str(unit_id)))
+        if start_hex is None:
+            logger.debug(f"   [BLOCKED] {unit_id} has no turn-start position.")
+            return self._fail()
+
+        tile = state.board.get_tile(start_hex)
+        if tile is None or tile.is_occupied:
+            logger.debug(f"   [BLOCKED] Turn-start hex {start_hex} is not free.")
+            return self._fail()
+
+        context[self.output_key] = start_hex
+        return StepResult(is_finished=True)
+
+
 class PlaceUnitStep(GameStep):
     """
     Moves a unit to a target hex directly.

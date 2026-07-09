@@ -82,6 +82,7 @@ from goa2.engine.steps.movement import (  # noqa: F401
     PushUnitStep,
     ResolveDisplacementStep,
     ResolvePreActionMovementStep,
+    ResolveTurnStartHexStep,
     SwapUnitsStep,
     TriggerMineStep,
 )

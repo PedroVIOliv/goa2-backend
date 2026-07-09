@@ -1,6 +1,10 @@
 # Emmitt — TDD Test Paths (for review)
 
-Status: **PENDING REVIEW** — do not implement until approved.
+Status: **IN PROGRESS.** Done: the ultimate, Time Capsule, Future Proof,
+Reverse Time, Time Loop, Time Warp, Flashback / Déjà Vu / Unstable Timeline,
+Time Snare / Time Trap / Time Bomb, the P3 position snapshot, and §6 Time Walk
+/ Fast Forward + §7 Back to the Future. Remaining: §1 Temporal Punch /
+Temporal Slam / Temporal Judgment (initiative-as-defense, primitive P2).
 
 Emmitt is a time-manipulation hero: 17 cards + ultimate, 13 unique effects.
 Data: `src/goa2/data/heroes/emmitt.py`. Effects will live in
@@ -87,7 +91,7 @@ per repo convention.
 |---|-----------|-------|
 | P1 | `HasResolvedCardFilter` (inverse of Hanu's `HasUnresolvedCardFilter`; index logic from `PlayedCardFilter`) | `engine/filters_cards.py` + new `FilterType` |
 | P2 | `defense_uses_initiative` context flag consumed by `ReactionWindowStep` (value + option labels) | `engine/steps/reactions.py` |
-| P3 | Position snapshot: `state.last_turn_positions: dict[str, Hex]`, recorded just before PLANNING (and at game creation) | `domain/state.py`, `engine/phases.py` |
+| P3 | Position snapshot: `state.last_turn_positions: dict[str, Hex]`, recorded by `phases.record_position_snapshot()` at every site that sets `phase = PLANNING` — `end_turn`, `AdvanceTurnStep`, `EndPhaseStep`, `RoundResetStep`, and game creation | `domain/state.py`, `engine/phases.py`, `engine/steps/phases.py`, `engine/steps/cards.py`, `engine/setup.py` |
 | P4 | Turn discard log: `state.turn_discard_log: list[{hero_id, card_id}]`, appended in `DiscardCardStep`, cleared in `end_turn` | `domain/state.py`, `engine/steps/cards.py`, `engine/phases.py` |
 | P5 | Card swap: REUSE existing `SwapCardStep` (`engine/steps/cards.py`) — `Hero.swap_cards` already swaps location + state + facedown + `played_this_round`; precedent: `rogue_skill_gold`. Only additions: `HasResolvedCardFilter` (P1-style) and `override_player_id_key` so the ENEMY picks the resolved card | no new step |
 | P6 | `EffectType.REVERSED_INITIATIVE` + ascending sort in `resolve_next_action`; NEXT_TURN round-boundary fizzle | `domain/models/effect.py`, `engine/phases.py` |
@@ -178,7 +182,16 @@ unless stated.
 - **U2** Enemy displaced by another effect (push/swap) → invalid target.
 - **U3** No exactly-2 straight-line destination (all lines blocked at distance 1 or 2) → that hero is invalid; if none valid → abort.
 - **U4** Hero respawned this turn (no snapshot entry / off-board at snapshot) → invalid (S2).
-- **U5** Forced-movement protection (`ForcedMovementByEnemyFilter`) respected.
+- **U5** Forced-movement protection respected. **Correction (implementation):**
+  `ForcedMovementByEnemyFilter` is the *placement* predicate (`can_be_placed`,
+  `DisplacementType.PLACE`), but this effect ends in `MoveUnitStep`, which
+  validates `can_be_moved` (`DisplacementType.MOVE`). Protection effects
+  distinguish the two — Wasp blocks PLACE + SWAP but not MOVE — so the original
+  filter would both refuse heroes it could legally shove and offer heroes it
+  could not. Implemented with a new `CanBeMovedByActorFilter` instead, so the
+  select-time predicate matches the step's own check. Two tests pin this: a
+  Bulwark-style MOVE block excludes the hero, a Wasp-style PLACE/SWAP block
+  does not.
 - **U6** Immune enemy excluded.
 
 ## 7. Back to the Future
@@ -187,6 +200,11 @@ unless stated.
 - **H1** Bullet A: unit in range that moved this turn → placed into its pre-planning snapshot space (empty) — works for enemy hero, friendly hero, and minion.
 - **H2** Bullet B inherits all Fast Forward tests (inheritance test only).
 - **U1** Snapshot space occupied (by anyone, including the unit itself if it never moved) → unit selectable, place fails → mandatory → abort.
+  **Implementation note:** `PlaceUnitStep` deliberately permits placing a unit
+  onto its own hex and returns `is_finished` (never `abort_action`) when the
+  destination is occupied, so neither half of U1 can be expressed through it.
+  The occupancy + "never moved" check therefore lives in the new
+  `ResolveTurnStartHexStep`, which aborts before `PlaceUnitStep` runs.
 - **U2** Emmitt himself not selectable.
 - **U3** Immune units excluded.
 - **U4** Unit spawned this turn (no snapshot entry) → excluded from targeting (S2).

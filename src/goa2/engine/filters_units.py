@@ -389,6 +389,46 @@ class ExcludeIdentityFilter(FilterCondition):
         return True
 
 
+class HasTurnStartPositionFilter(FilterCondition):
+    """
+    Passes units that were on the board at the turn boundary, whether or not
+    they have moved since. Units that spawned or respawned after the boundary
+    have no start-of-turn space to be sent back to.
+    """
+
+    type: FilterType = FilterType.HAS_TURN_START_POSITION
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+
+        return BoardEntityID(candidate) in state.last_turn_positions
+
+
+class RemainedInPlaceFilter(FilterCondition):
+    """
+    Passes units standing on the exact hex they occupied at the turn boundary.
+
+    "Remained in the same space since the last turn" is a literal comparison
+    against ``state.last_turn_positions``: leaving and returning within the
+    turn still counts as remaining, and being displaced by someone else counts
+    as having moved. A unit with no snapshot entry (it spawned or respawned
+    after the boundary) never passes.
+    """
+
+    type: FilterType = FilterType.REMAINED_IN_PLACE
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+
+        snapshot_hex = state.last_turn_positions.get(BoardEntityID(candidate))
+        if snapshot_hex is None:
+            return False
+
+        return state.get_position(candidate) == snapshot_hex
+
+
 class ForcedMovementByEnemyFilter(FilterCondition):
     """
     Checks if the candidate is protected from forced movement by enemies.
@@ -429,6 +469,33 @@ class CanBePlacedByActorFilter(FilterCondition):
             return True  # No actor context, allow selection
 
         result = state.validator.can_be_placed(
+            state=state, unit_id=candidate, actor_id=actor_id, context=context
+        )
+
+        return result.allowed
+
+
+class CanBeMovedByActorFilter(FilterCondition):
+    """
+    Filters out units the current actor cannot force into a walked move.
+
+    The placement variant above asks about teleports/placements. Protection
+    effects distinguish the two (Wasp blocks PLACE and SWAP but not MOVE), so
+    a step that ends in MoveUnitStep must screen its targets with this filter
+    or it will offer heroes it cannot move, and refuse heroes it could.
+    """
+
+    type: FilterType = FilterType.CAN_BE_MOVED_BY_ACTOR
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+
+        actor_id = state.current_actor_id
+        if not actor_id:
+            return True  # No actor context, allow selection
+
+        result = state.validator.can_be_moved(
             state=state, unit_id=candidate, actor_id=actor_id, context=context
         )
 

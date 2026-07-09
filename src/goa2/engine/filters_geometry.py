@@ -243,6 +243,55 @@ class StraightLinePathFilter(FilterCondition):
         return True
 
 
+class HasStraightLineDestinationFilter(FilterCondition):
+    """
+    Passes candidate units that could actually be moved ``distance`` spaces in
+    some straight line — i.e. at least one of the six rays ends on a free,
+    reachable hex.
+
+    Without this, a hero with every line blocked would still be offered as a
+    target and then dead-end at the destination select. It deliberately reuses
+    the same filters the destination select applies, so "offered" and
+    "selectable" can never disagree.
+    """
+
+    type: FilterType = FilterType.HAS_STRAIGHT_LINE_DESTINATION
+    distance: int = 2
+    pass_through_obstacles: bool = False
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        if not isinstance(candidate, str):
+            return False
+
+        origin = state.get_position(candidate)
+        if origin is None:
+            return False
+
+        from goa2.engine.filters_hex import ObstacleFilter, RangeFilter
+
+        in_range = RangeFilter(
+            min_range=self.distance, max_range=self.distance, origin_id=candidate
+        )
+        path_clear = StraightLinePathFilter(
+            origin_id=candidate, pass_through_obstacles=self.pass_through_obstacles
+        )
+        landing_free = ObstacleFilter(is_obstacle=False)
+
+        for direction in range(6):
+            step = origin.neighbor(direction) - origin
+            destination = origin + step.scale(self.distance)
+            if destination not in state.board.tiles:
+                continue
+            if not in_range.apply(destination, state, context):
+                continue
+            if not path_clear.apply(destination, state, context):
+                continue
+            if landing_free.apply(destination, state, context):
+                return True
+
+        return False
+
+
 class FarthestEmptyAdjacentFilter(FilterCondition):
     """Passes only the empty hex(es) adjacent to an anchor that are farthest from
     the origin (topology distance).

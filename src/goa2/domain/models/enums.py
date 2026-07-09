@@ -128,6 +128,7 @@ class StepType(StrEnum):
     RESOLVE_COMBAT = "resolve_combat"
     FINALIZE_HERO_TURN = "finalize_hero_turn"
     PLACE_UNIT = "place_unit"
+    RESOLVE_TURN_START_HEX = "resolve_turn_start_hex"
     PLACE_TOKEN = "place_token"
     PLACE_TOKENS_IN_LINE = "place_tokens_in_line"
     PLACE_TOKEN_BATCH = "place_token_batch"
@@ -249,6 +250,7 @@ class FilterType(StrEnum):
     HAS_EMPTY_NEIGHBOR = "has_empty_neighbor_filter"
     FORCED_MOVEMENT_BY_ENEMY = "forced_movement_by_enemy_filter"
     CAN_BE_PLACED_BY_ACTOR = "can_be_placed_filter"
+    CAN_BE_MOVED_BY_ACTOR = "can_be_moved_filter"
     MOVEMENT_PATH = "movement_path_filter"
     FAST_TRAVEL_DESTINATION = "fast_travel_destination_filter"
     LINE_BEHIND_TARGET = "line_behind_target_filter"
@@ -281,6 +283,9 @@ class FilterType(StrEnum):
     HEX_BATCH_COMPLETABLE = "hex_batch_completable_filter"
     TOKEN_REMOVAL_COMPLETABLE = "token_removal_completable_filter"
     ADJACENT_TO_TOKEN_IN_RANGE = "adjacent_to_token_in_range_filter"
+    REMAINED_IN_PLACE = "remained_in_place_filter"
+    HAS_TURN_START_POSITION = "has_turn_start_position_filter"
+    HAS_STRAIGHT_LINE_DESTINATION = "has_straight_line_destination_filter"
 
 
 class TargetType(StrEnum):

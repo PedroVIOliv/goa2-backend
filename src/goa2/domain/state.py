@@ -98,6 +98,14 @@ class GameState(BaseModel):
     )  # Card IDs each hero discarded THIS TURN (any source); cleared at end_turn.
     # Read by "retrieve all cards discarded this turn" effects (Emmitt).
 
+    last_turn_positions: dict[BoardEntityID, Hex] = Field(
+        default_factory=dict
+    )  # Entity positions at the turn boundary, recorded wherever the phase
+    # becomes PLANNING. Nothing moves during Planning, so this is both "where
+    # the unit was at the start of this turn" and "where it was last turn".
+    # Read by Emmitt's Back to the Future / Time Walk / Fast Forward. Units
+    # that arrived after the boundary (spawns) simply have no entry.
+
     pending_upgrades: dict[HeroID, int] = Field(
         default_factory=dict
     )  # Level Up Phase Buffer: HeroID -> Number of upgrades pending

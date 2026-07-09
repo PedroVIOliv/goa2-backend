@@ -93,6 +93,7 @@ class EndPhaseCleanupStep(GameStep):
     type: StepType = StepType.END_PHASE_CLEANUP
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.phases import record_position_snapshot
         from goa2.engine.steps.cards import ResolveUpgradesStep
 
         logger.debug("   [CLEANUP] Processing End Phase Cleanup...")
@@ -120,6 +121,7 @@ class EndPhaseCleanupStep(GameStep):
 
         state.round += 1
         state.turn = 1
+        record_position_snapshot(state)
         state.phase = GamePhase.PLANNING
         logger.debug(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
 
@@ -277,10 +279,15 @@ class AdvanceTurnStep(GameStep):
     type: StepType = StepType.ADVANCE_TURN
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        from goa2.engine.phases import _check_phase_transition, start_end_phase
+        from goa2.engine.phases import (
+            _check_phase_transition,
+            record_position_snapshot,
+            start_end_phase,
+        )
 
         if state.turn < 4:
             state.turn += 1
+            record_position_snapshot(state)
             state.phase = GamePhase.PLANNING
             logger.debug(f"   [Turn] Start of Turn {state.turn}. Phase: PLANNING")
             auto_passed = False

@@ -115,6 +115,7 @@ EXPECTED_STEP_CLASSES = {
     "ResolvePreActionDiscardStep",
     "ResolvePreActionMovementStep",
     "ResolveTieBreakerStep",
+    "ResolveTurnStartHexStep",
     "ResolveUpgradesStep",
     "RespawnHeroStep",
     "RespawnMinionAtHexStep",

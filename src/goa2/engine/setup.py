@@ -155,7 +155,11 @@ class GameSetup:
         rng = random.Random(seed)
         state.tie_breaker_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
 
-        # Transition to Planning
+        # Transition to Planning. Initial setup counts as the first position
+        # snapshot, so turn-1 effects have a defined "last turn" to read.
+        from goa2.engine.phases import record_position_snapshot
+
+        record_position_snapshot(state)
         state.phase = GamePhase.PLANNING
 
         logger.info(

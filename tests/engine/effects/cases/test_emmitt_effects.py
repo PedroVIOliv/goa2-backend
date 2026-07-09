@@ -159,6 +159,104 @@ class TestTurnDiscardLog:
 
 
 # =============================================================================
+# P3 primitive: turn-boundary position snapshot (state.last_turn_positions)
+#
+# "The space where that unit was at the start of this turn" (Back to the Future
+# A) and "remained in the same space since the last turn" (Time Walk / Fast
+# Forward) name the same instant — the turn boundary — because a turn is the
+# whole plan-and-act cycle and nothing moves during Planning. One snapshot,
+# recorded wherever the phase becomes PLANNING, serves all three cards.
+# =============================================================================
+
+
+@pytest.mark.effect_contract
+class TestPositionSnapshotPrimitive:
+    def _state(self):
+        state = (
+            EffectScenarioBuilder()
+            .line_board(6)
+            .red_hero("hero_a", at=(0, 0, 0))
+            .blue_hero("hero_b", at=(3, 0, -3))
+            .with_actor("hero_a")
+            .build()
+        )
+        state.unresolved_hero_ids = []
+        return state
+
+    def test_end_turn_records_positions_before_planning(self):
+        from goa2.engine.phases import end_turn
+
+        state = self._state()
+        end_turn(state)
+        assert state.last_turn_positions["hero_a"] == Hex(q=0, r=0, s=0)
+        assert state.last_turn_positions["hero_b"] == Hex(q=3, r=0, s=-3)
+
+    def test_snapshot_is_a_copy_not_a_live_alias(self):
+        """Later movement must not retroactively rewrite the snapshot."""
+        from goa2.engine.phases import end_turn
+
+        state = self._state()
+        end_turn(state)
+        state.place_entity("hero_a", Hex(q=2, r=0, s=-2))
+        assert state.last_turn_positions["hero_a"] == Hex(q=0, r=0, s=0)
+
+    def test_advance_turn_step_records_positions(self):
+        """Deferred advancement (finishing steps ran) snapshots too."""
+        from goa2.engine.handler import process_stack, push_steps
+        from goa2.engine.steps import AdvanceTurnStep
+
+        state = self._state()
+        state.last_turn_positions = {}
+        push_steps(state, [AdvanceTurnStep()])
+        process_stack(state)
+        assert state.last_turn_positions["hero_a"] == Hex(q=0, r=0, s=0)
+
+    def test_round_reset_records_positions(self):
+        """Turn 1 of a new round snapshots the end of the previous round."""
+        from goa2.engine.handler import process_stack, push_steps
+        from goa2.engine.steps import RoundResetStep
+
+        state = self._state()
+        state.last_turn_positions = {}
+        push_steps(state, [RoundResetStep()])
+        process_stack(state)
+        assert state.last_turn_positions["hero_a"] == Hex(q=0, r=0, s=0)
+
+    def test_unit_placed_after_snapshot_has_no_entry(self):
+        """S2: spawned/respawned units have no snapshot entry, so 'remained' is
+        false and Back to the Future A has no defined start-of-turn space."""
+        from goa2.domain.models import Minion, MinionType
+        from goa2.engine.phases import end_turn
+
+        state = self._state()
+        end_turn(state)
+        minion = Minion(id="minion_new", name="New", team=TeamColor.RED, type=MinionType.MELEE)
+        state.teams[TeamColor.RED].minions.append(minion)
+        state.place_entity("minion_new", Hex(q=1, r=0, s=-1))
+        assert "minion_new" not in state.last_turn_positions
+
+    def test_snapshot_populated_at_game_creation(self):
+        """Initial setup counts as the first snapshot."""
+        from goa2.engine.setup import GameSetup
+
+        state = GameSetup.create_game(
+            "src/goa2/data/maps/forgotten_island.json", ["Arien"], ["Wasp"]
+        )
+        assert state.last_turn_positions
+        assert state.last_turn_positions["hero_arien"] == state.get_position("hero_arien")
+
+    def test_snapshot_round_trips_through_persistence(self):
+        import json
+
+        from goa2.domain.state import GameState
+
+        state = self._state()
+        state.last_turn_positions = {"hero_a": Hex(q=1, r=-1, s=0)}
+        restored = GameState.model_validate(json.loads(state.model_dump_json()))
+        assert restored.last_turn_positions["hero_a"] == Hex(q=1, r=-1, s=0)
+
+
+# =============================================================================
 # TIME CAPSULE (§8): "You, and friendly heroes in radius, may retrieve all
 # cards discarded this turn."
 # =============================================================================
@@ -1735,3 +1833,507 @@ class TestUnstableTimelineDefense:
         end_turn(state)
         process_stack(state)
         assert _glitch_on_board(state) == {}
+
+
+# =============================================================================
+# TIME WALK (§6, range 3) / FAST FORWARD (§6, range 4)
+# "Move an enemy hero in range, who remained in the same space since the last
+#  turn, 2 spaces in a straight line."
+# =============================================================================
+
+
+def _snapshot_now(state):
+    """Freeze current positions as the turn-boundary snapshot, so every unit
+    currently on the board counts as 'remained in the same space'."""
+    from goa2.engine.phases import record_position_snapshot
+
+    record_position_snapshot(state)
+
+
+def _self_immunity(hero_id: str) -> ActiveEffect:
+    return ActiveEffect(
+        id=f"immunity_{hero_id}",
+        source_id=hero_id,
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(shape=Shape.POINT, origin_id=hero_id, affects=AffectsFilter.SELF),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+        created_at_turn=1,
+        created_at_round=1,
+    )
+
+
+def _placement_prevention(hero_id: str, blocks) -> ActiveEffect:
+    return ActiveEffect(
+        id=f"prevent_{hero_id}",
+        source_id=hero_id,
+        effect_type=EffectType.PLACEMENT_PREVENTION,
+        scope=EffectScope(shape=Shape.POINT, origin_id=hero_id, affects=AffectsFilter.SELF),
+        duration=DurationType.THIS_TURN,
+        displacement_blocks=blocks,
+        blocks_enemy_actors=True,
+        blocks_friendly_actors=False,
+        blocks_self=False,
+        is_active=True,
+        created_at_turn=1,
+        created_at_round=1,
+    )
+
+
+def _walk_state(card_id: str = "time_walk", *, enemy_at=(1, 0, -1), board_radius: int = 4):
+    """Emmitt at origin, one enemy hero that has remained in place."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_disc_hexes(board_radius))
+        .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", card_id))
+        .blue_hero("hero_enemy", at=enemy_at)
+        .with_actor("hero_emmitt")
+        .build()
+    )
+    _snapshot_now(state)
+    return state
+
+
+@pytest.mark.effect_flow
+class TestTimeWalkFastForward:
+    def test_moves_remained_enemy_exactly_two_in_a_straight_line(self):
+        """H1: Emmitt picks the destination; the enemy lands 2 away."""
+        state = _walk_state()
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 3, "r": 0, "s": -3})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_destination_options_are_exactly_two_away(self):
+        """H1: distance-1 and distance-3 hexes are never offered."""
+        state = _walk_state()
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX")
+        offered = _option_hex_tuples(run.latest_request)
+
+        assert (3, 0, -3) in offered  # exactly 2 along the +q axis
+        assert (2, 0, -2) not in offered  # 1 away
+        assert (4, 0, -4) not in offered  # 3 away
+        assert all(max(abs(q - 1), abs(r), abs(s + 1)) == 2 for q, r, s in offered)
+
+    def test_enemy_that_moved_this_turn_is_not_a_valid_target(self):
+        """U1: only the hero still standing on its snapshot hex is offered."""
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes(_disc_hexes(4))
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_walk"))
+            .blue_hero("hero_mover", at=(1, 0, -1))
+            .blue_hero("hero_stayer", at=(0, 1, -1))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+        # The mover began the turn one hex over and has since walked away.
+        state.last_turn_positions["hero_mover"] = Hex(q=2, r=0, s=-2)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_stayer"}
+
+    def test_sole_target_that_moved_this_turn_aborts_the_action(self):
+        """U1: with no remaining valid target the mandatory select aborts."""
+        state = _walk_state()
+        state.last_turn_positions["hero_enemy"] = Hex(q=2, r=0, s=-2)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
+
+    def test_enemy_with_no_legal_two_space_line_is_not_offered(self):
+        """U3: a hero with no exactly-2 straight-line destination is an invalid
+        target, not a target that aborts the action at the hex step."""
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes(
+                [
+                    (0, 0, 0),  # Emmitt
+                    # Arm A: the trapped enemy. Its only on-board 2-space lines
+                    # are (3,-3,0) -- blocked below -- and (-1,1,0), off-board.
+                    (1, -1, 0),
+                    (2, -2, 0),
+                    (3, -3, 0),
+                    # Arm B: a free enemy with a clear 2-space line to (0,3,-3).
+                    (0, 1, -1),
+                    (0, 2, -2),
+                    (0, 3, -3),
+                ]
+            )
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_walk"))
+            .blue_hero("hero_trapped", at=(1, -1, 0))
+            .blue_hero("hero_free", at=(0, 1, -1))
+            .blue_minion("blocker", at=(3, -3, 0))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_free"}
+
+    def test_enemy_that_left_and_returned_still_counts_as_remained(self):
+        """H2: the check is literal — current hex == snapshot hex."""
+        state = _walk_state()
+        state.place_entity("hero_enemy", Hex(q=2, r=0, s=-2))
+        state.place_entity("hero_enemy", Hex(q=1, r=0, s=-1))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 3, "r": 0, "s": -3})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_snapshot_reaches_into_the_previous_round(self):
+        """H3: on turn 1 the 'last turn' is the last turn of the prior round."""
+        from goa2.engine.handler import process_stack, push_steps
+        from goa2.engine.steps import RoundResetStep
+
+        state = _walk_state()
+        state.last_turn_positions = {}
+        push_steps(state, [RoundResetStep()])
+        process_stack(state)
+        assert state.round == 2
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 3, "r": 0, "s": -3})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_enemy_displaced_by_someone_else_is_not_a_valid_target(self):
+        """U2: being pushed/swapped by another unit counts as having moved."""
+        state = _walk_state()
+        state.place_entity("hero_enemy", Hex(q=1, r=1, s=-2))  # shoved off its snapshot hex
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=1, s=-2)
+
+    def test_respawned_enemy_with_no_snapshot_entry_is_not_offered(self):
+        """U4/S2: no snapshot entry means 'remained' is false."""
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes(_disc_hexes(4))
+            .red_hero("hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "time_walk"))
+            .blue_hero("hero_respawned", at=(1, 0, -1))
+            .blue_hero("hero_veteran", at=(0, 1, -1))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+        del state.last_turn_positions["hero_respawned"]
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_veteran"}
+
+    def test_enemy_protected_from_forced_movement_is_not_offered(self):
+        """U5: a Bulwark-style MOVE block makes the hero an invalid target."""
+        from goa2.domain.models.effect import DisplacementType
+
+        state = _walk_state()
+        state.active_effects.append(
+            _placement_prevention("hero_enemy", [DisplacementType.MOVE, DisplacementType.PLACE])
+        )
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
+
+    def test_enemy_protected_only_from_placement_can_still_be_shoved(self):
+        """U5: Wasp-style protection blocks PLACE/SWAP, not a forced MOVE, so
+        the hero stays a legal Time Walk target."""
+        from goa2.domain.models.effect import DisplacementType
+
+        state = _walk_state()
+        state.active_effects.append(
+            _placement_prevention("hero_enemy", [DisplacementType.PLACE, DisplacementType.SWAP])
+        )
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 3, "r": 0, "s": -3})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_immune_enemy_is_not_offered(self):
+        """U6."""
+        state = _walk_state()
+        state.active_effects.append(_self_immunity("hero_enemy"))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
+
+    def test_fast_forward_reaches_range_four(self):
+        state = _walk_state("fast_forward", enemy_at=(4, 0, -4), board_radius=6)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 6, "r": 0, "s": -6})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=6, r=0, s=-6)
+
+    def test_time_walk_does_not_reach_range_four(self):
+        state = _walk_state("time_walk", enemy_at=(4, 0, -4), board_radius=6)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=4, r=0, s=-4)
+
+
+# =============================================================================
+# BACK TO THE FUTURE (§7, range 4) — "Choose one —
+#  • Place a unit in range into the space where that unit was at the start of
+#    this turn.
+#  • Move an enemy hero in range, who remained in the same space since the last
+#    turn, 2 spaces in a straight line."  (bullet B == Fast Forward)
+# =============================================================================
+
+_BTF_RECALL = 1
+_BTF_SHOVE = 2
+
+
+def _btf_state(**heroes):
+    """Emmitt at the origin with Back to the Future in hand."""
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(_disc_hexes(4))
+        .red_hero(
+            "hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "back_to_the_future")
+        )
+    )
+    return builder
+
+
+@pytest.mark.effect_flow
+class TestBackToTheFutureRecall:
+    def _moved_enemy_state(self):
+        state = (
+            _btf_state().blue_hero("hero_enemy", at=(1, 1, -2)).with_actor("hero_emmitt").build()
+        )
+        _snapshot_now(state)
+        state.place_entity("hero_enemy", Hex(q=2, r=0, s=-2))  # it moved this turn
+        return state
+
+    def test_recalls_moved_enemy_hero_to_its_turn_start_space(self):
+        """H1."""
+        state = self._moved_enemy_state()
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=1, s=-2)
+
+    def test_recalls_friendly_hero(self):
+        """H1: 'a unit' is not restricted to enemies."""
+        state = _btf_state().red_hero("hero_ally", at=(1, 1, -2)).with_actor("hero_emmitt").build()
+        _snapshot_now(state)
+        state.place_entity("hero_ally", Hex(q=2, r=0, s=-2))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT").choose("hero_ally")
+        run.finish()
+
+        assert state.get_position("hero_ally") == Hex(q=1, r=1, s=-2)
+
+    def test_recalls_minion(self):
+        """H1."""
+        state = (
+            _btf_state().blue_minion("blue_minion", at=(1, 1, -2)).with_actor("hero_emmitt").build()
+        )
+        _snapshot_now(state)
+        state.place_entity("blue_minion", Hex(q=2, r=0, s=-2))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT").choose("blue_minion")
+        run.finish()
+
+        assert state.get_position("blue_minion") == Hex(q=1, r=1, s=-2)
+
+    def test_emmitt_cannot_recall_himself(self):
+        """U2."""
+        state = self._moved_enemy_state()
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT")
+
+        assert "hero_emmitt" not in {o.id for o in run.latest_request.options}
+
+    def test_immune_unit_is_not_offered(self):
+        """U3."""
+        state = (
+            _btf_state()
+            .blue_hero("hero_immune", at=(1, 1, -2))
+            .blue_hero("hero_plain", at=(0, 2, -2))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+        state.place_entity("hero_immune", Hex(q=2, r=0, s=-2))
+        state.place_entity("hero_plain", Hex(q=0, r=1, s=-1))
+        state.active_effects.append(_self_immunity("hero_immune"))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_plain"}
+
+    def test_unit_spawned_this_turn_is_not_offered(self):
+        """U4/S2: no snapshot entry means no defined start-of-turn space."""
+        state = (
+            _btf_state()
+            .blue_hero("hero_spawned", at=(1, 1, -2))
+            .blue_hero("hero_veteran", at=(0, 2, -2))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+        del state.last_turn_positions["hero_spawned"]
+        state.place_entity("hero_veteran", Hex(q=0, r=1, s=-1))
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_veteran"}
+
+    def test_occupied_turn_start_space_is_selectable_but_aborts(self):
+        """U1: the target stays selectable; the mandatory place then fails."""
+        state = (
+            _btf_state()
+            .blue_hero("hero_enemy", at=(1, 1, -2))
+            .blue_minion("squatter", at=(0, 1, -1))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+        state.place_entity("hero_enemy", Hex(q=2, r=0, s=-2))
+        state.place_entity("squatter", Hex(q=1, r=1, s=-2))  # sits on the snapshot hex
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT")
+        assert "hero_enemy" in {o.id for o in run.latest_request.options}
+        run.choose("hero_enemy")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=2, r=0, s=-2)
+        assert state.get_position("squatter") == Hex(q=1, r=1, s=-2)
+
+    def test_unit_that_never_moved_occupies_its_own_turn_start_space(self):
+        """U1: 'occupied by anyone, including the unit itself if it never
+        moved' — selectable, but the place fails and the action aborts."""
+        state = (
+            _btf_state().blue_hero("hero_enemy", at=(1, 1, -2)).with_actor("hero_emmitt").build()
+        )
+        _snapshot_now(state)  # enemy never moved: snapshot hex == current hex
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_RECALL)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=1, s=-2)
+
+
+@pytest.mark.effect_flow
+class TestBackToTheFutureShove:
+    def test_bullet_b_moves_remained_enemy_two_spaces(self):
+        """H2: bullet B is Fast Forward."""
+        state = (
+            _btf_state().blue_hero("hero_enemy", at=(1, 0, -1)).with_actor("hero_emmitt").build()
+        )
+        _snapshot_now(state)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_SHOVE)
+        run.expect_input("SELECT_UNIT").choose("hero_enemy")
+        run.expect_input("SELECT_HEX").choose({"q": 3, "r": 0, "s": -3})
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
+
+    def test_bullet_b_ignores_a_hero_that_moved_this_turn(self):
+        """H2: bullet B keeps the 'remained in place' restriction."""
+        state = (
+            _btf_state().blue_hero("hero_enemy", at=(1, 0, -1)).with_actor("hero_emmitt").build()
+        )
+        _snapshot_now(state)
+        state.last_turn_positions["hero_enemy"] = Hex(q=2, r=0, s=-2)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_SHOVE)
+        run.finish()
+
+        assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
+
+    def test_bullet_b_does_not_target_minions(self):
+        """H2: bullet B is 'an enemy hero', unlike bullet A's 'a unit'."""
+        state = (
+            _btf_state()
+            .blue_minion("blue_minion", at=(1, 0, -1))
+            .blue_hero("hero_enemy", at=(0, 1, -1))
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _snapshot_now(state)
+
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_NUMBER").choose(_BTF_SHOVE)
+        run.expect_input("SELECT_UNIT")
+
+        assert {o.id for o in run.latest_request.options} == {"hero_enemy"}

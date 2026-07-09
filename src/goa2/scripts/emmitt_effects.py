@@ -485,6 +485,162 @@ class TimeBombEffect(TimeSnareEffect):
 # =============================================================================
 
 
+_STRAIGHT_LINE_SPACES = 2
+
+
+class _StraightLineShoveMixin:
+    """Shared targeting for "move an enemy hero in range, who remained in the
+    same space since the last turn, 2 spaces in a straight line"."""
+
+    def _straight_line_shove_steps(self, card_id: str, stats: CardStats) -> list[GameStep]:
+        from goa2.engine.filters import (
+            CanBeMovedByActorFilter,
+            HasStraightLineDestinationFilter,
+            ObstacleFilter,
+            RangeFilter,
+            RemainedInPlaceFilter,
+            StraightLinePathFilter,
+            TeamFilter,
+            UnitTypeFilter,
+        )
+        from goa2.engine.steps import MoveUnitStep
+
+        victim_key = f"{card_id}_victim"
+        dest_key = f"{card_id}_dest"
+
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select an enemy hero who remained in the same space since the last turn",
+                output_key=victim_key,
+                is_mandatory=True,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range or 0),
+                    RemainedInPlaceFilter(),
+                    CanBeMovedByActorFilter(),
+                    HasStraightLineDestinationFilter(distance=_STRAIGHT_LINE_SPACES),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt=f"Move them {_STRAIGHT_LINE_SPACES} spaces in a straight line",
+                output_key=dest_key,
+                is_mandatory=True,
+                filters=[
+                    RangeFilter(
+                        min_range=_STRAIGHT_LINE_SPACES,
+                        max_range=_STRAIGHT_LINE_SPACES,
+                        origin_key=victim_key,
+                    ),
+                    StraightLinePathFilter(origin_key=victim_key),
+                    ObstacleFilter(is_obstacle=False),
+                ],
+            ),
+            MoveUnitStep(
+                unit_key=victim_key,
+                destination_key=dest_key,
+                range_val=_STRAIGHT_LINE_SPACES,
+                is_movement_action=False,
+            ),
+        ]
+
+
+@register_effect("time_walk")
+class TimeWalkEffect(_StraightLineShoveMixin, CardEffect):
+    """Shove a stationary enemy hero exactly 2 spaces in a straight line."""
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return self._straight_line_shove_steps(card.id, stats)
+
+
+@register_effect("fast_forward")
+class FastForwardEffect(TimeWalkEffect):
+    """Same effect as Time Walk, with Fast Forward's printed range."""
+
+
+# =============================================================================
+# BACK TO THE FUTURE (Green III — range 4)
+# "Choose one —
+#  • Place a unit in range into the space where that unit was at the start of
+#    this turn.
+#  • Move an enemy hero in range, who remained in the same space since the last
+#    turn, 2 spaces in a straight line."
+# =============================================================================
+
+
+@register_effect("back_to_the_future")
+class BackToTheFutureEffect(_StraightLineShoveMixin, CardEffect):
+    """Bullet A recalls any unit to its turn-start space; bullet B is Fast
+    Forward. Both read the same turn-boundary snapshot — A as a destination,
+    B as an eligibility test."""
+
+    RECALL = 1
+    SHOVE = 2
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        from goa2.engine.filters import (
+            ExcludeIdentityFilter,
+            HasTurnStartPositionFilter,
+            RangeFilter,
+        )
+        from goa2.engine.steps import PlaceUnitStep, ResolveTurnStartHexStep
+
+        choice_key = f"{card.id}_choice"
+        recall_key = f"{card.id}_recall"
+        shove_key = f"{card.id}_shove"
+        target_key = f"{card.id}_target"
+        dest_key = f"{card.id}_target_hex"
+
+        shove_steps = self._straight_line_shove_steps(card.id, stats)
+        for step in shove_steps:
+            step.active_if_key = shove_key
+
+        return [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Choose one",
+                output_key=choice_key,
+                number_options=[self.RECALL, self.SHOVE],
+                number_labels={
+                    self.RECALL: "Place a unit in range into the space where it "
+                    "was at the start of this turn",
+                    self.SHOVE: "Move an enemy hero in range, who remained in the "
+                    "same space, 2 spaces in a straight line",
+                },
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key=choice_key, operator="==", threshold=self.RECALL, output_key=recall_key
+            ),
+            CheckContextConditionStep(
+                input_key=choice_key, operator="==", threshold=self.SHOVE, output_key=shove_key
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Place a unit into the space where it was at the start of this turn",
+                output_key=target_key,
+                is_mandatory=True,
+                active_if_key=recall_key,
+                filters=[
+                    RangeFilter(max_range=stats.range or 0),
+                    ExcludeIdentityFilter(exclude_self=True),
+                    HasTurnStartPositionFilter(),
+                ],
+            ),
+            ResolveTurnStartHexStep(
+                unit_key=target_key, output_key=dest_key, active_if_key=recall_key
+            ),
+            PlaceUnitStep(unit_key=target_key, destination_key=dest_key, active_if_key=recall_key),
+            *shove_steps,
+        ]
+
+
 @register_effect("time_loop")
 class TimeLoopEffect(CardEffect):
     """Position swap with a resolved enemy hero. SwapUnitsStep runs the

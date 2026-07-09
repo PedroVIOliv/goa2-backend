@@ -2010,8 +2010,11 @@ class RoundResetStep(GameStep):
     type: StepType = StepType.ROUND_RESET
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.phases import record_position_snapshot
+
         state.round += 1
         state.turn = 1
+        record_position_snapshot(state)
         state.phase = GamePhase.PLANNING
         state.heroes_defeated_this_round.clear()
         logger.debug(f"   [ROUND START] Round {state.round}, Turn {state.turn}")
