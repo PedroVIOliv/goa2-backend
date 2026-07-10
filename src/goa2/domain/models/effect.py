@@ -233,6 +233,11 @@ class ActiveEffect(BaseModel):
         None  # For Tier 3 - the specific hex that is isolated (Nebkher's position)
     )
 
+    # Publicly announced card color (NebKher - Imbue Doubt family). "Name a
+    # color" is public information, so this is exposed in the client view for
+    # all players while the effect is pending.
+    named_color: CardColor | None = None
+
     # Static Barrier fields (Wasp)
     # When an enemy hero acts, hexes on the "opposite side" of the barrier become obstacles:
     # - Actor OUTSIDE radius -> hexes INSIDE radius are obstacles

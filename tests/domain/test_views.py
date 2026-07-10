@@ -684,6 +684,37 @@ class TestViewStructure:
         assert fx["split_axis"] == "r"
         assert fx["split_value"] == -2
 
+    def test_effects_expose_named_color(self, sample_state):
+        """Publicly named colors (Imbue Doubt family) are visible to all players."""
+        from goa2.domain.models import CardColor
+        from goa2.domain.models.effect import (
+            ActiveEffect,
+            DurationType,
+            EffectScope,
+            EffectType,
+            Shape,
+        )
+
+        sample_state.active_effects.append(
+            ActiveEffect(
+                id="fx_doubt",
+                source_id="hero_a",
+                effect_type=EffectType.AFTER_CARDS_PLAYED_TRIGGER,
+                scope=EffectScope(shape=Shape.GLOBAL, origin_id="hero_a"),
+                duration=DurationType.NEXT_TURN,
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+                named_color=CardColor.RED,
+            )
+        )
+
+        # Spectator view: the named color is public info.
+        view = build_view(sample_state, for_hero_id=None)
+
+        (fx,) = [e for e in view["effects"] if e["id"] == "fx_doubt"]
+        assert fx["named_color"] == "RED"
+
     def test_markers_structure(self, sample_state):
         """Markers view has correct structure."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))

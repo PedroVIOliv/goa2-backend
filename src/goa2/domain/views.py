@@ -394,6 +394,8 @@ def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
             # coordinate equals split_value, fixed at cast time.
             "split_axis": effect.split_axis,
             "split_value": effect.split_value,
+            # Publicly announced card color (Imbue Doubt family).
+            "named_color": effect.named_color.value if effect.named_color else None,
         }
         effects_view.append(effect_view)
 

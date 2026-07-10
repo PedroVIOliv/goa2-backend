@@ -424,6 +424,7 @@ class ImbueDoubtEffect(CardEffect):
                 scope=EffectScope(shape=Shape.GLOBAL, origin_id=str(hero.id)),
                 duration=DurationType.NEXT_TURN,
                 is_active=True,
+                named_color_key="chosen_color",
                 finishing_steps=[
                     SelectStep(
                         target_type=TargetType.UNIT,
@@ -466,6 +467,7 @@ class AnIllusionOfChoiceEffect(CardEffect):
                 scope=EffectScope(shape=Shape.GLOBAL, origin_id=str(hero.id)),
                 duration=DurationType.NEXT_TURN,
                 is_active=True,
+                named_color_key="chosen_color",
                 finishing_steps=[
                     SelectStep(
                         target_type=TargetType.UNIT,

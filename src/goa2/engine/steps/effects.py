@@ -93,6 +93,11 @@ class CreateEffectStep(GameStep):
     split_value: int = 0
     isolated_hex: Hex | None = None
 
+    # Publicly named card color (NebKher - Imbue Doubt family): context key
+    # holding the color the player announced. Stored on the effect so clients
+    # can display it for everyone while the effect is pending.
+    named_color_key: str | None = None
+
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -147,6 +152,12 @@ class CreateEffectStep(GameStep):
 
         resolved_finishing = resolve_steps(self.finishing_steps)
 
+        named_color: CardColor | None = None
+        if self.named_color_key:
+            color_val = context.get(self.named_color_key)
+            if color_val:
+                named_color = CardColor(str(color_val))
+
         EffectManager.create_effect(
             state=state,
             source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
@@ -178,6 +189,7 @@ class CreateEffectStep(GameStep):
             split_axis=self.split_axis,
             split_value=self.split_value,
             isolated_hex=self.isolated_hex,
+            named_color=named_color,
         )
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
@@ -191,6 +203,9 @@ class CreateEffectStep(GameStep):
         if self.split_axis is not None:
             metadata["split_axis"] = self.split_axis
             metadata["split_value"] = self.split_value
+        # Advertise the publicly named color (Imbue Doubt family).
+        if named_color is not None:
+            metadata["named_color"] = named_color.value
 
         return StepResult(
             is_finished=True,

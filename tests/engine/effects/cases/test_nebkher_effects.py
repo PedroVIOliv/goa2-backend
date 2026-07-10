@@ -170,6 +170,8 @@ def test_imbue_doubt_family_names_color_and_schedules_trigger(
         e for e in state.active_effects if e.effect_type == EffectType.AFTER_CARDS_PLAYED_TRIGGER
     )
     assert effect.duration == DurationType.NEXT_TURN
+    # The announced color is public: stored on the effect for client display.
+    assert effect.named_color == CardColor.BLUE
     assert any(
         getattr(step, "color_key", None) == "chosen_color" for step in effect.finishing_steps
     )
