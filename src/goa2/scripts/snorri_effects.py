@@ -13,18 +13,29 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from goa2.domain.models import (
     AffectsFilter,
     Card,
+    CardContainerType,
     DurationType,
     EffectScope,
     EffectType,
     RuneType,
     Shape,
+    TargetType,
 )
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
+from goa2.engine.filters_units import TeamFilter, UnitTypeFilter
 from goa2.engine.steps import (
+    AttackSequenceStep,
+    CheckContextConditionStep,
     ChooseRuneStep,
+    CountStep,
     CreateEffectStep,
     GameStep,
+    MayRepeatOnceStep,
+    MoveUnitStep,
     PlaceRunesStep,
+    RetrieveCardStep,
+    SelectStep,
     SetContextFlagStep,
 )
 
@@ -204,3 +215,127 @@ class OathOfPerseveranceEffect(OathOfFortitudeEffect):
         RuneType.ANVIL: "non_basic",
     }
     choose_one: ClassVar[bool] = True
+
+
+def _optional_move_one_space(hero_id: str, *, output_key: str) -> list[GameStep]:
+    """Return Snorri's optional one-space, effect-side move."""
+    return [
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt="You may move 1 space",
+            output_key=output_key,
+            is_mandatory=False,
+            filters=[
+                RangeFilter(max_range=1),
+                MovementPathFilter(range_val=1, unit_id=hero_id),
+                ObstacleFilter(is_obstacle=False),
+            ],
+        ),
+        MoveUnitStep(
+            unit_id=hero_id,
+            destination_key=output_key,
+            range_val=1,
+            active_if_key=output_key,
+        ),
+    ]
+
+
+class RunicMeleeEffect(CardEffect):
+    """Shared implementation for Runic Dagger, Hammer, and Battleaxe."""
+
+    has_pre_move: ClassVar[bool] = False
+    has_repeat: ClassVar[bool] = False
+
+    def _sequence(
+        self,
+        hero: Hero,
+        stats: CardStats,
+        active: set[RuneType],
+        *,
+        repeat_leg: bool,
+    ) -> list[GameStep]:
+        steps: list[GameStep] = []
+        if self.has_pre_move and RuneType.HORN in active:
+            steps.extend(
+                _optional_move_one_space(
+                    hero.id,
+                    output_key=(
+                        "runic_melee_repeat_move_hex" if repeat_leg else "runic_melee_move_hex"
+                    ),
+                )
+            )
+
+        target_filters = (
+            [UnitTypeFilter(unit_type="MINION"), TeamFilter(relation="ENEMY")] if repeat_leg else []
+        )
+        steps.append(
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_filters=target_filters,
+            )
+        )
+
+        if RuneType.ANVIL in active:
+            retrieve_key = "runic_melee_repeat_retrieve" if repeat_leg else "runic_melee_retrieve"
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        card_container=CardContainerType.DISCARD,
+                        prompt="You may retrieve a discarded card",
+                        output_key=retrieve_key,
+                        is_mandatory=False,
+                    ),
+                    RetrieveCardStep(card_key=retrieve_key, active_if_key=retrieve_key),
+                ]
+            )
+        return steps
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        steps = self._sequence(hero, stats, active, repeat_leg=False)
+
+        if self.has_repeat and RuneType.AXE in active:
+            steps.extend(
+                [
+                    CountStep(
+                        target_type=TargetType.UNIT,
+                        output_key="runic_battleaxe_repeat_targets",
+                        filters=[
+                            UnitTypeFilter(unit_type="MINION"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(max_range=1),
+                        ],
+                    ),
+                    CheckContextConditionStep(
+                        input_key="runic_battleaxe_repeat_targets",
+                        operator=">=",
+                        threshold=1,
+                        output_key="runic_battleaxe_can_repeat",
+                    ),
+                    MayRepeatOnceStep(
+                        active_if_key="runic_battleaxe_can_repeat",
+                        prompt="Repeat the attack on an enemy minion?",
+                        steps_template=self._sequence(hero, stats, active, repeat_leg=True),
+                    ),
+                ]
+            )
+        return steps
+
+
+@register_effect("runic_dagger")
+class RunicDaggerEffect(RunicMeleeEffect):
+    pass
+
+
+@register_effect("runic_hammer")
+class RunicHammerEffect(RunicMeleeEffect):
+    has_pre_move: ClassVar[bool] = True
+
+
+@register_effect("runic_battleaxe")
+class RunicBattleaxeEffect(RunicHammerEffect):
+    has_repeat: ClassVar[bool] = True

@@ -22,6 +22,8 @@ from goa2.domain.models import (
     CardState,
     CardTier,
     EffectType,
+    Minion,
+    MinionType,
     RuneType,
 )
 from goa2.domain.state import GameState
@@ -495,3 +497,272 @@ def test_oath_perseverance_chosen_mismatched_rune_does_not_block():  # §11 U1
 
     assert _combat_outcomes(run) == ["DEFEATED"]
     assert not _has_oath_immunity(state)
+
+
+# ---------------------------------------------------------------------------
+# sections 2-4: Runic Dagger / Hammer / Battleaxe
+# ---------------------------------------------------------------------------
+
+
+def _runic_melee_state(
+    card_id: str,
+    *,
+    runes: dict[int, RuneType] | None = None,
+    hexes: list[tuple[int, int, int]] | None = None,
+    target_at: tuple[int, int, int] = (1, 0, -1),
+) -> GameState:
+    builder = EffectScenarioBuilder().with_hexes(
+        hexes
+        or [
+            (0, 0, 0),
+            (1, 0, -1),
+            (2, 0, -2),
+            (0, 1, -1),
+            (1, 1, -2),
+        ]
+    )
+    state = (
+        builder.red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card(card_id))
+        .blue_hero("hero_knight", at=target_at)
+        .with_actor("hero_snorri")
+        .build()
+    )
+    state.turn = 1
+    if runes:
+        state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_melee_attack(state: GameState) -> EffectRun:
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    return run
+
+
+def _pass_hero_defense(run: EffectRun, target_id: str = "hero_knight") -> EffectRun:
+    return (
+        run.expect_input(InputRequestType.SELECT_UNIT)
+        .choose(target_id)
+        .expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+        .choose("PASS")
+    )
+
+
+def _combat_count(run: EffectRun) -> int:
+    return sum(event.event_type == GameEventType.COMBAT_RESOLVED for event in run.events)
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_h1_anvil_retrieves_discarded_card():
+    state = _runic_melee_state("runic_dagger", runes={1: RuneType.ANVIL})
+    discarded = snorri_card("rune_sigils")
+    state.get_hero("hero_snorri").discard_pile = [discarded]
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_CARD).choose(discarded.id).finish()
+
+    assert any(card.id == discarded.id for card in state.get_hero("hero_snorri").hand)
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_h2_can_decline_retrieve():
+    state = _runic_melee_state("runic_dagger", runes={1: RuneType.ANVIL})
+    discarded = snorri_card("rune_sigils")
+    state.get_hero("hero_snorri").discard_pile = [discarded]
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_CARD).skip().finish()
+
+    assert state.get_hero("hero_snorri").discard_pile == [discarded]
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_h3_retrieves_after_target_is_defeated():
+    state = _runic_melee_state("runic_dagger", runes={1: RuneType.ANVIL})
+    discarded = snorri_card("rune_sigils")
+    state.get_hero("hero_snorri").discard_pile = [discarded]
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_CARD).choose(discarded.id).finish()
+
+    assert state.get_position("hero_knight") is None
+    assert any(card.id == discarded.id for card in state.get_hero("hero_snorri").hand)
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_u1_without_anvil_has_no_retrieve_prompt():
+    state = _runic_melee_state("runic_dagger", runes={1: RuneType.HORN})
+    state.get_hero("hero_snorri").discard_pile = [snorri_card("rune_sigils")]
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_u2_empty_discard_has_no_retrieve_prompt():
+    state = _runic_melee_state("runic_dagger", runes={1: RuneType.ANVIL})
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_dagger_u3_no_adjacent_target_aborts_action():
+    state = _runic_melee_state(
+        "runic_dagger",
+        hexes=[(0, 0, 0), (1, 0, -1), (2, 0, -2)],
+        target_at=(2, 0, -2),
+    )
+
+    _start_melee_attack(state).finish()
+
+    assert state.get_position("hero_knight") == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_h1_horn_premove_then_attacks_from_new_position():
+    state = _runic_melee_state("runic_hammer", runes={1: RuneType.HORN}, target_at=(2, 0, -2))
+
+    run = _start_melee_attack(state)
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 1, "r": 0, "s": -1})
+    _pass_hero_defense(run).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=1, r=0, s=-1)
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_h2_can_decline_horn_premove():
+    state = _runic_melee_state("runic_hammer", runes={1: RuneType.HORN})
+
+    run = _start_melee_attack(state)
+    run.expect_input(InputRequestType.SELECT_HEX).skip()
+    _pass_hero_defense(run).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=0, r=0, s=0)
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_h3_anvil_retrieves_without_premove():
+    state = _runic_melee_state("runic_hammer", runes={1: RuneType.ANVIL})
+    discarded = snorri_card("rune_sigils")
+    state.get_hero("hero_snorri").discard_pile = [discarded]
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_CARD).choose(discarded.id).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=0, r=0, s=0)
+    assert any(card.id == discarded.id for card in state.get_hero("hero_snorri").hand)
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_u1_without_rune_is_plain_adjacent_attack():
+    state = _runic_melee_state("runic_hammer")
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_u2_horn_without_legal_move_still_attacks():
+    state = _runic_melee_state(
+        "runic_hammer",
+        runes={1: RuneType.HORN},
+        hexes=[(0, 0, 0), (1, 0, -1)],
+    )
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_hammer_u3_premove_can_leave_no_adjacent_target_and_abort():
+    state = _runic_melee_state(
+        "runic_hammer",
+        runes={1: RuneType.HORN},
+        hexes=[(0, 0, 0), (1, 0, -1), (2, 0, -2), (-1, 1, 0)],
+        target_at=(1, 0, -1),
+    )
+
+    run = _start_melee_attack(state)
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": -1, "r": 1, "s": 0}).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=-1, r=1, s=0)
+    assert state.get_position("hero_knight") == Hex(q=1, r=0, s=-1)
+
+
+def _battleaxe_state_with_minions(*, minion_count: int) -> GameState:
+    state = _runic_melee_state(
+        "runic_battleaxe",
+        runes={1: RuneType.AXE},
+        hexes=[
+            (0, 0, 0),
+            (1, 0, -1),
+            (0, 1, -1),
+            (1, 1, -2),
+            (-1, 1, 0),
+        ],
+    )
+    builder_minions = [(0, 1, -1), (1, 1, -2)]
+    for index, location in enumerate(builder_minions[:minion_count], start=1):
+        minion_id = f"blue_minion_{index}"
+        state.teams[state.get_hero("hero_knight").team].minions.append(
+            Minion(
+                id=minion_id,
+                name=minion_id,
+                team=state.get_hero("hero_knight").team,
+                type=MinionType.MELEE,
+            )
+        )
+        state.place_entity(minion_id, Hex(q=location[0], r=location[1], s=location[2]))
+    return state
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_h3_axe_repeats_full_attack_on_enemy_minion():
+    state = _battleaxe_state_with_minions(minion_count=1)
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion_1").finish()
+
+    assert _combat_count(run) == 2
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_h4_can_decline_repeat():
+    state = _battleaxe_state_with_minions(minion_count=1)
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("NO").finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_u3_without_adjacent_enemy_minion_does_not_offer_repeat():
+    state = _battleaxe_state_with_minions(minion_count=0)
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_u4_repeat_does_not_offer_another_repeat():
+    state = _battleaxe_state_with_minions(minion_count=2)
+
+    run = _start_melee_attack(state)
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion_1").finish()
+
+    assert _combat_count(run) == 2
