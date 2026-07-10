@@ -1199,7 +1199,7 @@ Events describe what happened during a game action. They are meant for animation
 | `LIFE_COUNTER_CHANGED` | A team's life counter changed | `metadata.team`, `metadata.amount` |
 | `TURN_ENDED` | A hero's turn ended | `actor_id` |
 | `TIE_BREAKER_FLIPPED` | The Tie Breaker coin flipped (after a cross-team tie winner's turn, or via Ignatia's ultimate) | `metadata.tie_breaker_team`, `metadata.coin_face` |
-| `RUNES_PLACED` | A hero's rune slots changed (Snorri) | `actor_id`, `metadata` |
+| `RUNES_PLACED` | A hero's rune slots changed (Snorri) | `actor_id`, `metadata.rune_slots` (the new arrangement, e.g. `{"1": "axe", "2": "bird", "3": "anvil", "4": "horn"}`) |
 | `GAME_OVER` | The game ended | `metadata.winner` |
 
 ### Using events for animation

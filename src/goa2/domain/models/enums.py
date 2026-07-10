@@ -238,6 +238,7 @@ class StepType(StrEnum):
     RAZZLE_MIRRORED_PUSH = "razzle_mirrored_push"
     FLIP_TIE_BREAKER_COIN = "flip_tie_breaker_coin"
     PLACE_TOKEN_TRAIL = "place_token_trail"
+    PLACE_RUNES = "place_runes"
 
 
 class FilterType(StrEnum):

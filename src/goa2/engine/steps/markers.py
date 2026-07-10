@@ -9,7 +9,8 @@ from pydantic import Field, field_serializer
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
-from goa2.domain.models import StepType, TargetType, Token, TokenType, Turret
+from goa2.domain.input import InputOption, InputRequestType, create_input_request
+from goa2.domain.models import RuneType, StepType, TargetType, Token, TokenType, Turret
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
@@ -963,3 +964,76 @@ class RemoveMarkerStep(GameStep):
             logger.debug(f"   [MARKER] {self.marker_type.value} not in play")
 
         return StepResult(is_finished=True)
+
+
+class PlaceRunesStep(GameStep):
+    """Snorri's Inscribe the Runes: place one rune below each of the 4 turn
+    slots via up to 3 sequential SELECT_OPTION prompts (the 4th and last
+    rune is auto-placed, since there is only one left to choose from).
+
+    Overwrites ``hero.rune_slots`` entirely once all 4 runes are placed
+    (interp 2: every play of Inscribe re-arranges all 4 runes freely) and
+    emits ``GameEvent(RUNES_PLACED)`` with the final arrangement.
+
+    Placement progress lives in ``placed`` (a step field), not local
+    variables, so this step survives a save/load round-trip while paused
+    mid-prompt.
+    """
+
+    type: StepType = StepType.PLACE_RUNES
+    hero_id: str
+    placed: dict[int, RuneType] = Field(default_factory=dict)
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            self.pending_input = None
+            try:
+                chosen = RuneType(str(selection))
+            except ValueError:
+                chosen = None
+            if chosen is not None and chosen not in self.placed.values():
+                self.placed[len(self.placed) + 1] = chosen
+
+        remaining = [rune for rune in RuneType if rune not in self.placed.values()]
+        if len(remaining) == 1:
+            self.placed[len(self.placed) + 1] = remaining[0]
+            remaining = []
+
+        if not remaining:
+            hero = state.get_hero(HeroID(self.hero_id))
+            if not hero:
+                return StepResult(is_finished=True)
+            hero.rune_slots = dict(self.placed)
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.RUNES_PLACED,
+                        actor_id=self.hero_id,
+                        metadata={
+                            "rune_slots": {
+                                str(slot): rune.value for slot, rune in hero.rune_slots.items()
+                            }
+                        },
+                    )
+                ],
+            )
+
+        from goa2.engine.steps.selection import normalize_prompt_player_id
+
+        slot = len(self.placed) + 1
+        player_id = normalize_prompt_player_id(state, HeroID(self.hero_id))
+        return StepResult(
+            is_finished=False,
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=player_id,
+                prompt=f"Place a rune below turn slot {slot}",
+                options=[InputOption(id=rune.value, text=rune.value.title()) for rune in remaining],
+            ),
+        )
