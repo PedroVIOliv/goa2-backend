@@ -977,6 +977,7 @@ class SwapCardStep(GameStep):
     type: StepType = StepType.SWAP_CARD
     target_card_id: str | None = None
     target_card_key: str | None = None  # Key in context to find ID
+    source_card_key: str | None = None  # Optional context key for the first card
     context_hero_id_key: str | None = None  # Key in context to find Hero ID
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -992,7 +993,7 @@ class SwapCardStep(GameStep):
             return StepResult(is_finished=True)
 
         hero = state.get_hero(hero_id)
-        if not hero or not hero.current_turn_card:
+        if not hero:
             return StepResult(is_finished=True)
 
         # Find target card ID
@@ -1004,38 +1005,31 @@ class SwapCardStep(GameStep):
             logger.debug("   [SWAP] No target card specified for swap.")
             return StepResult(is_finished=True)
 
-        # Find the card object
-        # We need to search Hand, Discard, Played
-        # Simplest is to check all or use a helper, but Hero methods work on objects.
-        target_card: Card | None = None
-        # Check Hand
-        for c in hero.hand:
-            if c.id == t_id:
-                target_card = c
-                break
-        if not target_card:
-            for c in hero.discard_pile:
-                if c.id == t_id:
-                    target_card = c
-                    break
-        if not target_card:
-            for played_card in hero.played_cards:
-                if played_card is not None and played_card.id == t_id:
-                    target_card = played_card
-                    break
+        def find_card(card_id: str) -> Card | None:
+            for collection in (hero.hand, hero.discard_pile, hero.played_cards):
+                card = next((c for c in collection if c is not None and c.id == card_id), None)
+                if card:
+                    return card
+            if hero.current_turn_card and hero.current_turn_card.id == card_id:
+                return hero.current_turn_card
+            return None
 
-        if not target_card:
+        source_card = hero.current_turn_card
+        if self.source_card_key:
+            source_id = context.get(self.source_card_key)
+            source_card = find_card(str(source_id)) if source_id else None
+        target_card = find_card(str(t_id))
+
+        if not source_card or not target_card or source_card.id == target_card.id:
             logger.debug(f"   [SWAP] Target card {t_id} not found in {hero_id}'s possession.")
             return StepResult(is_finished=True)
 
-        logger.debug(
-            f"   [SWAP] Swapping {hero.id}'s current card {hero.current_turn_card.name} with {target_card.name}"
-        )
+        logger.debug(f"   [SWAP] Swapping {hero.id}'s {source_card.name} with {target_card.name}")
         # Both cards change state in a swap, which cancels their active effects
         # (premature end, so finishing_steps do not run). Capture ids first.
-        swapped_out_id = hero.current_turn_card.id
+        swapped_out_id = source_card.id
         swapped_in_id = target_card.id
-        hero.swap_cards(hero.current_turn_card, target_card)
+        hero.swap_cards(source_card, target_card)
 
         from goa2.engine.effect_manager import EffectManager
 
@@ -1048,6 +1042,84 @@ class SwapCardStep(GameStep):
         # Ideally, we should update context if necessary, but "current_card_id" is usually set once at start of ResolveCardText.
 
         return StepResult(is_finished=True)
+
+
+class SwapItemCardStep(GameStep):
+    """Exchange a hero's equipped item card for an eligible card in place."""
+
+    type: StepType = StepType.SWAP_ITEM_CARD
+    hero_key: str
+    item_card_key: str
+    target_card_key: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        hero_id = context.get(self.hero_key)
+        item_id = context.get(self.item_card_key)
+        target_id = context.get(self.target_card_key)
+        if not hero_id or not item_id or not target_id or item_id == target_id:
+            return StepResult(is_finished=True)
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        item_card = next((card for card in hero.deck if card.id == str(item_id)), None)
+        target_card = next((card for card in hero.deck if card.id == str(target_id)), None)
+        if (
+            not item_card
+            or not target_card
+            or item_card.state != CardState.ITEM
+            or target_card.state == CardState.ITEM
+            or item_card.item is None
+            or target_card.item is None
+            or item_card.tier != target_card.tier
+            or item_card.color != target_card.color
+        ):
+            return StepResult(is_finished=True)
+
+        original_state = target_card.state
+        original_facedown = target_card.is_facedown
+        original_played_this_round = target_card.played_this_round
+        if target_card in hero.hand:
+            hero.hand[hero.hand.index(target_card)] = item_card
+        elif target_card in hero.discard_pile:
+            hero.discard_pile[hero.discard_pile.index(target_card)] = item_card
+        elif target_card == hero.current_turn_card:
+            hero.current_turn_card = item_card
+        else:
+            played_index = next(
+                (i for i, card in enumerate(hero.played_cards) if card == target_card), None
+            )
+            if played_index is not None:
+                hero.played_cards[played_index] = item_card
+            elif original_state != CardState.DECK:
+                return StepResult(is_finished=True)
+
+        item_card.state = original_state
+        item_card.is_facedown = original_facedown
+        item_card.played_this_round = original_played_this_round
+        target_card.state = CardState.ITEM
+        target_card.is_facedown = False
+        target_card.played_this_round = False
+        hero.items[item_card.item] = hero.items.get(item_card.item, 0) - 1
+        hero.items[target_card.item] = hero.items.get(target_card.item, 0) + 1
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.ITEM_GAINED,
+                    actor_id=str(hero.id),
+                    metadata={
+                        "stat_type": target_card.item.value,
+                        "amount": 1,
+                        "source_card_id": target_card.id,
+                    },
+                )
+            ],
+        )
 
 
 class SwapResolvedCardsStep(GameStep):
@@ -1138,15 +1210,12 @@ class RetrieveCardStep(GameStep):
     """
 
     type: StepType = StepType.RETRIEVE_CARD
-    card_key: str
+    card_key: str = ""
     hero_key: str | None = None
+    retrieve_all_discarded: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
-            return StepResult(is_finished=True)
-
-        card_id = context.get(self.card_key)
-        if not card_id:
             return StepResult(is_finished=True)
 
         # Determine which hero retrieves the card
@@ -1162,6 +1231,29 @@ class RetrieveCardStep(GameStep):
 
         hero = state.get_hero(HeroID(str(actor_id)))
         if not hero:
+            return StepResult(is_finished=True)
+
+        if self.retrieve_all_discarded:
+            cards = list(hero.discard_pile)
+            for card in cards:
+                hero.return_card_to_hand(card)
+                from goa2.engine.effect_manager import EffectManager
+
+                EffectManager.expire_by_card(state, card.id)
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.CARD_RETRIEVED,
+                        actor_id=str(actor_id),
+                        metadata={"card_id": card.id, "card_name": card.name},
+                    )
+                    for card in cards
+                ],
+            )
+
+        card_id = context.get(self.card_key)
+        if not card_id:
             return StepResult(is_finished=True)
 
         # Find card in played_cards or discard_pile

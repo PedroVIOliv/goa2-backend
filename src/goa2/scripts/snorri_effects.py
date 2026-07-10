@@ -15,6 +15,7 @@ from goa2.domain.models import (
     Card,
     CardColor,
     CardContainerType,
+    CardState,
     DurationType,
     EffectScope,
     EffectType,
@@ -42,6 +43,8 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
     SnapshotAdjacentHeroesStep,
+    SwapCardStep,
+    SwapItemCardStep,
 )
 
 if TYPE_CHECKING:
@@ -573,3 +576,122 @@ class HiddenPassageEffect(PassageEffect):
 @register_effect("deep_passage")
 class DeepPassageEffect(HiddenPassageEffect):
     has_horn_bonus: ClassVar[bool] = True
+
+
+class AncestralEffect(CardEffect):
+    """Shared friendly-hero rune benefits for Ancestral Boon and Grace."""
+
+    has_bird_swap: ClassVar[bool] = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        applicable = {RuneType.AXE, RuneType.ANVIL}
+        if self.has_bird_swap:
+            applicable.add(RuneType.BIRD)
+        if not active & applicable:
+            return []
+
+        steps: list[GameStep] = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Select a friendly hero in radius",
+                output_key="ab_hero",
+                is_mandatory=False,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="FRIENDLY"),
+                    RangeFilter(max_range=stats.radius or 0),
+                ],
+            )
+        ]
+        if RuneType.AXE in active:
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        prompt="Choose a resolved card to swap",
+                        output_key="ab_resolved_card",
+                        context_hero_id_key="ab_hero",
+                        override_player_id_key="ab_hero",
+                        card_container=CardContainerType.PLAYED,
+                        card_states=[CardState.RESOLVED],
+                        is_mandatory=False,
+                        active_if_key="ab_hero",
+                    ),
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        prompt="Choose a card from hand to swap",
+                        output_key="ab_hand_card",
+                        context_hero_id_key="ab_hero",
+                        override_player_id_key="ab_hero",
+                        card_container=CardContainerType.HAND,
+                        is_mandatory=False,
+                        active_if_key="ab_resolved_card",
+                    ),
+                    SwapCardStep(
+                        source_card_key="ab_resolved_card",
+                        target_card_key="ab_hand_card",
+                        context_hero_id_key="ab_hero",
+                        active_if_key="ab_hand_card",
+                    ),
+                ]
+            )
+        if RuneType.ANVIL in active:
+            steps.append(
+                RetrieveCardStep(
+                    hero_key="ab_hero",
+                    retrieve_all_discarded=True,
+                    active_if_key="ab_hero",
+                )
+            )
+        if self.has_bird_swap and RuneType.BIRD in active:
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        prompt="Choose an item card to replace",
+                        output_key="ab_item_card",
+                        context_hero_id_key="ab_hero",
+                        override_player_id_key="ab_hero",
+                        card_container=CardContainerType.DECK,
+                        card_states=[CardState.ITEM],
+                        selected_card_color_key="ab_item_color",
+                        selected_card_tier_key="ab_item_tier",
+                        is_mandatory=False,
+                        active_if_key="ab_hero",
+                    ),
+                    SelectStep(
+                        target_type=TargetType.CARD,
+                        prompt="Choose a same-tier, same-color card",
+                        output_key="ab_item_target",
+                        context_hero_id_key="ab_hero",
+                        override_player_id_key="ab_hero",
+                        card_container=CardContainerType.DECK,
+                        card_color_key="ab_item_color",
+                        card_tier_key="ab_item_tier",
+                        card_has_item=True,
+                        exclude_card_states=[CardState.ITEM],
+                        is_mandatory=False,
+                        active_if_key="ab_item_card",
+                    ),
+                    SwapItemCardStep(
+                        hero_key="ab_hero",
+                        item_card_key="ab_item_card",
+                        target_card_key="ab_item_target",
+                        active_if_key="ab_item_target",
+                    ),
+                ]
+            )
+        return steps
+
+
+@register_effect("ancestral_boon")
+class AncestralBoonEffect(AncestralEffect):
+    pass
+
+
+@register_effect("ancestral_grace")
+class AncestralGraceEffect(AncestralEffect):
+    has_bird_swap: ClassVar[bool] = True

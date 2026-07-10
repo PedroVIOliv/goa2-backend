@@ -1333,3 +1333,232 @@ def test_runic_battleaxe_u4_repeat_does_not_offer_another_repeat():
     run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion_1").finish()
 
     assert _combat_count(run) == 2
+
+
+# ---------------------------------------------------------------------------
+# sections 15-16: Ancestral Boon / Ancestral Grace
+# ---------------------------------------------------------------------------
+
+
+def _ancestral_state(card_id: str, *, runes: dict[int, RuneType]) -> GameState:
+    state = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card(card_id))
+        .red_hero("hero_ally", at=(1, 0, -1))
+        .blue_hero("hero_knight", at=(2, 0, -2))
+        .with_actor("hero_snorri")
+        .build()
+    )
+    state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_ancestral(state: GameState) -> EffectRun:
+    return (
+        run_card(state, "hero_snorri").expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    )
+
+
+def _ally_cards(state: GameState, *, item: str = "runic_hammer", target: str = "runecaster"):
+    ally = state.get_hero("hero_ally")
+    item_card = snorri_card(item)
+    target_card = snorri_card(target)
+    ally.deck = [item_card, target_card]
+    return ally, item_card, target_card
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_h1_axe_swaps_resolved_and_hand_cards_in_place():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.AXE})
+    ally, resolved, hand = _ally_cards(state)
+    resolved.state = CardState.RESOLVED
+    hand.state = CardState.HAND
+    ally.played_cards = [resolved]
+    ally.hand = [hand]
+
+    run = _start_ancestral(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(resolved.id)
+    run.expect_input(InputRequestType.SELECT_CARD).choose(hand.id).finish()
+
+    assert ally.played_cards == [hand]
+    assert ally.hand == [resolved]
+    assert hand.state == CardState.RESOLVED
+    assert resolved.state == CardState.HAND
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_h2_anvil_retrieves_every_discarded_card():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.ANVIL})
+    ally, first, second = _ally_cards(state)
+    first.state = second.state = CardState.DISCARD
+    ally.discard_pile = [first, second]
+
+    _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally").finish()
+
+    assert ally.discard_pile == []
+    assert ally.hand == [first, second]
+    assert {card.state for card in ally.hand} == {CardState.HAND}
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_h3_recipient_can_decline():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.AXE})
+    ally, resolved, hand = _ally_cards(state)
+    resolved.state = CardState.RESOLVED
+    hand.state = CardState.HAND
+    ally.played_cards = [resolved]
+    ally.hand = [hand]
+
+    _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT).skip().finish()
+
+    assert ally.played_cards == [resolved]
+    assert ally.hand == [hand]
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_u1_without_friendly_hero_fizzles():
+    state = snorri_state("ancestral_boon", runes={1: RuneType.AXE})
+
+    _start_ancestral(state).finish()
+
+
+@pytest.mark.effect_contract
+def test_ancestral_boon_u2_never_offers_snorri_as_recipient():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.AXE})
+
+    run = _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert "hero_snorri" not in {option.id for option in run.latest_request.options}
+
+
+@pytest.mark.effect_contract
+def test_ancestral_boon_u6_immune_friendly_hero_is_not_selectable():
+    from goa2.domain.models import AffectsFilter, DurationType, EffectScope, Hero, Shape, TeamColor
+
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.AXE})
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_ally",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(shape=Shape.POINT, origin_id="hero_ally", affects=AffectsFilter.SELF),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+        blocks_friendly_actors=True,
+    )
+    other = Hero(id="hero_other", name="hero_other", team=TeamColor.RED, deck=[])
+    state.teams[TeamColor.RED].heroes.append(other)
+    state.place_entity("hero_other", Hex(q=0, r=1, s=-1))
+
+    run = _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert "hero_ally" not in {option.id for option in run.latest_request.options}
+    assert "hero_other" in {option.id for option in run.latest_request.options}
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_u3_axe_skips_when_recipient_has_no_resolved_or_hand_card():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.AXE})
+
+    _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally").finish()
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_u4_anvil_empty_discard_does_nothing():
+    state = _ancestral_state("ancestral_boon", runes={1: RuneType.ANVIL})
+    ally = state.get_hero("hero_ally")
+
+    _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally").finish()
+
+    assert ally.hand == []
+
+
+@pytest.mark.effect_flow
+def test_ancestral_boon_u5_without_rune_fizzles():
+    state = _ancestral_state("ancestral_boon", runes={})
+
+    _start_ancestral(state).finish()
+
+
+@pytest.mark.effect_flow
+def test_ancestral_grace_h1_bird_swaps_item_with_same_tier_color_hand_card():
+    state = _ancestral_state("ancestral_grace", runes={1: RuneType.BIRD})
+    ally, item_card, target = _ally_cards(state)
+    item_card.state = CardState.ITEM
+    target.state = CardState.HAND
+    ally.items = {item_card.item: 1}
+    ally.hand = [target]
+
+    run = _start_ancestral(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(item_card.id)
+    run.expect_input(InputRequestType.SELECT_CARD).choose(target.id).finish()
+
+    assert target.state == CardState.ITEM
+    assert item_card.state == CardState.HAND
+    assert ally.hand == [item_card]
+    assert ally.items[item_card.item] == 0
+    assert ally.items[target.item] == 1
+
+
+@pytest.mark.effect_flow
+def test_ancestral_grace_h2_item_card_keeps_resolved_slot_location():
+    state = _ancestral_state("ancestral_grace", runes={1: RuneType.BIRD})
+    ally, item_card, target = _ally_cards(state)
+    item_card.state = CardState.ITEM
+    target.state = CardState.RESOLVED
+    ally.items = {item_card.item: 1}
+    ally.played_cards = [target]
+
+    run = _start_ancestral(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(item_card.id)
+    run.expect_input(InputRequestType.SELECT_CARD).choose(target.id).finish()
+
+    assert ally.played_cards == [item_card]
+    assert item_card.state == CardState.RESOLVED
+    assert target.state == CardState.ITEM
+
+
+@pytest.mark.effect_flow
+def test_ancestral_grace_h3_item_card_keeps_discard_location():
+    state = _ancestral_state("ancestral_grace", runes={1: RuneType.BIRD})
+    ally, item_card, target = _ally_cards(state)
+    item_card.state = CardState.ITEM
+    target.state = CardState.DISCARD
+    ally.items = {item_card.item: 1}
+    ally.discard_pile = [target]
+
+    run = _start_ancestral(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(item_card.id)
+    run.expect_input(InputRequestType.SELECT_CARD).choose(target.id).finish()
+
+    assert ally.discard_pile == [item_card]
+    assert item_card.state == CardState.DISCARD
+    assert target.state == CardState.ITEM
+
+
+@pytest.mark.effect_flow
+def test_ancestral_grace_u1_bird_has_no_effect_without_item_card():
+    state = _ancestral_state("ancestral_grace", runes={1: RuneType.BIRD})
+
+    _start_ancestral(state).expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally").finish()
+
+
+@pytest.mark.effect_flow
+def test_ancestral_grace_u2_bird_requires_a_same_tier_color_non_item_card():
+    state = _ancestral_state("ancestral_grace", runes={1: RuneType.BIRD})
+    ally, item_card, target = _ally_cards(state, target="runic_dagger")
+    item_card.state = CardState.ITEM
+    target.state = CardState.HAND
+    ally.items = {item_card.item: 1}
+    ally.hand = [target]
+
+    run = _start_ancestral(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_ally")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(item_card.id).finish()
+
+    assert item_card.state == CardState.ITEM
+    assert target.state == CardState.HAND

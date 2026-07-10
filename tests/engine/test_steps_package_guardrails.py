@@ -141,6 +141,7 @@ EXPECTED_STEP_CLASSES = {
     "SpawnHeroPieceStep",
     "StealCoinsStep",
     "SwapCardStep",
+    "SwapItemCardStep",
     "SwapResolvedCardsStep",
     "SwapUnitsStep",
     "TriggerGameOverStep",

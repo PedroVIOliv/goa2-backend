@@ -21,6 +21,7 @@ from goa2.domain.models import (
     CardColor,
     CardContainerType,
     CardState,
+    CardTier,
     RuneType,
     StepType,
     TargetType,
@@ -84,14 +85,35 @@ class SelectStep(GameStep):
     )
     card_colors: list[CardColor] | None = None  # Only include cards with these colors
     card_color_key: str | None = None  # Context key containing a CardColor/string to match
+    card_tier_key: str | None = None  # Context key containing a CardTier/string to match
     card_is_basic: bool | None = None  # Only include basic (True) or non-basic (False)
     card_is_active: bool | None = None  # Only include active (True) or inactive (False) cards
+    card_has_item: bool | None = None  # Only include cards with (or without) an item stat
     allowed_card_ids: list[str] | None = None  # Whitelist: only include cards with these IDs
     # Context keys holding card IDs to EXCLUDE (e.g. "pick two different
     # cards": the second select excludes the first pick's key).
     exclude_card_id_keys: list[str] | None = None
     # Only include cards whose state is in this list (e.g. RESOLVED only).
     card_states: list[CardState] | None = None
+    exclude_card_states: list[CardState] | None = None
+    selected_card_color_key: str | None = None
+    selected_card_tier_key: str | None = None
+
+    @staticmethod
+    def _store_selected_card_metadata(
+        card_id: str,
+        source_list: list[Any],
+        context: dict[str, Any],
+        color_key: str | None,
+        tier_key: str | None,
+    ) -> None:
+        card = next((candidate for candidate in source_list if candidate.id == card_id), None)
+        if card is None:
+            return
+        if color_key:
+            context[color_key] = card.color.value if card.color else None
+        if tier_key:
+            context[tier_key] = card.tier.value
 
     def _get_effective_filters(self) -> list[FilterCondition]:
         """
@@ -136,6 +158,7 @@ class SelectStep(GameStep):
                 prompt_player_id = normalize_prompt_player_id(state, found)
 
         candidates: list[Any] = []
+        card_candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
             # Filter entity_locations for things that are actually Units
             all_entities = list(state.entity_locations.keys())
@@ -199,10 +222,18 @@ class SelectStep(GameStep):
                         selected_colors.append(CardColor(str(color_val)))
                 if selected_colors:
                     source_list = [c for c in source_list if c.color in selected_colors]
+                if self.card_tier_key:
+                    tier_val = context.get(self.card_tier_key)
+                    if tier_val:
+                        source_list = [c for c in source_list if c.tier == CardTier(str(tier_val))]
                 if self.card_is_basic is not None:
                     source_list = [c for c in source_list if c.is_basic == self.card_is_basic]
                 if self.card_is_active is not None:
                     source_list = [c for c in source_list if c.is_active == self.card_is_active]
+                if self.card_has_item is not None:
+                    source_list = [
+                        c for c in source_list if (c.item is not None) == self.card_has_item
+                    ]
                 if self.allowed_card_ids is not None:
                     source_list = [c for c in source_list if c.id in self.allowed_card_ids]
                 if self.exclude_card_id_keys:
@@ -212,7 +243,12 @@ class SelectStep(GameStep):
                     source_list = [c for c in source_list if c.id not in excluded]
                 if self.card_states is not None:
                     source_list = [c for c in source_list if c.state in self.card_states]
+                if self.exclude_card_states is not None:
+                    source_list = [
+                        c for c in source_list if c.state not in self.exclude_card_states
+                    ]
 
+                card_candidates = source_list
                 candidates = [c.id for c in source_list]
 
         valid_candidates = []
@@ -254,6 +290,14 @@ class SelectStep(GameStep):
         if self.auto_select_if_one and len(valid_candidates) == 1 and self.is_mandatory:
             choice = valid_candidates[0]
             context[self.output_key] = choice
+            if self.target_type == TargetType.CARD:
+                self._store_selected_card_metadata(
+                    str(choice),
+                    card_candidates,
+                    context,
+                    self.selected_card_color_key,
+                    self.selected_card_tier_key,
+                )
             logger.debug(f"   [AUTO] Only one valid option: {choice}. Selected automatically.")
             return StepResult(is_finished=True)
 
@@ -274,6 +318,14 @@ class SelectStep(GameStep):
 
             if selection in valid_candidates:
                 context[self.output_key] = selection
+                if self.target_type == TargetType.CARD:
+                    self._store_selected_card_metadata(
+                        str(selection),
+                        card_candidates,
+                        context,
+                        self.selected_card_color_key,
+                        self.selected_card_tier_key,
+                    )
                 logger.debug(f"   [INPUT] Player {actor_id} selected {selection}")
                 return StepResult(is_finished=True)
             else:
