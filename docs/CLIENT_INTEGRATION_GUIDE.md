@@ -667,6 +667,7 @@ Each team contains:
   "level": 1,
   "gold": 0,
   "items": [],
+  "rune_slots": {},
   "hand": [ ... ],
   "deck": [ ... ],
   "played_cards": [ ... ],
@@ -677,6 +678,13 @@ Each team contains:
   "ultimate_card": null
 }
 ```
+
+**`rune_slots`** (object, `{slot_index: rune_type}` with string keys `"1"`-`"4"`) —
+Snorri's rune slots. Absent/empty slots are simply missing keys (default `{}`).
+Rune type is one of `"axe"`, `"bird"`, `"anvil"`, `"horn"`. Persistent
+(survives round-end card cleanup) and **public to all viewers**, including
+opponents and spectators — always populated the same way regardless of
+`for_hero_id`.
 
 **`can_commit_second_card`** (bool) — relevant only to a hero whose active
 ultimate lets them play two cards per turn (Emmitt's *Alternative Timelines*,
@@ -1191,6 +1199,7 @@ Events describe what happened during a game action. They are meant for animation
 | `LIFE_COUNTER_CHANGED` | A team's life counter changed | `metadata.team`, `metadata.amount` |
 | `TURN_ENDED` | A hero's turn ended | `actor_id` |
 | `TIE_BREAKER_FLIPPED` | The Tie Breaker coin flipped (after a cross-team tie winner's turn, or via Ignatia's ultimate) | `metadata.tie_breaker_team`, `metadata.coin_face` |
+| `RUNES_PLACED` | A hero's rune slots changed (Snorri) | `actor_id`, `metadata` |
 | `GAME_OVER` | The game ended | `metadata.winner` |
 
 ### Using events for animation

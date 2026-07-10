@@ -189,6 +189,8 @@ def _build_hero_view(
         "level": hero.level,
         "gold": hero.gold,
         "items": hero.items,
+        # Rune slots (Snorri): public to all viewers, including opponents/spectators
+        "rune_slots": {str(k): v.value for k, v in hero.rune_slots.items()},
         # Hand: Own hero sees all, others see empty array
         "hand": (
             [_build_card_view(card, is_own_hero=True) for card in hero.hand] if is_own_hero else []

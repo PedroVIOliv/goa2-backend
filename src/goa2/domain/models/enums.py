@@ -34,6 +34,13 @@ class TokenType(StrEnum):
     ILLUSION = "illusion"
 
 
+class RuneType(StrEnum):
+    AXE = "axe"
+    BIRD = "bird"
+    ANVIL = "anvil"
+    HORN = "horn"
+
+
 class CardTier(StrEnum):
     I = "I"  # noqa: E741
     II = "II"

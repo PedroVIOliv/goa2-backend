@@ -6,7 +6,7 @@ from pydantic import Field
 
 from .base import BoardEntity
 from .card import Card
-from .enums import CardState, CardTier, MinionType, StatType, TeamColor
+from .enums import CardState, CardTier, MinionType, RuneType, StatType, TeamColor
 from .marker import Marker
 
 if TYPE_CHECKING:
@@ -65,6 +65,10 @@ class Hero(Unit):
     level: int = 1
     gold: int = 0
     items: dict[StatType, int] = Field(default_factory=dict)  # Items (Passive Stat Bonuses)
+    rune_slots: dict[int, RuneType] = Field(
+        default_factory=dict,
+        description="Snorri's rune slots (keys 1-4). Persistent, public to all viewers.",
+    )
     ultimate_card: Card | None = Field(
         default=None,
         description="Ultimate (Purple/Tier IV) card. Active when level >= 8.",

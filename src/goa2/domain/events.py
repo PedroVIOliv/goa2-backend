@@ -56,6 +56,8 @@ class GameEventType(StrEnum):
     HERO_LAUGHED = "HERO_LAUGHED"
 
     TIE_BREAKER_FLIPPED = "TIE_BREAKER_FLIPPED"
+    # Snorri: runes placed into rune slots
+    RUNES_PLACED = "runes_placed"
 
 
 def _hex_dict(h: Hex | None) -> dict[str, int] | None:
