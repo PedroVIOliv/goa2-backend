@@ -23,7 +23,7 @@ from goa2.domain.models import (
 )
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
-from goa2.engine.filters_units import ContextIdsFilter, ImmunityFilter, TeamFilter, UnitTypeFilter
+from goa2.engine.filters_units import ContextIdsFilter, TeamFilter, UnitTypeFilter
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
@@ -389,7 +389,6 @@ class RunicRangedEffect(CardEffect):
                     None if self.bird_allows_full_range and RuneType.BIRD in active else range_value
                 ),
             ),
-            ImmunityFilter(),
         ]
         steps: list[GameStep] = [
             SelectStep(
@@ -401,7 +400,6 @@ class RunicRangedEffect(CardEffect):
                 ),
                 output_key="target_id",
                 filters=target_filters,
-                skip_immunity_filter=True,
             ),
             SnapshotAdjacentHeroesStep(output_key="rc_adjacent"),
             AttackSequenceStep(
