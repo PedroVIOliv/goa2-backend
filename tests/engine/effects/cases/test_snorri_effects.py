@@ -1562,3 +1562,189 @@ def test_ancestral_grace_u2_bird_requires_a_same_tier_color_non_item_card():
 
     assert item_card.state == CardState.ITEM
     assert target.state == CardState.HAND
+
+
+# ---------------------------------------------------------------------------
+# section 17: Rune Sigils
+# ---------------------------------------------------------------------------
+
+
+def _rune_sigils_state(
+    *,
+    runes: dict[int, RuneType] | None = None,
+    enemies: list[tuple[str, tuple[int, int, int]]] | None = None,
+    minions: list[tuple[str, tuple[int, int, int]]] | None = None,
+) -> GameState:
+    hexes = [
+        (0, 0, 0),
+        (1, 0, -1),
+        (2, 0, -2),
+        (3, 0, -3),
+        (0, 1, -1),
+        (1, 1, -2),
+        (2, 1, -3),
+    ]
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(hexes)
+        .red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card("rune_sigils"))
+        .with_actor("hero_snorri")
+    )
+    for hero_id, location in enemies or []:
+        builder.blue_hero(hero_id, at=location)
+    for minion_id, location in minions or []:
+        builder.blue_minion(minion_id, at=location)
+    state = builder.build()
+    state.turn = 1
+    if runes:
+        state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_rune_sigils(state: GameState) -> EffectRun:
+    return (
+        run_card(state, "hero_snorri").expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    )
+
+
+def _attack_values(run: EffectRun) -> list[int]:
+    return [
+        event.metadata["attack_value"]
+        for event in run.events
+        if event.event_type == GameEventType.COMBAT_RESOLVED
+    ]
+
+
+def _pass_sigils_defense(run: EffectRun) -> EffectRun:
+    return run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h1_adjacent_attack_is_ranged_without_an_active_rune():
+    state = _rune_sigils_state(enemies=[("hero_target", (1, 0, -1))])
+
+    run = _start_rune_sigils(state)
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_target")
+    ).finish()
+
+    assert _attack_values(run) == [2]
+    assert state.execution_context["attack_is_ranged"] is True
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h2_bird_can_target_enemy_minion_in_range():
+    state = _rune_sigils_state(runes={1: RuneType.BIRD}, minions=[("blue_minion", (2, 0, -2))])
+
+    run = _start_rune_sigils(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion").finish()
+
+    assert _attack_values(run) == [2]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h3_axe_adds_three_attack():
+    state = _rune_sigils_state(runes={1: RuneType.AXE}, enemies=[("hero_target", (1, 0, -1))])
+
+    run = _start_rune_sigils(state)
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_target")
+    ).finish()
+
+    assert _attack_values(run) == [5]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h4_anvil_gains_coins_only_for_hero_target():
+    state = _rune_sigils_state(runes={1: RuneType.ANVIL}, enemies=[("hero_target", (1, 0, -1))])
+
+    run = _start_rune_sigils(state)
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_target")
+    ).finish()
+
+    assert state.get_hero("hero_snorri").gold == 4  # 1 defeat coin + 3 Anvil coins
+    assert any(
+        event.event_type == GameEventType.GOLD_GAINED and event.metadata["amount"] == 3
+        for event in run.events
+    )
+
+    minion_state = _rune_sigils_state(
+        runes={1: RuneType.ANVIL}, minions=[("blue_minion", (1, 0, -1))]
+    )
+    _start_rune_sigils(minion_state).expect_input(InputRequestType.SELECT_UNIT).choose(
+        "blue_minion"
+    ).finish()
+
+    assert minion_state.get_hero("hero_snorri").gold == 2  # defeated-minion reward only
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h5_horn_repeats_on_different_enemy_hero():
+    state = _rune_sigils_state(
+        runes={1: RuneType.HORN},
+        enemies=[("hero_first", (1, 0, -1)), ("hero_second", (2, 0, -2))],
+    )
+
+    run = _start_rune_sigils(state)
+    _pass_sigils_defense(run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_first"))
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_second")
+    ).finish()
+
+    assert _attack_values(run) == [2, 2]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_h8_range_item_extends_bird_and_horn_reach():
+    bird_state = _rune_sigils_state(runes={1: RuneType.BIRD}, minions=[("blue_minion", (3, 0, -3))])
+    bird_state.get_hero("hero_snorri").items[StatType.RANGE] = 1
+    bird_run = _start_rune_sigils(bird_state)
+    assert {
+        option.id
+        for option in bird_run.expect_input(InputRequestType.SELECT_UNIT).latest_request.options
+    } == {"blue_minion"}
+
+    horn_state = _rune_sigils_state(
+        runes={1: RuneType.HORN},
+        enemies=[("hero_first", (1, 0, -1)), ("hero_second", (3, 0, -3))],
+    )
+    horn_state.get_hero("hero_snorri").items[StatType.RANGE] = 1
+    horn_run = _start_rune_sigils(horn_state)
+    _pass_sigils_defense(horn_run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_first"))
+    horn_run.expect_input(InputRequestType.SELECT_OPTION).choose("NO").finish()
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_u1_horn_does_not_offer_repeat_without_other_enemy_hero():
+    state = _rune_sigils_state(runes={1: RuneType.HORN}, enemies=[("hero_target", (1, 0, -1))])
+
+    run = _start_rune_sigils(state)
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_target")
+    ).finish()
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_u2_bird_can_decline_minion_targeting_and_attack_adjacent_unit():
+    state = _rune_sigils_state(
+        runes={1: RuneType.BIRD},
+        enemies=[("hero_target", (1, 0, -1))],
+        minions=[("blue_minion", (2, 0, -2))],
+    )
+
+    run = _start_rune_sigils(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).skip()
+    _pass_sigils_defense(
+        run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_target")
+    ).finish()
+
+    assert _attack_values(run) == [2]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_u3_without_bird_requires_an_adjacent_unit():
+    state = _rune_sigils_state(enemies=[("hero_target", (2, 0, -2))])
+
+    _start_rune_sigils(state).finish()

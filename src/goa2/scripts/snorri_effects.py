@@ -25,15 +25,22 @@ from goa2.domain.models import (
 )
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
-from goa2.engine.filters_units import ContextIdsFilter, TeamFilter, UnitTypeFilter
+from goa2.engine.filters_units import (
+    ContextIdsFilter,
+    ExcludeIdentityFilter,
+    TeamFilter,
+    UnitTypeFilter,
+)
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckUnitTypeStep,
     ChooseRuneStep,
     CountStep,
     CreateEffectStep,
     ForceDiscardByColorStep,
     ForceDiscardOrDefeatStep,
+    GainCoinsStep,
     GameStep,
     MayRepeatOnceStep,
     MoveSequenceStep,
@@ -695,3 +702,123 @@ class AncestralBoonEffect(AncestralEffect):
 @register_effect("ancestral_grace")
 class AncestralGraceEffect(AncestralEffect):
     has_bird_swap: ClassVar[bool] = True
+
+
+@register_effect("rune_sigils")
+class RuneSigilsEffect(CardEffect):
+    """Gold ranged attack with rune-gated targeting, damage, coins, and repeat."""
+
+    def _attack_steps(
+        self,
+        *,
+        target_key: str,
+        hero_type_key: str,
+        damage: int,
+        range_value: int,
+        actor_key: str,
+        anvil_active: bool,
+        target_filters: list[Any] | None = None,
+    ) -> list[GameStep]:
+        steps: list[GameStep] = [
+            AttackSequenceStep(
+                damage=damage,
+                range_val=range_value,
+                is_ranged=True,
+                target_id_key=target_key,
+                target_filters=target_filters or [],
+            ),
+            CheckUnitTypeStep(
+                unit_key=target_key,
+                expected_type="HERO",
+                output_key=hero_type_key,
+            ),
+        ]
+        if anvil_active:
+            steps.append(GainCoinsStep(hero_key=actor_key, amount=3, active_if_key=hero_type_key))
+        return steps
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        damage = (stats.primary_value or 0) + (3 if RuneType.AXE in active else 0)
+        range_value = stats.range or 0
+        anvil_active = RuneType.ANVIL in active
+        steps: list[GameStep] = [SetContextFlagStep(key="rs_actor", value=hero.id)]
+
+        if RuneType.BIRD in active:
+            steps.append(
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="You may target an enemy minion in range instead",
+                    output_key="rs_target",
+                    is_mandatory=False,
+                    filters=[
+                        UnitTypeFilter(unit_type="MINION"),
+                        TeamFilter(relation="ENEMY"),
+                        RangeFilter(max_range=range_value),
+                    ],
+                )
+            )
+
+        steps.extend(
+            self._attack_steps(
+                target_key="rs_target",
+                hero_type_key="rs_target_is_hero",
+                damage=damage,
+                range_value=range_value,
+                actor_key="rs_actor",
+                anvil_active=anvil_active,
+                target_filters=[RangeFilter(max_range=1)],
+            )
+        )
+        if RuneType.HORN in active:
+            steps.extend(
+                [
+                    CountStep(
+                        target_type=TargetType.UNIT,
+                        output_key="rs_repeat_targets",
+                        skip_immunity_filter=False,
+                        filters=[
+                            UnitTypeFilter(unit_type="HERO"),
+                            TeamFilter(relation="ENEMY"),
+                            RangeFilter(max_range=range_value),
+                            ExcludeIdentityFilter(exclude_self=False, exclude_keys=["rs_target"]),
+                        ],
+                    ),
+                    CheckContextConditionStep(
+                        input_key="rs_repeat_targets",
+                        operator=">=",
+                        threshold=1,
+                        output_key="rs_can_repeat",
+                    ),
+                    MayRepeatOnceStep(
+                        active_if_key="rs_can_repeat",
+                        prompt="Repeat the attack on a different enemy hero?",
+                        steps_template=[
+                            SelectStep(
+                                target_type=TargetType.UNIT,
+                                prompt="Select a different enemy hero in range",
+                                output_key="rs_repeat_target",
+                                filters=[
+                                    UnitTypeFilter(unit_type="HERO"),
+                                    TeamFilter(relation="ENEMY"),
+                                    RangeFilter(max_range=range_value),
+                                    ExcludeIdentityFilter(
+                                        exclude_self=False, exclude_keys=["rs_target"]
+                                    ),
+                                ],
+                            ),
+                            *self._attack_steps(
+                                target_key="rs_repeat_target",
+                                hero_type_key="rs_repeat_target_is_hero",
+                                damage=damage,
+                                range_value=range_value,
+                                actor_key="rs_actor",
+                                anvil_active=anvil_active,
+                            ),
+                        ],
+                    ),
+                ]
+            )
+        return steps
