@@ -517,6 +517,7 @@ def _runic_melee_state(
             (0, 0, 0),
             (1, 0, -1),
             (2, 0, -2),
+            (3, 0, -3),
             (0, 1, -1),
             (1, 1, -2),
         ]
@@ -706,6 +707,7 @@ def _battleaxe_state_with_minions(*, minion_count: int) -> GameState:
         hexes=[
             (0, 0, 0),
             (1, 0, -1),
+            (2, 0, -2),
             (0, 1, -1),
             (1, 1, -2),
             (-1, 1, 0),
@@ -744,6 +746,43 @@ def test_runic_battleaxe_h4_can_decline_repeat():
     run = _start_melee_attack(state)
     _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("NO").finish()
 
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_h5_horn_repeat_can_move_to_a_minion_two_spaces_away():
+    """Horn's second pre-move is part of Battleaxe's full repeated sequence.
+
+    The minion is not adjacent after the first attack, but it is two spaces
+    away: Snorri can accept the repeat, move one space, then attack it.
+    """
+    state = _battleaxe_state_with_minions(minion_count=1)
+    state.execution_context["snorri_ult_rune_action"] = RuneType.HORN.value
+    state.remove_entity("blue_minion_1")
+    state.place_entity("blue_minion_1", Hex(q=2, r=0, s=-2))
+
+    run = _start_melee_attack(state)
+    run.expect_input(InputRequestType.SELECT_HEX).skip()
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 1, "r": 0, "s": -1})
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion_1").finish()
+
+    assert _combat_count(run) == 2
+
+
+@pytest.mark.effect_flow
+def test_runic_battleaxe_horn_repeat_move_resolves_before_impossible_attack_aborts():
+    state = _battleaxe_state_with_minions(minion_count=1)
+    state.execution_context["snorri_ult_rune_action"] = RuneType.HORN.value
+    state.remove_entity("blue_minion_1")
+    state.place_entity("blue_minion_1", Hex(q=3, r=0, s=-3))
+
+    run = _start_melee_attack(state)
+    run.expect_input(InputRequestType.SELECT_HEX).skip()
+    _pass_hero_defense(run).expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 0, "r": 1, "s": -1}).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=0, r=1, s=-1)
     assert _combat_count(run) == 1
 
 

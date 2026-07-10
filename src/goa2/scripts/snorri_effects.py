@@ -299,16 +299,22 @@ class RunicMeleeEffect(CardEffect):
         steps = self._sequence(hero, stats, active, repeat_leg=False)
 
         if self.has_repeat and RuneType.AXE in active:
+            repeat_target_filters = [
+                UnitTypeFilter(unit_type="MINION"),
+                TeamFilter(relation="ENEMY"),
+            ]
+            # With Horn, the repeat is a full sequence beginning with an
+            # optional move. That move still resolves if the later mandatory
+            # attack cannot be completed, so any enemy minion makes the repeat
+            # available. Without Horn, a minion must already be adjacent.
+            if RuneType.HORN not in active:
+                repeat_target_filters.append(RangeFilter(max_range=1))
             steps.extend(
                 [
                     CountStep(
                         target_type=TargetType.UNIT,
                         output_key="runic_battleaxe_repeat_targets",
-                        filters=[
-                            UnitTypeFilter(unit_type="MINION"),
-                            TeamFilter(relation="ENEMY"),
-                            RangeFilter(max_range=1),
-                        ],
+                        filters=repeat_target_filters,
                     ),
                     CheckContextConditionStep(
                         input_key="runic_battleaxe_repeat_targets",
