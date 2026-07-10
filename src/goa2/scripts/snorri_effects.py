@@ -35,6 +35,7 @@ from goa2.engine.steps import (
     ForceDiscardOrDefeatStep,
     GameStep,
     MayRepeatOnceStep,
+    MoveSequenceStep,
     MoveUnitStep,
     PlaceRunesStep,
     RetrieveCardStep,
@@ -523,3 +524,52 @@ class RunebombEffect(RuneDiscardEffect):
         RuneType.BIRD: CardColor.GOLD,
     }
     choose_one: ClassVar[bool] = True
+
+
+class PassageEffect(CardEffect):
+    """Shared movement and rune riders for Snorri's Passage cards."""
+
+    has_anvil_immunity: ClassVar[bool] = False
+    has_horn_bonus: ClassVar[bool] = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        movement = (stats.primary_value or 0) + (
+            2 if self.has_horn_bonus and RuneType.HORN in active else 0
+        )
+        steps: list[GameStep] = [
+            MoveSequenceStep(
+                range_val=movement,
+                pass_through_obstacles=RuneType.BIRD in active,
+            )
+        ]
+        if self.has_anvil_immunity and RuneType.ANVIL in active:
+            steps.append(
+                CreateEffectStep(
+                    effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+                    scope=EffectScope(
+                        shape=Shape.POINT, origin_id=hero.id, affects=AffectsFilter.SELF
+                    ),
+                    duration=DurationType.THIS_TURN,
+                    is_active=True,
+                    use_context_card=False,
+                )
+            )
+        return steps
+
+
+@register_effect("safe_passage")
+class SafePassageEffect(PassageEffect):
+    pass
+
+
+@register_effect("hidden_passage")
+class HiddenPassageEffect(PassageEffect):
+    has_anvil_immunity: ClassVar[bool] = True
+
+
+@register_effect("deep_passage")
+class DeepPassageEffect(HiddenPassageEffect):
+    has_horn_bonus: ClassVar[bool] = True

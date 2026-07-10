@@ -1173,6 +1173,147 @@ def test_runebomb_u1_without_rune_fizzles():
     assert len(state.get_hero("hero_victim").hand) == 1
 
 
+# ---------------------------------------------------------------------------
+# sections 12-14: Passage family
+# ---------------------------------------------------------------------------
+
+
+def _passage_state(
+    card_id: str,
+    *,
+    runes: dict[int, RuneType] | None = None,
+    length: int = 6,
+) -> GameState:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, 0, -q) for q in range(length)])
+        .red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card(card_id))
+        .with_actor("hero_snorri")
+        .build()
+    )
+    state.turn = 1
+    if runes:
+        state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_passage(state: GameState) -> EffectRun:
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    return run
+
+
+def _has_passage_immunity(state: GameState) -> bool:
+    return any(
+        effect.effect_type == EffectType.IMMUNITY_ENEMY_ACTIONS
+        and effect.source_id == "hero_snorri"
+        and effect.is_active
+        for effect in state.active_effects
+    )
+
+
+@pytest.mark.effect_flow
+def test_safe_passage_h1_bird_moves_through_obstacle():
+    state = _passage_state("safe_passage", runes={1: RuneType.BIRD}, length=4)
+    state.board.tiles[Hex(q=1, r=0, s=-1)].is_terrain = True
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 3, "r": 0, "s": -3}
+    ).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=3, r=0, s=-3)
+
+
+@pytest.mark.effect_flow
+def test_safe_passage_h2_bird_still_allows_normal_pathing():
+    state = _passage_state("safe_passage", runes={1: RuneType.BIRD}, length=3)
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 2, "r": 0, "s": -2}
+    ).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_safe_passage_u1_without_bird_cannot_path_through_obstacle():
+    state = _passage_state("safe_passage", length=4)
+    state.board.tiles[Hex(q=1, r=0, s=-1)].is_terrain = True
+
+    run = _start_passage(state).expect_input(InputRequestType.SELECT_HEX)
+
+    assert '{"q":3,"r":0,"s":-3}' not in {str(option.id) for option in run.latest_request.options}
+
+
+@pytest.mark.effect_flow
+def test_hidden_passage_h1_anvil_grants_immunity_after_move():
+    state = _passage_state("hidden_passage", runes={1: RuneType.ANVIL})
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 1, "r": 0, "s": -1}
+    ).finish()
+
+    assert _has_passage_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_hidden_passage_h2_bird_ignores_obstacles():
+    state = _passage_state("hidden_passage", runes={1: RuneType.BIRD}, length=4)
+    state.board.tiles[Hex(q=1, r=0, s=-1)].is_terrain = True
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 3, "r": 0, "s": -3}
+    ).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=3, r=0, s=-3)
+
+
+@pytest.mark.effect_flow
+def test_hidden_passage_u1_immunity_expires_at_turn_end():
+    state = _passage_state("hidden_passage", runes={1: RuneType.ANVIL})
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 1, "r": 0, "s": -1}
+    ).finish()
+
+    EffectManager.expire_active_turn_effects(state)
+
+    assert not _has_passage_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_hidden_passage_u2_without_rune_is_plain_movement():
+    state = _passage_state("hidden_passage")
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 3, "r": 0, "s": -3}
+    ).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=3, r=0, s=-3)
+    assert not _has_passage_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_deep_passage_h1_horn_moves_up_to_five():
+    state = _passage_state("deep_passage", runes={1: RuneType.HORN}, length=6)
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 5, "r": 0, "s": -5}
+    ).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=5, r=0, s=-5)
+
+
+@pytest.mark.effect_flow
+def test_deep_passage_u1_without_rune_is_plain_movement_three():
+    state = _passage_state("deep_passage", length=6)
+
+    run = _start_passage(state).expect_input(InputRequestType.SELECT_HEX)
+    options = {option.metadata["raw"] for option in run.latest_request.options}
+    assert Hex(q=3, r=0, s=-3) in options
+    assert Hex(q=4, r=0, s=-4) not in options
+    assert Hex(q=5, r=0, s=-5) not in options
+
+
 @pytest.mark.effect_flow
 def test_runic_battleaxe_u3_without_adjacent_enemy_minion_does_not_offer_repeat():
     state = _battleaxe_state_with_minions(minion_count=0)
