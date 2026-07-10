@@ -46,12 +46,12 @@ rune is active; the ultimate adds a second active rune per action.
    itself (max one repeat).
 7. **Rune Sigils anvil**: 3 coins per attack **instance** that targeted a
    hero (base + horn repeat on a second hero = 6 coins).
-8. **Oath immunity is unconditional on defend**: whenever an Oath is used
-   as a defense reaction — block matched or not, rune active or not —
-   Snorri gains "immune to enemy actions" for the REST of the turn,
-   **starting after the current attack fully resolves**. If the attack
-   defeats him, no immunity. The immunity never cancels the attack being
-   defended.
+8. **Oath immunity requires a successful block** (updated in review,
+   2026-07-10): the immunity only activates if the Oath actually blocked
+   the attack. It lasts for the REST of the turn, **starting after the
+   blocked attack fully resolves** (it never cancels riders of the attack
+   being defended). No block — rune mismatch, no rune active — means no
+   immunity.
 9. **Self-exclusion (general GoA2 rule)**: "a hero" / "a unit" /
    "a friendly hero" in card text EXCLUDES the acting hero unless
    explicitly included. Ancestral Boon/Grace therefore target another
@@ -101,22 +101,24 @@ rune is active; the ultimate adds a second active rune per action.
   fizzles silently; Snorri picks the victim; immune enemy heroes are
   excluded from selection.
 - **S8**: Oath immunity implementation: `IMMUNITY_ENEMY_ACTIONS`
-  `ActiveEffect`, `THIS_TURN` duration, created by a step scheduled to
-  run after the defended attack's combat resolution (fires only if
-  Snorri is alive).
+  `ActiveEffect`, `THIS_TURN` duration, created via the on-block path
+  (`build_on_block_steps`), scheduled to take effect after the blocked
+  attack's resolution completes.
 - **S9**: Rune Sigils horn repeat: the repeat re-runs the attack sequence
-  against a **different enemy hero** within range 2 (≠ original target);
+  against a **different enemy hero** within `stats.range` (effective
+  range incl. items; ≠ original target);
   axe +3 and anvil coins apply per instance; the bird retarget option
   does not apply to the repeat (its target is constrained to a hero);
   max one repeat.
 - **S10**: Ancestral Boon/Grace flow: Snorri picks the target hero
-  (friendly, in radius 4, ≠ self, immunity does not apply — it's a
-  friendly effect and allies can decline); then the affected player
-  resolves each active bullet in printed order, each independently
-  optional (the "may" scopes every bullet).
+  (friendly, in radius 4, ≠ self; `ImmunityFilter` applies normally —
+  an immune ally is NOT selectable); then the affected player resolves
+  each active bullet in printed order, each independently optional (the
+  "may" scopes every bullet).
 - **S11**: Grace bird bullet is only offered if the hero has ≥1
   ITEM-state card with ≥1 non-item card sharing its tier+color.
-- **S12**: Rune Sigils bird = **enemy minion** within range 2 (topology).
+- **S12**: Rune Sigils bird = **enemy minion** within `stats.range`
+  (effective range incl. items, topology) — not a literal 2.
 - **S13**: Runeblaster bird = normal ranged targeting,
   `RangeFilter(max_range=effective range)`.
 - **S14**: On "choose one active rune" cards with the ultimate: the
@@ -131,7 +133,7 @@ rune is active; the ultimate adds a second active rune per action.
 | # | Primitive | Where |
 |---|-----------|-------|
 | P1 | `RuneType` enum (AXE, BIRD, ANVIL, HORN); `Hero.rune_slots: dict[int, RuneType]` (default `{}`); public exposure in `build_view()`; placement `GameEvent` | `domain/models/enums.py`, `domain/models/unit.py`, `domain/views.py`, `domain/events.py` |
-| P2 | `active_runes(state, hero, context)` helper: `rune_slots[state.turn]` + ultimate context rune | `scripts/snorri_effects.py` |
+| P2 | `active_runes(state, context)` helper: reads the rune OWNER's `rune_slots[state.turn]` (the card's owner, not the current actor — a Mind-Gripped copy still sees the runes, §19) + ultimate context rune (only ever set for Snorri himself) | `scripts/snorri_effects.py` |
 | P3 | Ultimate hooks: own-action prompt at action start + defense-reaction prompt, per-scope context key & clearing | `engine/steps/cards.py` (ResolveCardStep), `engine/steps/reactions.py` |
 | P4 | `attack_is_basic` context flag from acting card color | `engine/steps/combat.py` |
 | P5 | Targeting-time adjacency snapshot (enemy hero ids adjacent to the target, recorded when the target is selected) | effect-side step or `engine/steps/combat.py` |
@@ -274,13 +276,12 @@ Inherits Runecaster paths, plus:
 Defense reaction only (DEFENSE primary is never offered as a turn action —
 engine default, contract-checked).
 
-- **H1** Horn active + incoming basic attack (attacker's card is GOLD/SILVER, P4) → `auto_block` → no damage → immunity for the rest of the turn.
-- **H2** Axe active + non-ranged attack → block.
-- **H3** Rune/attack mismatch (e.g. horn active, colored-card melee attack) → no block, `defense_invalid` (card has no defense value) → damage resolves → Snorri survives → immune to enemy actions for the rest of the turn (interp 8): a second enemy attack this turn cannot target him.
-- **H4** No rune active → no block; immunity still granted after the attack (interp 8).
-- **U1** Snorri defeated by the unblocked attack → no immunity.
-- **U2** Immunity does NOT cancel the attack being defended (starts after resolution).
-- **U3** Immunity expires at end of turn — next turn he is targetable.
+- **H1** Horn active + incoming basic attack (attacker's card is GOLD/SILVER, P4) → `auto_block` → no damage → immunity for the rest of the turn (interp 8): a second enemy attack this turn cannot target him.
+- **H2** Axe active + non-ranged attack → block + immunity.
+- **U1** Rune/attack mismatch (e.g. horn active, colored-card melee attack) → no block, `defense_invalid` (card has no defense value) → damage resolves → NO immunity (interp 8).
+- **U2** No rune active → no block, no immunity.
+- **U3** Immunity does NOT cancel riders of the blocked attack (starts after the attack fully resolves).
+- **U4** Immunity expires at end of turn — next turn he is targetable.
 
 ## 10. Oath of Fortitude (II)
 
@@ -298,7 +299,7 @@ Endurance + "• bird: Block a ranged attack."
 - **H1** Single active rune → auto-chosen → block per its type.
 - **H2** Anvil + non-basic attack (colored card) → block.
 - **H3** (ult on defend, interp 3) Ultimate prompt fires on the defense → Snorri picks an inactive rune → chooses between the two active runes' block types → blocks an attack the turn rune alone couldn't.
-- **U1** Chosen rune's type mismatch → no block; immunity after (as Endurance H3).
+- **U1** Chosen rune's type mismatch → no block, no immunity (as Endurance U1).
 
 ## 12. Safe Passage (I, MOVEMENT 3)
 
@@ -337,6 +338,7 @@ Hidden Passage + "• horn: Gain +2 Movement."
 - **H3** Affected player declines ("may") → nothing (interp 12).
 - **U1** No friendly hero (other than Snorri) in radius → fizzle.
 - **U2** Snorri himself is never selectable.
+- **U6** An immune friendly hero in radius is NOT selectable (S10).
 - **U3** Axe: hero has no resolved cards or no hand cards → bullet unavailable.
 - **U4** Anvil: empty discard → nothing.
 - **U5** No rune active → fizzle.
@@ -363,10 +365,11 @@ Inherits Boon paths, plus:
 > range."
 
 - **H1** No rune → attack 2 on an adjacent unit; the attack counts as RANGED even at adjacency (repo rule; contract vs block-ranged defenses).
-- **H2** Bird active → may instead target an enemy minion within range 2 (S12); adjacent targeting still offered.
+- **H2** Bird active → may instead target an enemy minion within `stats.range` (S12); adjacent targeting still offered.
 - **H3** Axe active → attack resolves at 5.
 - **H4** Anvil active → target is a hero → +3 coins; target is a minion → no coins.
-- **H5** Horn active → may repeat once on a DIFFERENT enemy hero within range 2 (S9).
+- **H5** Horn active → may repeat once on a DIFFERENT enemy hero within `stats.range` (S9).
+- **H8** Range items extend the bird/horn reach (`stats.range`, not literal 2).
 - **H6** (ult) Axe+horn → both attack instances at 5.
 - **H7** (ult) Anvil+horn, both instances target heroes → 6 coins (interp 7).
 - **U1** Horn: no other enemy hero in range → repeat not offered.
@@ -385,6 +388,15 @@ Inherits Boon paths, plus:
 - **H5** Two defenses in one turn → two independent prompts (per-defense clearing, S4).
 - **U1** Runes never placed → no prompt, ultimate inert (interp 3).
 - **U2** Level < 8 → inert.
+
+## 19. Cross-hero: NebKher Mind Grip copying Snorri cards
+
+Requested in review: rune clauses are a property of the board state (the
+markers under Snorri's slots), not of the actor — so a copied Snorri card
+"effectively uses runes"; the ultimate is Snorri-only.
+
+- **H1** NebKher Mind Grips Snorri's previous-slot card (e.g. Runic Dagger) with the anvil rune active for the current turn → the rune clause fires for NebKher: he gets the retrieve prompt ("you" = the performer, so he retrieves from HIS OWN discard).
+- **U1** Same copy while Snorri's ultimate is online → NO inactive-rune prompt for NebKher; only the turn rune counts. Rune Mastery never applies to a non-Snorri performer.
 
 ---
 
