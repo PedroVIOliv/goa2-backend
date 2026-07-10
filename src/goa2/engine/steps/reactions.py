@@ -25,6 +25,7 @@ _PER_DEFENSE_KEYS = (
     "defense_invalid",
     "defense_bonus",
     "ignore_minion_defense",
+    "snorri_ult_rune_defense",
 )
 
 
@@ -188,11 +189,19 @@ class ReactionWindowStep(GameStep):
                 # the AFTER_CARD_DISCARD trigger, consistent with every other discard.
                 # The card may live in hand or the played area (shield); DiscardCardStep
                 # auto-detects the container.
+                from goa2.domain.models.enums import PassiveTrigger
                 from goa2.engine.steps.cards import DiscardCardStep
+                from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
 
                 return StepResult(
                     is_finished=True,
-                    new_steps=[DiscardCardStep(card_id=card_id, hero_id=owner_id)],
+                    new_steps=[
+                        DiscardCardStep(card_id=card_id, hero_id=owner_id),
+                        CheckPassiveAbilitiesStep(
+                            trigger=PassiveTrigger.BEFORE_DEFENSE.value,
+                            hero_id=owner_id,
+                        ),
+                    ],
                 )
 
         # Compute combat info for the input request

@@ -318,6 +318,7 @@ class CardContainerType(StrEnum):
 class PassiveTrigger(StrEnum):
     """When passive abilities activate."""
 
+    BEFORE_DEFENSE = "before_defense"
     BEFORE_ATTACK = "before_attack"
     BEFORE_MOVEMENT = "before_movement"
     BEFORE_SKILL = "before_skill"

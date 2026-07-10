@@ -514,31 +514,32 @@ class CheckPassiveAbilitiesStep(GameStep):
             if not effect:
                 return
 
-            config = effect.get_passive_config()
-            if not config or config.trigger != trigger_enum:
-                return
+            for config in effect.get_passive_configs():
+                if config.trigger != trigger_enum:
+                    continue
 
-            # Check usage limit
-            if config.uses_per_turn > 0 and card.passive_uses_this_turn >= config.uses_per_turn:
-                logger.debug(
-                    f"   [PASSIVE] {card.name} already used {card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
+                # Check usage limit
+                if config.uses_per_turn > 0 and card.passive_uses_this_turn >= config.uses_per_turn:
+                    logger.debug(
+                        f"   [PASSIVE] {card.name} already used "
+                        f"{card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
+                    )
+                    continue
+
+                # Runtime predicate (e.g. Battle Fury filters on discard_source)
+                if not effect.should_offer_passive(state, hero, card, trigger_enum, context):
+                    continue
+
+                # Spawn offer step for this passive
+                offer_steps.append(
+                    OfferPassiveStep(
+                        card_id=card.id,
+                        trigger=self.trigger,
+                        is_optional=config.is_optional,
+                        prompt=config.prompt or f"Use {card.name} passive ability?",
+                        hero_id=str(hero.id) if self.hero_id else None,
+                    )
                 )
-                return
-
-            # Runtime predicate (e.g. Battle Fury filters on discard_source)
-            if not effect.should_offer_passive(state, hero, card, trigger_enum, context):
-                return
-
-            # Spawn offer step for this passive
-            offer_steps.append(
-                OfferPassiveStep(
-                    card_id=card.id,
-                    trigger=self.trigger,
-                    is_optional=config.is_optional,
-                    prompt=config.prompt or f"Use {card.name} passive ability?",
-                    hero_id=str(hero.id) if self.hero_id else None,
-                )
-            )
 
         # 1. Check regular cards: must be RESOLVED and face-up
         for card in hero.played_cards:

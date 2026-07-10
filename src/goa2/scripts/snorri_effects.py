@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from goa2.domain.models import (
+    ActionType,
     AffectsFilter,
     Card,
     CardColor,
@@ -23,7 +24,8 @@ from goa2.domain.models import (
     Shape,
     TargetType,
 )
-from goa2.engine.effects import CardEffect, register_effect
+from goa2.domain.models.enums import PassiveTrigger
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import (
     ContextIdsFilter,
@@ -345,6 +347,66 @@ class RunicMeleeEffect(CardEffect):
                 ]
             )
         return steps
+
+
+@register_effect("rune_mastery")
+class RuneMasteryEffect(CardEffect):
+    """Adds one inactive placed rune to each Snorri action or defense."""
+
+    def get_passive_configs(self) -> list[PassiveConfig]:
+        return [
+            PassiveConfig(
+                trigger=PassiveTrigger.BEFORE_ACTION, uses_per_turn=-1, is_optional=False
+            ),
+            PassiveConfig(
+                trigger=PassiveTrigger.BEFORE_DEFENSE, uses_per_turn=-1, is_optional=False
+            ),
+        ]
+
+    def should_offer_passive(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> bool:
+        # Primary-defense cards also pass through the generic BEFORE_ACTION
+        # hook. Defense reactions have their own BEFORE_DEFENSE hook so Rune
+        # Mastery must not prompt twice for the same defense.
+        return bool(hero.rune_slots) and not (
+            trigger == PassiveTrigger.BEFORE_ACTION
+            and context.get("current_action_type") == ActionType.DEFENSE
+        )
+
+    def get_passive_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
+        active_turn_rune = hero.rune_slots.get(state.turn)
+        options = [
+            rune
+            for rune in RuneType
+            if rune in hero.rune_slots.values() and rune != active_turn_rune
+        ]
+        if not options:
+            return []
+        output_key = (
+            "snorri_ult_rune_defense"
+            if trigger == PassiveTrigger.BEFORE_DEFENSE
+            else "snorri_ult_rune_action"
+        )
+        return [
+            ChooseRuneStep(
+                output_key=output_key,
+                options=options,
+                prompt="Rune Mastery: choose a second active rune",
+            )
+        ]
 
 
 @register_effect("runic_dagger")

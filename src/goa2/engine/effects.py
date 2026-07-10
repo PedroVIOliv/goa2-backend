@@ -264,6 +264,16 @@ class CardEffect:
         """
         return None
 
+    def get_passive_configs(self) -> list[PassiveConfig]:
+        """Passive trigger configurations for this card.
+
+        Most cards have one passive and continue to implement
+        :meth:`get_passive_config`. Cards that need distinct trigger hooks can
+        override this method without changing the single-config API.
+        """
+        config = self.get_passive_config()
+        return [config] if config is not None else []
+
     def should_offer_passive(
         self,
         state: GameState,

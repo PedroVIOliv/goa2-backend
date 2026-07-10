@@ -1748,3 +1748,72 @@ def test_rune_sigils_u3_without_bird_requires_an_adjacent_unit():
     state = _rune_sigils_state(enemies=[("hero_target", (2, 0, -2))])
 
     _start_rune_sigils(state).finish()
+
+
+# ---------------------------------------------------------------------------
+# sections 18-19: Rune Mastery ultimate
+# ---------------------------------------------------------------------------
+
+
+def _enable_rune_mastery(state: GameState) -> None:
+    snorri = state.get_hero("hero_snorri")
+    mastery = snorri_card("rune_mastery")
+    mastery.state = CardState.PASSIVE
+    snorri.ultimate_card = mastery
+    snorri.level = 8
+
+
+@pytest.mark.effect_flow
+def test_rune_mastery_h1_adds_second_rune_for_the_action_only():
+    state = _passage_state(
+        "deep_passage",
+        runes={1: RuneType.BIRD, 2: RuneType.AXE, 3: RuneType.ANVIL, 4: RuneType.HORN},
+        length=6,
+    )
+    _enable_rune_mastery(state)
+
+    run = _start_passage(state)
+    run.expect_input(InputRequestType.SELECT_OPTION).choose(RuneType.HORN.value)
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 5, "r": 0, "s": -5}).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=5, r=0, s=-5)
+
+
+@pytest.mark.effect_flow
+def test_rune_mastery_h2_applies_to_defense_reactions():
+    state = _oath_state(
+        "oath_of_perseverance",
+        runes={1: RuneType.HORN, 2: RuneType.BIRD, 3: RuneType.AXE, 4: RuneType.ANVIL},
+        attack_color=CardColor.RED,
+        is_ranged=True,
+    )
+    _enable_rune_mastery(state)
+
+    run = _run_oath_attack(state)
+    run.expect_input(InputRequestType.SELECT_OPTION).choose(RuneType.BIRD.value)
+    run.expect_input(InputRequestType.SELECT_OPTION).choose(RuneType.BIRD.value).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+
+
+@pytest.mark.effect_flow
+def test_rune_mastery_u1_without_placed_runes_does_not_prompt():
+    state = _passage_state("deep_passage", length=4)
+    _enable_rune_mastery(state)
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 3, "r": 0, "s": -3}
+    ).finish()
+
+
+@pytest.mark.effect_flow
+def test_rune_mastery_u2_is_inert_below_level_eight():
+    state = _passage_state("deep_passage", runes={1: RuneType.HORN}, length=4)
+    snorri = state.get_hero("hero_snorri")
+    mastery = snorri_card("rune_mastery")
+    mastery.state = CardState.PASSIVE
+    snorri.ultimate_card = mastery
+
+    _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
+        {"q": 3, "r": 0, "s": -3}
+    ).finish()
