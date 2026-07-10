@@ -25,6 +25,7 @@ from goa2.domain.models import (
     Minion,
     MinionType,
     RuneType,
+    StatType,
 )
 from goa2.domain.state import GameState
 from goa2.domain.views import build_view
@@ -784,6 +785,222 @@ def test_runic_battleaxe_horn_repeat_move_resolves_before_impossible_attack_abor
 
     assert state.get_position("hero_snorri") == Hex(q=0, r=1, s=-1)
     assert _combat_count(run) == 1
+
+
+# ---------------------------------------------------------------------------
+# sections 5-6: Runecaster / Runeblaster
+# ---------------------------------------------------------------------------
+
+
+def _runic_ranged_state(
+    card_id: str,
+    *,
+    runes: dict[int, RuneType] | None = None,
+    target_at: tuple[int, int, int] = (3, 0, -3),
+    bystanders: list[tuple[str, tuple[int, int, int]]] | None = None,
+    near_target_at: tuple[int, int, int] | None = None,
+) -> GameState:
+    hexes = [
+        (0, 0, 0),
+        (1, 0, -1),
+        (2, 0, -2),
+        (3, 0, -3),
+        (4, 0, -4),
+        (0, 1, -1),
+        (1, 1, -2),
+        (2, 1, -3),
+        (3, 1, -4),
+    ]
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(hexes)
+        .red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card(card_id))
+        .blue_minion("blue_target", at=target_at)
+        .with_actor("hero_snorri")
+    )
+    if near_target_at is not None:
+        builder.blue_minion("blue_near", at=near_target_at)
+    for hero_id, location in bystanders or []:
+        builder.blue_hero(hero_id, at=location)
+
+    state = builder.build()
+    state.turn = 1
+    if runes:
+        state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_ranged_attack(state: GameState) -> EffectRun:
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    return run
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h1_only_targets_at_effective_maximum_range():
+    state = _runic_ranged_state("runecaster", target_at=(4, 0, -4), near_target_at=(3, 0, -3))
+    state.get_hero("hero_snorri").items[StatType.RANGE] = 1
+
+    run = _start_ranged_attack(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert {option.id for option in run.latest_request.options} == {"blue_target"}
+    run.choose("blue_target").finish()
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h2_horn_moves_up_to_two_after_attack():
+    state = _runic_ranged_state("runecaster", runes={1: RuneType.HORN})
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 2, "r": 0, "s": -2}).finish()
+
+    assert state.get_position("hero_snorri") == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h3_axe_makes_snapshot_hero_discard():
+    state = _runic_ranged_state(
+        "runecaster",
+        runes={1: RuneType.AXE},
+        bystanders=[("hero_bystander", (3, 1, -4))],
+    )
+    discard = snorri_card("rune_sigils")
+    state.get_hero("hero_bystander").hand = [discard]
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_bystander")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(discard.id).finish()
+
+    assert state.get_hero("hero_bystander").hand == []
+    assert state.get_hero("hero_bystander").discard_pile == [discard]
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h4_axe_defeats_snapshot_hero_without_cards():
+    state = _runic_ranged_state(
+        "runecaster",
+        runes={1: RuneType.AXE},
+        bystanders=[("hero_bystander", (3, 1, -4))],
+    )
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_bystander").finish()
+
+    assert state.get_position("hero_bystander") is None
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h5_axe_chooses_between_multiple_snapshot_heroes():
+    state = _runic_ranged_state(
+        "runecaster",
+        runes={1: RuneType.AXE},
+        bystanders=[("hero_a", (3, 1, -4)), ("hero_b", (2, 1, -3))],
+    )
+    card_a = snorri_card("rune_sigils")
+    card_b = snorri_card("safe_passage")
+    state.get_hero("hero_a").hand = [card_a]
+    state.get_hero("hero_b").hand = [card_b]
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    assert {option.id for option in run.latest_request.options} == {"hero_a", "hero_b"}
+    run.choose("hero_b").expect_input(InputRequestType.SELECT_CARD).choose(card_b.id).finish()
+
+    assert state.get_hero("hero_a").hand == [card_a]
+    assert state.get_hero("hero_b").hand == []
+
+
+@pytest.mark.effect_flow
+def test_runecaster_h6_axe_uses_targeting_time_adjacency_after_target_defeat():
+    state = _runic_ranged_state(
+        "runecaster",
+        runes={1: RuneType.AXE},
+        bystanders=[("hero_bystander", (3, 1, -4))],
+    )
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    assert state.get_position("blue_target") is None
+    assert {option.id for option in run.latest_request.options} == {"hero_bystander"}
+
+
+@pytest.mark.effect_flow
+def test_runecaster_u1_without_maximum_range_target_aborts():
+    state = _runic_ranged_state("runecaster", target_at=(2, 0, -2))
+
+    _start_ranged_attack(state).finish()
+
+    assert state.get_position("blue_target") == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_runecaster_u2_axe_without_snapshot_hero_has_no_rider_prompt():
+    state = _runic_ranged_state("runecaster", runes={1: RuneType.AXE})
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target").finish()
+
+    assert _combat_count(run) == 1
+
+
+@pytest.mark.effect_flow
+def test_runecaster_u3_exact_range_uses_topology_not_obstacle_pathing():
+    state = _runic_ranged_state("runecaster")
+    state.board.tiles[Hex(q=1, r=0, s=-1)].is_terrain = True
+
+    run = _start_ranged_attack(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert {option.id for option in run.latest_request.options} == {"blue_target"}
+
+
+@pytest.mark.effect_flow
+def test_runecaster_u4_axe_excludes_immune_snapshot_hero():
+    state = _runic_ranged_state(
+        "runecaster",
+        runes={1: RuneType.AXE},
+        bystanders=[("hero_immune", (3, 1, -4))],
+    )
+    from goa2.domain.models import AffectsFilter, DurationType, EffectScope, EffectType, Shape
+    from goa2.engine.effect_manager import EffectManager
+
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_immune",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(shape=Shape.POINT, origin_id="hero_immune", affects=AffectsFilter.SELF),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+
+    run = _start_ranged_attack(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target").finish()
+
+    assert state.execution_context["rc_adjacent"] == []
+
+
+@pytest.mark.effect_flow
+def test_runeblaster_h1_bird_targets_any_unit_in_range():
+    state = _runic_ranged_state("runeblaster", runes={1: RuneType.BIRD}, near_target_at=(1, 0, -1))
+
+    run = _start_ranged_attack(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert {option.id for option in run.latest_request.options} == {"blue_target", "blue_near"}
+    run.choose("blue_near").finish()
+
+
+@pytest.mark.effect_flow
+def test_runeblaster_u1_without_bird_requires_maximum_range():
+    state = _runic_ranged_state("runeblaster", near_target_at=(1, 0, -1))
+
+    run = _start_ranged_attack(state).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert {option.id for option in run.latest_request.options} == {"blue_target"}
 
 
 @pytest.mark.effect_flow

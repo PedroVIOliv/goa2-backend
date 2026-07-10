@@ -20,6 +20,7 @@ from goa2.domain.models import (
     TargetType,
     TeamColor,
     Token,
+    is_hero_unit,
 )
 from goa2.domain.models.effect import EffectType
 from goa2.domain.models.marker import MarkerType
@@ -31,6 +32,56 @@ from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+
+class SnapshotAdjacentHeroesStep(GameStep):
+    """Capture eligible adjacent heroes when an action selects its target.
+
+    The stored IDs remain valid even if the attack subsequently defeats or
+    displaces that target, allowing later riders to use targeting-time
+    adjacency rather than recalculating a changed board state.
+    """
+
+    type: StepType = StepType.SNAPSHOT_ADJACENT_HEROES
+    target_key: str = "target_id"
+    output_key: str
+    relation: str = "ENEMY"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        target_id = context.get(self.target_key)
+        target_hex = state.get_position(str(target_id)) if target_id else None
+        actor = (
+            state.get_entity(BoardEntityID(str(state.current_actor_id)))
+            if state.current_actor_id
+            else None
+        )
+        actor_team = getattr(actor, "team", None)
+        if target_hex is None or actor_team is None:
+            context[self.output_key] = []
+            return StepResult(is_finished=True)
+
+        from goa2.engine.filters_units import ImmunityFilter
+        from goa2.engine.topology import get_topology_service
+
+        topology = get_topology_service()
+        hero_ids: list[str] = []
+        for candidate_id, candidate_hex in state.entity_locations.items():
+            candidate = state.get_entity(candidate_id)
+            candidate_team = getattr(candidate, "team", None)
+            if not candidate or not is_hero_unit(candidate) or candidate_team is None:
+                continue
+            if self.relation == "ENEMY" and candidate_team == actor_team:
+                continue
+            if self.relation == "FRIENDLY" and candidate_team != actor_team:
+                continue
+            if not topology.are_adjacent(target_hex, candidate_hex, state):
+                continue
+            if not ImmunityFilter().apply(str(candidate_id), state, context):
+                continue
+            hero_ids.append(str(candidate_id))
+
+        context[self.output_key] = hero_ids
+        return StepResult(is_finished=True)
 
 
 class AttackSequenceStep(GameStep):

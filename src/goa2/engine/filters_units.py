@@ -101,6 +101,17 @@ class UnitTypeFilter(FilterCondition):
         return False
 
 
+class ContextIdsFilter(FilterCondition):
+    """Restrict a unit selection to IDs captured earlier in the action."""
+
+    type: FilterType = FilterType.CONTEXT_IDS
+    ids_key: str
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        ids = context.get(self.ids_key, [])
+        return isinstance(ids, list) and str(candidate) in {str(item) for item in ids}
+
+
 class HeroPieceFilter(FilterCondition):
     """Candidate is a HeroPiece owned by the current actor."""
 

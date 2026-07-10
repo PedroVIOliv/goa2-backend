@@ -240,6 +240,7 @@ class StepType(StrEnum):
     PLACE_TOKEN_TRAIL = "place_token_trail"
     PLACE_RUNES = "place_runes"
     CHOOSE_RUNE = "choose_rune"
+    SNAPSHOT_ADJACENT_HEROES = "snapshot_adjacent_heroes"
 
 
 class FilterType(StrEnum):
@@ -294,6 +295,7 @@ class FilterType(StrEnum):
     REMAINED_IN_PLACE = "remained_in_place_filter"
     HAS_TURN_START_POSITION = "has_turn_start_position_filter"
     HAS_STRAIGHT_LINE_DESTINATION = "has_straight_line_destination_filter"
+    CONTEXT_IDS = "context_ids_filter"
 
 
 class TargetType(StrEnum):

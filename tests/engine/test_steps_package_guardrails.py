@@ -137,6 +137,7 @@ EXPECTED_STEP_CLASSES = {
     "SetCardInitiativeStep",
     "SetContextFlagStep",
     "SpendAdditionalLifeCounterStep",
+    "SnapshotAdjacentHeroesStep",
     "SpawnHeroPieceStep",
     "StealCoinsStep",
     "SwapCardStep",

@@ -23,13 +23,14 @@ from goa2.domain.models import (
 )
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
-from goa2.engine.filters_units import TeamFilter, UnitTypeFilter
+from goa2.engine.filters_units import ContextIdsFilter, ImmunityFilter, TeamFilter, UnitTypeFilter
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     ChooseRuneStep,
     CountStep,
     CreateEffectStep,
+    ForceDiscardOrDefeatStep,
     GameStep,
     MayRepeatOnceStep,
     MoveUnitStep,
@@ -37,6 +38,7 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
+    SnapshotAdjacentHeroesStep,
 )
 
 if TYPE_CHECKING:
@@ -345,3 +347,98 @@ class RunicHammerEffect(RunicMeleeEffect):
 @register_effect("runic_battleaxe")
 class RunicBattleaxeEffect(RunicHammerEffect):
     has_repeat: ClassVar[bool] = True
+
+
+def _optional_move(hero_id: str, *, distance: int, output_key: str) -> list[GameStep]:
+    return [
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt=f"You may move up to {distance} spaces",
+            output_key=output_key,
+            is_mandatory=False,
+            filters=[
+                RangeFilter(max_range=distance),
+                MovementPathFilter(range_val=distance, unit_id=hero_id),
+                ObstacleFilter(is_obstacle=False),
+            ],
+        ),
+        MoveUnitStep(
+            unit_id=hero_id,
+            destination_key=output_key,
+            range_val=distance,
+            active_if_key=output_key,
+        ),
+    ]
+
+
+class RunicRangedEffect(CardEffect):
+    """Shared implementation for Runecaster and Runeblaster."""
+
+    bird_allows_full_range: ClassVar[bool] = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        range_value = stats.range or 0
+        target_filters = [
+            TeamFilter(relation="ENEMY"),
+            RangeFilter(
+                max_range=range_value,
+                min_range=(
+                    None if self.bird_allows_full_range and RuneType.BIRD in active else range_value
+                ),
+            ),
+            ImmunityFilter(),
+        ]
+        steps: list[GameStep] = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=(
+                    "Select target at maximum range"
+                    if not (self.bird_allows_full_range and RuneType.BIRD in active)
+                    else "Select target in range"
+                ),
+                output_key="target_id",
+                filters=target_filters,
+                skip_immunity_filter=True,
+            ),
+            SnapshotAdjacentHeroesStep(output_key="rc_adjacent"),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=range_value,
+                is_ranged=True,
+                target_id_key="target_id",
+            ),
+        ]
+
+        if RuneType.HORN in active:
+            steps.extend(_optional_move(hero.id, distance=2, output_key="runic_ranged_move_hex"))
+
+        if RuneType.AXE in active:
+            steps.extend(
+                [
+                    SelectStep(
+                        target_type=TargetType.UNIT,
+                        prompt="Select an enemy hero adjacent to the target",
+                        output_key="rc_discard_victim",
+                        is_mandatory=False,
+                        filters=[ContextIdsFilter(ids_key="rc_adjacent")],
+                    ),
+                    ForceDiscardOrDefeatStep(
+                        victim_key="rc_discard_victim",
+                        active_if_key="rc_discard_victim",
+                    ),
+                ]
+            )
+        return steps
+
+
+@register_effect("runecaster")
+class RunecasterEffect(RunicRangedEffect):
+    pass
+
+
+@register_effect("runeblaster")
+class RuneblasterEffect(RunicRangedEffect):
+    bird_allows_full_range: ClassVar[bool] = True
