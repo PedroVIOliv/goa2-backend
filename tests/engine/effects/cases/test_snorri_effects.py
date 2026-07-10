@@ -1003,6 +1003,176 @@ def test_runeblaster_u1_without_bird_requires_maximum_range():
     assert {option.id for option in run.latest_request.options} == {"blue_target"}
 
 
+# ---------------------------------------------------------------------------
+# sections 7-8: Runetrap / Runebomb
+# ---------------------------------------------------------------------------
+
+
+def _rune_discard_state(
+    card_id: str,
+    *,
+    runes: dict[int, RuneType] | None = None,
+    include_victim: bool = True,
+) -> GameState:
+    builder = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero("hero_snorri", at=(0, 0, 0), current_card=snorri_card(card_id))
+        .with_actor("hero_snorri")
+    )
+    if include_victim:
+        builder.blue_hero("hero_victim", at=(1, 0, -1))
+    state = builder.build()
+    state.turn = 1
+    if runes:
+        state.get_hero("hero_snorri").rune_slots = dict(runes)
+    return state
+
+
+def _start_rune_discard(state: GameState) -> EffectRun:
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    return run
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    ("rune", "color"),
+    [
+        (RuneType.HORN, CardColor.GREEN),
+        (RuneType.AXE, CardColor.SILVER),
+        (RuneType.ANVIL, CardColor.BLUE),
+    ],
+)
+def test_runetrap_h1_h2_h3_discards_the_rune_color(rune: RuneType, color: CardColor):
+    state = _rune_discard_state("runetrap", runes={1: rune})
+    matching = _attack_card(f"matching_{color.value}", color)
+    other = _attack_card("other_red", CardColor.RED)
+    state.get_hero("hero_victim").hand = [matching, other]
+
+    run = _start_rune_discard(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_victim")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(matching.id).finish()
+
+    victim = state.get_hero("hero_victim")
+    assert victim.hand == [other]
+    assert victim.discard_pile == [matching]
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u1_bird_has_no_bullet():
+    state = _rune_discard_state("runetrap", runes={1: RuneType.BIRD})
+    state.get_hero("hero_victim").hand = [_attack_card("green", CardColor.GREEN)]
+
+    _start_rune_discard(state).finish()
+
+    assert len(state.get_hero("hero_victim").hand) == 1
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u2_no_matching_color_fizzles():
+    state = _rune_discard_state("runetrap", runes={1: RuneType.HORN})
+    state.get_hero("hero_victim").hand = [_attack_card("red", CardColor.RED)]
+
+    run = _start_rune_discard(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_victim").finish()
+
+    assert [card.id for card in state.get_hero("hero_victim").hand] == ["red"]
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u3_without_enemy_hero_fizzles():
+    state = _rune_discard_state("runetrap", runes={1: RuneType.HORN}, include_victim=False)
+
+    _start_rune_discard(state).finish()
+
+    assert state.execution_context.get("rt_victim") is None
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u4_without_rune_fizzles():
+    state = _rune_discard_state("runetrap")
+    state.get_hero("hero_victim").hand = [_attack_card("green", CardColor.GREEN)]
+
+    _start_rune_discard(state).finish()
+
+    assert [card.id for card in state.get_hero("hero_victim").hand] == ["green"]
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u5_excludes_immune_enemy_hero():
+    state = _rune_discard_state("runetrap", runes={1: RuneType.HORN})
+    from goa2.domain.models import AffectsFilter, DurationType, EffectScope, EffectType, Shape
+    from goa2.engine.effect_manager import EffectManager
+
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_victim",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(shape=Shape.POINT, origin_id="hero_victim", affects=AffectsFilter.SELF),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+
+    _start_rune_discard(state).finish()
+
+    assert state.execution_context.get("rt_victim") is None
+
+
+@pytest.mark.effect_flow
+def test_runetrap_u6_only_discards_from_hand():
+    state = _rune_discard_state("runetrap", runes={1: RuneType.HORN})
+    committed = _attack_card("committed_green", CardColor.GREEN)
+    committed.state = CardState.UNRESOLVED
+    resolved = _attack_card("resolved_green", CardColor.GREEN)
+    resolved.state = CardState.RESOLVED
+    victim = state.get_hero("hero_victim")
+    victim.current_turn_card = committed
+    victim.played_cards = [resolved]
+
+    run = _start_rune_discard(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_victim").finish()
+
+    assert victim.current_turn_card is committed
+    assert victim.played_cards == [resolved]
+
+
+@pytest.mark.effect_flow
+def test_runebomb_h1_single_rune_is_auto_chosen():
+    state = _rune_discard_state("runebomb", runes={1: RuneType.HORN})
+    green = _attack_card("green", CardColor.GREEN)
+    state.get_hero("hero_victim").hand = [green]
+
+    run = _start_rune_discard(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_victim")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(green.id).finish()
+
+    assert state.get_hero("hero_victim").discard_pile == [green]
+
+
+@pytest.mark.effect_flow
+def test_runebomb_h2_bird_discards_gold():
+    state = _rune_discard_state("runebomb", runes={1: RuneType.BIRD})
+    gold = _attack_card("gold", CardColor.GOLD)
+    state.get_hero("hero_victim").hand = [gold]
+
+    run = _start_rune_discard(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_victim")
+    run.expect_input(InputRequestType.SELECT_CARD).choose(gold.id).finish()
+
+    assert state.get_hero("hero_victim").discard_pile == [gold]
+
+
+@pytest.mark.effect_flow
+def test_runebomb_u1_without_rune_fizzles():
+    state = _rune_discard_state("runebomb")
+    state.get_hero("hero_victim").hand = [_attack_card("gold", CardColor.GOLD)]
+
+    _start_rune_discard(state).finish()
+
+    assert len(state.get_hero("hero_victim").hand) == 1
+
+
 @pytest.mark.effect_flow
 def test_runic_battleaxe_u3_without_adjacent_enemy_minion_does_not_offer_repeat():
     state = _battleaxe_state_with_minions(minion_count=0)

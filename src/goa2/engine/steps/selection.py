@@ -857,6 +857,8 @@ class ChooseRuneStep(GameStep):
     prompt: str
     matching_options: list[RuneType] = Field(default_factory=list)
     matches_output_key: str | None = None
+    value_map: dict[str, str] = Field(default_factory=dict)
+    value_output_key: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -873,6 +875,8 @@ class ChooseRuneStep(GameStep):
                     context[self.matches_output_key] = (
                         True if selection in matching_values else None
                     )
+                if self.value_output_key and selection in self.value_map:
+                    context[self.value_output_key] = self.value_map[selection]
                 return StepResult(is_finished=True)
 
         if len(self.options) == 1:
@@ -882,6 +886,8 @@ class ChooseRuneStep(GameStep):
                 context[self.matches_output_key] = (
                     True if selected in self.matching_options else None
                 )
+            if self.value_output_key and selected.value in self.value_map:
+                context[self.value_output_key] = self.value_map[selected.value]
             return StepResult(is_finished=True)
 
         player_id = (

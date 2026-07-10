@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from goa2.domain.models import (
     AffectsFilter,
     Card,
+    CardColor,
     CardContainerType,
     DurationType,
     EffectScope,
@@ -30,6 +31,7 @@ from goa2.engine.steps import (
     ChooseRuneStep,
     CountStep,
     CreateEffectStep,
+    ForceDiscardByColorStep,
     ForceDiscardOrDefeatStep,
     GameStep,
     MayRepeatOnceStep,
@@ -440,3 +442,84 @@ class RunecasterEffect(RunicRangedEffect):
 @register_effect("runeblaster")
 class RuneblasterEffect(RunicRangedEffect):
     bird_allows_full_range: ClassVar[bool] = True
+
+
+class RuneDiscardEffect(CardEffect):
+    """Shared rune-to-colour discard logic for Runetrap and Runebomb."""
+
+    rune_colors: ClassVar[dict[RuneType, CardColor]] = {}
+    choose_one: ClassVar[bool] = False
+    _rune_order: ClassVar[tuple[RuneType, ...]] = (
+        RuneType.HORN,
+        RuneType.AXE,
+        RuneType.ANVIL,
+        RuneType.BIRD,
+    )
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        active = active_runes(state, card, state.execution_context)
+        eligible = [
+            rune for rune in self._rune_order if rune in active and rune in self.rune_colors
+        ]
+        if not eligible:
+            return []
+
+        target_step = SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select an enemy hero in radius",
+            output_key="rt_victim",
+            is_mandatory=False,
+            filters=[
+                UnitTypeFilter(unit_type="HERO"),
+                TeamFilter(relation="ENEMY"),
+                RangeFilter(max_range=stats.radius or 0),
+            ],
+        )
+
+        if self.choose_one:
+            color_key = "rb_discard_color"
+            return [
+                ChooseRuneStep(
+                    output_key="rb_rune",
+                    options=eligible,
+                    prompt="Choose one active rune",
+                    value_map={rune.value: self.rune_colors[rune].value for rune in eligible},
+                    value_output_key=color_key,
+                ),
+                target_step,
+                ForceDiscardByColorStep(
+                    victim_key="rt_victim",
+                    color_key=color_key,
+                    active_if_key="rt_victim",
+                ),
+            ]
+
+        return [
+            target_step,
+            *[
+                ForceDiscardByColorStep(
+                    victim_key="rt_victim", color=self.rune_colors[rune], active_if_key="rt_victim"
+                )
+                for rune in eligible
+            ],
+        ]
+
+
+@register_effect("runetrap")
+class RunetrapEffect(RuneDiscardEffect):
+    rune_colors: ClassVar[dict[RuneType, CardColor]] = {
+        RuneType.HORN: CardColor.GREEN,
+        RuneType.AXE: CardColor.SILVER,
+        RuneType.ANVIL: CardColor.BLUE,
+    }
+
+
+@register_effect("runebomb")
+class RunebombEffect(RuneDiscardEffect):
+    rune_colors: ClassVar[dict[RuneType, CardColor]] = {
+        **RunetrapEffect.rune_colors,
+        RuneType.BIRD: CardColor.GOLD,
+    }
+    choose_one: ClassVar[bool] = True
