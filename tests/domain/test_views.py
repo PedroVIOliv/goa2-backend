@@ -653,6 +653,37 @@ class TestViewStructure:
         effects = view["effects"]
         assert isinstance(effects, list)
 
+    def test_effects_expose_topology_split_line(self, sample_state):
+        """Topology effects carry split_axis/split_value so clients can draw the line."""
+        from goa2.domain.models.effect import (
+            ActiveEffect,
+            DurationType,
+            EffectScope,
+            EffectType,
+            Shape,
+        )
+
+        sample_state.active_effects.append(
+            ActiveEffect(
+                id="fx_split",
+                source_id="hero_a",
+                effect_type=EffectType.TOPOLOGY_SPLIT,
+                scope=EffectScope(shape=Shape.GLOBAL, origin_id="hero_a"),
+                duration=DurationType.THIS_TURN,
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+                split_axis="r",
+                split_value=-2,
+            )
+        )
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+
+        (fx,) = [e for e in view["effects"] if e["id"] == "fx_split"]
+        assert fx["split_axis"] == "r"
+        assert fx["split_value"] == -2
+
     def test_markers_structure(self, sample_state):
         """Markers view has correct structure."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))

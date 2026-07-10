@@ -850,7 +850,9 @@ Active area effects on the board:
     "affects": "ALLIES"
   },
   "stat_type": "ATTACK",
-  "stat_value": 1
+  "stat_value": 1,
+  "split_axis": null,
+  "split_value": 0
 }
 ```
 
@@ -868,6 +870,8 @@ Active area effects on the board:
 | `scope.affects` | string | Who is affected (e.g. `"all_units"`, `"enemy_heroes"`) |
 | `stat_type` | string/null | For stat modifier effects |
 | `stat_value` | int | Modifier amount |
+| `split_axis` | string/null | For `topology_split` / `topology_isolation` (NebKher's reality splits): `"q"`, `"r"`, or `"s"` — the cube coordinate defining the split line. `null` for all other effects |
+| `split_value` | int | The value of that coordinate: the line is every hex where `hex[split_axis] === split_value`, fixed at cast time. Draw the lasting split visual there |
 
 **Token-bound effects:** When `source_card_id` is `null` and `scope.origin_id` points to a token, the effect's lifecycle is tied to the token — it persists as long as the token is on the board and is automatically removed when the token is removed.
 

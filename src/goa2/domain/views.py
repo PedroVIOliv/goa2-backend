@@ -390,6 +390,10 @@ def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
             },
             "stat_type": effect.stat_type.value if effect.stat_type else None,
             "stat_value": effect.stat_value,
+            # NebKher reality splits: the line of hexes where this cube
+            # coordinate equals split_value, fixed at cast time.
+            "split_axis": effect.split_axis,
+            "split_value": effect.split_value,
         }
         effects_view.append(effect_view)
 
