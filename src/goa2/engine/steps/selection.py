@@ -21,6 +21,7 @@ from goa2.domain.models import (
     CardColor,
     CardContainerType,
     CardState,
+    RuneType,
     StepType,
     TargetType,
     TeamColor,
@@ -838,6 +839,66 @@ class ChooseCardColorStep(GameStep):
                 player_id=player_id,
                 prompt=self.prompt,
                 options=[InputOption(id=color, text=color) for color in self.VALID_COLORS],
+            ),
+        )
+
+
+class ChooseRuneStep(GameStep):
+    """Prompt the current actor to choose one rune from a supplied set.
+
+    ``matching_options`` is optional metadata for effects such as Snorri's
+    Oath of Perseverance: it records whether the selected rune satisfies the
+    action-specific condition without coupling this general selector to combat.
+    """
+
+    type: StepType = StepType.CHOOSE_RUNE
+    output_key: str
+    options: list[RuneType]
+    prompt: str
+    matching_options: list[RuneType] = Field(default_factory=list)
+    matches_output_key: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        option_values = {rune.value for rune in self.options}
+        if self.pending_input:
+            selection = str(self.pending_input.get("selection"))
+            self.pending_input = None
+            if selection in option_values:
+                context[self.output_key] = selection
+                if self.matches_output_key:
+                    matching_values = {rune.value for rune in self.matching_options}
+                    context[self.matches_output_key] = (
+                        True if selection in matching_values else None
+                    )
+                return StepResult(is_finished=True)
+
+        if len(self.options) == 1:
+            selected = self.options[0]
+            context[self.output_key] = selected.value
+            if self.matches_output_key:
+                context[self.matches_output_key] = (
+                    True if selected in self.matching_options else None
+                )
+            return StepResult(is_finished=True)
+
+        player_id = (
+            normalize_prompt_player_id(state, state.current_actor_id)
+            if state.current_actor_id
+            else ""
+        )
+        return StepResult(
+            is_finished=False,
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_OPTION,
+                player_id=player_id,
+                prompt=self.prompt,
+                options=[
+                    InputOption(id=rune.value, text=rune.value.title()) for rune in self.options
+                ],
             ),
         )
 

@@ -42,6 +42,7 @@ EXPECTED_STEP_CLASSES = {
     "ChooseActingPieceStep",
     "ChooseCardColorStep",
     "ChooseMinionRemovalStep",
+    "ChooseRuneStep",
     "CoDirectionalDragStep",
     "CombineBooleanContextStep",
     "ComputeDistanceStep",

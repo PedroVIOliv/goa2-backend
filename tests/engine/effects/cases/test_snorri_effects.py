@@ -12,16 +12,27 @@ import pytest
 
 import goa2.scripts.snorri_effects  # noqa: F401 — registers @register_effect classes
 from goa2.data.heroes.registry import HeroRegistry
+from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import Card, CardState, RuneType
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    EffectType,
+    RuneType,
+)
 from goa2.domain.state import GameState
 from goa2.domain.views import build_view
-from goa2.engine.handler import process_stack, submit_input
+from goa2.engine.effect_manager import EffectManager
+from goa2.engine.handler import process_stack, push_steps, submit_input
+from goa2.engine.steps import AttackSequenceStep, SetContextFlagStep
 from goa2.scripts.snorri_effects import active_runes
 
 from ..builders import EffectScenarioBuilder
-from ..runner import run_card
+from ..runner import EffectRun, run_card
 
 
 def snorri_card(card_id: str) -> Card:
@@ -253,3 +264,234 @@ def test_active_runes_unions_ultimate_context_keys():
     state.turn = 1
     context = {"snorri_ult_rune_action": RuneType.HORN.value}
     assert active_runes(state, card, context) == {RuneType.AXE, RuneType.HORN}
+
+
+# ---------------------------------------------------------------------------
+# sections 9-11: Oath defense family
+# ---------------------------------------------------------------------------
+
+
+def _attack_card(card_id: str, color: CardColor, *, is_ranged: bool = False) -> Card:
+    return Card(
+        id=card_id,
+        name=card_id.replace("_", " ").title(),
+        tier=CardTier.UNTIERED if color in (CardColor.GOLD, CardColor.SILVER) else CardTier.I,
+        color=color,
+        initiative=5,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=10,
+        secondary_actions={},
+        is_ranged=is_ranged,
+        effect_id="",
+        effect_text="",
+        is_facedown=False,
+    )
+
+
+def _oath_state(
+    oath_id: str,
+    *,
+    runes: dict[int, RuneType],
+    attack_color: CardColor,
+    is_ranged: bool = False,
+) -> GameState:
+    state = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero(
+            "hero_attacker",
+            at=(0, 0, 0),
+            current_card=_attack_card("incoming_attack", attack_color, is_ranged=is_ranged),
+        )
+        .blue_hero("hero_snorri", at=(1, 0, -1))
+        .with_actor("hero_attacker")
+        .build()
+    )
+    snorri = state.get_hero("hero_snorri")
+    oath = snorri_card(oath_id)
+    oath.state = CardState.HAND
+    snorri.hand = [oath]
+    snorri.rune_slots = dict(runes)
+    state.turn = 1
+    return state
+
+
+def _run_oath_attack(state: GameState, *, rider: bool = False) -> EffectRun:
+    steps = [
+        AttackSequenceStep(
+            damage=10,
+            range_val=1,
+            is_ranged=state.get_hero("hero_attacker").current_turn_card.is_ranged,
+        )
+    ]
+    if rider:
+        # A post-attack rider must still resolve after Oath's immunity takes
+        # effect; it belongs to the attack already in progress.
+        steps.append(SetContextFlagStep(key="blocked_attack_rider", value=True))
+    push_steps(state, steps)
+    run = EffectRun(state=state, hero_id="hero_attacker")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_snorri")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose(
+        state.get_hero("hero_snorri").hand[0].id
+    )
+    return run
+
+
+def _combat_outcomes(run: EffectRun) -> list[str]:
+    return [
+        event.metadata["outcome"]
+        for event in run.events
+        if event.event_type == GameEventType.COMBAT_RESOLVED
+    ]
+
+
+def _has_oath_immunity(state: GameState) -> bool:
+    return any(
+        effect.effect_type == EffectType.IMMUNITY_ENEMY_ACTIONS
+        and effect.source_id == "hero_snorri"
+        and effect.is_active
+        for effect in state.active_effects
+    )
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_horn_blocks_basic_attack_and_grants_immunity():  # §9 H1
+    state = _oath_state(
+        "oath_of_endurance", runes={1: RuneType.HORN}, attack_color=CardColor.SILVER
+    )
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+    assert _has_oath_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_axe_blocks_non_ranged_attack():  # §9 H2
+    state = _oath_state("oath_of_endurance", runes={1: RuneType.AXE}, attack_color=CardColor.RED)
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+    assert _has_oath_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_mismatched_rune_does_not_block_or_grant_immunity():  # §9 U1
+    state = _oath_state("oath_of_endurance", runes={1: RuneType.HORN}, attack_color=CardColor.RED)
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["DEFEATED"]
+    assert not _has_oath_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_without_active_rune_does_not_block():  # §9 U2
+    state = _oath_state("oath_of_endurance", runes={}, attack_color=CardColor.SILVER)
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["DEFEATED"]
+    assert not _has_oath_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_immunity_does_not_stop_the_blocked_attack_rider():  # §9 U3
+    state = _oath_state(
+        "oath_of_endurance", runes={1: RuneType.HORN}, attack_color=CardColor.SILVER
+    )
+
+    run = _run_oath_attack(state, rider=True).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+    assert state.execution_context["blocked_attack_rider"] is True
+
+
+@pytest.mark.effect_flow
+def test_oath_endurance_immunity_expires_before_next_turn():  # §9 U4
+    state = _oath_state(
+        "oath_of_endurance", runes={1: RuneType.HORN}, attack_color=CardColor.SILVER
+    )
+    _run_oath_attack(state).finish()
+    assert _has_oath_immunity(state)
+
+    EffectManager.expire_active_turn_effects(state)
+    state.turn = 2
+    push_steps(state, [AttackSequenceStep(damage=10, range_val=1)])
+    result = process_stack(state)
+
+    assert result.input_request is not None
+    assert {option.id for option in result.input_request.options} == {"hero_snorri"}
+    assert not _has_oath_immunity(state)
+
+
+@pytest.mark.effect_flow
+def test_oath_fortitude_bird_blocks_ranged_attack():  # §10 H1
+    state = _oath_state(
+        "oath_of_fortitude",
+        runes={1: RuneType.BIRD},
+        attack_color=CardColor.RED,
+        is_ranged=True,
+    )
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+
+
+@pytest.mark.effect_flow
+def test_oath_fortitude_treats_adjacent_ranged_attack_as_ranged():  # §10 H2
+    bird_state = _oath_state(
+        "oath_of_fortitude",
+        runes={1: RuneType.BIRD},
+        attack_color=CardColor.RED,
+        is_ranged=True,
+    )
+    axe_state = _oath_state(
+        "oath_of_fortitude",
+        runes={1: RuneType.AXE},
+        attack_color=CardColor.RED,
+        is_ranged=True,
+    )
+
+    assert _combat_outcomes(_run_oath_attack(bird_state).finish()) == ["BLOCKED"]
+    assert _combat_outcomes(_run_oath_attack(axe_state).finish()) == ["DEFEATED"]
+
+
+@pytest.mark.effect_flow
+def test_oath_perseverance_single_active_rune_is_auto_chosen():  # §11 H1
+    state = _oath_state(
+        "oath_of_perseverance", runes={1: RuneType.HORN}, attack_color=CardColor.GOLD
+    )
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+
+
+@pytest.mark.effect_flow
+def test_oath_perseverance_anvil_blocks_non_basic_attack():  # §11 H2
+    state = _oath_state(
+        "oath_of_perseverance", runes={1: RuneType.ANVIL}, attack_color=CardColor.GREEN
+    )
+
+    run = _run_oath_attack(state).finish()
+
+    assert _combat_outcomes(run) == ["BLOCKED"]
+
+
+@pytest.mark.effect_flow
+def test_oath_perseverance_chosen_mismatched_rune_does_not_block():  # §11 U1
+    state = _oath_state(
+        "oath_of_perseverance", runes={1: RuneType.HORN}, attack_color=CardColor.SILVER
+    )
+    # This supplies a second active rune only to exercise Perseverance's
+    # choose-one branch. Rune Mastery will populate this key in Task 11.
+    state.execution_context["snorri_ult_rune_action"] = RuneType.BIRD.value
+
+    run = _run_oath_attack(state)
+    run.expect_input(InputRequestType.SELECT_OPTION).choose(RuneType.BIRD.value).finish()
+
+    assert _combat_outcomes(run) == ["DEFEATED"]
+    assert not _has_oath_immunity(state)

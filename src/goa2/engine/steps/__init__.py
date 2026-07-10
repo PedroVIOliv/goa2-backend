@@ -112,6 +112,7 @@ from goa2.engine.steps.selection import (  # noqa: F401
     AskConfirmationStep,
     ChooseCardColorStep,
     ChooseMinionRemovalStep,
+    ChooseRuneStep,
     GuessCardColorStep,
     MultiSelectStep,
     ResolveTieBreakerStep,

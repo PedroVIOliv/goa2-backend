@@ -239,6 +239,7 @@ class StepType(StrEnum):
     FLIP_TIE_BREAKER_COIN = "flip_tie_breaker_coin"
     PLACE_TOKEN_TRAIL = "place_token_trail"
     PLACE_RUNES = "place_runes"
+    CHOOSE_RUNE = "choose_rune"
 
 
 class FilterType(StrEnum):
