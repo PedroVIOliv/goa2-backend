@@ -201,9 +201,11 @@ def _build_hero_view(
             if is_own_hero
             else {"count": len(hero.deck)}
         ),
-        # Played cards: Own hero sees all, others see faceup only
+        # Played cards: faceup ones are public; facedown ones are hidden from
+        # everyone, the owner included (see _build_card_view_outside_hand)
         "played_cards": [
-            _build_card_view(card, is_own_hero=is_own_hero) for card in hero.played_cards
+            _build_card_view_outside_hand(card, is_own_hero=is_own_hero)
+            for card in hero.played_cards
         ],
         # Current turn card: Own hero sees all, others see faceup only
         "current_turn_card": (
@@ -222,8 +224,10 @@ def _build_hero_view(
         # requesting hero while they may still commit a second card or call
         # planning-done. Always False for opponents and outside Planning.
         "can_commit_second_card": can_commit_second_card,
-        # Discard pile: Always visible (public info) - use is_own_hero=True so all cards show full info
-        "discard_pile": [_build_card_view(card, is_own_hero=True) for card in hero.discard_pile],
+        # Discard pile: public info, except facedown cards (hidden from everyone)
+        "discard_pile": [
+            _build_card_view_outside_hand(card, is_own_hero=True) for card in hero.discard_pile
+        ],
         # Ultimate card: Own hero sees it, others see faceup only
         "ultimate_card": (
             _build_card_view(hero.ultimate_card, is_own_hero=is_own_hero)
@@ -242,6 +246,20 @@ def _build_minion_view(minion: Minion) -> dict[str, Any]:
         "value": minion.value,  # 2 for MELEE/RANGED, 4 for HEAVY
         "is_heavy": minion.is_heavy,
     }
+
+
+def _build_card_view_outside_hand(
+    card: Card | None, is_own_hero: bool = True
+) -> dict[str, Any] | None:
+    """Card view for the discard pile and the resolved slots.
+
+    A facedown card there has lost its type, color and actions per the rulebook
+    — it is hidden information for EVERY viewer, its owner included (Takahide's
+    Bushido puts facedown cards in those areas). Faceup cards render normally.
+    """
+    if card is None:
+        return None
+    return _build_card_view(card, is_own_hero=is_own_hero and not card.is_facedown)
 
 
 def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, Any] | None:

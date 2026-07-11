@@ -749,7 +749,8 @@ The view is player-scoped — what you see depends on your token:
 - **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `image_id`, `is_ranged`, `range_value`, `radius_value`. Shows `tier`, `color`, `primary_action`, `primary_action_value`, `secondary_actions`, `effect_id`, `effect_text`, `initiative`, `state`, `is_facedown`, `item`, `is_active`
 - **Other heroes' hand:** Empty array `[]` (no cards visible at all in hand)
 - **Deck of other heroes:** Shows `{"count": N}` instead of card details
-- **Discard piles:** Always fully visible (public information)
+- **Discard piles:** Always fully visible (public information) — except facedown cards, see below
+- **FACEDOWN cards in `discard_pile` / `played_cards`:** Masked for **every** viewer, the owner included. A facedown card outside the hand has lost its type, color and actions per the rulebook, so it is hidden information for everyone. It renders in the same partial shape as an opponent's facedown card (no `id`/`name`/`image_id`; `is_facedown: true`) — draw a card back. Takahide's Bushido is the effect that produces them; they turn faceup again when they return to hand at end of round.
 
 ### Board structure
 

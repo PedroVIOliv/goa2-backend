@@ -74,6 +74,10 @@ class SelectStep(GameStep):
     restrict_played_to_shields: bool = (
         False  # For the PLAYED container, only include active discard-shield cards (Mrak)
     )
+    # Facedown cards in the DISCARD/PLAYED containers have lost their identity
+    # (rulebook), so they are not offered as selection candidates. Set True for
+    # effects that only move a card between zones (e.g. Takahide's retrieve).
+    include_facedown: bool = False
     number_options: list[int] = Field(default_factory=list)  # For NUMBER target type
     number_labels: dict[int, str] = Field(default_factory=dict)  # Display text per number option
     skip_immunity_filter: bool = False  # Set True to disable automatic ImmunityFilter
@@ -209,6 +213,20 @@ class SelectStep(GameStep):
                         source_list.extend(hero.discard_pile)
                     elif container == CardContainerType.DECK:
                         source_list.extend(hero.deck)
+
+                # A facedown card in the discard/resolved area has no identity to
+                # select on (rulebook) — drop it unless the effect opted back in.
+                if not self.include_facedown and any(
+                    container in (CardContainerType.DISCARD, CardContainerType.PLAYED)
+                    for container in containers
+                ):
+                    source_list = [
+                        c
+                        for c in source_list
+                        if not (
+                            c.is_facedown and c.state in (CardState.DISCARD, CardState.RESOLVED)
+                        )
+                    ]
 
                 # Apply card property filters before extracting IDs
                 if self.card_action_types is not None:

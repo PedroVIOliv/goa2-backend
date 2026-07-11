@@ -108,6 +108,7 @@ def test_rogue_initiates_sabotage_and_arien_defeats_rogue(sabotage_state):
         arien.hand.remove(turn1_card)
     arien.played_cards.append(turn1_card)
     turn1_card.state = CardState.RESOLVED
+    turn1_card.is_facedown = False  # revealed at Revelation, as in real play
 
     # --- PLANNING PHASE (Turn 2) ---
     state.phase = GamePhase.PLANNING
@@ -217,6 +218,7 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
         arien.hand.remove(turn1_card)
     arien.played_cards.append(turn1_card)
     turn1_card.state = CardState.RESOLVED
+    turn1_card.is_facedown = False  # revealed at Revelation, as in real play
 
     # --- PLANNING ---
     state.phase = GamePhase.PLANNING
