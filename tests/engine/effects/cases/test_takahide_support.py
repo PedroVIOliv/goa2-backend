@@ -515,3 +515,148 @@ def test_loyal_retainer_h1_pays_two_coins_each_and_retrieves():
     assert state.get_hero(TAKAHIDE).gold == 2
     assert state.get_hero(ALLY).gold == 2
     assert "come_to_aid" in [c.id for c in state.get_hero(TAKAHIDE).hand]
+
+
+# ---------------------------------------------------------------------------
+# §6 Calculated Risk (radius 4, ally may move up to 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_h1_ally_discards_an_attack_card_then_moves_itself():
+    state = support_state("calculated_risk")
+    give_hand(state, ALLY, attack_card("ally_axe"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_axe")
+    run.expect_input(InputRequestType.SELECT_HEX)
+
+    assert run.latest_request.player_id == ALLY  # the ALLY picks their destination
+    run.choose({"q": 3, "r": 0, "s": -3}).finish()
+
+    assert state.get_position(ALLY) == Hex(q=3, r=0, s=-3)
+    assert state.get_position(TAKAHIDE) == Hex(q=0, r=0, s=0)
+    assert [c.id for c in state.get_hero(ALLY).discard_pile] == ["ally_axe"]
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_h2_preexisting_discard_of_any_card_enables_the_move():
+    state = support_state("calculated_risk")
+    give_discard(state, ALLY, _card("old_skill"))  # not an attack card
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 3, "r": 0, "s": -3})
+    run.finish()
+
+    assert state.get_position(ALLY) == Hex(q=3, r=0, s=-3)
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_h3_only_attack_primary_cards_are_offered():
+    state = support_state("calculated_risk")
+    give_hand(state, ALLY, attack_card("ally_axe"), _card("ally_skill"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD)
+
+    assert option_ids(run) == ["ally_axe"]
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_u1_no_attack_card_and_empty_discard_means_nothing_happens():
+    state = support_state("calculated_risk")
+    give_hand(state, ALLY, _card("ally_skill"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.finish()  # no discard prompt (no attack card), no move
+
+    assert state.get_position(ALLY) == Hex(q=2, r=0, s=-2)
+    assert state.get_hero(ALLY).discard_pile == []
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_u2_ally_may_decline_the_move():
+    state = support_state("calculated_risk")
+    give_hand(state, ALLY, attack_card("ally_axe"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_axe")
+    run.expect_input(InputRequestType.SELECT_HEX).skip()
+    run.finish()
+
+    assert state.get_position(ALLY) == Hex(q=2, r=0, s=-2)
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_u3_no_ally_in_radius_fizzles():
+    state = takahide_state("calculated_risk", allies=[], enemies=[(4, 0, -4)], hexes=board())
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.finish()
+
+
+@pytest.mark.effect_flow
+def test_calculated_risk_move_is_capped_at_two_spaces():
+    state = support_state("calculated_risk")
+    give_hand(state, ALLY, attack_card("ally_axe"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_axe")
+    run.expect_input(InputRequestType.SELECT_HEX)
+
+    hexes = offered_hexes(run)
+    ally_hex = Hex(q=2, r=0, s=-2)
+    assert Hex(q=4, r=0, s=-4) in hexes  # exactly 2 from the ally
+    assert all(ally_hex.distance(h) <= 2 for h in hexes)
+
+
+# ---------------------------------------------------------------------------
+# §7 Tactical Gambit (radius 4, ally moves 2 ignoring obstacles)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.effect_flow
+def test_tactical_gambit_h1_ally_paths_through_an_obstacle():
+    state = support_state("tactical_gambit")
+    give_hand(state, ALLY, attack_card("ally_axe"))
+    # Wall the ally (at 2,0,-2) in completely.
+    make_terrain(state, (3, 0, -3), (3, -1, -2), (2, -1, -1), (1, 0, -1), (1, 1, -2), (2, 1, -3))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_axe")
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 4, "r": 0, "s": -4})
+    run.finish()
+
+    assert state.get_position(ALLY) == Hex(q=4, r=0, s=-4)
+
+
+@pytest.mark.effect_flow
+def test_tactical_gambit_u1_obstacle_destinations_are_still_illegal():
+    state = support_state("tactical_gambit")
+    give_hand(state, ALLY, attack_card("ally_axe"))
+    make_terrain(state, (3, 0, -3), (3, -1, -2), (2, -1, -1), (1, 0, -1), (1, 1, -2), (2, 1, -3))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_axe")
+    run.expect_input(InputRequestType.SELECT_HEX)
+
+    hexes = offered_hexes(run)
+    assert Hex(q=3, r=0, s=-3) not in hexes  # terrain
+    assert Hex(q=0, r=0, s=0) not in hexes  # occupied by Takahide

@@ -241,6 +241,45 @@ class LoyalRetainerEffect(SupportEconomyEffect):
     coins: int = 2
 
 
+class SupportRepositionEffect(CardEffect):
+    """ "A friendly hero in radius may discard an attack card. If that hero has a
+    card in the discard, that hero may move up to 2 spaces[, ignoring obstacles]."
+
+    Calculated Risk / Tactical Gambit (ignoring obstacles). "An attack card" is a
+    card whose PRIMARY action is Attack (interp 6); the pre-existing discard that
+    satisfies the condition may be any card (interp 5).
+    """
+
+    move_distance: int = 2
+    ignore_obstacles: bool = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            *_ally_discard_gate(stats.radius or 0, attack_cards_only=True),
+            *_optional_move(
+                self.move_distance,
+                unit_key=ALLY_KEY,
+                output_key="tk_ally_move",
+                prompt=f"You may move up to {self.move_distance} spaces",
+                ignore_obstacles=self.ignore_obstacles,
+                player_id_key=ALLY_KEY,
+                active_if_key=HAS_DISCARD_KEY,
+            ),
+        ]
+
+
+@register_effect("calculated_risk")
+class CalculatedRiskEffect(SupportRepositionEffect):
+    pass
+
+
+@register_effect("tactical_gambit")
+class TacticalGambitEffect(SupportRepositionEffect):
+    ignore_obstacles: bool = True
+
+
 # =============================================================================
 # Lane B: color-discard punish family (Proven Warrior / The Right Hand)
 # =============================================================================
