@@ -58,11 +58,18 @@ class TerrainValidationMixin:
         if not actor_id:
             return False  # No actor context, can't check barrier effects
 
-        # Get actor entity and verify it's an enemy hero
         from goa2.domain.models import is_hero_unit
 
         actor = state.get_entity(BoardEntityID(actor_id))
-        if not actor or not is_hero_unit(actor):
+        if not actor:
+            return False
+
+        # EMPTY_HEX_OBSTACLE applies to any enemy unit (heroes AND minions).
+        # Every hex reaching this point is empty: tile.is_obstacle was False.
+        if self._is_denied_empty_hex(state, hex_pos, actor_id, actor):
+            return True
+
+        if not is_hero_unit(actor):
             return False  # Static Barrier only affects enemy heroes as actors
 
         for effect in state.active_effects:
@@ -110,6 +117,48 @@ class TerrainValidationMixin:
 
             if actor_inside != hex_inside:
                 return True  # This hex is an obstacle for this actor
+
+        return False
+
+    def _is_denied_empty_hex(
+        self,
+        state: GameState,
+        hex_pos: Hex,
+        actor_id: str,
+        actor: Any,
+    ) -> bool:
+        """EMPTY_HEX_OBSTACLE check (Takahide - Spinning Blade / Blade Helix).
+
+        The hex is an obstacle when it lies within the effect's radius of the
+        source's CURRENT position and the acting unit is on the opposing team.
+        Distance is cube distance (topology-aware, obstacle-agnostic) — a
+        pathfinding distance would recurse back into obstacle definitions.
+        """
+        actor_team = getattr(actor, "team", None)
+        if actor_team is None:
+            return False
+
+        topology = get_topology_service()
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.EMPTY_HEX_OBSTACLE:
+                continue
+            if not self._is_effect_active(effect, state):
+                continue
+
+            source = state.get_entity(BoardEntityID(effect.source_id))
+            source_team = getattr(source, "team", None) if source else None
+            if source_team is None or source_team == actor_team:
+                continue
+            if self._unit_ignores_effect_due_to_immunity(effect, actor_id, state):
+                continue
+
+            origin_id = effect.scope.origin_id or effect.source_id
+            origin_hex = state.get_position(origin_id)
+            if not origin_hex:
+                continue
+
+            if topology.distance(origin_hex, hex_pos, state) <= effect.scope.range:
+                return True
 
         return False
 

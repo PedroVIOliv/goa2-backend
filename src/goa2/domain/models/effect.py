@@ -46,6 +46,14 @@ class EffectType(StrEnum):
         "static_barrier"  # Hexes become obstacles based on actor location relative to radius
     )
 
+    # Actor-conditional empty-hex denial (Takahide - Spinning Blade / Blade Helix)
+    # Every EMPTY hex within scope.range of scope.origin_id's CURRENT position is
+    # an obstacle for units on the opposing team (heroes AND minions). Occupied
+    # and terrain hexes are unaffected (they are obstacles already, or handled by
+    # occupancy). Consulted by is_obstacle_for_actor, so it bites on movement,
+    # pushes, placement and topology range counting alike.
+    EMPTY_HEX_OBSTACLE = "empty_hex_obstacle"
+
     # Petrify (Xargatha) - affected heroes count as terrain
     PETRIFY = "petrify"
 
