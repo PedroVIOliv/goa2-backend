@@ -1044,6 +1044,127 @@ class SwapCardStep(GameStep):
         return StepResult(is_finished=True)
 
 
+class SwapWithDeckCardStep(GameStep):
+    """Exchange a card that is in play with a card sitting in the owner's deck.
+
+    The incoming deck card inherits the outgoing card's exact place (hand slot,
+    discard pile, resolved slot, or the current turn card) along with its
+    state/facedown/played_this_round flags. The outgoing card returns to the
+    deck faceup. Bushido's rider (``facedown_if_from_discard_or_resolved``)
+    forces the incoming card facedown when it lands in the discard pile or a
+    resolved slot.
+
+    ``hero.deck`` is the master card list, so the outgoing card never leaves it;
+    only its state and container membership change.
+    """
+
+    type: StepType = StepType.SWAP_WITH_DECK_CARD
+
+    hero_id: str | None = None
+    hero_key: str | None = None
+    outgoing_card_id: str | None = None
+    outgoing_card_key: str | None = None
+    incoming_card_key: str = "deck_swap_card"
+    facedown_if_from_discard_or_resolved: bool = False
+
+    def _resolve_hero(self, state: GameState, context: dict[str, Any]) -> Hero | None:
+        hero_id: Any = self.hero_id
+        if self.hero_key:
+            hero_id = context.get(self.hero_key) or hero_id
+        if not hero_id:
+            hero_id = state.current_actor_id
+        if not hero_id:
+            return None
+        return state.get_hero(HeroID(str(hero_id)))
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        hero = self._resolve_hero(state, context)
+        if not hero:
+            return StepResult(is_finished=True)
+
+        outgoing_id = self.outgoing_card_id
+        if self.outgoing_card_key:
+            outgoing_id = context.get(self.outgoing_card_key) or outgoing_id
+        incoming_id = context.get(self.incoming_card_key)
+        if not outgoing_id or not incoming_id or str(outgoing_id) == str(incoming_id):
+            return StepResult(is_finished=True)
+
+        incoming = next((c for c in hero.deck if c.id == str(incoming_id)), None)
+        if not incoming or incoming.state != CardState.DECK:
+            logger.debug(f"   [DECK SWAP] {incoming_id!r} is not a card in {hero.id}'s deck.")
+            return StepResult(is_finished=True)
+
+        outgoing = next((c for c in hero.deck if c.id == str(outgoing_id)), None)
+        if not outgoing or not self._install_in_place(hero, outgoing, incoming):
+            logger.debug(f"   [DECK SWAP] {outgoing_id!r} is not in play for {hero.id}.")
+            return StepResult(is_finished=True)
+
+        from goa2.engine.effect_manager import EffectManager
+
+        EffectManager.expire_by_card(state, outgoing.id)
+        EffectManager.expire_by_card(state, incoming.id)
+
+        logger.debug(f"   [DECK SWAP] {hero.id}: {outgoing.name} → deck, {incoming.name} → play")
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.DECK_CARD_SWAPPED,
+                    actor_id=str(hero.id),
+                    metadata={
+                        "outgoing_card_id": outgoing.id,
+                        "incoming_card_id": incoming.id,
+                        "incoming_card_state": incoming.state.value,
+                        "incoming_is_facedown": incoming.is_facedown,
+                    },
+                )
+            ],
+        )
+
+    def _install_in_place(self, hero: Hero, outgoing: Card, incoming: Card) -> bool:
+        """Put `incoming` exactly where `outgoing` was; send `outgoing` to the deck.
+
+        Returns False (and changes nothing) when the outgoing card is not in play.
+        """
+        target_state = outgoing.state
+        target_played_this_round = outgoing.played_this_round
+        facedown = outgoing.is_facedown
+
+        if outgoing in hero.hand:
+            hero.hand[hero.hand.index(outgoing)] = incoming
+        elif outgoing in hero.discard_pile:
+            hero.discard_pile[hero.discard_pile.index(outgoing)] = incoming
+            facedown = facedown or self.facedown_if_from_discard_or_resolved
+        elif hero.current_turn_card is not None and hero.current_turn_card.id == outgoing.id:
+            hero.current_turn_card = incoming
+        else:
+            slot = next(
+                (
+                    i
+                    for i, c in enumerate(hero.played_cards)
+                    if c is not None and c.id == outgoing.id
+                ),
+                None,
+            )
+            if slot is None:
+                return False
+            hero.played_cards[slot] = incoming
+            facedown = facedown or self.facedown_if_from_discard_or_resolved
+
+        incoming.state = target_state
+        incoming.is_facedown = facedown
+        incoming.played_this_round = target_played_this_round
+
+        outgoing.state = CardState.DECK
+        outgoing.is_facedown = False
+        outgoing.played_this_round = False
+        outgoing.is_active = False
+        return True
+
+
 class SwapItemCardStep(GameStep):
     """Exchange a hero's equipped item card for an eligible card in place."""
 

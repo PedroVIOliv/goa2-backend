@@ -26,6 +26,7 @@ from goa2.engine.steps.cards import (  # noqa: F401
     SwapCardStep,
     SwapItemCardStep,
     SwapResolvedCardsStep,
+    SwapWithDeckCardStep,
     apply_hero_upgrade,
 )
 from goa2.engine.steps.combat import (  # noqa: F401

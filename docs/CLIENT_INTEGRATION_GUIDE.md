@@ -1199,6 +1199,7 @@ Events describe what happened during a game action. They are meant for animation
 | `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details). For NebKher's reality splits (`topology_split` / `topology_isolation`) also `metadata.split_axis` (`"q"`/`"r"`/`"s"`) and `metadata.split_value` — the line of hexes where that cube coordinate equals the value; draw the split there |
 | `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
+| `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido) | `actor_id` (card owner), `metadata.outgoing_card_id` (now in the deck), `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |

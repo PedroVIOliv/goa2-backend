@@ -45,6 +45,8 @@ class GameEventType(StrEnum):
     CARD_REVEALED = "CARD_REVEALED"
     # NebKher: two resolved cards traded turn slots (active effects preserved)
     RESOLVED_CARDS_SWAPPED = "RESOLVED_CARDS_SWAPPED"
+    # Takahide: a card in play traded places with a card in the owner's deck
+    DECK_CARD_SWAPPED = "DECK_CARD_SWAPPED"
     # Protection
     MINION_PROTECTED = "MINION_PROTECTED"
     # Turn flow

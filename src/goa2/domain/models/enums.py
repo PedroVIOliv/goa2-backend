@@ -143,6 +143,7 @@ class StepType(StrEnum):
     PLACE_TURRET = "place_turret"
     SWAP_UNITS = "swap_units"
     SWAP_CARD = "swap_card"
+    SWAP_WITH_DECK_CARD = "swap_with_deck_card"
     SWAP_RESOLVED_CARDS = "swap_resolved_cards"
     SWAP_ITEM_CARD = "swap_item_card"
     PERFORM_CARD_ACTION = "perform_card_action"
