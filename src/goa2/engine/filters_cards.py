@@ -105,6 +105,10 @@ class CardsInContainerFilter(FilterCondition):
     container: CardContainerType = CardContainerType.HAND
     min_cards: int | None = None
     max_cards: int | None = None
+    # Facedown cards outside the hand have no readable identity (rulebook), so
+    # effects that need to READ a card there (Takahide's color source) must not
+    # count them.
+    exclude_facedown: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
@@ -113,15 +117,18 @@ class CardsInContainerFilter(FilterCondition):
         if not hero:
             return False
         if self.container == CardContainerType.HAND:
-            count = len(hero.hand)
+            cards = list(hero.hand)
         elif self.container == CardContainerType.DISCARD:
-            count = len(hero.discard_pile)
+            cards = list(hero.discard_pile)
         elif self.container == CardContainerType.PLAYED:
-            count = len([c for c in hero.played_cards if c is not None])
+            cards = [c for c in hero.played_cards if c is not None]
         elif self.container == CardContainerType.DECK:
-            count = len(hero.deck)
+            cards = list(hero.deck)
         else:
             return False
+        if self.exclude_facedown:
+            cards = [c for c in cards if not c.is_facedown]
+        count = len(cards)
         if self.min_cards is not None and count < self.min_cards:
             return False
         return not (self.max_cards is not None and count > self.max_cards)

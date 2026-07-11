@@ -18,12 +18,14 @@ from typing import TYPE_CHECKING
 
 from goa2.domain.models import ActionType, CardContainerType, TargetType
 from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
-from goa2.engine.filters_units import TeamFilter, UnitTypeFilter
+from goa2.engine.filters_units import ExcludeIdentityFilter, TeamFilter, UnitTypeFilter
 from goa2.engine.steps import (
     CheckContextConditionStep,
     CountCardsStep,
     DiscardCardStep,
+    ForceDiscardByColorStep,
     GainCoinsStep,
     MoveUnitStep,
     RetrieveCardStep,
@@ -283,6 +285,104 @@ class TacticalGambitEffect(SupportRepositionEffect):
 # =============================================================================
 # Lane B: color-discard punish family (Proven Warrior / The Right Hand)
 # =============================================================================
+
+DISCARD_OWNER_KEY = "tk_discard_owner"
+COLOR_CARD_KEY = "tk_color_card"
+COLOR_KEY = "tk_color"
+
+
+class DiscardPunishEffect(CardEffect):
+    """ "Choose a card in the discard of a friendly hero in radius. [Up to two]
+    enemy hero(es) in radius discard a card of the same color, if able."
+
+    Proven Warrior / Chosen Champion / The Right Hand (up to two victims).
+    Takahide chooses the color source (S4) and the victims, blind to their hands
+    (interp 9); "if able" is resolved by ForceDiscardByColorStep (hand only, no
+    match → no-op). The victim selects are OPTIONAL: with none in radius the
+    action must still resolve cleanly (§8 U3, Snorri Runetrap precedent).
+    """
+
+    max_victims: int = 1
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        radius = stats.radius or 0
+        steps: list[GameStep] = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Choose a friendly hero whose discard you read",
+                output_key=DISCARD_OWNER_KEY,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="FRIENDLY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=radius),
+                    # A hero with nothing readable in the discard is a dead pick:
+                    # the mandatory color select below would abort the action.
+                    CardsInContainerFilter(
+                        container=CardContainerType.DISCARD,
+                        min_cards=1,
+                        exclude_facedown=True,
+                    ),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Choose a card in their discard",
+                output_key=COLOR_CARD_KEY,
+                selected_card_color_key=COLOR_KEY,
+                context_hero_id_key=DISCARD_OWNER_KEY,
+                is_mandatory=True,
+            ),
+        ]
+
+        for i in range(1, self.max_victims + 1):
+            victim_key = f"tk_victim_{i}"
+            previous_keys = [f"tk_victim_{j}" for j in range(1, i)]
+            steps.append(
+                SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="Choose an enemy hero to discard a matching card",
+                    output_key=victim_key,
+                    is_mandatory=False,
+                    # Declining a victim ends the picking: skipping the first is
+                    # how Takahide chooses zero victims (interp 9).
+                    active_if_key=previous_keys[-1] if previous_keys else None,
+                    filters=[
+                        TeamFilter(relation="ENEMY"),
+                        UnitTypeFilter(unit_type="HERO"),
+                        RangeFilter(max_range=radius),
+                        ExcludeIdentityFilter(exclude_self=True, exclude_keys=previous_keys),
+                    ],
+                )
+            )
+            steps.append(
+                ForceDiscardByColorStep(
+                    victim_key=victim_key,
+                    color_key=COLOR_KEY,
+                    output_key=f"tk_victim_{i}_discard",
+                    active_if_key=victim_key,
+                )
+            )
+
+        return steps
+
+
+@register_effect("proven_warrior")
+class ProvenWarriorEffect(DiscardPunishEffect):
+    pass
+
+
+@register_effect("chosen_champion")
+class ChosenChampionEffect(DiscardPunishEffect):
+    pass
+
+
+@register_effect("the_right_hand")
+class TheRightHandEffect(DiscardPunishEffect):
+    max_victims: int = 2
 
 
 # =============================================================================
