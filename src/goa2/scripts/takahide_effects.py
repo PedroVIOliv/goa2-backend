@@ -16,13 +16,182 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from goa2.domain.models import ActionType, CardContainerType, TargetType
+from goa2.engine.effects import CardEffect, register_effect
+from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
+from goa2.engine.filters_units import TeamFilter, UnitTypeFilter
+from goa2.engine.steps import (
+    CheckContextConditionStep,
+    CountCardsStep,
+    DiscardCardStep,
+    MoveUnitStep,
+    SelectStep,
+)
+
 if TYPE_CHECKING:
-    pass
+    from goa2.domain.models import Card, Hero
+    from goa2.domain.state import GameState
+    from goa2.engine.stats import CardStats
+    from goa2.engine.steps import GameStep
+
+
+# Context keys shared by the discard-support families.
+ALLY_KEY = "tk_ally"
+ALLY_DISCARD_KEY = "tk_ally_discard"
+ALLY_DISCARD_COUNT_KEY = "tk_ally_discard_count"
+HAS_DISCARD_KEY = "tk_has_discard"
 
 
 # =============================================================================
 # Lane A: discard-support families (Come to Aid / Pledge / Calculated Risk)
 # =============================================================================
+
+
+def _ally_discard_gate(
+    distance: int,
+    *,
+    attack_cards_only: bool = False,
+) -> list[GameStep]:
+    """ "A friendly hero in range/radius may discard a card. If that hero has a
+    card in the discard, …" — the pipeline every support card opens with.
+
+    Takahide picks the ally (mandatory: no ally ⇒ the whole action aborts). The
+    ALLY's own player then decides whether to discard (optional). The gate flag
+    `tk_has_discard` is set from the ally's discard pile AFTER that choice, so a
+    pre-existing discard satisfies it just as well (interp 5).
+    """
+    return [
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Choose a friendly hero",
+            output_key=ALLY_KEY,
+            is_mandatory=True,
+            filters=[
+                TeamFilter(relation="FRIENDLY"),
+                UnitTypeFilter(unit_type="HERO"),
+                RangeFilter(max_range=distance),
+            ],
+        ),
+        SelectStep(
+            target_type=TargetType.CARD,
+            card_container=CardContainerType.HAND,
+            prompt=(
+                "You may discard an attack card" if attack_cards_only else "You may discard a card"
+            ),
+            output_key=ALLY_DISCARD_KEY,
+            is_mandatory=False,
+            active_if_key=ALLY_KEY,
+            context_hero_id_key=ALLY_KEY,
+            override_player_id_key=ALLY_KEY,
+            card_action_types=[ActionType.ATTACK] if attack_cards_only else None,
+        ),
+        DiscardCardStep(
+            card_key=ALLY_DISCARD_KEY,
+            hero_key=ALLY_KEY,
+            active_if_key=ALLY_DISCARD_KEY,
+        ),
+        CountCardsStep(
+            hero_key=ALLY_KEY,
+            card_container=CardContainerType.DISCARD,
+            output_key=ALLY_DISCARD_COUNT_KEY,
+            active_if_key=ALLY_KEY,
+        ),
+        CheckContextConditionStep(
+            input_key=ALLY_DISCARD_COUNT_KEY,
+            operator=">=",
+            threshold=1,
+            output_key=HAS_DISCARD_KEY,
+        ),
+    ]
+
+
+def _optional_move(
+    distance: int,
+    *,
+    output_key: str,
+    prompt: str,
+    unit_id: str | None = None,
+    unit_key: str | None = None,
+    ignore_obstacles: bool = False,
+    player_id_key: str | None = None,
+    active_if_key: str | None = None,
+) -> list[GameStep]:
+    """Effect-side "may move up to N spaces" (SelectStep + MoveUnitStep).
+
+    The MOVING hero picks the destination (`player_id_key` routes the prompt to
+    them). Not a MOVEMENT action, so MoveSequenceStep is deliberately not used.
+    """
+    return [
+        SelectStep(
+            target_type=TargetType.HEX,
+            prompt=prompt,
+            output_key=output_key,
+            is_mandatory=False,
+            active_if_key=active_if_key,
+            override_player_id_key=player_id_key,
+            filters=[
+                RangeFilter(max_range=distance, origin_id=unit_id, origin_key=unit_key),
+                MovementPathFilter(
+                    range_val=distance,
+                    unit_id=unit_id,
+                    unit_key=unit_key,
+                    pass_through_obstacles=ignore_obstacles,
+                ),
+                ObstacleFilter(is_obstacle=False),
+            ],
+        ),
+        MoveUnitStep(
+            unit_id=unit_id,
+            unit_key=unit_key,
+            destination_key=output_key,
+            range_val=distance,
+            pass_through_obstacles=ignore_obstacles,
+            active_if_key=output_key,
+        ),
+    ]
+
+
+class SupportMoveEffect(CardEffect):
+    """ "A friendly hero in range may discard a card. If that hero has a card in
+    the discard, you may move up to N spaces[, ignoring obstacles]."
+
+    Come to Aid (3) / Bring the Relief (4) / Commit Reserves (4, ignoring
+    obstacles).
+    """
+
+    move_distance: int = 3
+    ignore_obstacles: bool = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            *_ally_discard_gate(stats.range),
+            *_optional_move(
+                self.move_distance,
+                unit_id=str(hero.id),
+                output_key="tk_self_move",
+                prompt=f"You may move up to {self.move_distance} spaces",
+                ignore_obstacles=self.ignore_obstacles,
+                active_if_key=HAS_DISCARD_KEY,
+            ),
+        ]
+
+
+@register_effect("come_to_aid")
+class ComeToAidEffect(SupportMoveEffect):
+    move_distance: int = 3
+
+
+@register_effect("bring_the_relief")
+class BringTheReliefEffect(SupportMoveEffect):
+    move_distance: int = 4
+
+
+@register_effect("commit_reserves")
+class CommitReservesEffect(SupportMoveEffect):
+    move_distance: int = 4
+    ignore_obstacles: bool = True
 
 
 # =============================================================================

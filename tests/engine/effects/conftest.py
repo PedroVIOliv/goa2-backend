@@ -27,3 +27,4 @@ def pytest_configure() -> None:
     importlib.import_module("goa2.scripts.widget_effects")
     importlib.import_module("goa2.scripts.ignatia_effects")
     importlib.import_module("goa2.scripts.nebkher_effects")
+    importlib.import_module("goa2.scripts.takahide_effects")
