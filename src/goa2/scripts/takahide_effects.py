@@ -18,10 +18,11 @@ from typing import TYPE_CHECKING
 
 from goa2.domain.models import ActionType, CardContainerType, TargetType
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_cards import CardsInContainerFilter, HasUnresolvedCardFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import ExcludeIdentityFilter, TeamFilter, UnitTypeFilter
 from goa2.engine.steps import (
+    AttackSequenceStep,
     CheckContextConditionStep,
     CountCardsStep,
     DiscardCardStep,
@@ -31,6 +32,7 @@ from goa2.engine.steps import (
     RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
+    SwapCardStep,
 )
 
 if TYPE_CHECKING:
@@ -388,6 +390,77 @@ class TheRightHandEffect(DiscardPunishEffect):
 # =============================================================================
 # Lane C: unresolved-card swap family (Set an Example / Hold My Saké)
 # =============================================================================
+
+SWAP_HERO_KEY = "tk_swap_hero"
+SWAP_CARD_KEY = "tk_swap_card"
+
+
+class UnresolvedSwapEffect(CardEffect):
+    """ "Target a unit adjacent to you. After the attack: A friendly hero in
+    radius may swap their unresolved card with a card in their hand[, or in
+    their discard]."
+
+    Set an Example / Lead from the Front / Hold My Saké (discard source too).
+    The rider fires regardless of the attack's outcome (S7) but never runs when
+    the mandatory targeting aborts the action. The ALLY picks the card; the
+    incoming card becomes their faceup UNRESOLVED turn card, so the engine's
+    per-action initiative re-sort picks them up at the new initiative.
+    """
+
+    allow_discard_source: bool = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        containers = [CardContainerType.HAND]
+        if self.allow_discard_source:
+            containers.append(CardContainerType.DISCARD)
+
+        return [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="A friendly hero may swap their unresolved card",
+                output_key=SWAP_HERO_KEY,
+                is_mandatory=False,
+                filters=[
+                    TeamFilter(relation="FRIENDLY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius or 0),
+                    HasUnresolvedCardFilter(),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_containers=containers,
+                prompt="Swap your unresolved card with…",
+                output_key=SWAP_CARD_KEY,
+                is_mandatory=False,
+                active_if_key=SWAP_HERO_KEY,
+                context_hero_id_key=SWAP_HERO_KEY,
+                override_player_id_key=SWAP_HERO_KEY,
+            ),
+            SwapCardStep(
+                target_card_key=SWAP_CARD_KEY,
+                context_hero_id_key=SWAP_HERO_KEY,
+                active_if_key=SWAP_CARD_KEY,
+            ),
+        ]
+
+
+@register_effect("set_an_example")
+class SetAnExampleEffect(UnresolvedSwapEffect):
+    pass
+
+
+@register_effect("lead_from_the_front")
+class LeadFromTheFrontEffect(UnresolvedSwapEffect):
+    pass
+
+
+@register_effect("hold_my_sake")
+class HoldMySakeEffect(UnresolvedSwapEffect):
+    allow_discard_source: bool = True
 
 
 # =============================================================================
