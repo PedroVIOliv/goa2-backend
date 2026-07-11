@@ -242,6 +242,7 @@ class StepType(StrEnum):
     PLACE_RUNES = "place_runes"
     CHOOSE_RUNE = "choose_rune"
     SNAPSHOT_ADJACENT_HEROES = "snapshot_adjacent_heroes"
+    APPLY_AFTER_ATTACK_CARD_TEXT = "apply_after_attack_card_text"
 
 
 class FilterType(StrEnum):

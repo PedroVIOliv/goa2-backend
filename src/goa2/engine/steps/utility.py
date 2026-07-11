@@ -952,3 +952,72 @@ class ForEachStep(GameStep):
         else:
             # Last item - finish after these steps
             return StepResult(is_finished=True, new_steps=new_steps)
+
+
+class ApplyAfterAttackCardTextStep(GameStep):
+    """
+    After an attack resolves, look up a resolved or discarded card and apply
+    its after-attack text (the steps following its AttackSequenceStep).
+
+    This is a deferred lookup so that cards discarded into the discard pile
+    *during* the attack (e.g. from a defense effect) are still found.
+    """
+
+    type: StepType = StepType.APPLY_AFTER_ATTACK_CARD_TEXT
+    hero_id: str
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        from goa2.domain.models import CardColor
+        from goa2.engine.effects import CardEffectRegistry
+        from goa2.engine.stats import compute_card_stats
+        from goa2.engine.steps.combat import AttackSequenceStep
+
+        hero = state.get_hero(HeroID(self.hero_id))
+        if not hero:
+            return StepResult(is_finished=True)
+
+        # Look for a resolved or discarded red card
+        red_card: Any = None
+        for c in hero.played_cards:
+            if c is not None and c.color == CardColor.RED:
+                red_card = c
+                break
+        if red_card is None:
+            for c in hero.discard_pile:
+                if c.color == CardColor.RED:
+                    red_card = c
+                    break
+        if red_card is None:
+            return StepResult(is_finished=True)
+
+        effect = CardEffectRegistry.get(red_card.current_effect_id or "")
+        if effect is None:
+            return StepResult(is_finished=True)
+
+        red_steps = effect.build_steps(
+            state, hero, red_card, compute_card_stats(state, hero.id, red_card)
+        )
+
+        # If the red card's attack used a custom target_id_key, propagate the
+        # defender ID to that key so after-attack steps that gate on it (e.g.
+        # Nebkher's Twisted Fate using "tf_victim") can find the attacked unit.
+        for step in red_steps:
+            if isinstance(step, AttackSequenceStep) and step.target_id_key:
+                defender = context.get("defender_id")
+                if defender:
+                    context[step.target_id_key] = defender
+                break
+
+        # Strip everything up to and including the AttackSequenceStep
+        after_attack_steps: list[GameStep] = []
+        found_attack = False
+        for step in red_steps:
+            if found_attack:
+                after_attack_steps.append(step)
+            elif isinstance(step, AttackSequenceStep):
+                found_attack = True
+
+        return StepResult(is_finished=True, new_steps=after_attack_steps)

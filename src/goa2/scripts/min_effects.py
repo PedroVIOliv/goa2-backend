@@ -10,7 +10,6 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import (
-    CardColor,
     CardContainerType,
     CardState,
     CardTier,
@@ -37,6 +36,7 @@ from goa2.engine.filters_units import (
     UnitTypeFilter,
 )
 from goa2.engine.steps import (
+    ApplyAfterAttackCardTextStep,
     AttackSequenceStep,
     CheckContextConditionStep,
     CheckLanePushStep,
@@ -440,63 +440,29 @@ class CobraStanceEffect(CardEffect):
 # =============================================================================
 
 
-def _find_red_card(hero: Hero) -> Card | None:
-    """Find the hero's resolved or discarded red card for this round."""
-    # Check resolved (played_cards)
-    for c in hero.played_cards:
-        if c is not None and c.color == CardColor.RED:
-            return c
-    # Check discard pile
-    for c in hero.discard_pile:
-        if c.color == CardColor.RED:
-            return c
-    return None
-
-
 @register_effect("fast_as_lightning")
 class FastAsLightningEffect(CardEffect):
     """
     Target a unit in range. After the attack: Apply the "After the attack"
     text of your resolved or discarded red card.
     (If it has radius, use that card's value.)
+
+    The red card lookup is deferred to ``ApplyAfterAttackCardTextStep`` so
+    that cards discarded into the discard pile *during* the attack (e.g. from
+    a defense effect) are still found.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        steps: list[GameStep] = [
+        return [
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=card.is_ranged,
             ),
+            ApplyAfterAttackCardTextStep(hero_id=str(hero.id)),
         ]
-
-        red_card = _find_red_card(hero)
-        if red_card is None:
-            return steps
-
-        effect = CardEffectRegistry.get(red_card.current_effect_id or "")
-        if effect is None:
-            return steps
-
-        # Build the red card's steps using the red card's own stats
-        from goa2.engine.stats import compute_card_stats
-
-        red_stats = compute_card_stats(state, hero.id, red_card)
-        red_steps = effect.build_steps(state, hero, red_card, red_stats)
-
-        # Strip everything up to and including AttackSequenceStep
-        after_attack_steps: list[GameStep] = []
-        found_attack = False
-        for step in red_steps:
-            if found_attack:
-                after_attack_steps.append(step)
-            elif isinstance(step, AttackSequenceStep):
-                found_attack = True
-
-        steps.extend(after_attack_steps)
-        return steps
 
 
 # =============================================================================

@@ -24,6 +24,7 @@ from goa2.engine.steps import GameStep
 EXPECTED_STEP_CLASSES = {
     "AddContextValueStep",
     "AdvanceTurnStep",
+    "ApplyAfterAttackCardTextStep",
     "AskConfirmationStep",
     "AttackSequenceStep",
     "CancelEffectsStep",
