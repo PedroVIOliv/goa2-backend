@@ -24,8 +24,11 @@ from goa2.engine.steps import (
     CheckContextConditionStep,
     CountCardsStep,
     DiscardCardStep,
+    GainCoinsStep,
     MoveUnitStep,
+    RetrieveCardStep,
     SelectStep,
+    SetContextFlagStep,
 )
 
 if TYPE_CHECKING:
@@ -40,6 +43,8 @@ ALLY_KEY = "tk_ally"
 ALLY_DISCARD_KEY = "tk_ally_discard"
 ALLY_DISCARD_COUNT_KEY = "tk_ally_discard_count"
 HAS_DISCARD_KEY = "tk_has_discard"
+SELF_KEY = "tk_self"  # Takahide's own id (GainCoinsStep only takes a context key)
+RETRIEVE_KEY = "tk_retrieve"
 
 
 # =============================================================================
@@ -192,6 +197,48 @@ class BringTheReliefEffect(SupportMoveEffect):
 class CommitReservesEffect(SupportMoveEffect):
     move_distance: int = 4
     ignore_obstacles: bool = True
+
+
+class SupportEconomyEffect(CardEffect):
+    """ "… If that hero has a card in the discard, both you and that hero gain N
+    coin(s) and you may retrieve a discarded card."
+
+    Pledge of Allegiance (1 coin) / Loyal Retainer (2 coins). The retrieve reads
+    Takahide's OWN discard (interp 7) and may take a facedown card (S15): moving
+    a card between zones needs no knowledge of its face.
+    """
+
+    coins: int = 1
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            *_ally_discard_gate(stats.range),
+            SetContextFlagStep(key=SELF_KEY, value=str(hero.id)),
+            GainCoinsStep(hero_key=SELF_KEY, amount=self.coins, active_if_key=HAS_DISCARD_KEY),
+            GainCoinsStep(hero_key=ALLY_KEY, amount=self.coins, active_if_key=HAS_DISCARD_KEY),
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="You may retrieve a discarded card",
+                output_key=RETRIEVE_KEY,
+                is_mandatory=False,
+                include_facedown=True,
+                active_if_key=HAS_DISCARD_KEY,
+            ),
+            RetrieveCardStep(card_key=RETRIEVE_KEY, active_if_key=RETRIEVE_KEY),
+        ]
+
+
+@register_effect("pledge_of_allegiance")
+class PledgeOfAllegianceEffect(SupportEconomyEffect):
+    coins: int = 1
+
+
+@register_effect("loyal_retainer")
+class LoyalRetainerEffect(SupportEconomyEffect):
+    coins: int = 2
 
 
 # =============================================================================

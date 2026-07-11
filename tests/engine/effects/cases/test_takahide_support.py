@@ -65,6 +65,18 @@ def give_discard(state, hero_id: str, *cards: Card) -> list[Card]:
     return list(cards)
 
 
+def discard_from_hand(state, hero_id: str, card_id: str, *, facedown: bool = False) -> Card:
+    """Move a card the hero already owns from their hand to their discard pile."""
+    hero = state.get_hero(hero_id)
+    assert hero is not None
+    card = next(c for c in hero.hand if c.id == card_id)
+    hero.hand.remove(card)
+    card.state = CardState.DISCARD
+    card.is_facedown = facedown
+    hero.discard_pile.append(card)
+    return card
+
+
 def board(radius: int = 4) -> list[tuple[int, int, int]]:
     return [
         (q, r, -q - r)
@@ -351,3 +363,155 @@ def test_come_to_aid_cannot_path_through_obstacles():
     run.finish()  # no reachable destination → optional move skipped
 
     assert state.get_position(TAKAHIDE) == Hex(q=0, r=0, s=0)
+
+
+# ---------------------------------------------------------------------------
+# §4 Pledge of Allegiance (range 4, 1 coin each + retrieve)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.effect_flow
+def test_pledge_h1_coins_for_both_then_takahide_retrieves():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    discard_from_hand(state, TAKAHIDE, "proven_warrior")
+    taka, ally = state.get_hero(TAKAHIDE), state.get_hero(ALLY)
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.expect_input(InputRequestType.SELECT_CARD)
+    assert run.latest_request.player_id == TAKAHIDE  # Takahide's own discard
+    run.choose("proven_warrior").finish()
+
+    assert taka.gold == 1
+    assert ally.gold == 1
+    assert "proven_warrior" in [c.id for c in taka.hand]
+    assert taka.discard_pile == []
+
+
+@pytest.mark.effect_flow
+def test_pledge_h2_decline_with_preexisting_discard_still_pays_and_retrieves():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    give_discard(state, ALLY, _card("old_card"))
+    discard_from_hand(state, TAKAHIDE, "proven_warrior")
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).skip()
+    run.expect_input(InputRequestType.SELECT_CARD).choose("proven_warrior")
+    run.finish()
+
+    assert state.get_hero(TAKAHIDE).gold == 1
+    assert state.get_hero(ALLY).gold == 1
+    assert "proven_warrior" in [c.id for c in state.get_hero(TAKAHIDE).hand]
+
+
+@pytest.mark.effect_flow
+def test_pledge_h3_retrieve_declined_leaves_only_the_coins():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    discard_from_hand(state, TAKAHIDE, "proven_warrior")
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.expect_input(InputRequestType.SELECT_CARD).skip()
+    run.finish()
+
+    taka = state.get_hero(TAKAHIDE)
+    assert taka.gold == 1
+    assert [c.id for c in taka.discard_pile] == ["proven_warrior"]
+
+
+@pytest.mark.effect_flow
+def test_pledge_h4_facedown_own_discard_card_is_retrievable_and_turns_faceup():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    hidden = discard_from_hand(state, TAKAHIDE, "proven_warrior", facedown=True)
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.expect_input(InputRequestType.SELECT_CARD)
+    assert "proven_warrior" in option_ids(run)
+    run.choose("proven_warrior").finish()
+
+    assert hidden in state.get_hero(TAKAHIDE).hand
+    assert hidden.is_facedown is False
+
+
+@pytest.mark.effect_flow
+def test_pledge_u1_condition_unmet_pays_nothing():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    discard_from_hand(state, TAKAHIDE, "proven_warrior")
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).skip()
+    run.finish()
+
+    taka = state.get_hero(TAKAHIDE)
+    assert taka.gold == 0
+    assert state.get_hero(ALLY).gold == 0
+    assert [c.id for c in taka.discard_pile] == ["proven_warrior"]
+
+
+@pytest.mark.effect_flow
+def test_pledge_u2_empty_own_discard_pays_coins_without_a_retrieve_prompt():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.finish()  # no retrieve prompt
+
+    assert state.get_hero(TAKAHIDE).gold == 1
+    assert state.get_hero(ALLY).gold == 1
+
+
+@pytest.mark.effect_flow
+def test_pledge_u3_allys_discarded_card_is_not_retrievable():
+    state = support_state("pledge_of_allegiance")
+    give_hand(state, ALLY, _card("ally_a"))
+    discard_from_hand(state, TAKAHIDE, "proven_warrior")
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.expect_input(InputRequestType.SELECT_CARD)
+
+    assert option_ids(run) == ["proven_warrior"]  # the ally's card is in THEIR discard
+
+
+# ---------------------------------------------------------------------------
+# §5 Loyal Retainer (range 4, 2 coins each + retrieve)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.effect_flow
+def test_loyal_retainer_h1_pays_two_coins_each_and_retrieves():
+    state = support_state("loyal_retainer", ally_at=(4, 0, -4))
+    give_hand(state, ALLY, _card("ally_a"))
+    discard_from_hand(state, TAKAHIDE, "come_to_aid")
+
+    run = run_card(state, TAKAHIDE)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose(ALLY)
+    run.expect_input(InputRequestType.SELECT_CARD).choose("ally_a")
+    run.expect_input(InputRequestType.SELECT_CARD).choose("come_to_aid")
+    run.finish()
+
+    assert state.get_hero(TAKAHIDE).gold == 2
+    assert state.get_hero(ALLY).gold == 2
+    assert "come_to_aid" in [c.id for c in state.get_hero(TAKAHIDE).hand]
