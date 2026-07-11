@@ -17,6 +17,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from goa2.domain.models import ActionType, CardContainerType, TargetType
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter, HasUnresolvedCardFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
@@ -25,6 +32,7 @@ from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
     CountCardsStep,
+    CreateEffectStep,
     DiscardCardStep,
     ForceDiscardByColorStep,
     GainCoinsStep,
@@ -466,6 +474,46 @@ class HoldMySakeEffect(UnresolvedSwapEffect):
 # =============================================================================
 # Lane D: spatial denial family (Spinning Blade / Blade Helix)
 # =============================================================================
+
+
+class SpatialDenialEffect(CardEffect):
+    """ "Target a unit adjacent to you. After the attack: This turn: Empty spaces
+    adjacent to you / in radius count as obstacles for enemy units."
+
+    Spinning Blade (literal adjacency) / Blade Helix (the card's radius stat, so
+    RADIUS items widen it). The effect is created dormant and activated by
+    FinalizeHeroTurnStep like every card effect, and expires at end of turn.
+    """
+
+    use_card_radius: bool = False
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        radius = (stats.radius or 0) if self.use_card_radius else 1
+        return [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            CreateEffectStep(
+                effect_type=EffectType.EMPTY_HEX_OBSTACLE,
+                scope=EffectScope(
+                    shape=Shape.RADIUS,
+                    range=radius,
+                    origin_id=str(hero.id),
+                    affects=AffectsFilter.ENEMY_UNITS,
+                ),
+                duration=DurationType.THIS_TURN,
+            ),
+        ]
+
+
+@register_effect("spinning_blade")
+class SpinningBladeEffect(SpatialDenialEffect):
+    pass
+
+
+@register_effect("blade_helix")
+class BladeHelixEffect(SpatialDenialEffect):
+    use_card_radius: bool = True
 
 
 # =============================================================================
