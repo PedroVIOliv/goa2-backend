@@ -29,6 +29,13 @@ class Card(GameEntity):
 
     state: CardState = CardState.DECK
     is_facedown: bool = True  # Default is Hidden
+    starts_in_deck: bool = Field(
+        default=False,
+        description=(
+            "If True, the card stays in the deck at game setup even when it is "
+            "UNTIERED/Tier I (Takahide's Sting/Strike golds)."
+        ),
+    )
     played_this_round: bool = Field(
         default=False,
         description="True if card was played during Planning Phase this round.",

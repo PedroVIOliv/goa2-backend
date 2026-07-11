@@ -264,7 +264,10 @@ class Hero(Unit):
         """
         self.hand = []
         for c in self.deck:
-            if c.tier == CardTier.UNTIERED or c.tier == CardTier.I:
+            starts_in_hand = (
+                c.tier == CardTier.UNTIERED or c.tier == CardTier.I
+            ) and not c.starts_in_deck
+            if starts_in_hand:
                 c.state = CardState.HAND
                 self.hand.append(c)
             else:

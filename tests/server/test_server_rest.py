@@ -90,6 +90,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Emmitt": 4,
         "NebKher": 4,
         "Snorri": 4,
+        "Takahide": 4,
     }
 
 

@@ -310,6 +310,7 @@ def create_takahide() -> Hero:
             secondary_actions={ActionType.DEFENSE: 1, ActionType.MOVEMENT: 1},
             is_ranged=True,
             range_value=3,
+            starts_in_deck=True,
             effect_id="sting_like_a_bee",
             effect_text="Target a unit at maximum range.\nAfter the attack: Swap this card with a different gold card in your deck.\n( This card starts the game in your deck. )",
         ),
@@ -323,6 +324,7 @@ def create_takahide() -> Hero:
             primary_action=ActionType.ATTACK,  # Basic Attack Frame
             primary_action_value=7,
             secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 3},
+            starts_in_deck=True,
             effect_id="strike_like_a_tiger",
             effect_text="Target a unit adjacent to you.\nAfter the attack: Swap this card with a different gold card in your deck.\n( This card starts the game in your deck. )",
         ),

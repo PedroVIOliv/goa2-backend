@@ -21,6 +21,7 @@ import goa2.data.heroes.sabina
 import goa2.data.heroes.silverarrow
 import goa2.data.heroes.snorri
 import goa2.data.heroes.swift
+import goa2.data.heroes.takahide
 import goa2.data.heroes.tali
 import goa2.data.heroes.tigerclaw
 import goa2.data.heroes.trinkets
