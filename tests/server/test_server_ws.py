@@ -76,6 +76,40 @@ def test_ws_wrong_game(client, game_data):
         ws.receive_json()
 
 
+def test_new_connection_supersedes_old_connection(client, game_data):
+    """A reconnect owns the token and continues receiving broadcasts."""
+    token = _token_for(game_data, "hero_arien")
+    game_id = game_data["game_id"]
+
+    view = client.get(
+        f"/games/{game_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    card_id = next(
+        hero["hand"][0]["id"]
+        for team in view["view"]["teams"].values()
+        for hero in team["heroes"]
+        if hero["id"] == "hero_arien"
+    )
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as old_ws:
+        old_ws.receive_json()
+
+        with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as new_ws:
+            new_ws.receive_json()
+
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                old_ws.receive_json()
+            assert exc_info.value.code == 4002
+
+            # The old handler's disconnect cleanup must not unregister the new
+            # socket. A mutation therefore yields both its direct result and
+            # the authoritative state broadcast on the replacement socket.
+            new_ws.send_json({"type": "COMMIT_CARD", "card_id": card_id})
+            assert new_ws.receive_json()["type"] == "ACTION_RESULT"
+            assert new_ws.receive_json()["type"] == "STATE_UPDATE"
+
+
 # ---- GET_VIEW ----
 
 
