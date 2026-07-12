@@ -196,6 +196,46 @@ async def commit_card(
         return _result_to_response(result)
 
 
+@router.post("/{game_id}/uncommit", response_model=ActionResultResponse)
+async def uncommit_card(
+    game_id: str,
+    player: PlayerDep,
+    registry: RegistryDep,
+) -> ActionResultResponse:
+    """Take a committed card back into hand during Planning (board-game
+    take-back; LIFO for a two-card hero). Allowed until the last player
+    commits — that commit runs revelation synchronously, so a late uncommit
+    gets a 409 phase error."""
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot uncommit cards")
+    game = registry.get(game_id)
+
+    async with game.lock:
+        session = game.session
+        if session.current_phase != GamePhase.PLANNING:
+            raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+        # NOTE: validate+mutate stays synchronous under game.lock — that is
+        # what makes an uncommit racing the final commit resolve cleanly
+        # (one side simply loses; state never corrupts). Don't add awaits
+        # between the phase check and the session call.
+        state = session.state
+        hid = HeroID(player.hero_id)
+        card = state.pending_second_cards.get(hid) or state.pending_inputs.get(hid)
+        rec_round, rec_turn = state.round, state.turn
+        result = session.uncommit_card(hid)
+        # Record only after success so a failed attempt never lands in the
+        # replay (contrast: commits pre-validate, so they can record first).
+        if game.replay_recorder:
+            game.replay_recorder.record_uncommit(hid, rec_round, rec_turn)
+        game.last_result = result
+        if game.game_logger and card is not None:
+            game.game_logger.log_card_uncommit(hid, card.id)
+        _log_result(game, result)
+        registry.save_game(game_id)
+        return _result_to_response(result)
+
+
 @router.post("/{game_id}/pass", response_model=ActionResultResponse)
 async def pass_turn(
     game_id: str,
