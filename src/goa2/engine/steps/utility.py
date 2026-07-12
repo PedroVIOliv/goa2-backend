@@ -979,15 +979,17 @@ class ApplyAfterAttackCardTextStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        # Look for a resolved or discarded red card
+        # Look for a resolved or discarded red card. current_color, not color:
+        # a facedown card in those zones has lost its color (rulebook FACEDOWN)
+        # and must be skipped, not found-and-fizzled.
         red_card: Any = None
         for c in hero.played_cards:
-            if c is not None and c.color == CardColor.RED:
+            if c is not None and c.current_color == CardColor.RED:
                 red_card = c
                 break
         if red_card is None:
             for c in hero.discard_pile:
-                if c.color == CardColor.RED:
+                if c.current_color == CardColor.RED:
                     red_card = c
                     break
         if red_card is None:

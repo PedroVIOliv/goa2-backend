@@ -1672,15 +1672,17 @@ class ForceDefenseCardMovementStep(GameStep):
         if not card:
             return StepResult(is_finished=True)
 
-        has_secondary_movement = ActionType.MOVEMENT in card.secondary_actions
-        has_primary_movement = card.primary_action == ActionType.MOVEMENT
+        # current_* reads: a facedown card in the discard/resolved area has
+        # lost its actions (rulebook FACEDOWN), so no movement can be forced.
+        has_secondary_movement = ActionType.MOVEMENT in card.current_secondary_actions
+        has_primary_movement = card.current_primary_action == ActionType.MOVEMENT
 
         if has_primary_movement:
             # Case 3: Primary movement — call card effect's build_steps
             movement_steps = self._build_primary_movement_steps(state, hero, card)
         elif has_secondary_movement:
             # Case 2: Secondary movement — MoveSequenceStep
-            move_val = card.secondary_actions[ActionType.MOVEMENT]
+            move_val = card.current_secondary_actions[ActionType.MOVEMENT]
             movement_steps = [
                 MoveSequenceStep(
                     unit_id=str(defender_id),

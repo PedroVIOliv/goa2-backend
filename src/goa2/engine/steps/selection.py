@@ -229,15 +229,34 @@ class SelectStep(GameStep):
                     ]
 
                 # Apply card property filters before extracting IDs
-                if self.card_action_types is not None:
-                    source_list = [
-                        c for c in source_list if c.primary_action in self.card_action_types
-                    ]
                 selected_colors = list(self.card_colors or [])
                 if self.card_color_key:
                     color_val = context.get(self.card_color_key)
                     if color_val:
                         selected_colors.append(CardColor(str(color_val)))
+
+                # Rulebook FACEDOWN: a facedown resolved/discarded card has lost
+                # its type, color and actions, so it can never match an identity
+                # filter — even when include_facedown re-added it above.
+                wants_card_identity = (
+                    self.card_action_types is not None
+                    or bool(selected_colors)
+                    or bool(self.card_tier_key and context.get(self.card_tier_key))
+                    or self.card_is_basic is not None
+                )
+                if wants_card_identity:
+                    source_list = [
+                        c
+                        for c in source_list
+                        if not (
+                            c.is_facedown and c.state in (CardState.DISCARD, CardState.RESOLVED)
+                        )
+                    ]
+
+                if self.card_action_types is not None:
+                    source_list = [
+                        c for c in source_list if c.primary_action in self.card_action_types
+                    ]
                 if selected_colors:
                     source_list = [c for c in source_list if c.color in selected_colors]
                 if self.card_tier_key:
