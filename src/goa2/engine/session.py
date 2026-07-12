@@ -41,7 +41,7 @@ class GameSession:
     High-level orchestrator for game interactions.
 
     Clients interact exclusively through this class:
-    - commit_card() / pass_turn() during PLANNING
+    - commit_card() / uncommit_card() / pass_turn() during PLANNING
     - advance() during RESOLUTION and other phases
     """
 
@@ -69,6 +69,16 @@ class GameSession:
         from goa2.engine.phases import pass_turn as _pass_turn
 
         _pass_turn(self.state, hero_id)
+        return self._check_after_planning()
+
+    def uncommit_card(self, hero_id: HeroID) -> SessionResult:
+        """Take a committed card back into hand during Planning (LIFO for a
+        two-card hero). Rejected once the last commit has fired revelation."""
+        if self.state.phase != GamePhase.PLANNING:
+            raise ValueError(f"Cannot uncommit card in {self.state.phase} phase")
+        from goa2.engine.phases import uncommit_card as _uncommit_card
+
+        _uncommit_card(self.state, hero_id)
         return self._check_after_planning()
 
     def finish_planning(self, hero_id: HeroID) -> SessionResult:

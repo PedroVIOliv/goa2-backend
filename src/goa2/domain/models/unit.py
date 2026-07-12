@@ -114,6 +114,17 @@ class Hero(Unit):
         # It moves to 'played_cards' (Resolved slots) only after turn completion.
         self.current_turn_card = card
 
+    def unplay_card(self, card: Card):
+        """
+        Reverse of play_card: return a committed (facedown, unresolved) card
+        to hand during Planning. The caller manages current_turn_card — for a
+        two-card hero it must be restored to the first commit, not cleared.
+        """
+        card.state = CardState.HAND
+        card.is_facedown = False
+        card.played_this_round = False
+        self.hand.append(card)
+
     def resolve_current_card(self):
         """
         Moves the current turn card to the resolved 'played_cards' list.
