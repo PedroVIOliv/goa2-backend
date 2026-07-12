@@ -305,3 +305,31 @@ def test_replay_roundtrip_with_rollback(tmp_path):
     assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
         live.state.model_dump(mode="json")
     )
+
+
+def test_record_and_replay_roundtrip_with_uncommit(tmp_path):
+    """commit -> uncommit -> commit(other) reconstructs to the live state."""
+    seed = 42
+    live = _live_game(seed)
+    rec = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(rec, seed)
+
+    first_hero = _hero_ids(live.state)[0]
+    hero = live.state.get_hero(HeroID(first_hero))
+    card0, card1 = hero.hand[0], hero.hand[1]
+
+    rec.record_commit(first_hero, card0.id, live.state.round, live.state.turn)
+    live.commit_card(HeroID(first_hero), card0)
+    rec.record_uncommit(first_hero, live.state.round, live.state.turn)
+    live.uncommit_card(HeroID(first_hero))
+    rec.record_commit(first_hero, card1.id, live.state.round, live.state.turn)
+    live.commit_card(HeroID(first_hero), card1)
+
+    replayed = replay_game(str(tmp_path / "g1.jsonl"))
+
+    assert replayed.state.pending_inputs[first_hero].id == card1.id
+    replayed_hero = replayed.state.get_hero(HeroID(first_hero))
+    assert any(c.id == card0.id for c in replayed_hero.hand)
+    assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
+        live.state.model_dump(mode="json")
+    )

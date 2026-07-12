@@ -99,6 +99,10 @@ class GameLogger:
         self.logger.info("COMMIT: %s -> %s", hero_id, card_id)
         self._add_event("CARD_COMMIT", {"hero_id": hero_id, "card_id": card_id})
 
+    def log_card_uncommit(self, hero_id: str, card_id: str) -> None:
+        self.logger.info("UNCOMMIT: %s <- %s", hero_id, card_id)
+        self._add_event("CARD_UNCOMMIT", {"hero_id": hero_id, "card_id": card_id})
+
     def log_pass_turn(self, hero_id: str) -> None:
         self.logger.info("PASS: %s", hero_id)
         self._add_event("PASS_TURN", {"hero_id": hero_id})

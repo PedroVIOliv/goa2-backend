@@ -15,6 +15,7 @@ Format: one JSON object per line (JSONL).
 
   line N  one decision (in applied order), tagged with round/turn:
     {"type":"commit","r":1,"t":1,"hero":"hero_arien","card":"arien_basic_1"}
+    {"type":"uncommit","r":1,"t":1,"hero":"hero_arien"}
     {"type":"pass","r":1,"t":1,"hero":"hero_wasp"}
     {"type":"input","r":3,"t":2,"hero":"hero_arien","sel":"minion_4"}
     {"type":"rollback","r":3,"t":2,"hero":"hero_arien"}
@@ -150,6 +151,9 @@ class ReplayRecorder:
 
     def record_finish_planning(self, hero_id: str, round_num: int, turn: int) -> None:
         self._append({"type": "finish_planning", "r": round_num, "t": turn, "hero": hero_id})
+
+    def record_uncommit(self, hero_id: str, round_num: int, turn: int) -> None:
+        self._append({"type": "uncommit", "r": round_num, "t": turn, "hero": hero_id})
 
     def record_input(self, hero_id: str, selection: Any, round_num: int, turn: int) -> None:
         self._append(
@@ -326,6 +330,8 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         session.pass_turn(hero_id)
     elif kind == "finish_planning":
         session.finish_planning(hero_id)
+    elif kind == "uncommit":
+        session.uncommit_card(hero_id)
     elif kind == "input":
         session.advance(InputResponse(request_id="", selection=decision["sel"]))
     elif kind == "rollback":
