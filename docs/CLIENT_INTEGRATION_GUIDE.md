@@ -213,6 +213,24 @@ Commit a card during the PLANNING phase.
 
 **Response:** `200 OK` — returns `ActionResultResponse` (see below).
 
+### `POST /games/{game_id}/uncommit`
+
+Take your committed card back into hand during the PLANNING phase (the
+board-game "take-back"), e.g. to commit a different card while waiting for the
+other players. For a two-card hero (Emmitt's *Alternative Timelines*)
+take-backs are LIFO: a committed second card returns first, then the first
+commit; any planning-done signal is cleared.
+
+Allowed only while the phase is still PLANNING — the instant the last player
+commits, revelation runs and further uncommits fail.
+
+**Request body:** empty
+
+**Response:** `200 OK` — returns `ActionResultResponse`; the card is back in
+`hand` and `current_turn_card` reverts. `400` if there is nothing to take back
+(no commit yet, or the player passed). `403` for spectators. `409` if the
+phase is no longer PLANNING (all cards locked in).
+
 ### `POST /games/{game_id}/pass`
 
 Pass your turn during the PLANNING phase (the hero will not play a card this round).
@@ -414,6 +432,18 @@ All messages are JSON with a `type` field:
 {
   "type": "COMMIT_CARD",
   "card_id": "arien_tidal_wave_1"
+}
+```
+
+#### `UNCOMMIT_CARD`
+
+Take the committed card back into hand during PLANNING (LIFO for a two-card
+hero). See `POST /games/{game_id}/uncommit`. Reply: `ACTION_RESULT`; failure
+(e.g. cards already locked in): `ERROR`.
+
+```json
+{
+  "type": "UNCOMMIT_CARD"
 }
 ```
 
