@@ -1,6 +1,28 @@
 # Takahide — TDD Test Paths (for review)
 
-Status: **AWAITING REVIEW** (2026-07-11). No implementation started.
+Status: **IMPLEMENTED** (2026-07-11). All 19 cards + the ultimate are live in
+`src/goa2/scripts/takahide_effects.py`; every H/U path below has at least one
+test (138 tests across `tests/engine/effects/cases/test_takahide_*.py` and the
+four primitive suites `test_takahide_setup.py`, `test_empty_hex_obstacle.py`,
+`test_swap_with_deck_card.py`, `test_facedown_masking.py`).
+
+Deviations from this doc, decided during implementation:
+
+- **Range/radius are topology-service distance, not obstacle pathfinding.**
+  `RangeFilter` (used by every hero) resolves distance through the topology
+  service, which is cube distance plus reality-split awareness — walls do not
+  lengthen it. So §1 U4 is tested as "an ally beyond max range is not
+  selectable", and §14 H2 as "the denied ring lengthens enemy movement PATHS"
+  (pathfinding does consult obstacles), not their attack range.
+- **The victim select in §8–§10 is optional** (Snorri Runetrap precedent): a
+  mandatory select with no candidates aborts the whole action, which would
+  contradict §8 U3. Declining the first victim also ends the picking, which is
+  how Takahide picks zero victims (§10 H2).
+- **No new `color_output_key`**: `SelectStep.selected_card_color_key` already
+  existed and does exactly what S4 needs.
+- **`Hero.initialize_state()` now marks starting-hand cards faceup.** Cards
+  defaulted to `is_facedown=True`, which is only meaningful for cards in play
+  areas; leaving it set made Bushido's swap deliver a facedown card into hand.
 
 Takahide is a support samurai: 19 deck cards + ultimate. Two engines drive
 his kit: **ally discard-for-benefit** (feed and reward allies' discard

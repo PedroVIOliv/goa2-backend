@@ -16,7 +16,17 @@ import pytest
 
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier, StatType
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Minion,
+    MinionType,
+    StatType,
+    TeamColor,
+)
 from goa2.domain.models.effect import DurationType, EffectType
 from goa2.engine import rules
 from goa2.engine.effect_manager import EffectManager
@@ -266,3 +276,33 @@ def test_blade_helix_h2_radius_item_extends_the_denied_area():
     assert effect is not None and effect.scope.range == 2
     assert obstacle_for(state, (0, 2, -2), ENEMY)  # distance 2 now denied
     assert not obstacle_for(state, (0, 3, -3), ENEMY)
+
+
+@pytest.mark.effect_flow
+def test_spinning_blade_u3_enemy_pushes_into_the_denied_ring_are_blocked():
+    """Displacement counts: an enemy-driven push cannot deliver a unit into a
+    denied hex, though a friendly-driven push into the same hex still lands."""
+    from goa2.domain.state import GameState
+    from goa2.engine.steps import PushUnitStep
+
+    def push_victim_toward_takahide(actor_id: str) -> GameState:
+        state = denial_state("spinning_blade")
+        state.teams[TeamColor.RED].minions.append(
+            Minion(id="minion_r1", name="minion_r1", team=TeamColor.RED, type=MinionType.MELEE)
+        )
+        state.place_entity("minion_r1", Hex(q=0, r=2, s=-2))
+
+        run = run_card(state, TAKAHIDE, finalize_turn=True)
+        attack_and_defend(run)
+        run.expect_input(InputRequestType.CHOOSE_ACTION)
+
+        state.current_actor_id = actor_id
+        step = PushUnitStep(target_id="minion_r1", source_hex=Hex(q=0, r=3, s=-3), distance=1)
+        step.resolve(state, state.execution_context)
+        return state
+
+    blocked = push_victim_toward_takahide(ENEMY)
+    assert blocked.get_position("minion_r1") == Hex(q=0, r=2, s=-2)  # push stopped
+
+    allowed = push_victim_toward_takahide(TAKAHIDE)
+    assert allowed.get_position("minion_r1") == Hex(q=0, r=1, s=-1)  # friendly push lands

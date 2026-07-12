@@ -1,5 +1,8 @@
 # Takahide Hero Implementation Plan
 
+> **Status: COMPLETE (2026-07-11).** All 13 tasks shipped on `main`. See the
+> TDD paths doc's header for the deviations decided during implementation.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement Takahide's 19 card effects + Ready for War ultimate on top of four new engine primitives (starts-in-deck setup, deck-card swap step, facedown-outside-hand masking, empty-hex-obstacle effect), fully TDD per the approved paths doc.
