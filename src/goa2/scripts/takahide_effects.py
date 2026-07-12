@@ -16,7 +16,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from goa2.domain.models import ActionType, CardContainerType, TargetType
+from goa2.domain.models import (
+    ActionType,
+    CardColor,
+    CardContainerType,
+    CardState,
+    TargetType,
+)
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -36,11 +42,13 @@ from goa2.engine.steps import (
     DiscardCardStep,
     ForceDiscardByColorStep,
     GainCoinsStep,
+    MoveSequenceStep,
     MoveUnitStep,
     RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
     SwapCardStep,
+    SwapWithDeckCardStep,
 )
 
 if TYPE_CHECKING:
@@ -519,3 +527,131 @@ class BladeHelixEffect(SpatialDenialEffect):
 # =============================================================================
 # Lane E: gold cycle (Float / Sting / Strike / Bushido) + Ready for War
 # =============================================================================
+
+DECK_SWAP_KEY = "deck_swap_card"
+
+
+def _deck_golds(hero: Hero) -> list[Card]:
+    """Takahide's golds that are currently IN the deck (hero.deck is the master
+    card list, so membership is a state check)."""
+    return [c for c in hero.deck if c.color == CardColor.GOLD and c.state == CardState.DECK]
+
+
+def _gold_swap_steps(
+    hero: Hero,
+    *,
+    outgoing_card_id: str,
+    facedown_rider: bool = False,
+) -> list[GameStep]:
+    """ "Swap this card with a different gold card in your deck."
+
+    Built at resolve time, so an empty deck (post-ultimate) simply yields no
+    steps and the text fizzles silently (interp 1). Takahide's own deck cannot
+    change mid-action, so deciding this up front is safe.
+    """
+    if not _deck_golds(hero):
+        return []
+
+    return [
+        SelectStep(
+            target_type=TargetType.CARD,
+            card_container=CardContainerType.DECK,
+            card_colors=[CardColor.GOLD],
+            card_states=[CardState.DECK],
+            prompt="Choose a gold card in your deck",
+            output_key=DECK_SWAP_KEY,
+            is_mandatory=True,
+        ),
+        SwapWithDeckCardStep(
+            hero_id=str(hero.id),
+            outgoing_card_id=outgoing_card_id,
+            incoming_card_key=DECK_SWAP_KEY,
+            facedown_if_from_discard_or_resolved=facedown_rider,
+        ),
+    ]
+
+
+@register_effect("float_like_a_butterfly")
+class FloatLikeAButterflyEffect(CardEffect):
+    """Gold: "Swap this card with a different gold card in your deck."
+
+    Its primary action IS the movement action, so MoveSequenceStep is the right
+    step here (the one legitimate use in this kit). The swap happens after it,
+    and is mandatory: taking 0 spaces still swaps.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            MoveSequenceStep(unit_id=str(hero.id), range_val=stats.primary_value),
+            *_gold_swap_steps(hero, outgoing_card_id=card.id),
+        ]
+
+
+@register_effect("sting_like_a_bee")
+class StingLikeABeeEffect(CardEffect):
+    """Gold: "Target a unit at maximum range. After the attack: Swap this card
+    with a different gold card in your deck."
+
+    "At maximum range" = exactly the effective range (S14): min_range == max_range.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=f"Target a unit at maximum range ({stats.range})",
+                output_key="target_id",
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(min_range=stats.range, max_range=stats.range),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                target_id_key="target_id",
+                range_val=stats.range,
+                is_ranged=True,
+            ),
+            *_gold_swap_steps(hero, outgoing_card_id=card.id),
+        ]
+
+
+@register_effect("strike_like_a_tiger")
+class StrikeLikeATigerEffect(CardEffect):
+    """Gold: "Target a unit adjacent to you. After the attack: Swap this card
+    with a different gold card in your deck." """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return [
+            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            *_gold_swap_steps(hero, outgoing_card_id=card.id),
+        ]
+
+
+@register_effect("bushido")
+class BushidoEffect(CardEffect):
+    """Silver: "Swap your gold card with a different gold card in your deck; if
+    you swap a resolved or discarded card this way, place the new card facedown."
+
+    "Your gold card" needs no prompt: pre-ultimate exactly one gold is outside
+    the deck (S11), so the outgoing card is located automatically. Post-ultimate
+    Bushido lives in the deck and can never be played.
+    """
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        outgoing = next(
+            (c for c in hero.deck if c.color == CardColor.GOLD and c.state != CardState.DECK),
+            None,
+        )
+        if outgoing is None:
+            return []
+        return _gold_swap_steps(hero, outgoing_card_id=outgoing.id, facedown_rider=True)

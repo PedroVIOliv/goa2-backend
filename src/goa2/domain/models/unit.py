@@ -269,6 +269,10 @@ class Hero(Unit):
             ) and not c.starts_in_deck
             if starts_in_hand:
                 c.state = CardState.HAND
+                # A card in hand is never "facedown": the flag marks hidden
+                # information in play areas (committed / Bushido's swaps), and a
+                # card leaving hand takes its face from wherever it lands.
+                c.is_facedown = False
                 self.hand.append(c)
             else:
                 c.state = CardState.DECK
