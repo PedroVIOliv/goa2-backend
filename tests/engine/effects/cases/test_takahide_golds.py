@@ -388,3 +388,171 @@ def test_strike_u1_no_adjacent_target_aborts_without_a_swap():
     strike = deck_card(taka, "strike_like_a_tiger")
     assert strike.state == CardState.UNRESOLVED
     assert deck_card(taka, "sting_like_a_bee").state == CardState.DECK
+
+
+# ---------------------------------------------------------------------------
+# §20 Ready for War (one-shot at level 8)
+# ---------------------------------------------------------------------------
+
+
+def ultimate_effect():
+    from goa2.engine.effects import CardEffectRegistry
+
+    effect = CardEffectRegistry.get("ready_for_war")
+    assert effect is not None
+    return effect
+
+
+def unlocked_state(silver_in: str = "hand"):
+    """Takahide one round into the game, about to unlock his ultimate."""
+    state = gold_state("come_to_aid")
+    taka = state.get_hero(TAKAHIDE)
+    taka.current_turn_card = None
+    come_to_aid = deck_card(taka, "come_to_aid")
+    come_to_aid.state = CardState.HAND
+    come_to_aid.is_facedown = False
+    taka.hand.append(come_to_aid)
+
+    bushido = deck_card(taka, "bushido")
+    if silver_in != "hand":
+        taka.hand.remove(bushido)
+        if silver_in == "discard":
+            bushido.state = CardState.DISCARD
+            taka.discard_pile.append(bushido)
+        elif silver_in == "played":
+            bushido.state = CardState.RESOLVED
+            bushido.played_this_round = True
+            taka.played_cards = [bushido]
+    return state, taka
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h1_silver_to_deck_and_both_golds_to_hand():
+    state, taka = unlocked_state()
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    bushido = deck_card(taka, "bushido")
+    assert bushido.state == CardState.DECK and bushido not in taka.hand
+    hand_ids = {c.id for c in taka.hand}
+    assert {"sting_like_a_bee", "strike_like_a_tiger", "float_like_a_butterfly"} <= hand_ids
+    assert len(taka.hand) == 6  # 3 golds + 3 tier-I cards
+    assert not [c for c in taka.deck if c.color == CardColor.GOLD and c.state == CardState.DECK]
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h2_silver_returns_from_the_discard():
+    state, taka = unlocked_state(silver_in="discard")
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    bushido = deck_card(taka, "bushido")
+    assert bushido.state == CardState.DECK
+    assert bushido not in taka.discard_pile
+    assert len(taka.hand) == 6
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h3_silver_returns_from_a_resolved_slot():
+    state, taka = unlocked_state(silver_in="played")
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    bushido = deck_card(taka, "bushido")
+    assert bushido.state == CardState.DECK
+    assert taka.played_cards[0] is None  # the slot is emptied
+    assert len(taka.hand) == 6
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h4_the_golds_that_move_are_the_ones_in_the_deck():
+    """Which golds sit in the deck varies with prior swaps, so the hook reads
+    state rather than card identities: with Float in the discard and Sting in
+    hand, only Strike (the one DECK gold) comes to hand."""
+    state, taka = unlocked_state()
+    float_card = deck_card(taka, "float_like_a_butterfly")
+    sting = deck_card(taka, "sting_like_a_bee")
+    taka.hand.remove(float_card)
+    float_card.state = CardState.DISCARD
+    taka.discard_pile.append(float_card)
+    sting.state = CardState.HAND
+    sting.is_facedown = False
+    taka.hand.append(sting)
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    strike = deck_card(taka, "strike_like_a_tiger")
+    assert strike in taka.hand  # the only DECK gold moved
+    assert float_card.state == CardState.DISCARD  # untouched: it was not in the deck
+    assert deck_card(taka, "bushido").state == CardState.DECK
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h5_emits_public_events():
+    from goa2.domain.events import GameEventType
+
+    state, taka = unlocked_state()
+
+    events = ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    types = [e.event_type for e in events]
+    assert GameEventType.DECK_CARD_SWAPPED in types
+    assert types.count(GameEventType.CARD_RETRIEVED) == 2
+    assert all(e.actor_id == TAKAHIDE for e in events)
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_h6_end_of_round_retrieve_keeps_the_silver_in_the_deck():
+    state, taka = unlocked_state()
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+    taka.retrieve_cards()
+
+    assert deck_card(taka, "bushido").state == CardState.DECK
+    assert len(taka.hand) == 6
+
+
+@pytest.mark.effect_contract
+def test_ready_for_war_u1_is_idempotent():
+    state, taka = unlocked_state()
+
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+    hand_before = [c.id for c in taka.hand]
+    events = ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    assert events == []
+    assert [c.id for c in taka.hand] == hand_before
+
+
+@pytest.mark.effect_flow
+def test_ready_for_war_h7_post_ultimate_float_resolves_without_a_swap():
+    state = gold_state("float_like_a_butterfly")
+    taka = state.get_hero(TAKAHIDE)
+    # Simulate the unlock with Float already committed as the turn card.
+    ultimate_effect().on_ultimate_unlocked(state, taka)
+
+    run = run_card(state, TAKAHIDE, finalize_turn=True)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_HEX).choose({"q": 1, "r": 0, "s": -1})
+    run.finish()  # no card-swap prompt
+
+    float_card = deck_card(taka, "float_like_a_butterfly")
+    assert float_card.state == CardState.RESOLVED
+    assert taka.played_cards[0] is float_card
+
+
+@pytest.mark.effect_flow
+def test_ready_for_war_fires_through_the_level_up_path():
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.steps import EndPhaseStep
+
+    state, taka = unlocked_state()
+    taka.gold = 28  # cumulative cost of levels 2-8
+
+    push_steps(state, [EndPhaseStep()])
+    process_stack(state)
+
+    assert taka.level == 8
+    assert deck_card(taka, "bushido").state == CardState.DECK
+    assert deck_card(taka, "sting_like_a_bee") in taka.hand
+    assert deck_card(taka, "strike_like_a_tiger") in taka.hand

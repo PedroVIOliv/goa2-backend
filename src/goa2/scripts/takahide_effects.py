@@ -14,8 +14,10 @@ Design notes live in ``docs/superpowers/plans/2026-07-11-takahide-tdd-paths.md``
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
+from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.models import (
     ActionType,
     CardColor,
@@ -56,6 +58,8 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
     from goa2.engine.stats import CardStats
     from goa2.engine.steps import GameStep
+
+logger = logging.getLogger(__name__)
 
 
 # Context keys shared by the discard-support families.
@@ -655,3 +659,68 @@ class BushidoEffect(CardEffect):
         if outgoing is None:
             return []
         return _gold_swap_steps(hero, outgoing_card_id=outgoing.id, facedown_rider=True)
+
+
+@register_effect("ready_for_war")
+class ReadyForWarEffect(CardEffect):
+    """Ultimate: "Return your silver card to your deck and take two gold cards
+    from your deck into your hand."
+
+    A one-shot fired at the level-8 unlock. The deck holds exactly two golds at
+    that moment (pre-ultimate invariant), so there is no choice to make. After
+    it, Bushido sits in the deck and can never be played, and the golds' swap
+    texts find no deck gold and fizzle (interp 1, interp 3). Idempotent: a
+    second call is a no-op.
+    """
+
+    def on_ultimate_unlocked(self, state: GameState, hero: Hero) -> list[GameEvent]:
+        silver = next((c for c in hero.deck if c.color == CardColor.SILVER), None)
+        if silver is None or silver.state == CardState.DECK:
+            return []
+
+        # hero.deck is the master card list, so the silver never left it: only
+        # its state and container membership change (return_card_to_deck would
+        # raise on a card already in the list).
+        if silver in hero.hand:
+            hero.hand.remove(silver)
+        if silver in hero.discard_pile:
+            hero.discard_pile.remove(silver)
+        for index, card in enumerate(hero.played_cards):
+            if card is not None and card.id == silver.id:
+                hero.played_cards[index] = None
+        if hero.current_turn_card is not None and hero.current_turn_card.id == silver.id:
+            hero.current_turn_card = None
+
+        silver.state = CardState.DECK
+        silver.is_facedown = False
+        silver.played_this_round = False
+        silver.is_active = False
+
+        events = [
+            GameEvent(
+                event_type=GameEventType.DECK_CARD_SWAPPED,
+                actor_id=str(hero.id),
+                metadata={
+                    "outgoing_card_id": silver.id,
+                    "incoming_card_id": None,
+                    "source": "ready_for_war",
+                },
+            )
+        ]
+        for gold in _deck_golds(hero):
+            hero.return_card_to_hand(gold)
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.CARD_RETRIEVED,
+                    actor_id=str(hero.id),
+                    metadata={"card_id": gold.id, "source": "ready_for_war"},
+                )
+            )
+
+        logger.debug("   [READY FOR WAR] %s: silver → deck, deck golds → hand", hero.id)
+        return events
+
+    def build_steps(
+        self, state: GameState, hero: Hero, card: Card, stats: CardStats
+    ) -> list[GameStep]:
+        return []  # Passive one-shot: everything happens at unlock.

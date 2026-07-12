@@ -111,7 +111,7 @@ class EndPhaseCleanupStep(GameStep):
 
         self._retrieve_cards(state)
         token_events = self._clear_tokens(state)
-        self._level_up(state)
+        token_events.extend(self._level_up(state))
 
         if state.pending_upgrades:
             logger.debug("   [PHASE] Level Up Phase started.")
@@ -168,16 +168,19 @@ class EndPhaseCleanupStep(GameStep):
                     )
         return events
 
-    def _level_up(self, state: GameState):
+    def _level_up(self, state: GameState) -> list[GameEvent]:
         """
         Calculates gold spending and level increments.
         Rule 3.1: Costs follow cumulative table. Mandatory purchase.
 
         Note: Level 8 unlocks the ultimate card automatically (no upgrade choice).
         Only levels 2-7 count as pending upgrades requiring card selection.
+
+        Returns any events emitted by `on_ultimate_unlocked` hooks.
         """
         LEVEL_COSTS = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7}
         any_level_ups = False
+        unlock_events: list[GameEvent] = []
 
         for team in state.teams.values():
             for hero in team.heroes:
@@ -207,7 +210,10 @@ class EndPhaseCleanupStep(GameStep):
                                         hero.ultimate_card.effect_id
                                     )
                                     if ult_effect and hasattr(ult_effect, "on_ultimate_unlocked"):
-                                        ult_effect.on_ultimate_unlocked(state, hero)
+                                        # Hooks may return GameEvents (or None).
+                                        emitted = ult_effect.on_ultimate_unlocked(state, hero)
+                                        if emitted:
+                                            unlock_events.extend(emitted)
                             else:
                                 logger.debug(f"   [LEVEL] {hero.id} reached Level 8!")
                         else:
@@ -229,6 +235,8 @@ class EndPhaseCleanupStep(GameStep):
 
         if any_level_ups:
             state.phase = GamePhase.LEVEL_UP
+
+        return unlock_events
 
 
 class EndPhaseStep(GameStep):
