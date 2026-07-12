@@ -841,3 +841,83 @@ def test_second_commit_without_ultimate_still_409(client, game_data):
     second = arien["hand"][0]["id"]
     resp = client.post(f"/games/{game_id}/cards", json={"card_id": second}, headers=_auth(token))
     assert resp.status_code == 409
+
+
+# ---- POST /games/{game_id}/uncommit ----
+
+
+def _hero_view_of(client, game_id: str, token: str, hero_id: str) -> dict:
+    view = client.get(f"/games/{game_id}", headers=_auth(token)).json()
+    for team_data in view["view"]["teams"].values():
+        for hero in team_data["heroes"]:
+            if hero["id"] == hero_id:
+                return hero
+    raise ValueError(f"Hero {hero_id} not in view")
+
+
+def test_uncommit_returns_card_to_hand(client, game_data):
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+
+    hand = _hero_view_of(client, game_id, token, "hero_arien")["hand"]
+    card_id = hand[0]["id"]
+    hand_size = len(hand)
+
+    resp = client.post(f"/games/{game_id}/cards", json={"card_id": card_id}, headers=_auth(token))
+    assert resp.status_code == 200
+
+    resp = client.post(f"/games/{game_id}/uncommit", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["current_phase"] == "PLANNING"
+
+    hero = _hero_view_of(client, game_id, token, "hero_arien")
+    assert hero["current_turn_card"] is None
+    assert len(hero["hand"]) == hand_size
+    assert any(c["id"] == card_id for c in hero["hand"])
+
+
+def test_uncommit_then_commit_other_card(client, game_data):
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+
+    hand = _hero_view_of(client, game_id, token, "hero_arien")["hand"]
+    card0, card1 = hand[0]["id"], hand[1]["id"]
+
+    client.post(f"/games/{game_id}/cards", json={"card_id": card0}, headers=_auth(token))
+    client.post(f"/games/{game_id}/uncommit", headers=_auth(token))
+    resp = client.post(f"/games/{game_id}/cards", json={"card_id": card1}, headers=_auth(token))
+    assert resp.status_code == 200
+
+    hero = _hero_view_of(client, game_id, token, "hero_arien")
+    assert hero["current_turn_card"]["id"] == card1
+
+
+def test_uncommit_nothing_committed_is_400(client, game_data):
+    token = _token_for(game_data, "hero_arien")
+    resp = client.post(f"/games/{game_data['game_id']}/uncommit", headers=_auth(token))
+    assert resp.status_code == 400
+    assert "no committed card" in resp.json()["detail"]
+
+
+def test_uncommit_spectator_forbidden(client, game_data):
+    resp = client.post(
+        f"/games/{game_data['game_id']}/uncommit",
+        headers=_auth(game_data["spectator_token"]),
+    )
+    assert resp.status_code == 403
+
+
+def test_uncommit_after_lock_in_is_409(client, game_data):
+    """Once the last commit fires revelation, a take-back gets a phase error."""
+    game_id = game_data["game_id"]
+    a_token = _token_for(game_data, "hero_arien")
+    w_token = _token_for(game_data, "hero_wasp")
+
+    a_card = _hero_view_of(client, game_id, a_token, "hero_arien")["hand"][0]["id"]
+    w_card = _hero_view_of(client, game_id, w_token, "hero_wasp")["hand"][0]["id"]
+
+    client.post(f"/games/{game_id}/cards", json={"card_id": a_card}, headers=_auth(a_token))
+    client.post(f"/games/{game_id}/cards", json={"card_id": w_card}, headers=_auth(w_token))
+
+    resp = client.post(f"/games/{game_id}/uncommit", headers=_auth(a_token))
+    assert resp.status_code == 409

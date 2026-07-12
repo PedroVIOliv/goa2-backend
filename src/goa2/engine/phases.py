@@ -114,6 +114,51 @@ def pass_turn(state: GameState, hero_id: HeroID):
     _check_phase_transition(state)
 
 
+def uncommit_card(state: GameState, hero_id: HeroID) -> Card:
+    """
+    Take a committed card back into hand during Planning (board-game
+    take-back). Allowed until the last player commits — that final commit
+    runs revelation synchronously, after which this raises.
+
+    LIFO for a two-card hero (Emmitt's Alternative Timelines): a committed
+    second card comes back first; the first commit only after that. Any
+    planning-done signal is cleared so the hero can fully rethink.
+    """
+    if state.phase != GamePhase.PLANNING:
+        raise ValueError(f"Cannot uncommit card in {state.phase} phase")
+
+    hero = state.get_hero(hero_id)
+    if not hero:
+        raise ValueError(f"Hero {hero_id} not found")
+
+    if hero_id not in state.pending_inputs:
+        raise ValueError(f"{hero_id} has no committed card to take back")
+
+    first = state.pending_inputs[hero_id]
+    if first is None:
+        raise ValueError(f"{hero_id} passed (empty hand); nothing to take back")
+
+    second = state.pending_second_cards.get(hero_id)
+    if second is not None:
+        card = second
+        del state.pending_second_cards[hero_id]
+        hero.unplay_card(card)
+        # play_card pointed current_turn_card at the second commit; the
+        # first committed card becomes the pending one again.
+        hero.current_turn_card = first
+    else:
+        card = first
+        del state.pending_inputs[hero_id]
+        hero.unplay_card(card)
+        hero.current_turn_card = None
+
+    if hero_id in state.planning_done:
+        state.planning_done.remove(hero_id)
+
+    logger.info("%s took back %s.", hero_id, card.name)
+    return card
+
+
 def finish_planning(state: GameState, hero_id: HeroID):
     """
     Explicit done-signal for a two-card-capable hero (Emmitt's ultimate) who

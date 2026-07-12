@@ -501,3 +501,64 @@ def test_ws_finish_planning(client):
         msg = ws.receive_json()
         assert msg["type"] == "ACTION_RESULT"
         assert msg["current_phase"] == "RESOLUTION"
+
+
+# ---- UNCOMMIT_CARD via WS ----
+
+
+def test_ws_uncommit_card(client, game_data):
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+
+    view = client.get(f"/games/{game_id}", headers={"Authorization": f"Bearer {token}"}).json()
+    hand = None
+    for team_data in view["view"]["teams"].values():
+        for hero in team_data["heroes"]:
+            if hero["id"] == "hero_arien":
+                hand = hero["hand"]
+    assert hand
+    card_id = hand[0]["id"]
+    hand_size = len(hand)
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()  # initial state
+        ws.send_json({"type": "COMMIT_CARD", "card_id": card_id})
+        assert ws.receive_json()["type"] == "ACTION_RESULT"
+        assert ws.receive_json()["type"] == "STATE_UPDATE"  # broadcast (incl. sender)
+
+        ws.send_json({"type": "UNCOMMIT_CARD"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ACTION_RESULT"
+        assert msg["current_phase"] == "PLANNING"
+
+        # The broadcast after the uncommit shows the card back in hand.
+        state = ws.receive_json()
+        assert state["type"] == "STATE_UPDATE"
+        for team_data in state["view"]["teams"].values():
+            for hero in team_data["heroes"]:
+                if hero["id"] == "hero_arien":
+                    assert hero["current_turn_card"] is None
+                    assert len(hero["hand"]) == hand_size
+
+
+def test_ws_uncommit_nothing_committed_is_error(client, game_data):
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()  # initial state
+        ws.send_json({"type": "UNCOMMIT_CARD"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+        assert "no committed card" in msg["detail"]
+
+
+def test_ws_spectator_cannot_uncommit(client, game_data):
+    game_id = game_data["game_id"]
+    token = game_data["spectator_token"]
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "UNCOMMIT_CARD"})
+        msg = ws.receive_json()
+        assert msg["type"] == "ERROR"

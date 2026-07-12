@@ -161,6 +161,38 @@ async def _handle_commit_card(
     }
 
 
+async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, Any]:
+    """Handle UNCOMMIT_CARD (Planning take-back; LIFO for a two-card hero)."""
+    session = game.session
+    if session.current_phase != GamePhase.PLANNING:
+        raise InvalidPhaseError("PLANNING", session.current_phase.value)
+
+    # NOTE: validate+mutate stays synchronous under game.lock — that is what
+    # makes an uncommit racing the final commit resolve cleanly (one side
+    # simply loses; state never corrupts). Don't add awaits before the
+    # session call.
+    state = session.state
+    hid = HeroID(hero_id)
+    card = state.pending_second_cards.get(hid) or state.pending_inputs.get(hid)
+    rec_round, rec_turn = state.round, state.turn
+    result = session.uncommit_card(hid)
+    # Record only after success so a failed attempt never lands in the replay.
+    if game.replay_recorder:
+        game.replay_recorder.record_uncommit(hero_id, rec_round, rec_turn)
+    game.last_result = result
+    if game.game_logger and card is not None:
+        game.game_logger.log_card_uncommit(hero_id, card.id)
+    _log_ws_result(game, result)
+    return {
+        "type": "ACTION_RESULT",
+        "result_type": result.result_type.value,
+        "current_phase": result.current_phase.value,
+        "events": [ev.model_dump() for ev in result.events],
+        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "winner": result.winner,
+    }
+
+
 async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     """Handle FINISH_PLANNING message (done-signal for a two-card-capable
     hero — Emmitt's Alternative Timelines — playing only one card)."""
@@ -341,6 +373,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         reply = await _handle_submit_input(game, hero_id, data)
                     elif msg_type == "COMMIT_CARD":
                         reply = await _handle_commit_card(game, hero_id, data)
+                    elif msg_type == "UNCOMMIT_CARD":
+                        reply = await _handle_uncommit_card(game, hero_id)
                     elif msg_type == "PASS_TURN":
                         reply = await _handle_pass_turn(game, hero_id)
                     elif msg_type == "FINISH_PLANNING":
@@ -362,6 +396,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 if msg_type in (
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
+                    "UNCOMMIT_CARD",
                     "PASS_TURN",
                     "FINISH_PLANNING",
                     "ROLLBACK",
@@ -377,6 +412,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 if msg_type in (
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",
+                    "UNCOMMIT_CARD",
                     "PASS_TURN",
                     "FINISH_PLANNING",
                     "ROLLBACK",
