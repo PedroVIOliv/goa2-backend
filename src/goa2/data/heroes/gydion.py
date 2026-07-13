@@ -1,0 +1,295 @@
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
+    Hero,
+    StatType,
+)
+from goa2.domain.types import HeroID
+
+from .registry import HeroRegistry
+
+
+def create_gydion() -> Hero:
+    """
+    Gydion
+    """
+
+    # =========================================================================
+    # ULTIMATE (Purple/Tier IV) - Stored separately, not in deck
+    # =========================================================================
+    ultimate = Card(
+        id="the_archwizard",
+        name="The Archwizard",
+        image_id="Ultimate",
+        tier=CardTier.IV,
+        color=CardColor.PURPLE,
+        initiative=0,
+        primary_action=ActionType.SKILL,
+        primary_action_value=None,
+        secondary_actions={},
+        effect_id="the_archwizard",
+        effect_text='Whenever you would add cards to the spellbook, you may cast the "Wish" spell in the spellbook instead.',
+    )
+    ultimate.state = CardState.PASSIVE
+    ultimate.is_facedown = False
+
+    deck = [
+        # =========================================================================
+        # TIER III
+        # =========================================================================
+        Card(
+            id="greater_evocation",
+            name="Greater Evocation",
+            image_id="RedIIIA",  # Evolution of Elementary Evocation -> Lesser Evocation
+            tier=CardTier.III,
+            color=CardColor.RED,
+            initiative=8,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 7, ActionType.MOVEMENT: 3},
+            item=StatType.DEFENSE,
+            effect_id="greater_evocation",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Burning Hands"\n• "Fireball"\n• "Sunburst"\n( Sunburst\'s reach and power grows with every cast spell. )',
+        ),
+        Card(
+            id="greater_necromancy",
+            name="Greater Necromancy",
+            image_id="RedIIIB",  # Evolution of Lesser Necromancy
+            tier=CardTier.III,
+            color=CardColor.RED,
+            initiative=8,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 7, ActionType.MOVEMENT: 3},
+            item=StatType.RADIUS,
+            effect_id="greater_necromancy",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Vampiric Touch"\n• "Create Undead"\n• "Energy Drain"\n( Drain energy from a foe in sight to restore your vitality. )',
+        ),
+        Card(
+            id="greater_abjuration",
+            name="Greater Abjuration",
+            image_id="GreenIIIA",  # Evolution of Elementary Abjuration -> Lesser Abjuration
+            tier=CardTier.III,
+            color=CardColor.GREEN,
+            initiative=4,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
+            item=StatType.INITIATIVE,
+            effect_id="greater_abjuration",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Shield"\n• "Banishment"\n• "Invulnerability"\n( Invulnerability makes you impervious to deadly perils. )',
+        ),
+        Card(
+            id="greater_conjuration",
+            name="Greater Conjuration",
+            image_id="GreenIIIB",  # Evolution of Lesser Conjuration
+            tier=CardTier.III,
+            color=CardColor.GREEN,
+            initiative=4,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
+            item=StatType.MOVEMENT,
+            effect_id="greater_conjuration",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Find Familiar"\n• "Dimension Door"\n• "Cloud Kill"\n( Create a deadly cloud within distance to weaken your foe. )',
+        ),
+        Card(
+            id="greater_enchantment",
+            name="Greater Enchantment",
+            image_id="BlueIIIA",  # Evolution of Elementary Enchantment -> Lesser Enchantment
+            tier=CardTier.III,
+            color=CardColor.BLUE,
+            initiative=10,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 2},
+            item=StatType.RANGE,
+            effect_id="greater_enchantment",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Suggestion"\n• "Dominate Person"\n• "Power Word Kill"\n( Command a weakened foe within earshot to perish instantly. )',
+        ),
+        Card(
+            id="greater_transmutation",
+            name="Greater Transmutation",
+            image_id="BlueIIIB",  # Evolution of Lesser Transmutation
+            tier=CardTier.III,
+            color=CardColor.BLUE,
+            initiative=10,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 2},
+            item=StatType.ATTACK,
+            effect_id="greater_transmutation",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Midas Touch"\n• "Disintegrate"\n• "Polymorph"\n( Polymorph enemies into creatures or objects and vice versa. )',
+        ),
+        # =========================================================================
+        # TIER II
+        # =========================================================================
+        Card(
+            id="lesser_evocation",
+            name="Lesser Evocation",
+            image_id="RedIIA",  # Evolution of Elementary Evocation
+            tier=CardTier.II,
+            color=CardColor.RED,
+            initiative=8,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 3},
+            item=StatType.DEFENSE,
+            effect_id="lesser_evocation",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Burning Hands"\n• "Fireball"\n( Wait for your allies to clear the area before hurling a fireball! )',
+        ),
+        Card(
+            id="lesser_necromancy",
+            name="Lesser Necromancy",
+            image_id="RedIIB",  # Necromancy School Branch Starter
+            tier=CardTier.II,
+            color=CardColor.RED,
+            initiative=8,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 3},
+            item=StatType.INITIATIVE,
+            effect_id="lesser_necromancy",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Vampiric Touch"\n• "Create Undead"\n( Harm your foe to heal yourself. Raise an undead servant. )',
+        ),
+        Card(
+            id="lesser_abjuration",
+            name="Lesser Abjuration",
+            image_id="GreenIIA",  # Evolution of Elementary Abjuration
+            tier=CardTier.II,
+            color=CardColor.GREEN,
+            initiative=4,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
+            item=StatType.INITIATIVE,
+            effect_id="lesser_abjuration",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Shield"\n• "Banishment"\n( Touch anything to have it banished where you please. )',
+        ),
+        Card(
+            id="lesser_conjuration",
+            name="Lesser Conjuration",
+            image_id="GreenIIB",  # Conjuration School Branch Starter
+            tier=CardTier.II,
+            color=CardColor.GREEN,
+            initiative=4,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
+            item=StatType.ATTACK,
+            effect_id="lesser_conjuration",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Find Familiar"\n• "Dimension Door"\n( Summon a familiar to assist you. Travel to a faraway place. )',
+        ),
+        Card(
+            id="lesser_enchantment",
+            name="Lesser Enchantment",
+            image_id="BlueIIA",  # Evolution of Elementary Enchantment
+            tier=CardTier.II,
+            color=CardColor.BLUE,
+            initiative=10,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 2},
+            item=ActionType.DEFENSE,
+            effect_id="lesser_enchantment",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Suggestion"\n• "Dominate Person"\n( Turn the dominated person against their own troops. )',
+        ),
+        Card(
+            id="lesser_transmutation",
+            name="Lesser Transmutation",
+            image_id="BlueIIB",  # Transmutation School Branch Starter
+            tier=CardTier.II,
+            color=CardColor.BLUE,
+            initiative=10,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 2},
+            item=StatType.ATTACK,
+            effect_id="lesser_transmutation",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Midas Touch"\n• "Disintegrate"\n( Create gold. Turn objects and lesser creatures into dust. )',
+        ),
+        # =========================================================================
+        # UNTIERED / TIER I
+        # =========================================================================
+        Card(
+            id="elementary_evocation",
+            name="Elementary Evocation",
+            image_id="RedIA",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=7,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 6, ActionType.MOVEMENT: 3},
+            effect_id="elementary_evocation",
+            effect_text='Cast the "Burning Hands" spell in the spellbook.\n( Burn multiple opponents in near vicinity. )',
+        ),
+        Card(
+            id="elementary_abjuration",
+            name="Elementary Abjuration",
+            image_id="GreenIA",
+            tier=CardTier.I,
+            color=CardColor.GREEN,
+            initiative=5,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 2, ActionType.MOVEMENT: 2},
+            effect_id="elementary_abjuration",
+            effect_text='Cast the "Shield" spell in the spellbook.\n( The magic shield protects against mundane threats. )',
+        ),
+        Card(
+            id="elementary_enchantment",
+            name="Elementary Enchantment",
+            image_id="BlueIA",
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            initiative=9,
+            primary_action=ActionType.SKILL,
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 3, ActionType.MOVEMENT: 2},
+            effect_id="elementary_enchantment",
+            effect_text='Cast the "Suggestion" spell in the spellbook.\n( Compel the opposing champion to take a few extra steps. )',
+        ),
+        Card(
+            id="cantrip",
+            name="Cantrip",
+            image_id="Silver",
+            tier=CardTier.UNTIERED,
+            color=CardColor.SILVER,
+            initiative=11,
+            primary_action=ActionType.SKILL,  # Basic Skill Frame
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 1},
+            effect_id="cantrip",
+            effect_text='Choose and cast one spell in the spellbook —\n• "Shocking Grasp" ( To repel a foe! )\n• "Magic Missile" ( To blast at range! )\n• "Expeditious Retreat" ( To dart a great distance! )',
+        ),
+        Card(
+            id="prepare_spells",
+            name="Prepare Spells",
+            image_id="Gold",
+            tier=CardTier.UNTIERED,
+            color=CardColor.GOLD,
+            initiative=13,
+            primary_action=ActionType.SKILL,  # Basic Skill Frame
+            primary_action_value=None,
+            secondary_actions={ActionType.DEFENSE: 2},
+            effect_id="prepare_spells",
+            effect_text="Add all spell cards to the spellbook. Only Gydion can look at the cards in the spellbook.\nAs each spell is cast, remove it from the spellbook faceup. The action on the spell card is performed by the hero casting the spell.",
+        ),
+    ]
+
+    h = Hero(
+        id=HeroID("hero_gydion"),
+        name="Gydion",
+        deck=deck,
+        hand=[],
+        items={},
+        ultimate_card=ultimate,
+    )
+    return h
+
+
+HeroRegistry.register(create_gydion())
