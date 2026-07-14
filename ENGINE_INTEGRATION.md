@@ -87,6 +87,36 @@ This gives a clean, engine-agnostic `Agent.choose(view, request, legal_options)`
    (Wasp, Xargatha / Arien, Brogan; 2v2 single lane).
 4. Determinization hook: what `build_view` hides vs reveals, to sample legal worlds.
 
+## Hidden-information model (for ISMCTS determinization)
+
+Verified against `build_view` and the upgrade code. For an OPPONENT hero, a
+player sees: level, gold, `items` (a `dict[StatType,int]` — stat bonuses only,
+NOT card identities), faceup played/discard cards, deck **count** only, and an
+**empty hand** (`hand → []`). Hidden: hand contents, deck contents, facedown
+cards, and the card committed face-down this turn.
+
+**Leveling / upgrade hidden state (raised as a concern):** on upgrade, the
+chosen card of a color+tier *pair* goes to hand (hidden) and the pair partner is
+tucked as an item recording only `pair.item` (a `StatType`). So in principle
+"which of the pair was taken" is hidden. **But** across all quick-game heroes,
+**0 of 36 color+tier pairs share an item stat** — each pair's two cards have
+distinct item bonuses. Since items are visible, the observed item stat reveals
+which pair member was tucked (item) and therefore which is in hand. Net: the
+per-pair upgrade branch adds ~no hidden info here.
+
+Residual hidden info to sample in determinization, in priority order:
+1. **This turn's committed card** per opponent (face-down until reveal) — the
+   dominant tactical uncertainty; sample from the opponent's plausible hand.
+2. **Which colors were upgraded** when the aggregate item multiset is ambiguous
+   (e.g. `{DEF:2}` reachable via different color choices). Bounded; the
+   lowest-tier-first upgrade rule + level + item multiset constrain it heavily.
+3. Exact hand vs. deck split (which non-played cards are currently in hand).
+
+Implication: a v1 determinization that samples opponents' committed cards from a
+plausible hand (reconstructed from level + items + open cards) captures almost
+all the real uncertainty; the upgrade-branch combinatorics the concern warned
+about are largely resolved by item visibility.
+
 ## Findings (as of the AI work)
 
 - **Clone cost**: `GameState.model_copy(deep=True)` ≈ **3.4 ms** (~291/s);
