@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from goa2.domain.models import Card, Hero
+from goa2.domain.models import Card, Hero, TargetType
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffect, CardEffectRegistry, register_effect
+from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
+from goa2.engine.filters_units import TeamFilter
 from goa2.engine.stats import CardStats
-from goa2.engine.steps import CastSpellStep, GameStep, PrepareSpellbookStep
+from goa2.engine.steps import (
+    AttackSequenceStep,
+    CastSpellStep,
+    GameStep,
+    MoveSequenceStep,
+    MoveUnitStep,
+    PrepareSpellbookStep,
+    SelectStep,
+)
 
 SPELL_ACCESS_MAP: dict[str, tuple[str, ...]] = {
     "cantrip": ("shocking_grasp", "magic_missile", "expeditious_retreat"),
@@ -58,6 +68,93 @@ class SpellAccessEffect(CardEffect):
             CastSpellStep(
                 allowed_spell_ids=list(self.access_map.get(card.effect_id, ())),
                 caster_id=str(hero.id),
+            )
+        ]
+
+
+@register_effect("shocking_grasp")
+class ShockingGraspEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        target_key = "shocking_grasp_target"
+        destination_key = "shocking_grasp_destination"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Target an adjacent enemy unit",
+                output_key=target_key,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=1),
+                ],
+            ),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_id_key=target_key,
+            ),
+            SelectStep(
+                target_type=TargetType.HEX,
+                prompt="After the attack: You may move the target up to 1 space",
+                output_key=destination_key,
+                is_mandatory=False,
+                active_if_key=target_key,
+                filters=[
+                    RangeFilter(max_range=1, origin_key=target_key),
+                    ObstacleFilter(is_obstacle=False, exclude_id_key=target_key),
+                    MovementPathFilter(range_val=1, unit_key=target_key),
+                ],
+            ),
+            MoveUnitStep(
+                unit_key=target_key,
+                destination_key=destination_key,
+                range_val=1,
+                is_mandatory=False,
+                is_movement_action=False,
+                active_if_key=destination_key,
+            ),
+        ]
+
+
+@register_effect("magic_missile")
+class MagicMissileEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_filters=[RangeFilter(min_range=2, max_range=stats.range)],
+            )
+        ]
+
+
+@register_effect("expeditious_retreat")
+class ExpeditiousRetreatEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        return [
+            MoveSequenceStep(
+                unit_id=str(hero.id),
+                range_val=stats.primary_value,
+                force_straight_line=True,
             )
         ]
 
