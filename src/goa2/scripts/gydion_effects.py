@@ -21,6 +21,7 @@ from goa2.engine.effects import (
     register_effect,
     register_spell_effect,
 )
+from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.filters_geometry import InStraightLineFilter, StraightLinePathFilter
 from goa2.engine.filters_hex import (
@@ -56,9 +57,11 @@ from goa2.engine.steps import (
     RemoveTokenStep,
     RemoveUnitStep,
     RespawnMinionAtHexStep,
+    RestoreSpentLifeCounterStep,
     RetrieveCardStep,
     SelectStep,
     SetContextFlagStep,
+    SwapUnitsStep,
 )
 
 SPELL_ACCESS_MAP: dict[str, tuple[str, ...]] = {
@@ -606,6 +609,193 @@ class BanishmentEffect(CardEffect):
             PlaceUnitStep(
                 unit_key=target_key,
                 destination_key=destination_key,
+                is_mandatory=True,
+            ),
+        ]
+
+
+@register_spell_effect("sunburst")
+class SunburstEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        removed = _outside_spell_count(state, card)
+        attack = stats.primary_value + removed
+        attack_range = (stats.range or 0) + removed
+        return [
+            AttackSequenceStep(
+                damage=attack,
+                range_val=attack_range,
+                is_ranged=True,
+                target_filters=[RangeFilter(min_range=attack_range, max_range=attack_range)],
+            )
+        ]
+
+
+@register_spell_effect("energy_drain")
+class EnergyDrainEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        victim_key = "energy_drain_victim"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Choose an enemy hero in range",
+                output_key=victim_key,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.range),
+                ],
+            ),
+            ForceDiscardStep(victim_key=victim_key, card_is_basic=False),
+            RestoreSpentLifeCounterStep(hero_id=str(hero.id)),
+        ]
+
+
+@register_spell_effect("cloud_kill")
+class CloudKillEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        victim_key = "cloud_kill_victim"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Choose an enemy hero in radius",
+                output_key=victim_key,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius),
+                ],
+            ),
+            ForceDiscardStep(victim_key=victim_key, card_is_basic=True),
+        ]
+
+
+@register_spell_effect("invulnerability")
+class InvulnerabilityEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        already_exists = any(
+            effect.effect_type == EffectType.ATTACK_IMMUNITY
+            and effect.source_id == str(hero.id)
+            and effect.source_card_id == card.id
+            for effect in state.active_effects
+        )
+        if already_exists:
+            return []
+        return [
+            CreateEffectStep(
+                effect_type=EffectType.ATTACK_IMMUNITY,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.THIS_ROUND,
+                non_basic_attacks_only=True,
+                is_active=True,
+                source_card_id=card.id,
+                use_context_card=False,
+            )
+        ]
+
+
+@register_spell_effect("power_word_kill")
+class PowerWordKillEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        victim_key = "power_word_kill_victim"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Defeat an enemy hero in radius with no cards in hand",
+                output_key=victim_key,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius),
+                    CardsInContainerFilter(
+                        container=CardContainerType.HAND,
+                        max_cards=0,
+                    ),
+                ],
+            ),
+            DefeatUnitStep(victim_key=victim_key, killer_id=str(hero.id)),
+        ]
+
+
+@register_spell_effect("polymorph")
+class PolymorphEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        hero_key = "polymorph_hero"
+        swap_key = "polymorph_swap_target"
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Choose an enemy hero in radius",
+                output_key=hero_key,
+                is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    UnitTypeFilter(unit_type="HERO"),
+                    RangeFilter(max_range=stats.radius),
+                ],
+            ),
+            SelectStep(
+                target_type=TargetType.UNIT_OR_TOKEN,
+                prompt="Choose a token or enemy minion in radius",
+                output_key=swap_key,
+                is_mandatory=True,
+                active_if_key=hero_key,
+                filters=[
+                    RangeFilter(max_range=stats.radius),
+                    OrFilter(
+                        filters=[
+                            UnitTypeFilter(unit_type="TOKEN"),
+                            AndFilter(
+                                filters=[
+                                    UnitTypeFilter(unit_type="MINION"),
+                                    TeamFilter(relation="ENEMY"),
+                                ]
+                            ),
+                        ]
+                    ),
+                ],
+            ),
+            SwapUnitsStep(
+                unit_a_key=hero_key,
+                unit_b_key=swap_key,
                 is_mandatory=True,
             ),
         ]

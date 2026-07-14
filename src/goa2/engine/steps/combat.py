@@ -2000,6 +2000,55 @@ class SpendAdditionalLifeCounterStep(GameStep):
         return StepResult(is_finished=True, events=events)
 
 
+class RestoreSpentLifeCounterStep(GameStep):
+    """Restore Life counters to a hero's team, capped at its starting supply."""
+
+    type: StepType = StepType.RESTORE_SPENT_LIFE_COUNTER
+    hero_id: str | None = None
+    hero_key: str | None = None
+    amount: int = 1
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        hero_id = self.hero_id
+        if self.hero_key:
+            hero_id = context.get(self.hero_key) or hero_id
+        if hero_id is None:
+            hero_id = str(state.current_actor_id) if state.current_actor_id else None
+        if hero_id is None:
+            return StepResult(is_finished=True)
+
+        hero = state.get_hero(HeroID(str(hero_id)))
+        if hero is None or hero.team is None:
+            return StepResult(is_finished=True)
+        team = state.teams.get(hero.team)
+        if team is None or team.starting_life_counters is None:
+            return StepResult(is_finished=True)
+
+        restored = min(self.amount, team.starting_life_counters - team.life_counters)
+        if restored <= 0:
+            return StepResult(is_finished=True)
+
+        team.life_counters += restored
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.LIFE_COUNTER_CHANGED,
+                    actor_id=str(hero.id),
+                    metadata={
+                        "team": hero.team.value,
+                        "change": restored,
+                        "remaining": team.life_counters,
+                        "reason": "life_counter_restored",
+                    },
+                )
+            ],
+        )
+
+
 class TriggerGameOverStep(GameStep):
     """
     Executes an immediate Game Over sequence.

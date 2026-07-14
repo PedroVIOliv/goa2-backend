@@ -305,6 +305,8 @@ class ImmunityFilter(FilterCondition):
                 # card actions, so a missing/false flag is non-basic here.
                 if effect.basic_attacks_only and not context.get("attack_is_basic", False):
                     continue
+                if effect.non_basic_attacks_only and context.get("attack_is_basic", False):
+                    continue
 
                 # Check if current attacker is in the exception list
                 if current_actor_id and current_actor_id in effect.except_attacker_ids:

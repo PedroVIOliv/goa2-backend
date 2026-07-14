@@ -425,13 +425,13 @@ def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardSta
         result.primary_value = 0
 
     # 2. Compute range (only if card is ranged, otherwise fixed at 1)
-    if card.is_ranged and card.range_value:
+    if card.is_ranged and card.range_value is not None:
         result.range = get_computed_stat(state, hero_id, StatType.RANGE, card.range_value)
     else:
         result.range = 1  # Adjacent, not buffable
 
     # 3. Compute radius (only if card has radius_value)
-    if card.radius_value:
+    if card.radius_value is not None:
         result.radius = get_computed_stat(state, hero_id, StatType.RADIUS, card.radius_value)
     else:
         result.radius = None

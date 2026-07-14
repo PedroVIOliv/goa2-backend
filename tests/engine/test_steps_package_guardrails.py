@@ -129,6 +129,7 @@ EXPECTED_STEP_CLASSES = {
     "RestoreActionContextStep",
     "RestoreActionTypeStep",
     "RestoreCardInitiativeStep",
+    "RestoreSpentLifeCounterStep",
     "RetrieveCardStep",
     "RetrieveUnresolvedCardStep",
     "ReturnMinionToZoneStep",

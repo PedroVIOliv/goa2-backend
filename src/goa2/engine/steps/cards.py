@@ -345,6 +345,7 @@ class ForceDiscardStep(GameStep):
 
     type: StepType = StepType.FORCE_DISCARD
     victim_key: str
+    card_is_basic: bool | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
@@ -357,22 +358,32 @@ class ForceDiscardStep(GameStep):
         if not victim:
             return StepResult(is_finished=True)
 
-        if not victim.hand:
-            logger.debug(f"   [EFFECT] {victim_id} has no cards to discard (Safe).")
+        eligible_hand = [
+            card
+            for card in victim.hand
+            if self.card_is_basic is None or card.is_basic == self.card_is_basic
+        ]
+        if not eligible_hand:
+            logger.debug(f"   [EFFECT] {victim_id} has no matching cards to discard (Safe).")
             return StepResult(is_finished=True)
 
         # Mrak's discard-shield: a forced HAND discard may be redirected onto a
         # played shield card instead. Offer it alongside the hand.
         from goa2.engine.effects import get_active_shield_cards
 
-        has_shield = bool(get_active_shield_cards(state, victim))
-        if has_shield:
+        shield_cards = get_active_shield_cards(state, victim)
+        if shield_cards:
+            allowed_ids = None
+            if self.card_is_basic is not None:
+                allowed_ids = [card.id for card in eligible_hand]
+                allowed_ids.extend(card.id for card in shield_cards)
             select = SelectStep(
                 target_type=TargetType.CARD,
                 prompt=f"{victim_id}, select a card to discard.",
                 output_key="card_to_discard",
                 card_containers=[CardContainerType.HAND, CardContainerType.PLAYED],
                 restrict_played_to_shields=True,
+                allowed_card_ids=allowed_ids,
                 context_hero_id_key=self.victim_key,
                 override_player_id_key=self.victim_key,
                 is_mandatory=True,
@@ -383,6 +394,7 @@ class ForceDiscardStep(GameStep):
                 prompt=f"{victim_id}, select a card to discard.",
                 output_key="card_to_discard",
                 card_container=CardContainerType.HAND,
+                card_is_basic=self.card_is_basic,
                 context_hero_id_key=self.victim_key,  # Look at victim's hand
                 override_player_id_key=self.victim_key,  # Victim chooses
                 is_mandatory=True,

@@ -36,7 +36,13 @@ def _state(card: Card):
     )
 
 
-def _protect(state, *, basic_attacks_only: bool, except_attacker_ids: list[str] | None = None):
+def _protect(
+    state,
+    *,
+    basic_attacks_only: bool = False,
+    non_basic_attacks_only: bool = False,
+    except_attacker_ids: list[str] | None = None,
+):
     return EffectManager.create_effect(
         state=state,
         source_id="hero_defender",
@@ -45,6 +51,7 @@ def _protect(state, *, basic_attacks_only: bool, except_attacker_ids: list[str] 
         duration=DurationType.THIS_ROUND,
         except_attacker_ids=except_attacker_ids or [],
         basic_attacks_only=basic_attacks_only,
+        non_basic_attacks_only=non_basic_attacks_only,
         is_active=True,
     )
 
@@ -142,3 +149,46 @@ def test_create_effect_step_plumbs_basic_attacks_only_payload() -> None:
 
     assert result.is_finished is True
     assert state.active_effects[0].basic_attacks_only is True
+
+
+def test_non_basic_only_immunity_blocks_non_basic_but_not_basic_attacks() -> None:
+    state = _state(_attack_card("colored_attack", CardColor.RED))
+    effect = _protect(state, non_basic_attacks_only=True)
+
+    _classify_attack(state)
+    assert effect.non_basic_attacks_only is True
+    assert state.execution_context["attack_is_basic"] is False
+    assert _target_is_allowed(state) is False
+
+    state.get_hero("hero_attacker").current_turn_card = _attack_card("basic_attack", CardColor.GOLD)
+    _classify_attack(state)
+    assert state.execution_context["attack_is_basic"] is True
+    assert _target_is_allowed(state) is True
+
+
+def test_create_effect_step_plumbs_non_basic_attacks_only_payload() -> None:
+    state = _state(_attack_card("colored_attack", CardColor.RED))
+
+    CreateEffectStep(
+        effect_type=EffectType.ATTACK_IMMUNITY,
+        scope=EffectScope(shape=Shape.GLOBAL),
+        duration=DurationType.THIS_ROUND,
+        non_basic_attacks_only=True,
+        is_active=True,
+        use_context_card=False,
+    ).resolve(state, state.execution_context)
+
+    assert state.active_effects[0].non_basic_attacks_only is True
+
+
+def test_basic_and_non_basic_immunities_stack_to_block_every_attack() -> None:
+    state = _state(_attack_card("colored_attack", CardColor.RED))
+    _protect(state, basic_attacks_only=True)
+    _protect(state, non_basic_attacks_only=True)
+
+    _classify_attack(state)
+    assert _target_is_allowed(state) is False
+
+    state.get_hero("hero_attacker").current_turn_card = _attack_card("basic_attack", CardColor.GOLD)
+    _classify_attack(state)
+    assert _target_is_allowed(state) is False

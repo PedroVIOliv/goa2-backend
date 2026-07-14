@@ -45,6 +45,7 @@ class CreateEffectStep(GameStep):
     except_attacker_ids: list[str] = Field(default_factory=list)  # Direct list of attacker IDs
     except_attacker_key: str | None = None  # Context key to read attacker ID from
     basic_attacks_only: bool = False
+    non_basic_attacks_only: bool = False
     stat_type: StatType | None = None
     stat_value: int = 0
     max_value: int | None = None
@@ -171,6 +172,7 @@ class CreateEffectStep(GameStep):
             except_card_colors=self.except_card_colors,
             except_attacker_ids=resolved_except_attackers,
             basic_attacks_only=self.basic_attacks_only,
+            non_basic_attacks_only=self.non_basic_attacks_only,
             stat_type=self.stat_type,
             stat_value=self.stat_value,
             max_value=self.max_value,

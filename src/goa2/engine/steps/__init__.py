@@ -41,6 +41,7 @@ from goa2.engine.steps.combat import (  # noqa: F401
     RespawnHeroStep,
     RespawnMinionAtHexStep,
     RespawnMinionStep,
+    RestoreSpentLifeCounterStep,
     ReturnMinionToZoneStep,
     SnapshotAdjacentHeroesStep,
     SpendAdditionalLifeCounterStep,
