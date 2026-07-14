@@ -564,7 +564,7 @@ class ResolveCardTextStep(GameStep):
         if card.current_effect_id is None:
             return StepResult(is_finished=True)
 
-        effect = CardEffectRegistry.get(card.current_effect_id)
+        effect = CardEffectRegistry.get_for_card(card)
 
         if effect:
             # We must use a different variable name here or not declare `new_steps` again below
@@ -1737,7 +1737,7 @@ class PerformPrimaryActionStep(GameStep):
         from goa2.engine.effects import CardEffectRegistry
         from goa2.engine.stats import compute_card_stats
 
-        effect = CardEffectRegistry.get(card.current_effect_id)
+        effect = CardEffectRegistry.get_for_card(card)
         if not effect:
             logger.debug(f"   [PERFORM] No effect registered for {card.current_effect_id}.")
             return StepResult(is_finished=True)
@@ -2001,7 +2001,7 @@ class PerformCardActionStep(GameStep):
             if card.current_effect_id:
                 from goa2.engine.effects import CardEffectRegistry
 
-                effect = CardEffectRegistry.get(card.current_effect_id)
+                effect = CardEffectRegistry.get_for_card(card)
                 if effect:
                     return effect.build_steps(state, performer, card, stats)
             # No registered effect — fall back to bare primitives.

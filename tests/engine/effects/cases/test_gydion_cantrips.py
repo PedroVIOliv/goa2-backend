@@ -56,9 +56,16 @@ def _state(spell_id: str, *, hexes=None):
 
 @pytest.mark.effect_contract
 def test_cantrip_spell_effects_are_registered() -> None:
-    assert isinstance(CardEffectRegistry.get("shocking_grasp"), ShockingGraspEffect)
-    assert isinstance(CardEffectRegistry.get("magic_missile"), MagicMissileEffect)
-    assert isinstance(CardEffectRegistry.get("expeditious_retreat"), ExpeditiousRetreatEffect)
+    assert isinstance(
+        CardEffectRegistry.get_for_card(gydion_spell("shocking_grasp")), ShockingGraspEffect
+    )
+    assert isinstance(
+        CardEffectRegistry.get_for_card(gydion_spell("magic_missile")), MagicMissileEffect
+    )
+    assert isinstance(
+        CardEffectRegistry.get_for_card(gydion_spell("expeditious_retreat")),
+        ExpeditiousRetreatEffect,
+    )
 
 
 @pytest.mark.effect_contract
@@ -66,7 +73,7 @@ def test_shocking_grasp_assembles_stable_attack_then_optional_target_move() -> N
     state, spell = _state("shocking_grasp")
     hero = state.get_hero("hero_caster")
     hero.items[StatType.ATTACK] = 2
-    effect = CardEffectRegistry.get("shocking_grasp")
+    effect = CardEffectRegistry.get_for_card(spell)
 
     steps = effect.get_steps(state, hero, spell)
 
@@ -107,7 +114,7 @@ def test_shocking_grasp_assembles_stable_attack_then_optional_target_move() -> N
 @pytest.mark.effect_flow
 def test_shocking_grasp_target_selection_is_adjacent_and_does_not_require_mobility() -> None:
     state, spell = _state("shocking_grasp")
-    effect = CardEffectRegistry.get("shocking_grasp")
+    effect = CardEffectRegistry.get_for_card(spell)
     steps = effect.get_steps(state, state.get_hero("hero_caster"), spell)
     push_steps(state, [steps[0]])
 
@@ -123,7 +130,7 @@ def test_magic_missile_uses_computed_attack_and_range_with_non_adjacent_filter()
     hero = state.get_hero("hero_caster")
     hero.items[StatType.ATTACK] = 2
     hero.items[StatType.RANGE] = 1
-    effect = CardEffectRegistry.get("magic_missile")
+    effect = CardEffectRegistry.get_for_card(spell)
 
     steps = effect.get_steps(state, hero, spell)
 
@@ -151,7 +158,7 @@ def test_magic_missile_live_target_options_exclude_adjacent_and_beyond_computed_
         )
     )
     state.place_entity("enemy_too_far", Hex(q=4, r=0, s=-4))
-    effect = CardEffectRegistry.get("magic_missile")
+    effect = CardEffectRegistry.get_for_card(spell)
     attack = effect.get_steps(state, state.get_hero("hero_caster"), spell)[0]
     state.execution_context["current_action_type"] = "ATTACK"
     push_steps(state, [attack])
@@ -169,7 +176,7 @@ def test_expeditious_retreat_uses_computed_movement_and_straight_line_sequence()
     state, spell = _state("expeditious_retreat")
     hero = state.get_hero("hero_caster")
     hero.items[StatType.MOVEMENT] = 2
-    effect = CardEffectRegistry.get("expeditious_retreat")
+    effect = CardEffectRegistry.get_for_card(spell)
 
     steps = effect.get_steps(state, hero, spell)
 
@@ -185,7 +192,7 @@ def test_expeditious_retreat_uses_computed_movement_and_straight_line_sequence()
 @pytest.mark.effect_flow
 def test_expeditious_retreat_live_options_include_zero_and_axes_but_exclude_bent_hexes() -> None:
     state, spell = _state("expeditious_retreat")
-    effect = CardEffectRegistry.get("expeditious_retreat")
+    effect = CardEffectRegistry.get_for_card(spell)
     movement = effect.get_steps(state, state.get_hero("hero_caster"), spell)[0]
     push_steps(state, [movement])
 

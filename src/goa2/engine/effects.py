@@ -322,6 +322,7 @@ class CardEffectRegistry:
     """
 
     _effects: ClassVar[dict[str, CardEffect]] = {}
+    _spell_effects: ClassVar[dict[str, CardEffect]] = {}
 
     @classmethod
     def register(cls, effect_id: str, effect: CardEffect):
@@ -331,12 +332,39 @@ class CardEffectRegistry:
     def get(cls, effect_id: str) -> CardEffect | None:
         return cls._effects.get(effect_id)
 
+    @classmethod
+    def register_spell(cls, effect_id: str, effect: CardEffect) -> None:
+        """Register spell behavior without colliding with ordinary card IDs."""
+        cls._spell_effects[effect_id] = effect
+
+    @classmethod
+    def get_for_card(cls, card: Card) -> CardEffect | None:
+        """Resolve subtype-specific behavior while preserving public effect IDs."""
+        from goa2.domain.models import SpellCard
+
+        effect_id = card.current_effect_id
+        if not effect_id:
+            return None
+        if isinstance(card, SpellCard):
+            return cls._spell_effects.get(effect_id) or cls._effects.get(effect_id)
+        return cls._effects.get(effect_id)
+
 
 def register_effect(effect_id: str):
     """Decorator for easy effect registration."""
 
     def decorator(cls):
         CardEffectRegistry.register(effect_id, cls())
+        return cls
+
+    return decorator
+
+
+def register_spell_effect(effect_id: str):
+    """Decorator for spell behavior whose ID may overlap an ordinary card."""
+
+    def decorator(cls):
+        CardEffectRegistry.register_spell(effect_id, cls())
         return cls
 
     return decorator
