@@ -5,6 +5,7 @@ from goa2.domain.models import (
     CardState,
     CardTier,
     Hero,
+    SpellCard,
     StatType,
 )
 from goa2.domain.types import HeroID
@@ -35,6 +36,86 @@ def create_gydion() -> Hero:
     )
     ultimate.state = CardState.PASSIVE
     ultimate.is_facedown = False
+
+    spells = [
+        SpellCard.define(
+            id="shocking_grasp",
+            name="Shocking Grasp",
+            image_id="ShockingGrasp",
+            spell_rank=0,
+            tier=CardTier.UNTIERED,
+            color=CardColor.GOLD,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=3,
+            range_value=1,
+            effect_text=(
+                "Target a unit adjacent to you. After the attack: " "Move the target up to 1 space."
+            ),
+        ),
+        SpellCard.define(
+            id="magic_missile",
+            name="Magic Missile",
+            image_id="MagicMissile",
+            spell_rank=0,
+            tier=CardTier.UNTIERED,
+            color=CardColor.GOLD,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=1,
+            is_ranged=True,
+            range_value=3,
+            effect_text="Target a unit in range and not adjacent to you.",
+        ),
+        SpellCard.define(
+            id="expeditious_retreat",
+            name="Expeditious Retreat",
+            image_id="ExpeditiousRetreat",
+            spell_rank=0,
+            tier=CardTier.UNTIERED,
+            color=CardColor.GOLD,
+            primary_action=ActionType.MOVEMENT,
+            primary_action_value=5,
+            effect_text="Move only in a straight line.",
+        ),
+        SpellCard.define(
+            id="burning_hands",
+            name="Burning Hands",
+            image_id="BurningHands",
+            spell_rank=1,
+            tier=CardTier.I,
+            color=CardColor.RED,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=5,
+            range_value=1,
+            effect_text=(
+                "Target a unit adjacent to you. Before the attack: Up to 1 enemy hero "
+                "adjacent to the target discards a card, if able."
+            ),
+        ),
+        SpellCard.define(
+            id="suggestion",
+            name="Suggestion",
+            image_id="Suggestion",
+            spell_rank=1,
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            primary_action=ActionType.SKILL,
+            radius_value=3,
+            effect_text=("If able, an enemy hero in radius moves 3 spaces in a straight line."),
+        ),
+        SpellCard.define(
+            id="shield",
+            name="Shield",
+            image_id="Shield",
+            spell_rank=1,
+            tier=CardTier.I,
+            color=CardColor.GREEN,
+            primary_action=ActionType.SKILL,
+            effect_text=(
+                "This round: You are immune to basic attacks. "
+                "(Cancelled if the spell is returned to the spellbook.)"
+            ),
+        ),
+    ]
 
     deck = [
         # =========================================================================
@@ -193,7 +274,7 @@ def create_gydion() -> Hero:
             primary_action=ActionType.SKILL,
             primary_action_value=None,
             secondary_actions={ActionType.DEFENSE: 4, ActionType.MOVEMENT: 2},
-            item=ActionType.DEFENSE,
+            item=StatType.DEFENSE,
             effect_id="lesser_enchantment",
             effect_text='Choose and cast one spell in the spellbook —\n• "Suggestion"\n• "Dominate Person"\n( Turn the dominated person against their own troops. )',
         ),
@@ -285,6 +366,7 @@ def create_gydion() -> Hero:
         id=HeroID("hero_gydion"),
         name="Gydion",
         deck=deck,
+        spells=spells,
         hand=[],
         items={},
         ultimate_card=ultimate,

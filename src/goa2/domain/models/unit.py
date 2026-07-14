@@ -8,6 +8,7 @@ from .base import BoardEntity
 from .card import Card
 from .enums import CardState, CardTier, MinionType, RuneType, StatType, TeamColor
 from .marker import Marker
+from .spell import SpellCard
 
 if TYPE_CHECKING:
     from .team import Team
@@ -43,6 +44,10 @@ class Hero(Unit):
     title: str | None = None
 
     deck: list[Card]
+    spells: list[SpellCard] = Field(
+        default_factory=list,
+        description="Master list of cards in this hero's separate spellbook lifecycle.",
+    )
     hand: list[Card] = Field(default_factory=list)
     played_cards: list[Card | None] = Field(
         default_factory=list,
@@ -85,6 +90,21 @@ class Hero(Unit):
     def is_multi_piece(self) -> bool:
         return self.piece_supply > 0
 
+    @property
+    def spellbook(self) -> list[SpellCard]:
+        """Prepared, hidden spells currently available to cast."""
+        return [spell for spell in self.spells if spell.state == CardState.SPELLBOOK]
+
+    @property
+    def cast_spells(self) -> list[SpellCard]:
+        """Faceup spells currently outside the spellbook."""
+        return [spell for spell in self.spells if spell.state == CardState.OUTSIDE_SPELLBOOK]
+
+    @staticmethod
+    def _ensure_normal_card(card: Card) -> None:
+        if isinstance(card, SpellCard):
+            raise ValueError("Spell cards cannot enter the normal card lifecycle.")
+
     def get_effective_initiative(self) -> int:
         """
         Calculates total initiative for the current turn.
@@ -102,6 +122,7 @@ class Hero(Unit):
         Moves a card from Hand to 'Played' state (Facedown/Unresolved).
         This marks the card as committed for the turn.
         """
+        self._ensure_normal_card(card)
         if card not in self.hand:
             raise ValueError(f"Card {card.id} is not in hand.")
 
@@ -120,6 +141,7 @@ class Hero(Unit):
         to hand during Planning. The caller manages current_turn_card — for a
         two-card hero it must be restored to the first commit, not cleared.
         """
+        self._ensure_normal_card(card)
         card.state = CardState.HAND
         card.is_facedown = False
         card.played_this_round = False
@@ -147,6 +169,7 @@ class Hero(Unit):
         Moves a card to the discard pile.
         Default: From Hand (per rules).
         """
+        self._ensure_normal_card(card)
         if from_hand:
             if card not in self.hand:
                 raise ValueError(f"Cannot discard {card.id} from hand (not found).")
@@ -168,6 +191,9 @@ class Hero(Unit):
         Swaps two cards between their respective locations (Hand, Resolved Slots, Unresolved Slot, Discard).
         Swaps their State, Facedown status, and lifecycle flags.
         """
+
+        self._ensure_normal_card(card_a)
+        self._ensure_normal_card(card_b)
 
         # Helper to get location info: (Type, Container/Field, Index/Key)
         def get_loc(c: Card):
@@ -240,6 +266,7 @@ class Hero(Unit):
         """
         Returns a card to the hand.
         """
+        self._ensure_normal_card(card)
         if card in self.hand:
             raise ValueError(f"Card {card.id} is already in hand.")
         card.state = CardState.HAND
@@ -261,6 +288,7 @@ class Hero(Unit):
         """
         Returns a card to the deck.
         """
+        self._ensure_normal_card(card)
         if card in self.deck:
             raise ValueError(f"Card {card.id} is already in deck.")
         card.state = CardState.DECK

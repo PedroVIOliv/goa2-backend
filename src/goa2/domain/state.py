@@ -461,7 +461,7 @@ class GameState(BaseModel):
     def get_card_by_id(self, card_id: str) -> Card | None:
         """
         Finds a Card by ID across all heroes.
-        Searches current_turn_card, played_cards, hand, deck, discard_pile, and ultimate_card.
+        Searches normal card zones, spell cards, and ultimate cards.
         """
         for team in self.teams.values():
             for hero in team.heroes:
@@ -479,9 +479,19 @@ class GameState(BaseModel):
                 for card in hero.discard_pile:
                     if card.id == card_id:
                         return card
+                for spell in hero.spells:
+                    if spell.id == card_id:
+                        return spell
                 if hero.ultimate_card and hero.ultimate_card.id == card_id:
                     return hero.ultimate_card
         return None
+
+    def get_spellbook_owner(self) -> Hero | None:
+        """Return the game's unique hero with spell cards, if one exists."""
+        owners = [hero for team in self.teams.values() for hero in team.heroes if hero.spells]
+        if len(owners) > 1:
+            raise ValueError(f"Expected exactly one spellbook owner; found {len(owners)}.")
+        return owners[0] if owners else None
 
     def get_units_and_tokens(self) -> list[BoardEntityID]:
         """

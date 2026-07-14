@@ -96,6 +96,8 @@ class CardState(StrEnum):
     ITEM = "ITEM"
     PASSIVE = "PASSIVE"
     RETIRED = "RETIRED"
+    SPELLBOOK = "SPELLBOOK"
+    OUTSIDE_SPELLBOOK = "OUTSIDE_SPELLBOOK"
 
 
 class GamePhase(StrEnum):

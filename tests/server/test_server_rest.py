@@ -88,6 +88,7 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Razzle": 4,
         "Ignatia": 4,
         "Emmitt": 4,
+        "Gydion": 4,
         "NebKher": 4,
         "Snorri": 4,
         "Takahide": 4,
