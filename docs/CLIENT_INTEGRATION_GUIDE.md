@@ -944,7 +944,7 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 |-------|------|-------------|
 | `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
 | `name` | string | Display name |
-| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`, `"magma"`, `"glitch"`, `"illusion"`, `"familiar"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
 | `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
 | `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |
@@ -1248,6 +1248,7 @@ Events describe what happened during a game action. They are meant for animation
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
 | `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id` (now in the deck), `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
+| `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |

@@ -135,20 +135,20 @@ def test_copied_cantrip_spends_gydions_spell_and_routes_actions_to_the_copier() 
 
 
 @pytest.mark.effect_flow
-def test_prepare_spells_primary_returns_all_six_spells_to_the_spellbook() -> None:
+def test_prepare_spells_primary_returns_all_spells_to_the_spellbook() -> None:
     state = _state("prepare_spells")
     run = run_card(state, "hero_gydion")
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL").finish()
 
     gydion = state.get_hero("hero_gydion")
-    assert len(gydion.spellbook) == 6
+    assert len(gydion.spellbook) == 22
     assert all(spell.is_facedown for spell in gydion.spellbook)
     prepared_events = [
         event for event in run.events if event.event_type == GameEventType.SPELLBOOK_PREPARED
     ]
     assert len(prepared_events) == 1
-    assert prepared_events[0].metadata["spellbook_count"] == 6
+    assert prepared_events[0].metadata["spellbook_count"] == 22
 
 
 @pytest.mark.effect_flow
@@ -216,17 +216,20 @@ def test_available_first_six_school_spell_auto_casts(card_id: str, spell_id: str
     ],
 )
 @pytest.mark.effect_flow
-def test_unimplemented_school_primary_is_safe_and_secondary_actions_remain(card_id: str) -> None:
+def test_new_school_primary_offers_only_its_prepared_spell_list(card_id: str) -> None:
     state = _state(card_id)
     _prepare(state, *(spell.id for spell in state.get_hero("hero_gydion").spells))
     run = run_card(state, "hero_gydion")
 
     run.expect_input(InputRequestType.CHOOSE_ACTION)
     assert {option.id for option in run.latest_request.options} >= {"SKILL", "MOVEMENT", "HOLD"}
-    run.choose("SKILL").finish()
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_CARD)
+    assert {option.id for option in run.latest_request.options} == set(ACCESS_MAP[card_id])
+    selected = ACCESS_MAP[card_id][0]
+    run.choose(selected).expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
 
-    assert len(state.get_hero("hero_gydion").spellbook) == 6
-    assert all(event.event_type != GameEventType.SPELL_CAST for event in run.events)
+    assert state.get_card_by_id(selected).state == CardState.OUTSIDE_SPELLBOOK
+    assert any(event.event_type == GameEventType.SPELL_CAST for event in run.events)
 
 
 @pytest.mark.effect_flow

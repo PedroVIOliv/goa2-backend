@@ -32,6 +32,7 @@ class TokenType(StrEnum):
     MAGMA = "magma"
     GLITCH = "glitch"
     ILLUSION = "illusion"
+    FAMILIAR = "familiar"
 
 
 class RuneType(StrEnum):
@@ -249,6 +250,7 @@ class StepType(StrEnum):
     APPLY_AFTER_ATTACK_CARD_TEXT = "apply_after_attack_card_text"
     CAST_SPELL = "cast_spell"
     PREPARE_SPELLBOOK = "prepare_spellbook"
+    REMOVE_PREPARED_SPELLS = "remove_prepared_spells"
 
 
 class FilterType(StrEnum):

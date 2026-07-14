@@ -47,12 +47,12 @@ def test_prepare_spellbook_returns_all_outside_spells_and_emits_one_public_event
 
     result = process_stack(state)
 
-    assert len(gydion.spellbook) == 6
+    assert len(gydion.spellbook) == 22
     assert all(spell.is_facedown for spell in gydion.spellbook)
     assert [event.event_type for event in result.events] == [GameEventType.SPELLBOOK_PREPARED]
     assert result.events[0].metadata == {
         "returned_spell_ids": sorted(spell.id for spell in gydion.spells),
-        "spellbook_count": 6,
+        "spellbook_count": 22,
     }
 
 
@@ -73,8 +73,8 @@ def test_prepare_spellbook_is_partial_idempotent_and_expires_returned_spell_effe
     push_steps(state, [PrepareSpellbookStep()])
     second = process_stack(state)
 
-    assert len(gydion.spellbook) == 6
-    assert len({id(spell) for spell in gydion.spells}) == 6
+    assert len(gydion.spellbook) == 22
+    assert len({id(spell) for spell in gydion.spells}) == 22
     assert state.active_effects == []
     assert state.get_card_by_id("shield").is_active is False  # type: ignore[union-attr]
     assert first.events[0].metadata["returned_spell_ids"] == sorted(
@@ -82,7 +82,7 @@ def test_prepare_spellbook_is_partial_idempotent_and_expires_returned_spell_effe
     )
     assert second.events[0].metadata == {
         "returned_spell_ids": [],
-        "spellbook_count": 6,
+        "spellbook_count": 22,
     }
 
 

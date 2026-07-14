@@ -49,9 +49,11 @@ def test_spellbook_is_full_for_owner_and_reveal_all_but_count_only_public() -> N
     reveal_all = _hero(build_view(state, reveal_all=True), gydion.id)
 
     assert {spell["id"] for spell in owner["spellbook"]} == {spell.id for spell in gydion.spellbook}
-    assert all(spell["spell_rank"] in (0, 1) for spell in owner["spellbook"])
-    assert enemy["spellbook"] == {"count": 5}
-    assert spectator["spellbook"] == {"count": 5}
+    assert {spell["spell_rank"] for spell in owner["spellbook"]} == {
+        spell.spell_rank for spell in gydion.spellbook
+    }
+    assert enemy["spellbook"] == {"count": len(gydion.spellbook)}
+    assert spectator["spellbook"] == {"count": len(gydion.spellbook)}
     assert {spell["id"] for spell in reveal_all["spellbook"]} == {
         spell.id for spell in gydion.spellbook
     }
@@ -95,5 +97,5 @@ def test_spellbook_zones_and_visibility_survive_game_state_json_round_trip() -> 
     assert {spell["id"] for spell in restored_owner["spellbook"]} == {
         spell.id for spell in gydion.spellbook
     }
-    assert restored_public["spellbook"] == {"count": 5}
+    assert restored_public["spellbook"] == {"count": len(gydion.spellbook)}
     assert [spell["id"] for spell in restored_public["cast_spells"]] == ["magic_missile"]

@@ -108,6 +108,7 @@ EXPECTED_STEP_CLASSES = {
     "RecordTargetStep",
     "RemoveHeroPieceStep",
     "RemoveMarkerStep",
+    "RemovePreparedSpellsStep",
     "RemoveTokenStep",
     "RemoveTurretStep",
     "RemoveUnitStep",

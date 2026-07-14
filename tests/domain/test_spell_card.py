@@ -32,7 +32,7 @@ def gydion_spell(spell_id: str) -> SpellCard:
     return next(spell.model_copy(deep=True) for spell in hero.spells if spell.id == spell_id)
 
 
-EXPECTED_SPELLS = {
+EXPECTED_FIRST_SIX_SPELLS = {
     "shocking_grasp": {
         "name": "Shocking Grasp",
         "spell_rank": 0,
@@ -40,7 +40,7 @@ EXPECTED_SPELLS = {
         "tier": CardTier.UNTIERED,
         "action": ActionType.ATTACK,
         "value": 3,
-        "range": 1,
+        "range": None,
         "radius": None,
         "is_ranged": False,
         "text": (
@@ -78,7 +78,7 @@ EXPECTED_SPELLS = {
         "tier": CardTier.I,
         "action": ActionType.ATTACK,
         "value": 5,
-        "range": 1,
+        "range": None,
         "radius": None,
         "is_ranged": False,
         "text": (
@@ -142,12 +142,13 @@ def test_spell_card_common_definition_defaults() -> None:
     assert spell.radius_value is None
 
 
-def test_registry_gydion_has_exact_first_six_spell_definitions() -> None:
+def test_registry_gydion_has_all_spells_and_preserves_first_six_definitions() -> None:
     gydion = fresh_gydion()
 
-    assert {str(spell.id) for spell in gydion.spells} == set(EXPECTED_SPELLS)
-    for spell in gydion.spells:
-        expected = EXPECTED_SPELLS[str(spell.id)]
+    assert len(gydion.spells) == 22
+    assert set(EXPECTED_FIRST_SIX_SPELLS) <= {str(spell.id) for spell in gydion.spells}
+    for spell in (spell for spell in gydion.spells if spell.id in EXPECTED_FIRST_SIX_SPELLS):
+        expected = EXPECTED_FIRST_SIX_SPELLS[str(spell.id)]
         assert isinstance(spell, SpellCard)
         assert spell.name == expected["name"]
         assert spell.spell_rank == expected["spell_rank"]
@@ -237,7 +238,7 @@ def test_hero_and_game_state_json_round_trip_preserve_spell_subtype_and_zones() 
     restored_hero = Hero.model_validate_json(gydion.model_dump_json())
     assert all(isinstance(spell, SpellCard) for spell in restored_hero.spells)
     assert {spell.id for spell in restored_hero.spellbook} == {"shocking_grasp"}
-    assert len(restored_hero.cast_spells) == 5
+    assert len(restored_hero.cast_spells) == len(gydion.spells) - 1
 
     state = GameState(
         board=Board(),

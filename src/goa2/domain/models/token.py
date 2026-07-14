@@ -21,6 +21,7 @@ TOKEN_SUPPLY: dict[TokenType, int] = {
     TokenType.MAGMA: 4,
     TokenType.GLITCH: 3,
     TokenType.ILLUSION: 3,
+    TokenType.FAMILIAR: 1,
 }
 
 

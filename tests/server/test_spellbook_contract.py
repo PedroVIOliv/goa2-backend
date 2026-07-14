@@ -44,7 +44,7 @@ def _hero(view: dict, hero_id: str) -> dict:
     )
 
 
-def _prepare_server_spellbook(client: TestClient, game_id: str) -> None:
+def _prepare_server_spellbook(client: TestClient, game_id: str) -> int:
     state = client.app.state.registry.get(game_id).session.state
     gydion = state.get_hero("hero_gydion")
     assert gydion is not None
@@ -55,13 +55,14 @@ def _prepare_server_spellbook(client: TestClient, game_id: str) -> None:
     magic_missile.state = CardState.OUTSIDE_SPELLBOOK
     magic_missile.is_facedown = False
     client.app.state.registry.save_game(game_id)
+    return len(gydion.spellbook)
 
 
 def test_rest_spellbook_views_preserve_owner_opponent_and_spectator_secrecy(
     client, game_data
 ) -> None:
     game_id = game_data["game_id"]
-    _prepare_server_spellbook(client, game_id)
+    prepared_count = _prepare_server_spellbook(client, game_id)
     tokens = [
         (_token(game_data, "hero_gydion"), True),
         (_token(game_data, "hero_arien"), False),
@@ -76,15 +77,15 @@ def test_rest_spellbook_views_preserve_owner_opponent_and_spectator_secrecy(
         assert response.status_code == 200
         gydion = _hero(response.json()["view"], "hero_gydion")
         if is_owner:
-            assert len(gydion["spellbook"]) == 5
+            assert len(gydion["spellbook"]) == prepared_count
         else:
-            assert gydion["spellbook"] == {"count": 5}
+            assert gydion["spellbook"] == {"count": prepared_count}
         assert [spell["id"] for spell in gydion["cast_spells"]] == ["magic_missile"]
 
 
 def test_websocket_initial_state_uses_the_same_spellbook_visibility(client, game_data) -> None:
     game_id = game_data["game_id"]
-    _prepare_server_spellbook(client, game_id)
+    prepared_count = _prepare_server_spellbook(client, game_id)
 
     for token, is_owner in [
         (_token(game_data, "hero_gydion"), True),
@@ -95,7 +96,7 @@ def test_websocket_initial_state_uses_the_same_spellbook_visibility(client, game
         assert message["type"] == "STATE_UPDATE"
         gydion = _hero(message["view"], "hero_gydion")
         if is_owner:
-            assert len(gydion["spellbook"]) == 5
+            assert len(gydion["spellbook"]) == prepared_count
         else:
-            assert gydion["spellbook"] == {"count": 5}
+            assert gydion["spellbook"] == {"count": prepared_count}
         assert [spell["id"] for spell in gydion["cast_spells"]] == ["magic_missile"]

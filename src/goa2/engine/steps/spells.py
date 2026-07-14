@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from pydantic import Field
+
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
 from goa2.domain.models import CardState, SpellCard, StepType
@@ -133,3 +135,85 @@ class PrepareSpellbookStep(GameStep):
                 )
             ],
         )
+
+
+class RemovePreparedSpellsStep(GameStep):
+    """Optionally reveal and remove up to ``max_removals`` prepared spells.
+
+    The unique spellbook owner supplies the cards, while ``caster_id`` identifies
+    the player making the choices. Removing a spell is not casting it: no card
+    action is performed and no ``SPELL_CAST`` event is emitted.
+    """
+
+    type: StepType = StepType.REMOVE_PREPARED_SPELLS
+    caster_id: str | None = None
+    caster_key: str | None = None
+    max_removals: int = 3
+    removed_spell_ids: list[str] = Field(default_factory=list)
+
+    def _caster_id(self, state: GameState, context: dict[str, Any]) -> str | None:
+        caster_id = self.caster_id
+        if self.caster_key:
+            caster_id = context.get(self.caster_key) or caster_id
+        if caster_id is None and state.current_actor_id is not None:
+            caster_id = str(state.current_actor_id)
+        return str(caster_id) if caster_id is not None else None
+
+    def _request(self, caster_id: str, eligible: Sequence[SpellCard]) -> StepResult:
+        return StepResult(
+            requires_input=True,
+            input_request=create_input_request(
+                request_type=InputRequestType.SELECT_CARD,
+                player_id=caster_id,
+                prompt=(
+                    "Find Familiar: remove up to three other prepared spells "
+                    f"({len(self.removed_spell_ids)}/{self.max_removals})"
+                ),
+                options=[InputOption(id=spell.id, text=spell.name) for spell in eligible],
+                can_skip=True,
+            ),
+        )
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        owner = state.get_spellbook_owner()
+        caster_id = self._caster_id(state, context)
+        if owner is None or caster_id is None or len(self.removed_spell_ids) >= self.max_removals:
+            return StepResult(is_finished=True)
+
+        eligible = [spell for spell in owner.spellbook if spell.id not in self.removed_spell_ids]
+        if not eligible:
+            return StepResult(is_finished=True)
+
+        events: list[GameEvent] = []
+        if self.pending_input is not None:
+            selection = self.pending_input.get("selection")
+            self.pending_input = None
+            if selection == "SKIP":
+                return StepResult(is_finished=True)
+            selected = next((spell for spell in eligible if spell.id == selection), None)
+            if selected is None:
+                return self._request(caster_id, eligible)
+
+            selected.state = CardState.OUTSIDE_SPELLBOOK
+            selected.is_facedown = False
+            self.removed_spell_ids.append(selected.id)
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.SPELL_REMOVED_FROM_SPELLBOOK,
+                    actor_id=caster_id,
+                    metadata={
+                        "spell_id": selected.id,
+                        "owner_id": str(owner.id),
+                        "caster_id": caster_id,
+                    },
+                )
+            )
+            if len(self.removed_spell_ids) >= self.max_removals:
+                return StepResult(is_finished=True, events=events)
+            eligible = [spell for spell in owner.spellbook]
+            if not eligible:
+                return StepResult(is_finished=True, events=events)
+
+        request = self._request(caster_id, eligible)
+        request.events = events
+        return request

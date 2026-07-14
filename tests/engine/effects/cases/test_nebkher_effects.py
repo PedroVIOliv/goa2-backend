@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+import goa2.scripts.gydion_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
@@ -34,6 +35,7 @@ from goa2.engine.steps import EndPhaseCleanupStep, PlaceTokenStep
 from goa2.engine.topology import are_connected
 
 from ..builders import EffectScenarioBuilder, hero_card, skill_card
+from ..gydion_common import fresh_gydion, gydion_card
 from ..runner import run_card
 
 NEB = "hero_nebkher"
@@ -907,6 +909,45 @@ def test_mind_grip_substitutes_illusions_for_copied_token_placement() -> None:
         BoardEntityID(str(t.id)) not in state.entity_locations
         for t in state.token_pool[TokenType.TREE]
     )
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_substitutes_illusion_for_find_familiar_nested_spell_token() -> None:
+    """The override survives Mind Grip -> access card -> cast spell nesting."""
+    state = _mind_grip_state()
+    _add_illusion_pool(state)
+
+    enemy = state.get_hero("hero_enemy")
+    previous = gydion_card("lesser_conjuration")
+    previous.state = CardState.RESOLVED
+    previous.is_facedown = False
+    enemy.played_cards = [previous]
+    enemy.resolved_turn_count = 1
+    enemy.spells = [spell.model_copy(deep=True) for spell in fresh_gydion().spells]
+    for spell in enemy.spells:
+        spell.state = CardState.OUTSIDE_SPELLBOOK
+        spell.is_facedown = False
+    familiar_spell = next(spell for spell in enemy.spells if spell.id == "find_familiar")
+    familiar_spell.state = CardState.SPELLBOOK
+    familiar_spell.is_facedown = True
+
+    destination = Hex(q=3, r=1, s=-4)
+    run = run_card(state, NEB)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(destination.model_dump())
+    run.finish()
+
+    tile = state.board.get_tile(destination)
+    assert tile is not None and tile.occupant_id is not None
+    placed = state.get_entity(tile.occupant_id)
+    assert placed.token_type == TokenType.ILLUSION
+    assert placed.owner_id == NEB
+    assert familiar_spell.state == CardState.OUTSIDE_SPELLBOOK
+    assert state.execution_context.get("token_type_override") is None
 
 
 @pytest.mark.effect_flow
