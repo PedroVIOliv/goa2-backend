@@ -10,7 +10,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
 from goa2.domain.models.enums import CardContainerType, PassiveTrigger
-from goa2.engine.effects import CardEffect, CardEffectRegistry, PassiveConfig, register_effect
+from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_geometry import RelativeDistanceFilter
 from goa2.engine.filters_hex import (
     MovementPathFilter,
@@ -35,6 +35,7 @@ from goa2.engine.steps import (
     GameStep,
     MayRepeatNTimesStep,
     MoveUnitStep,
+    PerformPrimaryActionStep,
     PushUnitStep,
     RetrieveCardStep,
     SelectStep,
@@ -620,11 +621,26 @@ class BattleFuryEffect(CardEffect):
         trigger: PassiveTrigger,
         context: dict,
     ) -> bool:
+        from goa2.engine.rules import can_perform_card_primary
+
         # Only fire when a resolved (played) card is discarded and the
         # discarded card belongs to Garrus.
         if context.get("discard_source") != CardContainerType.PLAYED.value:
             return False
-        return context.get("discarded_card_owner_id") == str(hero.id)
+        if context.get("discarded_card_owner_id") != str(hero.id):
+            return False
+
+        # Performing the discarded card's primary is an action ON that card —
+        # only offer when it has a primary Garrus may perform right now (e.g.
+        # a skill card inside Spell Break is out).
+        discarded = next(
+            (c for c in hero.discard_pile if c.id == context.get("discarded_card_id")), None
+        )
+        return (
+            discarded is not None
+            and discarded.current_primary_action is not None
+            and can_perform_card_primary(state, str(hero.id), discarded)
+        )
 
     def get_passive_steps(
         self,
@@ -637,21 +653,13 @@ class BattleFuryEffect(CardEffect):
         if trigger != PassiveTrigger.AFTER_CARD_DISCARD:
             return []
 
-        discarded_id = context.get("discarded_card_id")
-        if not discarded_id:
+        if not context.get("discarded_card_id"):
             return []
 
-        # Find discarded card in hero's discard pile
-        discarded = next((c for c in hero.discard_pile if c.id == discarded_id), None)
-        if not discarded:
-            return []
-
-        primary = discarded.primary_action
-        if not primary:
-            return []
-
-        effect = CardEffectRegistry.get(discarded.effect_id)
-        if effect:
-            return effect.get_steps(state, hero, discarded)
-
-        return []
+        # The shared perform step re-validates prevention at perform time.
+        return [
+            PerformPrimaryActionStep(
+                card_key="discarded_card_id",
+                hero_id=str(hero.id),
+            )
+        ]

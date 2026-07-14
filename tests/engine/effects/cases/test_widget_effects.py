@@ -762,3 +762,113 @@ def test_dragon_knight_performs_selected_skill_card_primary_action() -> None:
 
     assert len(target.hand) == 0
     assert target.discard_pile[0].id == "all_aboard"
+
+
+# =============================================================================
+# Arien's Spell Break vs. Widget's skill re-performs
+#
+# Spell Break: "This turn: Enemy heroes in radius cannot perform skill actions,
+# except on gold cards." Widget's gold (Fight As One) and ultimate (Dragon
+# Knight) both perform the primary action *on a skill card*. The action being
+# performed is a Skill action on that skill card — not "on the gold card" — so
+# Spell Break prevents it.
+# =============================================================================
+
+
+def _apply_spell_break(state, arien_id: str = "hero_arien") -> None:
+    """Resolve Arien's Spell Break so its prevention effect is live."""
+    from goa2.scripts.arien_effects import SpellBreakEffect
+
+    arien = state.get_hero(arien_id)
+    assert arien is not None
+    previous_actor = state.current_actor_id
+    state.current_actor_id = arien_id
+    for step in SpellBreakEffect().get_steps(state, arien, hero_card("Arien", "spell_break")):
+        step.resolve(state, {})
+    state.current_actor_id = previous_actor
+
+
+@pytest.mark.effect_flow
+def test_fight_as_one_cannot_perform_skill_inside_spell_break() -> None:
+    """The gold card's attack still happens, but the skill re-perform is a Skill
+    action on a non-gold card, so Spell Break blocks it."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (0, 1, -1), (1, 0, -1), (1, 1, -2), (2, -1, -1)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "fight_as_one"),
+        )
+        .blue_hero("blue_initial_target", at=(1, 0, -1))
+        .blue_hero("blue_replay_target", at=(1, 1, -2))
+        .blue_hero("hero_arien", at=(2, -1, -1))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", Hex(q=0, r=1, s=-1))
+
+    widget = state.get_hero("hero_widget")
+    assert widget is not None
+    played_skill = hero_card("Widget", "fiery_breath")
+    played_skill.state = CardState.RESOLVED
+    widget.played_cards.append(played_skill)
+
+    replay_target = state.get_hero("blue_replay_target")
+    assert replay_target is not None
+    replay_target.hand.append(hero_card("Widget", "all_aboard"))
+
+    _apply_spell_break(state)
+
+    run = run_card(state, "hero_widget")
+
+    # The gold card's own ATTACK is unaffected.
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_initial_target").expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+    run.choose("PASS").finish()
+
+    # ...but the skill re-perform never happens: no card is offered, and the
+    # would-be victim of Fiery Breath keeps their hand.
+    assert "fight_as_one_skill_card" not in state.execution_context
+    assert len(replay_target.hand) == 1
+    assert replay_target.discard_pile == []
+
+
+@pytest.mark.effect_flow
+def test_dragon_knight_cannot_perform_skill_inside_spell_break() -> None:
+    """Dragon Knight performs the primary action on a faceup *skill* card —
+    also a Skill action on a non-gold card, so Spell Break blocks it."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3)])
+        .red_hero(
+            "hero_widget",
+            at=(0, 0, 0),
+            current_card=hero_card("Widget", "take_off"),
+        )
+        .blue_hero("hero_arien", at=(2, 0, -2))
+        .with_actor("hero_widget")
+        .build()
+    )
+    _add_pyro_pool(state)
+    _activate_dragon_knight(state)
+
+    widget = state.get_hero("hero_widget")
+    assert widget is not None
+    played_skill = hero_card("Widget", "fiery_breath")
+    played_skill.state = CardState.RESOLVED
+    widget.played_cards.append(played_skill)
+
+    _apply_spell_break(state)
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("MOVEMENT").expect_input(InputRequestType.SELECT_HEX)
+
+    # Movement still works; Dragon Knight must not be offered afterwards.
+    run.choose(Hex(q=1, r=0, s=-1)).finish()
+
+    assert state.entity_locations["hero_widget"] == Hex(q=1, r=0, s=-1)
+    assert "dragon_knight_skill_card" not in state.execution_context

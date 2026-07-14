@@ -1734,6 +1734,19 @@ class PerformPrimaryActionStep(GameStep):
             logger.debug(f"   [PERFORM] Card {card_id} not found or has no effect.")
             return StepResult(is_finished=True)
 
+        # Prevention effects key off the card the action is performed ON, not the
+        # card that granted the re-performance. Widget's gold re-performs a Skill
+        # action on a resolved skill card, so Arien's Spell Break ("cannot perform
+        # skill actions, except on gold cards") stops it — the skill card is the
+        # one being acted on, and it is not gold.
+        from goa2.engine.rules import can_perform_card_primary
+
+        if not can_perform_card_primary(state, str(actor_id), card):
+            logger.debug(
+                f"   [PERFORM] {actor_id} may not perform the primary action of {card.name}."
+            )
+            return StepResult(is_finished=True)
+
         from goa2.engine.effects import CardEffectRegistry
         from goa2.engine.stats import compute_card_stats
 

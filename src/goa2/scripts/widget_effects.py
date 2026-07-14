@@ -482,16 +482,31 @@ class DiversionaryAssaultEffect(CardEffect):
         return _diversionary_steps(stats.primary_value, 4)
 
 
+def _performable_faceup_skill_card_ids(state: GameState, hero: Hero) -> list[str]:
+    """Faceup resolved skill cards whose primary action the hero may perform now.
+
+    Performing one is a Skill action on *that* card, so a prevention effect such
+    as Arien's Spell Break (gold cards excepted) rules it out even when the card
+    granting the re-performance is gold.
+    """
+    from goa2.engine.rules import can_perform_card_primary
+
+    return [
+        c.id
+        for c in hero.played_cards
+        if c is not None
+        and not c.is_facedown
+        and c.primary_action == ActionType.SKILL
+        and can_perform_card_primary(state, str(hero.id), c)
+    ]
+
+
 @register_effect("fight_as_one")
 class FightAsOneEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        faceup_skill_card_ids = [
-            c.id
-            for c in hero.played_cards
-            if c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
-        ]
+        faceup_skill_card_ids = _performable_faceup_skill_card_ids(state, hero)
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -616,11 +631,8 @@ class DragonKnightEffect(CardEffect):
         trigger: PassiveTrigger,
         context: dict[str, Any],
     ) -> bool:
-        # Only offer when the player actually has a faceup skill card to use.
-        return any(
-            c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
-            for c in hero.played_cards
-        )
+        # Only offer when the player actually has a faceup skill card they can perform.
+        return bool(_performable_faceup_skill_card_ids(state, hero))
 
     def get_passive_steps(
         self,
@@ -633,11 +645,7 @@ class DragonKnightEffect(CardEffect):
         if trigger != PassiveTrigger.AFTER_MOVEMENT:
             return []
 
-        faceup_skill_card_ids = [
-            c.id
-            for c in hero.played_cards
-            if c is not None and not c.is_facedown and c.primary_action == ActionType.SKILL
-        ]
+        faceup_skill_card_ids = _performable_faceup_skill_card_ids(state, hero)
         if not faceup_skill_card_ids:
             return []
 

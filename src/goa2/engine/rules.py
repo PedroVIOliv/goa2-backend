@@ -2,7 +2,7 @@ from collections import deque
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import ActionType, Minion, TeamColor
+from goa2.domain.models import ActionType, Card, Minion, TeamColor
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.unit import Unit
 from goa2.domain.state import GameState
@@ -299,6 +299,35 @@ def unit_ignores_effect_due_to_immunity(
     if _controller_id(effect.source_id, state) == _controller_id(str(unit_id), state):
         return False
     return is_immune_to_actor(target, state, actor_id=effect.source_id)
+
+
+def can_perform_action_on_card(
+    state: GameState, hero_id: str, action: ActionType, card: Card
+) -> bool:
+    """Whether `hero_id` may perform `action` on `card` right now.
+
+    Action-prevention effects (Arien's Spell Break, Xargatha's movement locks)
+    are evaluated against the card the action is performed *on* — its colour
+    drives exceptions like Spell Break's "except on gold cards", not the colour
+    of whatever card granted the performance.
+    """
+    result = state.validator.can_perform_action(state, hero_id, action, context={"card": card})
+    return bool(result.allowed)
+
+
+def can_perform_card_primary(state: GameState, hero_id: str, card: Card) -> bool:
+    """Whether `hero_id` may perform `card`'s primary action right now.
+
+    Re-performing a resolved skill card is a Skill action on that skill card,
+    so the colour that matters is the skill card's — not that of the gold card
+    which granted the re-performance.
+    """
+    action = card.current_primary_action
+    if action is None:
+        return True
+    if action == ActionType.DEFENSE_SKILL:
+        action = ActionType.SKILL
+    return can_perform_action_on_card(state, hero_id, action, card)
 
 
 def validate_target(

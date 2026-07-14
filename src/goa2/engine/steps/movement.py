@@ -1672,6 +1672,15 @@ class ForceDefenseCardMovementStep(GameStep):
         if not card:
             return StepResult(is_finished=True)
 
+        # The defender PERFORMS a movement action ("if able") — prevention
+        # effects on the defender (e.g. Xargatha's "cannot perform movement
+        # actions") are checked against the defense card being acted on.
+        from goa2.engine.rules import can_perform_action_on_card
+
+        if not can_perform_action_on_card(state, str(defender_id), ActionType.MOVEMENT, card):
+            logger.debug(f"   [FORCE MOVE] {defender_id} cannot perform movement actions.")
+            return StepResult(is_finished=True)
+
         # current_* reads: a facedown card in the discard/resolved area has
         # lost its actions (rulebook FACEDOWN), so no movement can be forced.
         has_secondary_movement = ActionType.MOVEMENT in card.current_secondary_actions
