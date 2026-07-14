@@ -299,6 +299,13 @@ class ImmunityFilter(FilterCondition):
                 if effect.source_id != candidate:
                     continue
 
+                # Some immunities protect only against basic (Gold/Silver)
+                # attacks. AttackSequenceStep writes this source-card
+                # classification for every attack, including nested performed
+                # card actions, so a missing/false flag is non-basic here.
+                if effect.basic_attacks_only and not context.get("attack_is_basic", False):
+                    continue
+
                 # Check if current attacker is in the exception list
                 if current_actor_id and current_actor_id in effect.except_attacker_ids:
                     continue  # This attacker is allowed to target

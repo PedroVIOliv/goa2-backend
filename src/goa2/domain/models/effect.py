@@ -206,6 +206,7 @@ class ActiveEffect(BaseModel):
     except_attacker_ids: list[str] = Field(
         default_factory=list
     )  # Attackers who bypass ATTACK_IMMUNITY (e.g. "except this attacker")
+    basic_attacks_only: bool = False  # ATTACK_IMMUNITY ignores non-basic attacks when True
     stat_type: StatType | None = None  # For AREA_STAT_MODIFIER
     stat_value: int = 0  # Modifier amount
     max_value: int | None = None  # For movement caps
