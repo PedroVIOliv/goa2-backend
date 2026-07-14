@@ -41,7 +41,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="shocking_grasp",
             name="Shocking Grasp",
-            image_id="ShockingGrasp",
+            image_id="GoldI",
             spell_rank=0,
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -55,7 +55,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="magic_missile",
             name="Magic Missile",
-            image_id="MagicMissile",
+            image_id="GoldII",
             spell_rank=0,
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -68,7 +68,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="expeditious_retreat",
             name="Expeditious Retreat",
-            image_id="ExpeditiousRetreat",
+            image_id="GoldIII",
             spell_rank=0,
             tier=CardTier.UNTIERED,
             color=CardColor.GOLD,
@@ -79,7 +79,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="burning_hands",
             name="Burning Hands",
-            image_id="BurningHands",
+            image_id="RedIA",
             spell_rank=1,
             tier=CardTier.I,
             color=CardColor.RED,
@@ -94,7 +94,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="suggestion",
             name="Suggestion",
-            image_id="Suggestion",
+            image_id="BlueIA",
             spell_rank=1,
             tier=CardTier.I,
             color=CardColor.BLUE,
@@ -105,7 +105,7 @@ def create_gydion() -> Hero:
         SpellCard.define(
             id="shield",
             name="Shield",
-            image_id="Shield",
+            image_id="GreenIA",
             spell_rank=1,
             tier=CardTier.I,
             color=CardColor.GREEN,
