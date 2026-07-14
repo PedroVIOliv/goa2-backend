@@ -1,6 +1,12 @@
 # Gydion — First Six Spells TDD Test Paths (for review)
 
-Status: **APPROVED SPEC; NOT IMPLEMENTED** (2026-07-13).
+Status: **IMPLEMENTED** (2026-07-13). Final verification: **2,823 passed**;
+Ruff, Black, and mypy clean.
+
+Implementation note: ordinary cards and spells retain their public printed
+effect IDs, while subtype-aware registry lookup separates their behavior. In
+particular, Brogan's Shield and Gydion's Shield can both use `"shield"`
+without import-order-dependent registration collisions.
 
 This phase implements Gydion's spellbook and the first six spell cards:
 **Shocking Grasp**, **Magic Missile**, **Expeditious Retreat**, **Burning

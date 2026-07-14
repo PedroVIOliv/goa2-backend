@@ -7,6 +7,7 @@ from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import CardState
 from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import CastSpellStep, PrepareSpellbookStep
 from goa2.scripts.gydion_effects import PrepareSpellsEffect, SpellAccessEffect
 
@@ -104,6 +105,33 @@ def test_spell_access_uses_the_current_performer_as_caster() -> None:
     assert len(steps) == 1
     assert isinstance(steps[0], CastSpellStep)
     assert steps[0].caster_id == copier.id
+
+
+@pytest.mark.effect_flow
+def test_copied_cantrip_spends_gydions_spell_and_routes_actions_to_the_copier() -> None:
+    state = _state("cantrip")
+    copier = state.get_hero("hero_enemy")
+    _prepare(state, "shield")
+    effect = CardEffectRegistry.get("elementary_abjuration")
+    assert isinstance(effect, SpellAccessEffect)
+    state.current_actor_id = copier.id
+    steps = effect.get_steps(state, copier, gydion_card("elementary_abjuration"))
+    push_steps(state, steps)
+
+    action_choice = process_stack(state)
+
+    assert action_choice.input_request is not None
+    assert action_choice.input_request.request_type == InputRequestType.CHOOSE_ACTION
+    assert action_choice.input_request.player_id == copier.id
+    assert state.get_card_by_id("shield").state == CardState.OUTSIDE_SPELLBOOK
+    assert action_choice.events[0].metadata == {
+        "spell_id": "shield",
+        "owner_id": "hero_gydion",
+        "caster_id": copier.id,
+    }
+    state.execution_stack[-1].pending_input = {"selection": "HOLD"}
+    finished = process_stack(state)
+    assert finished.input_request is None
 
 
 @pytest.mark.effect_flow

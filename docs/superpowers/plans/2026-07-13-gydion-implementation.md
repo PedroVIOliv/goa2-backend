@@ -1,7 +1,12 @@
 # Gydion First-Six-Spells Implementation Plan
 
-> **Status: READY FOR IMPLEMENTATION (2026-07-13).** Rules are approved; no
-> production implementation has started.
+> **Status: IMPLEMENTED (2026-07-13).** Tasks 1-8 were delivered as separate
+> commits. Final verification: 2,823 tests passing plus Ruff, Black, and mypy.
+
+**Reviewed deviation:** Spell behavior uses a spell-specific registry
+namespace while retaining the printed/public effect IDs. This was required
+because Brogan and Gydion both have a card with `effect_id="shield"`; subtype-
+aware lookup prevents import order from changing either card's behavior.
 
 **Goal:** Implement Gydion's unique hidden spellbook, normal-action casting
 pipeline, the six approved spells, every access card that can reach them, and

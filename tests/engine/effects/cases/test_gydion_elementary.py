@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import goa2.scripts.gydion_effects  # noqa: F401
 from goa2.domain.models import CardState, EffectType, StatType
 from goa2.domain.models.effect import DurationType
 from goa2.engine.effects import CardEffectRegistry
@@ -15,6 +14,7 @@ from goa2.engine.steps import (
     MoveUnitStep,
     SelectStep,
 )
+from goa2.scripts.brogan_effects import ShieldEffect as BroganShieldEffect
 from goa2.scripts.gydion_effects import BurningHandsEffect, ShieldEffect, SuggestionEffect
 
 from ..builders import EffectScenarioBuilder
@@ -52,6 +52,7 @@ def test_elementary_spell_effects_are_registered() -> None:
     )
     assert isinstance(CardEffectRegistry.get_for_card(gydion_spell("suggestion")), SuggestionEffect)
     assert isinstance(CardEffectRegistry.get_for_card(gydion_spell("shield")), ShieldEffect)
+    assert isinstance(CardEffectRegistry.get("shield"), BroganShieldEffect)
 
 
 def test_burning_hands_orders_target_discard_rider_before_non_basic_attack() -> None:
