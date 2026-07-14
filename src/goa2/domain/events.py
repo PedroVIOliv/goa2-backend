@@ -43,6 +43,8 @@ class GameEventType(StrEnum):
     # Cards
     CARD_RETRIEVED = "CARD_RETRIEVED"
     CARD_REVEALED = "CARD_REVEALED"
+    SPELL_CAST = "SPELL_CAST"
+    SPELLBOOK_PREPARED = "SPELLBOOK_PREPARED"
     # NebKher: two resolved cards traded turn slots (active effects preserved)
     RESOLVED_CARDS_SWAPPED = "RESOLVED_CARDS_SWAPPED"
     # Takahide: a card in play traded places with a card in the owner's deck

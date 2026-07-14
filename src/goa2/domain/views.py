@@ -13,6 +13,7 @@ from typing import Any
 from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
 from goa2.domain.models.enums import GamePhase, StatType
+from goa2.domain.models.spell import SpellCard
 from goa2.domain.models.unit import Hero, HeroPiece, Minion
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
@@ -201,6 +202,18 @@ def _build_hero_view(
             if is_own_hero
             else {"count": len(hero.deck)}
         ),
+        # Prepared spell identities are private to their owner. Spent spells
+        # are faceup public information for every viewer.
+        "spellbook": (
+            (
+                [_build_card_view(spell, is_own_hero=True) for spell in hero.spellbook]
+                if is_own_hero
+                else {"count": len(hero.spellbook)}
+            )
+            if hero.spells
+            else None
+        ),
+        "cast_spells": [_build_card_view(spell, is_own_hero=True) for spell in hero.cast_spells],
         # Played cards: faceup ones are public; facedown ones are hidden from
         # everyone, the owner included (see _build_card_view_outside_hand)
         "played_cards": [
@@ -279,7 +292,7 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
 
     if is_own_hero or not card.is_facedown:
         # Own hero or faceup card: show all details
-        return {
+        card_view = {
             "id": card.id,
             "name": card.name,
             "image_id": card.image_id,
@@ -299,6 +312,9 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
             "item": card.item.value if card.item else None,
             "is_active": card.is_active,
         }
+        if isinstance(card, SpellCard):
+            card_view["spell_rank"] = card.spell_rank
+        return card_view
     else:
         # Other hero's facedown card: use current_* pattern and hide sensitive fields
         return {

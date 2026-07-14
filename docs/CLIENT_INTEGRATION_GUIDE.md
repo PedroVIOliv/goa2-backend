@@ -700,6 +700,8 @@ Each team contains:
   "rune_slots": {},
   "hand": [ ... ],
   "deck": [ ... ],
+  "spellbook": null,
+  "cast_spells": [],
   "played_cards": [ ... ],
   "current_turn_card": null,
   "extra_turn_card": null,
@@ -726,6 +728,16 @@ secrecy it is **only ever `true` in the requesting hero's own view** — it is
 always `false` for opponents and for spectators, so use it to drive the local
 player's "commit second card / done" UI, not opponents'.
 
+**`spellbook`** (array, `{ "count": N }`, or null) — heroes with spell cards
+show prepared spells as complete card objects in their owner's view and in
+offline `reveal_all` views. Opponents and spectators receive only
+`{ "count": N }`, so prepared identities never leak. Heroes without spells
+return `null`.
+
+**`cast_spells`** (array) — spells currently outside the spellbook. They are
+faceup public information and contain complete card objects in every player
+and spectator view. Heroes without spells return an empty array.
+
 ### Card data
 
 Each card object in the view contains:
@@ -750,6 +762,10 @@ Each card object in the view contains:
 | `radius_value` | int\|null | hidden | Area of effect radius |
 | `item` | string\|null | shown | When equipped as item, which stat it boosts: `"ATTACK"`, `"DEFENSE"`, `"MOVEMENT"`, `"INITIATIVE"`, `"RANGE"`, `"RADIUS"` |
 | `is_active` | bool | shown | Whether the card's active effect is available (tapped/un-tapped) |
+| `spell_rank` | int | hidden | Spellbook rank. Present only on complete spell-card views; prepared opponent spells are count-only and never expose it. |
+
+Spell cards use the additional states `"SPELLBOOK"` (prepared and facedown)
+and `"OUTSIDE_SPELLBOOK"` (spent and faceup).
 
 **Important:** `played_cards` is a fixed-position array where:
 - Turn 1 card → `played_cards[0]`
@@ -1231,6 +1247,8 @@ Events describe what happened during a game action. They are meant for animation
 | `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
 | `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id` (now in the deck), `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
+| `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
+| `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |

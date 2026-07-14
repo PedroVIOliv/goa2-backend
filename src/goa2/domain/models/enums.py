@@ -247,6 +247,8 @@ class StepType(StrEnum):
     CHOOSE_RUNE = "choose_rune"
     SNAPSHOT_ADJACENT_HEROES = "snapshot_adjacent_heroes"
     APPLY_AFTER_ATTACK_CARD_TEXT = "apply_after_attack_card_text"
+    CAST_SPELL = "cast_spell"
+    PREPARE_SPELLBOOK = "prepare_spellbook"
 
 
 class FilterType(StrEnum):

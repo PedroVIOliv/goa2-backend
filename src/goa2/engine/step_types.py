@@ -28,6 +28,7 @@ from goa2.engine.steps import phases as _steps_phases  # noqa: F401
 from goa2.engine.steps import pieces as _steps_pieces  # noqa: F401
 from goa2.engine.steps import reactions as _steps_reactions  # noqa: F401
 from goa2.engine.steps import selection as _steps_selection  # noqa: F401
+from goa2.engine.steps import spells as _steps_spells  # noqa: F401
 from goa2.engine.steps import utility as _steps_utility  # noqa: F401
 from goa2.engine.steps.base import GameStep
 

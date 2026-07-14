@@ -123,6 +123,7 @@ from goa2.engine.steps.selection import (  # noqa: F401
     RevealAndResolveGuessStep,
     SelectStep,
 )
+from goa2.engine.steps.spells import CastSpellStep, PrepareSpellbookStep  # noqa: F401
 from goa2.engine.steps.utility import (  # noqa: F401
     AddContextValueStep,
     ApplyAfterAttackCardTextStep,
