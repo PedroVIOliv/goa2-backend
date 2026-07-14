@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
-from goa2.domain.models import GamePhase, StepType
+from goa2.domain.models import ActionType, GamePhase, StepType
 from goa2.domain.models.effect import DurationType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
@@ -14,6 +14,49 @@ from goa2.engine.effect_manager import EffectManager
 from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+ACTION_CONTEXT_KEYS = (
+    "current_action_type",
+    "current_card_id",
+    "performing_card_id",
+    "performing_card_owner_id",
+    "reperforming_card_id",
+)
+ACTION_CONTEXT_STACK_KEY = "action_context_stack"
+
+
+def push_action_context(
+    context: dict[str, Any],
+    *,
+    action_type: ActionType,
+    card_id: str,
+    card_owner_id: str,
+) -> None:
+    stack = context.setdefault(ACTION_CONTEXT_STACK_KEY, [])
+    stack.append(
+        {key: {"present": key in context, "value": context.get(key)} for key in ACTION_CONTEXT_KEYS}
+    )
+    context["current_action_type"] = action_type
+    context["current_card_id"] = card_id
+    context["performing_card_id"] = card_id
+    context["performing_card_owner_id"] = card_owner_id
+    context["reperforming_card_id"] = card_id
+
+
+def restore_action_context(context: dict[str, Any]) -> None:
+    stack = context.get(ACTION_CONTEXT_STACK_KEY, [])
+    if not stack:
+        context.pop(ACTION_CONTEXT_STACK_KEY, None)
+        return
+    snapshot = stack.pop()
+    for key in ACTION_CONTEXT_KEYS:
+        saved = snapshot[key]
+        if saved["present"]:
+            context[key] = saved["value"]
+        else:
+            context.pop(key, None)
+    if not stack:
+        context.pop(ACTION_CONTEXT_STACK_KEY, None)
 
 
 class FindNextActorStep(GameStep):
@@ -328,4 +371,14 @@ class RestoreActionTypeStep(GameStep):
             previous_type = stack.pop()
             context["current_action_type"] = previous_type
             logger.debug(f"   [CONTEXT] Restored action type to {previous_type.name}")
+        return StepResult(is_finished=True)
+
+
+class RestoreActionContextStep(GameStep):
+    """Restore the outer card/action source after a nested performed action."""
+
+    type: StepType = StepType.RESTORE_ACTION_CONTEXT
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        restore_action_context(context)
         return StepResult(is_finished=True)

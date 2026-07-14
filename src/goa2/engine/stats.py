@@ -240,7 +240,7 @@ def get_computed_stat(
                     continue
                 # Check conditional aura restrictions
                 if aura.basic_only or aura.action_type_only is not None:
-                    card = hero_owner.current_turn_card
+                    card = state.get_performing_card(str(hero_owner.id))
                     if not card:
                         continue
                     if aura.basic_only and not card.is_basic:

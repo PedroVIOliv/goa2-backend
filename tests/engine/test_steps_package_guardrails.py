@@ -123,6 +123,7 @@ EXPECTED_STEP_CLASSES = {
     "RespawnHeroStep",
     "RespawnMinionAtHexStep",
     "RespawnMinionStep",
+    "RestoreActionContextStep",
     "RestoreActionTypeStep",
     "RestoreCardInitiativeStep",
     "RetrieveCardStep",

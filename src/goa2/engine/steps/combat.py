@@ -252,19 +252,7 @@ class AttackSequenceStep(GameStep):
         if not hero:
             return False
 
-        candidates = [
-            hero.current_turn_card,
-            *hero.played_cards,
-            *hero.discard_pile,
-            *hero.hand,
-            *hero.deck,
-        ]
-        source_card = hero.current_turn_card
-        override_id = context.get("reperforming_card_id")
-        if override_id:
-            matched = next((c for c in candidates if c is not None and c.id == override_id), None)
-            if matched is not None:
-                source_card = matched
+        source_card = state.get_performing_card(base_actor_id)
 
         if source_card is None:
             return False

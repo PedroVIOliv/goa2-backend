@@ -176,6 +176,7 @@ class StepType(StrEnum):
     RESOLVE_ON_BLOCK_EFFECT = "resolve_on_block_effect"
     CANCEL_EFFECTS = "cancel_effects"
     RESTORE_ACTION_TYPE = "restore_action_type"
+    RESTORE_ACTION_CONTEXT = "restore_action_context"
     CHECK_PASSIVE_ABILITIES = "check_passive_abilities"
     OFFER_PASSIVE = "offer_passive"
     MARK_PASSIVE_USED = "mark_passive_used"

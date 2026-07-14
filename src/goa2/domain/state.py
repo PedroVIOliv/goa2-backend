@@ -486,6 +486,46 @@ class GameState(BaseModel):
                     return hero.ultimate_card
         return None
 
+    def get_card_for_hero(self, hero_id: str, card_id: str) -> Card | None:
+        """Find a normal or spell card belonging to one hero."""
+        hero = self.get_hero(HeroID(hero_id))
+        if hero is None:
+            return None
+        candidates = [
+            hero.current_turn_card,
+            hero.extra_turn_card,
+            *hero.played_cards,
+            *hero.hand,
+            *hero.deck,
+            *hero.discard_pile,
+            *hero.spells,
+            hero.ultimate_card,
+        ]
+        return next(
+            (card for card in candidates if card is not None and card.id == card_id),
+            None,
+        )
+
+    def get_performing_card(self, hero_id: str | None = None) -> Card | None:
+        """Resolve the nested action's source card, then the ordinary turn card."""
+        card_id = self.execution_context.get("performing_card_id")
+        owner_id = self.execution_context.get("performing_card_owner_id")
+        if card_id:
+            if owner_id:
+                owned = self.get_card_for_hero(str(owner_id), str(card_id))
+                if owned is not None:
+                    return owned
+            matched = self.get_card_by_id(str(card_id))
+            if matched is not None:
+                return matched
+        resolved_hero_id = hero_id or (
+            str(self.current_actor_id) if self.current_actor_id is not None else None
+        )
+        if not resolved_hero_id:
+            return None
+        hero = self.get_hero(HeroID(resolved_hero_id))
+        return hero.current_turn_card if hero is not None else None
+
     def get_spellbook_owner(self) -> Hero | None:
         """Return the game's unique hero with spell cards, if one exists."""
         owners = [hero for team in self.teams.values() for hero in team.heroes if hero.spells]

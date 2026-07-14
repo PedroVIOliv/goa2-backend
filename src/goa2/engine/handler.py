@@ -92,6 +92,10 @@ def _clear_after_abort(state: GameState):
     if _clear_to_pending_combat(state):
         return
     _clear_to_finalize(state)
+    from goa2.engine.steps.phases import restore_action_context
+
+    while state.execution_context.get("action_context_stack"):
+        restore_action_context(state.execution_context)
 
 
 def _clear_to_pending_combat(state: GameState) -> bool:

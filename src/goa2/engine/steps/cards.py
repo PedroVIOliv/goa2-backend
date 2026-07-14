@@ -1723,6 +1723,7 @@ class PerformPrimaryActionStep(GameStep):
             *hero.discard_pile,
             *hero.hand,
             *hero.deck,
+            *hero.spells,
         ]
         for c in search_cards:
             if c is not None and c.id == card_id:
@@ -1814,6 +1815,7 @@ class PerformCardActionStep(GameStep):
     previous_slot: bool = False
     token_type_override: TokenType | None = None
     skip_markers: bool = False
+    suppress_after_resolve_card: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.stats import get_computed_stat
@@ -1854,6 +1856,7 @@ class PerformCardActionStep(GameStep):
                 *owner.discard_pile,
                 *owner.hand,
                 *owner.deck,
+                *owner.spells,
             ]:
                 if c is not None and c.id == card_id:
                     card = c
@@ -1935,23 +1938,35 @@ class PerformCardActionStep(GameStep):
                 primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL
             )
 
-            # Track current action type for the reperformed action
-            action_stack = context.setdefault("action_type_stack", [])
-            current_action = context.get("current_action_type")
-            if current_action:
-                action_stack.append(current_action)
-            context["current_action_type"] = act_type
+            from goa2.engine.steps.phases import push_action_context
+
+            push_action_context(
+                context,
+                action_type=act_type,
+                card_id=card.id,
+                card_owner_id=str(owner.id),
+            )
 
             action_steps = self._build_action_steps(
                 state, context, performer_id, performer, card, act_type, val, is_primary
             )
-            from goa2.engine.steps.phases import RestoreActionTypeStep
+            lifecycle_steps = self._build_lifecycle_steps(
+                state,
+                performer_id,
+                card,
+                act_type,
+                val,
+                is_primary,
+                action_steps,
+            )
+            from goa2.engine.steps.phases import RestoreActionContextStep
 
             return StepResult(
                 is_finished=True,
-                new_steps=self._wrap_with_substitution_flags(
-                    [*action_steps, RestoreActionTypeStep()]
-                ),
+                new_steps=[
+                    *self._wrap_with_substitution_flags(lifecycle_steps),
+                    RestoreActionContextStep(),
+                ],
             )
 
         return StepResult(
@@ -2051,6 +2066,103 @@ class PerformCardActionStep(GameStep):
             ]
         # HOLD (or anything unhandled): nothing to do.
         return [LogMessageStep(message=f"{performer_id} performs {act_type.name}.")]
+
+    def _build_lifecycle_steps(
+        self,
+        state: GameState,
+        performer_id: str,
+        card: Card,
+        act_type: ActionType,
+        val: int,
+        is_primary: bool,
+        action_steps: list[GameStep],
+    ) -> list[GameStep]:
+        from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
+        from goa2.engine.steps.movement import ResolvePreActionMovementStep
+        from goa2.engine.steps.pieces import ChooseActingPieceStep
+        from goa2.engine.steps.utility import SetContextFlagStep
+
+        steps: list[GameStep] = [
+            ChooseActingPieceStep(hero_id=performer_id),
+            CheckPassiveAbilitiesStep(trigger=PassiveTrigger.BEFORE_ACTION.value),
+        ]
+        specific_before = {
+            ActionType.ATTACK: PassiveTrigger.BEFORE_ATTACK,
+            ActionType.MOVEMENT: PassiveTrigger.BEFORE_MOVEMENT,
+            ActionType.SKILL: PassiveTrigger.BEFORE_SKILL,
+        }.get(act_type)
+        if specific_before is not None:
+            steps.append(CheckPassiveAbilitiesStep(trigger=specific_before.value))
+        if is_primary:
+            steps.extend(
+                [
+                    ResolvePreActionMovementStep(hero_id=performer_id),
+                    ResolvePreActionDiscardStep(hero_id=performer_id),
+                ]
+            )
+        steps.extend(action_steps)
+
+        specific_after = {
+            ActionType.ATTACK: PassiveTrigger.AFTER_ATTACK,
+            ActionType.MOVEMENT: PassiveTrigger.AFTER_MOVEMENT,
+        }.get(act_type)
+        if act_type == ActionType.ATTACK and is_primary and card.current_effect_id:
+            steps.extend(
+                [
+                    SetContextFlagStep(key="attack_effect_id", value=card.current_effect_id),
+                    SetContextFlagStep(key="attack_card_id", value=card.id),
+                ]
+            )
+        if specific_after is not None:
+            steps.append(CheckPassiveAbilitiesStep(trigger=specific_after.value))
+        if act_type == ActionType.SKILL and card.current_color in (
+            CardColor.GOLD,
+            CardColor.SILVER,
+        ):
+            steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_SKILL.value))
+        if card.is_basic and act_type in (
+            ActionType.ATTACK,
+            ActionType.MOVEMENT,
+            ActionType.SKILL,
+        ):
+            steps.extend(
+                [
+                    SetContextFlagStep(key="basic_action_type", value=act_type.value),
+                    SetContextFlagStep(key="basic_action_value", value=val),
+                ]
+            )
+            if act_type == ActionType.ATTACK:
+                base_range = card.get_base_stat_value(StatType.RANGE) or 1
+                steps.append(
+                    SetContextFlagStep(
+                        key="basic_action_range",
+                        value=get_computed_stat(
+                            state,
+                            UnitID(performer_id),
+                            StatType.RANGE,
+                            base_range,
+                        ),
+                    )
+                )
+            if is_primary and card.current_effect_id:
+                steps.extend(
+                    [
+                        SetContextFlagStep(
+                            key="basic_action_effect_id",
+                            value=card.current_effect_id,
+                        ),
+                        SetContextFlagStep(key="basic_action_card_id", value=card.id),
+                    ]
+                )
+            steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_ACTION.value))
+        if is_primary:
+            steps.append(
+                CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PRIMARY_ACTION.value)
+            )
+        if not self.suppress_after_resolve_card:
+            steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_RESOLVE_CARD.value))
+        return steps
 
     def _wrap_with_substitution_flags(self, steps: list[GameStep]) -> list[GameStep]:
         """Bracket the copied action with the substitution context flags so
