@@ -546,9 +546,9 @@ def create_gydion() -> Hero:
         Card(
             id="cantrip",
             name="Cantrip",
-            image_id="Silver",
+            image_id="Gold",
             tier=CardTier.UNTIERED,
-            color=CardColor.SILVER,
+            color=CardColor.GOLD,
             initiative=11,
             primary_action=ActionType.SKILL,  # Basic Skill Frame
             primary_action_value=None,
@@ -559,9 +559,9 @@ def create_gydion() -> Hero:
         Card(
             id="prepare_spells",
             name="Prepare Spells",
-            image_id="Gold",
+            image_id="Silver",
             tier=CardTier.UNTIERED,
-            color=CardColor.GOLD,
+            color=CardColor.SILVER,
             initiative=13,
             primary_action=ActionType.SKILL,  # Basic Skill Frame
             primary_action_value=None,
