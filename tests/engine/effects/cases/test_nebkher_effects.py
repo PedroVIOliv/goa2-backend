@@ -937,6 +937,7 @@ def test_mind_grip_substitutes_illusion_for_find_familiar_nested_spell_token() -
     run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_CARD).choose("find_familiar")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.SELECT_HEX).choose(destination.model_dump())
     run.finish()

@@ -89,6 +89,9 @@ def test_accepting_archwizard_casts_wish_instead_of_returning_spells() -> None:
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.CONFIRM_PASSIVE).confirm()
+    run.expect_input(InputRequestType.SELECT_CARD)
+    assert [option.id for option in run.latest_request.options] == ["wish"]
+    run.choose("wish")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.SELECT_CARD)
     assert {option.id for option in run.latest_request.options} == {
@@ -118,6 +121,7 @@ def test_archwizard_wish_counts_even_when_caster_holds() -> None:
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.CONFIRM_PASSIVE).confirm()
+    run.expect_input(InputRequestType.SELECT_CARD).choose("wish")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
 
     assert gydion.wish_cast_count == 1
@@ -246,6 +250,11 @@ def test_third_wish_resolves_selected_spell_before_team_victory() -> None:
     gydion.wish_cast_count = 2
     push_steps(state, _wish_steps(state, gydion))
 
+    spell_choice = process_stack(state)
+    assert spell_choice.input_request is not None
+    assert spell_choice.input_request.request_type == InputRequestType.SELECT_CARD
+    assert [option.id for option in spell_choice.input_request.options] == ["midas_touch"]
+    state.execution_stack[-1].pending_input = {"selection": "midas_touch"}
     action = process_stack(state)
     assert action.input_request is not None
     assert action.input_request.request_type == InputRequestType.CHOOSE_ACTION
@@ -272,8 +281,14 @@ def test_third_wish_wins_after_selected_spell_fizzles() -> None:
     gydion.wish_cast_count = 2
     push_steps(state, _wish_steps(state, gydion))
 
+    spell_choice = process_stack(state)
+    assert spell_choice.input_request is not None
+    assert spell_choice.input_request.request_type == InputRequestType.SELECT_CARD
+    assert [option.id for option in spell_choice.input_request.options] == ["power_word_kill"]
+    state.execution_stack[-1].pending_input = {"selection": "power_word_kill"}
     action = process_stack(state)
     assert action.input_request is not None
+    assert action.input_request.request_type == InputRequestType.CHOOSE_ACTION
     state.execution_stack[-1].pending_input = {"selection": "SKILL"}
     result = process_stack(state)
 

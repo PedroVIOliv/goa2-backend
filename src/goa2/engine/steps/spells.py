@@ -66,8 +66,6 @@ class CastSpellStep(GameStep):
             selected = next((spell for spell in eligible if spell.id == selection), None)
             if selected is None:
                 return self._request(caster_id, eligible)
-        elif len(eligible) == 1:
-            selected = eligible[0]
         else:
             return self._request(caster_id, eligible)
 

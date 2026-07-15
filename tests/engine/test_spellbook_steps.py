@@ -138,11 +138,20 @@ def test_cast_spell_spends_before_action_choice_and_records_owner_caster_source(
     assert isinstance(state.execution_stack[-1], PerformCardActionStep)
 
 
-def test_cast_spell_auto_selects_one_and_no_options_is_a_clean_noop() -> None:
+def test_cast_spell_prompts_for_one_and_no_options_is_a_clean_noop() -> None:
     state, gydion = _spell_state()
     _prepare(gydion, "shield")
     push_steps(state, [CastSpellStep(allowed_spell_ids=["shield"])])
 
+    choice = process_stack(state)
+
+    assert choice.input_request is not None
+    assert choice.input_request.request_type == InputRequestType.SELECT_CARD
+    assert [option.id for option in choice.input_request.options] == ["shield"]
+    assert choice.events == []
+    assert [spell.id for spell in gydion.spellbook] == ["shield"]
+
+    state.execution_stack[-1].pending_input = {"selection": "shield"}
     selected = process_stack(state)
 
     assert selected.input_request is not None
@@ -168,6 +177,15 @@ def test_cast_spell_uses_explicit_caster_context_while_spending_the_unique_owner
         [CastSpellStep(allowed_spell_ids=["shield"], caster_key="copying_hero")],
     )
 
+    choice = process_stack(state)
+
+    assert choice.input_request is not None
+    assert choice.input_request.request_type == InputRequestType.SELECT_CARD
+    assert choice.input_request.player_id == opponent.id
+    assert [option.id for option in choice.input_request.options] == ["shield"]
+    assert gydion.spellbook == [state.get_card_by_id("shield")]
+
+    state.execution_stack[-1].pending_input = {"selection": "shield"}
     result = process_stack(state)
 
     assert result.input_request is not None

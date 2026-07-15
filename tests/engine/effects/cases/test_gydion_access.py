@@ -118,6 +118,15 @@ def test_copied_cantrip_spends_gydions_spell_and_routes_actions_to_the_copier() 
     steps = effect.get_steps(state, copier, gydion_card("elementary_abjuration"))
     push_steps(state, steps)
 
+    spell_choice = process_stack(state)
+
+    assert spell_choice.input_request is not None
+    assert spell_choice.input_request.request_type == InputRequestType.SELECT_CARD
+    assert spell_choice.input_request.player_id == copier.id
+    assert [option.id for option in spell_choice.input_request.options] == ["shield"]
+    assert state.get_card_by_id("shield").state == CardState.SPELLBOOK
+
+    state.execution_stack[-1].pending_input = {"selection": "shield"}
     action_choice = process_stack(state)
 
     assert action_choice.input_request is not None
@@ -191,17 +200,22 @@ def test_cantrip_offers_only_its_three_currently_prepared_spells() -> None:
     ],
 )
 @pytest.mark.effect_flow
-def test_available_first_six_school_spell_auto_casts(card_id: str, spell_id: str) -> None:
+def test_available_first_six_school_spell_still_requires_selection(
+    card_id: str, spell_id: str
+) -> None:
     state = _state(card_id)
     _prepare(state, spell_id)
     run = run_card(state, "hero_gydion")
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.expect_input(InputRequestType.SELECT_CARD)
+
+    assert [option.id for option in run.latest_request.options] == [spell_id]
+    assert state.get_card_by_id(spell_id).state == CardState.SPELLBOOK
+    assert run.latest_request.player_id == "hero_gydion"
+    run.choose(spell_id).expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
 
     assert state.get_card_by_id(spell_id).state == CardState.OUTSIDE_SPELLBOOK
-    assert run.latest_request.player_id == "hero_gydion"
-    run.choose("HOLD").finish()
 
 
 @pytest.mark.parametrize(
