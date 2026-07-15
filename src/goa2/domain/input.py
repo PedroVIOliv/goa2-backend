@@ -220,8 +220,11 @@ class InputRequest(BaseModel):
             result["valid_options"] = [get_serializable_value(opt) for opt in self.options]
             # Also add as candidates for MultiSelectStep compatibility
             result["candidates"] = result["valid_options"]
-            # For NUMBER options with labels, include options with text
-            if self.request_type == InputRequestType.SELECT_NUMBER:
+            # For NUMBER and CARD options with labels, include options with
+            # text. Card labels matter when the chooser cannot resolve the ids
+            # against their own view (a non-owner caster picking from a masked
+            # spellbook, e.g. NebKher's Mind Grip driving Gydion's cast).
+            if self.request_type in (InputRequestType.SELECT_NUMBER, InputRequestType.SELECT_CARD):
                 has_labels = any(opt.text != opt.id for opt in self.options)
                 if has_labels:
                     result["options"] = [{"id": opt.id, "text": opt.text} for opt in self.options]
