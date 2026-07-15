@@ -88,9 +88,9 @@ def test_prepare_spells_and_archwizard_registration_scope() -> None:
         state.get_hero("hero_gydion"),
         gydion_card("prepare_spells"),
     )
-    assert len(steps) == 1
-    assert isinstance(steps[0], PrepareSpellbookStep)
-    assert CardEffectRegistry.get("the_archwizard") is None
+    assert len(steps) == 2
+    assert isinstance(steps[1], PrepareSpellbookStep)
+    assert CardEffectRegistry.get("the_archwizard") is not None
 
 
 @pytest.mark.effect_contract

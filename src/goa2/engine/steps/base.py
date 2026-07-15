@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,10 @@ class GameStep(BaseModel):
     """
 
     type: StepType = StepType.GENERIC
+    # Nested actions normally discard every remaining effect step when a
+    # mandatory step aborts. Stateful sequences that must finish after the
+    # nested action resolves or fizzles may opt into being an abort boundary.
+    survives_action_abort: ClassVar[bool] = False
 
     step_id: str = Field(default_factory=lambda: str(id(object())))
     pending_input: Any | None = None

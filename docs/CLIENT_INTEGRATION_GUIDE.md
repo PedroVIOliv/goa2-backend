@@ -697,6 +697,7 @@ Each team contains:
   "level": 1,
   "gold": 0,
   "items": [],
+  "wish_cast_count": 0,
   "rune_slots": {},
   "hand": [ ... ],
   "deck": [ ... ],
@@ -717,6 +718,10 @@ Rune type is one of `"axe"`, `"bird"`, `"anvil"`, `"horn"`. Persistent
 (survives round-end card cleanup) and **public to all viewers**, including
 opponents and spectators — always populated the same way regardless of
 `for_hero_id`.
+
+**`wish_cast_count`** (integer) — public, persistent, per-caster progress for
+Gydion's *Wish*. The caster's team wins after their third Wish finishes
+resolving its selected spell.
 
 **`can_commit_second_card`** (bool) — relevant only to a hero whose active
 ultimate lets them play two cards per turn (Emmitt's *Alternative Timelines*,
@@ -1250,6 +1255,7 @@ Events describe what happened during a game action. They are meant for animation
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |
+| `WISH_CAST_COUNT_CHANGED` | A caster advanced their personal Wish victory counter | `actor_id`, `metadata.count`, `metadata.required` |
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |

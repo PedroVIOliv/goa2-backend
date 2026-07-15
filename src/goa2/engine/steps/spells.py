@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import Field
 
@@ -15,6 +15,8 @@ from goa2.domain.types import HeroID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.steps.base import GameStep, StepResult
 from goa2.engine.steps.cards import PerformCardActionStep
+
+WISH_CAST_COUNTED_CASTER_KEY = "wish_cast_counted_caster_id"
 
 
 class CastSpellStep(GameStep):
@@ -75,16 +77,23 @@ class CastSpellStep(GameStep):
         context["spell_caster_id"] = caster_id
         context["cast_spell_id"] = selected.id
 
+        performed_step: GameStep
+        if selected.id == "wish":
+            performed_step = WishSequenceStep(
+                caster_id=caster_id,
+                perform_wish_action=True,
+            )
+        else:
+            performed_step = PerformCardActionStep(
+                card_key="cast_spell_id",
+                card_owner_key="spell_owner_id",
+                hero_id=caster_id,
+                suppress_after_resolve_card=True,
+            )
+
         return StepResult(
             is_finished=True,
-            new_steps=[
-                PerformCardActionStep(
-                    card_key="cast_spell_id",
-                    card_owner_key="spell_owner_id",
-                    hero_id=caster_id,
-                    suppress_after_resolve_card=True,
-                )
-            ],
+            new_steps=[performed_step],
             events=[
                 GameEvent(
                     event_type=GameEventType.SPELL_CAST,
@@ -97,6 +106,77 @@ class CastSpellStep(GameStep):
                 )
             ],
         )
+
+
+class WishSequenceStep(GameStep):
+    """Count a Wish cast, resolve another prepared spell, then check victory.
+
+    The sequence is an action-abort boundary because the selected spell must
+    resolve (or fizzle) before the third-Wish victory is checked. A mandatory
+    failure inside that spell therefore ends the nested spell, not this
+    completion check.
+    """
+
+    type: StepType = StepType.WISH_SEQUENCE
+    survives_action_abort: ClassVar[bool] = True
+    caster_id: str
+    started: bool = False
+    required_casts: int = 3
+    perform_wish_action: bool = False
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        caster = state.get_hero(HeroID(self.caster_id))
+        if caster is None:
+            return StepResult(is_finished=True)
+
+        if not self.started:
+            self.started = True
+            caster.wish_cast_count += 1
+            if self.perform_wish_action:
+                context[WISH_CAST_COUNTED_CASTER_KEY] = str(caster.id)
+                nested_step: GameStep = PerformCardActionStep(
+                    card_key="cast_spell_id",
+                    card_owner_key="spell_owner_id",
+                    hero_id=str(caster.id),
+                    suppress_after_resolve_card=True,
+                )
+            else:
+                owner = state.get_spellbook_owner()
+                allowed_spell_ids = (
+                    [spell.id for spell in owner.spellbook if spell.id != "wish"]
+                    if owner is not None
+                    else []
+                )
+                nested_step = CastSpellStep(
+                    allowed_spell_ids=allowed_spell_ids,
+                    caster_id=str(caster.id),
+                )
+            return StepResult(
+                is_finished=False,
+                new_steps=[nested_step],
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.WISH_CAST_COUNT_CHANGED,
+                        actor_id=str(caster.id),
+                        metadata={
+                            "count": caster.wish_cast_count,
+                            "required": self.required_casts,
+                        },
+                    )
+                ],
+            )
+
+        if context.get(WISH_CAST_COUNTED_CASTER_KEY) == str(caster.id):
+            context.pop(WISH_CAST_COUNTED_CASTER_KEY, None)
+
+        if caster.wish_cast_count >= self.required_casts and caster.team is not None:
+            from goa2.engine.steps.combat import TriggerGameOverStep
+
+            return StepResult(
+                is_finished=True,
+                new_steps=[TriggerGameOverStep(winner=caster.team, condition="WISH")],
+            )
+        return StepResult(is_finished=True)
 
 
 class PrepareSpellbookStep(GameStep):

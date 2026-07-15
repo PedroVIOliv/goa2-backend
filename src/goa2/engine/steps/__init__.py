@@ -128,6 +128,7 @@ from goa2.engine.steps.spells import (  # noqa: F401
     CastSpellStep,
     PrepareSpellbookStep,
     RemovePreparedSpellsStep,
+    WishSequenceStep,
 )
 from goa2.engine.steps.utility import (  # noqa: F401
     AddContextValueStep,

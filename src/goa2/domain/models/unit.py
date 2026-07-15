@@ -74,6 +74,11 @@ class Hero(Unit):
         default_factory=dict,
         description="Snorri's rune slots (keys 1-4). Persistent, public to all viewers.",
     )
+    wish_cast_count: int = Field(
+        default=0,
+        ge=0,
+        description="Persistent per-caster progress toward Gydion's Wish victory.",
+    )
     ultimate_card: Card | None = Field(
         default=None,
         description="Ultimate (Purple/Tier IV) card. Active when level >= 8.",

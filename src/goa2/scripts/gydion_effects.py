@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from goa2.domain.models import (
     Card,
@@ -14,10 +14,12 @@ from goa2.domain.models import (
     TokenType,
 )
 from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+from goa2.domain.models.enums import PassiveTrigger
 from goa2.domain.state import GameState
 from goa2.engine.effects import (
     CardEffect,
     CardEffectRegistry,
+    PassiveConfig,
     register_effect,
     register_spell_effect,
 )
@@ -42,6 +44,7 @@ from goa2.engine.stats import CardStats
 from goa2.engine.steps import (
     AttackSequenceStep,
     CastSpellStep,
+    CheckPassiveAbilitiesStep,
     CheckUnitFiltersStep,
     CreateEffectStep,
     DefeatUnitStep,
@@ -62,7 +65,11 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
     SwapUnitsStep,
+    WishSequenceStep,
 )
+from goa2.engine.steps.spells import WISH_CAST_COUNTED_CASTER_KEY
+
+ARCHWIZARD_REPLACED_PREPARE_KEY = "archwizard_replaced_prepare"
 
 SPELL_ACCESS_MAP: dict[str, tuple[str, ...]] = {
     "cantrip": ("shocking_grasp", "magic_missile", "expeditious_retreat"),
@@ -93,7 +100,57 @@ class PrepareSpellsEffect(CardEffect):
         card: Card,
         stats: CardStats,
     ) -> list[GameStep]:
-        return [PrepareSpellbookStep()]
+        return [
+            CheckPassiveAbilitiesStep(
+                trigger=PassiveTrigger.BEFORE_PREPARE_SPELLBOOK.value,
+                hero_id=str(hero.id),
+            ),
+            PrepareSpellbookStep(skip_if_key=ARCHWIZARD_REPLACED_PREPARE_KEY),
+        ]
+
+
+@register_effect("the_archwizard")
+class TheArchwizardEffect(CardEffect):
+    def get_passive_config(self) -> PassiveConfig:
+        return PassiveConfig(
+            trigger=PassiveTrigger.BEFORE_PREPARE_SPELLBOOK,
+            uses_per_turn=0,
+            is_optional=True,
+            prompt="The Archwizard: cast Wish instead of preparing spells?",
+        )
+
+    def should_offer_passive(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> bool:
+        if trigger != PassiveTrigger.BEFORE_PREPARE_SPELLBOOK:
+            return False
+        if str(state.current_actor_id) != str(hero.id):
+            return False
+        performing_card_id = context.get("performing_card_id") or context.get("current_card_id")
+        if performing_card_id != "prepare_spells":
+            return False
+        owner = state.get_spellbook_owner()
+        if owner is None or not owner.cast_spells:
+            return False
+        return any(spell.id == "wish" for spell in owner.spellbook)
+
+    def get_passive_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> list[GameStep]:
+        return [
+            SetContextFlagStep(key=ARCHWIZARD_REPLACED_PREPARE_KEY, value=True),
+            CastSpellStep(allowed_spell_ids=["wish"], caster_id=str(hero.id)),
+        ]
 
 
 class SpellAccessEffect(CardEffect):
@@ -799,6 +856,31 @@ class PolymorphEffect(CardEffect):
                 is_mandatory=True,
             ),
         ]
+
+
+@register_spell_effect("wish")
+class WishEffect(CardEffect):
+    def build_steps(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        if state.execution_context.get(WISH_CAST_COUNTED_CASTER_KEY) == str(hero.id):
+            owner = state.get_spellbook_owner()
+            allowed_spell_ids = (
+                [spell.id for spell in owner.spellbook if spell.id != "wish"]
+                if owner is not None
+                else []
+            )
+            return [
+                CastSpellStep(
+                    allowed_spell_ids=allowed_spell_ids,
+                    caster_id=str(hero.id),
+                )
+            ]
+        return [WishSequenceStep(caster_id=str(hero.id))]
 
 
 # The access behavior is identical; the card's effect ID selects its printed

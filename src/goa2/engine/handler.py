@@ -118,8 +118,11 @@ def _clear_to_pending_combat(state: GameState) -> bool:
     combat_index: int | None = None
     for index in range(len(state.execution_stack) - 1, -1, -1):
         step = state.execution_stack[index]
-        if isinstance(
-            step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+        if (
+            isinstance(
+                step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+            )
+            or step.survives_action_abort
         ):
             break
         if isinstance(step, ResolveCombatStep):
@@ -153,8 +156,11 @@ def _clear_to_finalize(state: GameState):
 
     while state.execution_stack:
         step = state.execution_stack[-1]
-        if isinstance(
-            step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+        if (
+            isinstance(
+                step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
+            )
+            or step.survives_action_abort
         ):
             break
         state.execution_stack.pop()

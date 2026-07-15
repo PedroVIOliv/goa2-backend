@@ -190,6 +190,8 @@ def _build_hero_view(
         "level": hero.level,
         "gold": hero.gold,
         "items": hero.items,
+        # Gydion's Wish victory progress is per caster and public.
+        "wish_cast_count": hero.wish_cast_count,
         # Rune slots (Snorri): public to all viewers, including opponents/spectators
         "rune_slots": {str(k): v.value for k, v in hero.rune_slots.items()},
         # Hand: Own hero sees all, others see empty array

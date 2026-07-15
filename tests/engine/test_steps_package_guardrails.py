@@ -154,6 +154,7 @@ EXPECTED_STEP_CLASSES = {
     "TriggerGameOverStep",
     "TriggerMineStep",
     "ValidateRepeatStep",
+    "WishSequenceStep",
 }
 
 
