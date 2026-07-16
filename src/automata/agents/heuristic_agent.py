@@ -23,7 +23,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.engine.map_logic import zones_between
 
-from .agent import option_selection_value
+from .base import option_selection_value
 
 # CHOOSE_ACTION priority (higher = preferred as the played action).
 _ACTION_PRIORITY = {
