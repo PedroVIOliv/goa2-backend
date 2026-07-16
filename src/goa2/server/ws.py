@@ -20,6 +20,7 @@ from goa2.server.errors import (
     validate_input_turn,
 )
 from goa2.server.registry import GameRegistry, ManagedGame
+from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
 router = APIRouter()
 
@@ -34,8 +35,9 @@ def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any
         "type": "STATE_UPDATE",
         "view": view,
     }
-    if ir:
-        msg["input_request"] = ir.to_dict()
+    input_request = input_request_for_viewer(ir, game.session.state, hero_id)
+    if input_request:
+        msg["input_request"] = input_request
     if winner:
         msg["winner"] = winner
     return msg
@@ -57,12 +59,10 @@ async def broadcast(
 ) -> None:
     """Send player-scoped state updates to all connected websockets.
 
-    ``events`` is the public event list from the mutation that triggered this
-    broadcast. When provided it rides along on every recipient's STATE_UPDATE so
-    that non-acting players and spectators can drive animations too — not just
-    the acting player who received the ACTION_RESULT. It is the same list that
-    was just computed for the reply, so it never goes stale. Connect/GET_VIEW
-    updates pass nothing and stay event-free.
+    ``events`` is the internal event list from the mutation that triggered this
+    broadcast. Each recipient receives a visibility-filtered projection so
+    animations cannot expose hidden cards or facedown token identities.
+    Connect/GET_VIEW updates pass nothing and stay event-free.
     """
     dead_connections: list[tuple[str, WebSocket]] = []
     # Snapshot the registry because a reconnect can replace a socket while a
@@ -71,7 +71,7 @@ async def broadcast(
         hero_id = game.player_tokens.get(token)
         msg = _build_state_update(game, hero_id)
         if events:
-            msg["events"] = events
+            msg["events"] = events_for_viewer(events, game.session.state, hero_id)
         if not await _send_json(ws, msg):
             dead_connections.append((token, ws))
     for token, ws in dead_connections:
@@ -125,7 +125,9 @@ async def _handle_submit_input(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -161,7 +163,9 @@ async def _handle_commit_card(
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -193,7 +197,9 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -217,7 +223,9 @@ async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, 
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -240,7 +248,9 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -266,7 +276,9 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         "result_type": result.result_type.value,
         "current_phase": result.current_phase.value,
         "events": [ev.model_dump() for ev in result.events],
-        "input_request": (result.input_request.to_dict() if result.input_request else None),
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
         "winner": result.winner,
     }
 
@@ -417,11 +429,20 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 ):
                     registry.save_game(game.game_id)
 
-                # Send reply to sender
-                await websocket.send_json(reply)
+                # Send a recipient-scoped reply while retaining the internal
+                # events below for per-recipient broadcast projections.
+                sender_reply = reply
+                if reply.get("type") == "ACTION_RESULT":
+                    sender_reply = {
+                        **reply,
+                        "events": events_for_viewer(
+                            reply.get("events", []), game.session.state, hero_id
+                        ),
+                    }
+                await websocket.send_json(sender_reply)
 
-                # Broadcast state to others after mutations. Forward the same
-                # events we just sent the actor so every client can animate.
+                # Broadcast state after mutations. ``broadcast`` applies the
+                # visibility rules independently for every connection.
                 if msg_type in (
                     "SUBMIT_INPUT",
                     "COMMIT_CARD",

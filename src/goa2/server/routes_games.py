@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
+from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.session import GameSession, SessionResult
@@ -31,6 +32,7 @@ from goa2.server.models import (
     PlayerToken,
     SubmitInputRequest,
 )
+from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
 router = APIRouter(prefix="/games", tags=["games"])
 
@@ -66,12 +68,16 @@ def _log_result(
         gl.log_game_over(result.winner)
 
 
-def _result_to_response(result: SessionResult) -> ActionResultResponse:
+def _result_to_response(
+    result: SessionResult,
+    state: GameState,
+    for_hero_id: str,
+) -> ActionResultResponse:
     return ActionResultResponse(
         result_type=result.result_type.value,
         current_phase=result.current_phase.value,
-        events=[ev.model_dump() for ev in result.events],
-        input_request=result.input_request.to_dict() if result.input_request else None,
+        events=events_for_viewer([ev.model_dump() for ev in result.events], state, for_hero_id),
+        input_request=input_request_for_viewer(result.input_request, state, for_hero_id),
         winner=result.winner,
     )
 
@@ -142,7 +148,7 @@ async def get_game_view(
     winner = game.last_result.winner if game.last_result else None
     return GameViewResponse(
         view=view,
-        input_request=ir.to_dict() if ir else None,
+        input_request=input_request_for_viewer(ir, game.session.state, hero_id),
         winner=winner,
     )
 
@@ -193,7 +199,7 @@ async def commit_card(
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, session.state, player.hero_id)
 
 
 @router.post("/{game_id}/uncommit", response_model=ActionResultResponse)
@@ -233,7 +239,7 @@ async def uncommit_card(
             game.game_logger.log_card_uncommit(hid, card.id)
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, session.state, player.hero_id)
 
 
 @router.post("/{game_id}/pass", response_model=ActionResultResponse)
@@ -261,7 +267,7 @@ async def pass_turn(
             game.game_logger.log_pass_turn(player.hero_id)
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, session.state, player.hero_id)
 
 
 @router.post("/{game_id}/planning-done", response_model=ActionResultResponse)
@@ -289,7 +295,7 @@ async def planning_done(
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, session.state, player.hero_id)
 
 
 @router.post("/{game_id}/input", response_model=ActionResultResponse)
@@ -324,7 +330,7 @@ async def submit_input(
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, game.session.state, player.hero_id)
 
 
 @router.post("/{game_id}/advance", response_model=ActionResultResponse)
@@ -342,7 +348,7 @@ async def advance(
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, game.session.state, player.hero_id)
 
 
 @router.post("/{game_id}/rollback", response_model=ActionResultResponse)
@@ -373,7 +379,7 @@ async def rollback_action(
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)
-        return _result_to_response(result)
+        return _result_to_response(result, session.state, player.hero_id)
 
 
 @router.post("/{game_id}/cheats/gold", response_model=ActionResultResponse)

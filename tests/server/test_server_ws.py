@@ -58,6 +58,37 @@ def test_ws_connect_spectator(client, game_data):
         assert msg["type"] == "STATE_UPDATE"
 
 
+def test_ws_initial_state_only_includes_input_for_responder(client, game_data):
+    from goa2.domain.input import InputRequestType, create_input_request
+    from goa2.engine.session import SessionResult, SessionResultType
+
+    game_id = game_data["game_id"]
+    game = client.app.state.registry.get(game_id)
+    game.last_result = SessionResult(
+        result_type=SessionResultType.INPUT_NEEDED,
+        current_phase=game.session.current_phase,
+        input_request=create_input_request(
+            InputRequestType.SELECT_CARD_OR_PASS,
+            player_id="hero_wasp",
+            prompt="Choose a defense",
+            options=[{"id": "magnetic_dagger", "text": "Magnetic Dagger"}],
+        ),
+    )
+
+    wasp_token = _token_for(game_data, "hero_wasp")
+    arien_token = _token_for(game_data, "hero_arien")
+    spectator_token = game_data["spectator_token"]
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws:
+        msg = ws.receive_json()
+        assert msg["input_request"]["player_id"] == "hero_wasp"
+        assert msg["input_request"]["options"][0]["id"] == "magnetic_dagger"
+
+    for token in (arien_token, spectator_token):
+        with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+            assert "input_request" not in ws.receive_json()
+
+
 def test_ws_invalid_token(client, game_data):
     game_id = game_data["game_id"]
     with (
@@ -413,6 +444,50 @@ def test_ws_cheats_gold_broadcasts_state(client):
                 if hero["id"] == "hero_arien":
                     wasp_view_arien_gold = hero["gold"]
         assert wasp_view_arien_gold == 5
+
+
+def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_data):
+    import asyncio
+
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.domain.models import TokenType
+    from goa2.server.ws import broadcast
+
+    class RecordingSocket:
+        def __init__(self):
+            self.message = None
+
+        async def send_json(self, data):
+            self.message = data
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    state = game.session.state
+    mine = state.token_pool[TokenType.MINE_BLAST][0]
+    mine.owner_id = "hero_arien"
+    destination = next(hex_ for hex_, tile in state.board.tiles.items() if not tile.is_occupied)
+    state.place_entity(mine.id, destination)
+    event = GameEvent(
+        event_type=GameEventType.TOKEN_PLACED,
+        actor_id="hero_arien",
+        target_id=mine.id,
+        metadata={"token_type": TokenType.MINE_BLAST.value},
+    ).model_dump()
+
+    sockets = {
+        _token_for(game_data, "hero_arien"): RecordingSocket(),
+        _token_for(game_data, "hero_wasp"): RecordingSocket(),
+        game_data["spectator_token"]: RecordingSocket(),
+    }
+    game.ws_connections = sockets
+
+    asyncio.run(broadcast(game, client.app.state.registry, events=[event]))
+
+    arien_event = sockets[_token_for(game_data, "hero_arien")].message["events"][0]
+    wasp_event = sockets[_token_for(game_data, "hero_wasp")].message["events"][0]
+    spectator_event = sockets[game_data["spectator_token"]].message["events"][0]
+    assert arien_event["metadata"]["token_type"] == "mine_blast"
+    assert wasp_event["metadata"]["token_type"] == "mine"
+    assert spectator_event["metadata"]["token_type"] == "mine"
 
 
 # ---- Game over tests ----

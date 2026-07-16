@@ -195,7 +195,7 @@ Get the current game view for the authenticated player.
 }
 ```
 
-The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present when the server is waiting for this player's input.
+The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present only when the authenticated hero is allowed to answer it. Opponents and spectators receive `null`. Team-level requests are visible only to that team's heroes; simultaneous upgrade requests contain only the authenticated hero's entry.
 
 The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `response.get("winner")` rather than assuming it exists.
 
@@ -406,8 +406,8 @@ All mutation endpoints return this shape:
 |-------|------|-------------|
 | `result_type` | string | `INPUT_NEEDED`, `ACTION_COMPLETE`, `PHASE_CHANGED`, or `GAME_OVER` |
 | `current_phase` | string | Current game phase (see [Game Flow](#game-flow)) |
-| `events` | array | Game events emitted during this action (see [Events](#events)) |
-| `input_request` | object/null | Present when `result_type` is `INPUT_NEEDED` |
+| `events` | array | Recipient-scoped game events emitted during this action (see [Events](#events)) |
+| `input_request` | object/null | Present only when the authenticated action performer may answer the pending request. It can be `null` even when `result_type` is `INPUT_NEEDED` if the action advanced to another player's decision |
 | `winner` | string/null | `"RED"` or `"BLUE"` when `result_type` is `GAME_OVER` |
 
 ---
@@ -532,11 +532,11 @@ Sent on connection, on `GET_VIEW` requests, and broadcast to all connected clien
 }
 ```
 
-The `input_request` key is only present when there is a pending input request. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
+The `input_request` key is present only when the receiving hero is allowed to answer the pending request. It is omitted for opponents and spectators. Team-level requests go only to that team, and simultaneous upgrade requests contain only the receiving hero's `players` entry. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
 
 The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `msg.get("winner")` rather than assuming it exists.
 
-The `events` key is only present on **broadcasts that follow a mutation**, and carries the same public event list as that action's `ACTION_RESULT` (see below). It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
+The `events` key is only present on **broadcasts that follow a mutation**. It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. Event metadata is projected independently for each recipient: hidden card IDs/names are `null` (or omitted from ID lists), and facedown mine placement reports `metadata.token_type: "mine"` outside the owning team. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
 
 #### `ACTION_RESULT`
 
@@ -567,9 +567,9 @@ Sent to the player who performed the action:
 After a mutation (`COMMIT_CARD`, `PASS_TURN`, `FINISH_PLANNING`, `SUBMIT_INPUT`):
 
 1. The acting player receives an `ACTION_RESULT` message
-2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view, carrying the same action's `events`
+2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view, carrying a recipient-scoped projection of the action's `events`
 
-This means the acting player gets both messages, with identical `events` on each — animate from one source only (the `STATE_UPDATE` broadcast is recommended, since every client receives it). The `ACTION_RESULT` still contains events for animation and the authoritative view to render lives on `STATE_UPDATE.view`. Non-acting players and spectators, who never receive an `ACTION_RESULT`, now get the events on their broadcast so they can animate the same action.
+This means the acting player gets both messages, with the same recipient-safe events on each — animate from one source only (the `STATE_UPDATE` broadcast is recommended, since every client receives it). Different players may receive different metadata for the same event when private information is involved. The authoritative state lives on `STATE_UPDATE.view`; events are animation hints.
 
 ### Spectator restrictions
 
@@ -765,7 +765,7 @@ Each card object in the view contains:
 | `is_ranged` | bool | hidden | Whether the card is ranged |
 | `range_value` | int\|null | hidden | Max distance when ranged |
 | `radius_value` | int\|null | hidden | Area of effect radius |
-| `item` | string\|null | shown | When equipped as item, which stat it boosts: `"ATTACK"`, `"DEFENSE"`, `"MOVEMENT"`, `"INITIATIVE"`, `"RANGE"`, `"RADIUS"` |
+| `item` | string\|null | hidden | When visible, which stat the card boosts as an item: `"ATTACK"`, `"DEFENSE"`, `"MOVEMENT"`, `"INITIATIVE"`, `"RANGE"`, `"RADIUS"`. Always `null` in a masked facedown-card view |
 | `is_active` | bool | shown | Whether the card's active effect is available (tapped/un-tapped) |
 | `spell_rank` | int | hidden | Spellbook rank. Present only on complete spell-card views; prepared opponent spells are count-only and never expose it. |
 
@@ -797,7 +797,7 @@ The view is player-scoped — what you see depends on your token:
 
 - **Your hero's cards:** Full details visible for all cards (hand, deck, played, current turn card, ultimate)
 - **Other heroes' FACEUP cards:** Full details visible (id, name, tier, action, is_ranged, range_value, radius_value, etc.)
-- **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `image_id`, `is_ranged`, `range_value`, `radius_value`. Shows `tier`, `color`, `primary_action`, `primary_action_value`, `secondary_actions`, `effect_id`, `effect_text`, `initiative`, `state`, `is_facedown`, `item`, `is_active`
+- **Other heroes' FACEDOWN cards:** Partial details - hides `id`, `name`, `image_id`, `is_ranged`, `range_value`, `radius_value`, and the printed `item` stat (`item` remains present but is `null`). Other card-face values use their masked `current_*` representation; `state`, `is_facedown`, and the public `is_active` orientation remain visible
 - **Other heroes' hand:** Empty array `[]` (no cards visible at all in hand)
 - **Deck of other heroes:** Shows `{"count": N}` instead of card details
 - **Discard piles:** Always fully visible (public information) — except facedown cards, see below
@@ -931,7 +931,7 @@ Active area effects on the board:
 
 ### Tokens
 
-Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from units. They appear in the `tokens` array and in `entity_locations`.
+Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from units. Only currently placed tokens appear in the `tokens` array and in `entity_locations`; reserve token supplies are server-private.
 
 ```json
 {
@@ -947,13 +947,13 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`) |
+| `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`). Facedown mine IDs are opaque and must not be interpreted as a subtype or supply order |
 | `name` | string | Display name |
 | `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`, `"magma"`, `"glitch"`, `"illusion"`, `"familiar"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
 | `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
 | `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |
-| `hex` | hex/null | Current position on the board. `null` if the token exists but is not placed |
+| `hex` | hex | Current position on the board |
 
 Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect. Some effects can make specific tokens unselectable by enemy actions, such as Tali's Venerated Totem.
 
@@ -1028,7 +1028,7 @@ The path choice is made by the **current actor** (the player controlling the mov
 
 ## Handling Input Requests
 
-When the engine needs player input, the response contains an `input_request` object.
+When the engine needs a hero's input, only that hero (or an authorized member for a team-level request) receives the `input_request` object. Other players and spectators receive `null` via REST and no `input_request` key via WebSocket. A simultaneous upgrade request is reduced to the receiving hero's own `players` entry.
 
 ### Input request shape
 
@@ -1215,7 +1215,7 @@ request.
 
 ## Events
 
-Events describe what happened during a game action. They are meant for animation, logging, and replay — they don't change what's displayed (the view does that), but they tell you *how* it changed.
+Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative.
 
 ### Event structure
 
@@ -1237,7 +1237,7 @@ Events describe what happened during a game action. They are meant for animation
 | `UNIT_MOVED` | A unit walked to a new hex | `actor_id`, `from_hex`, `to_hex` |
 | `TOKEN_MOVED` | A token moved to a new hex | `target_id`, `from_hex`, `to_hex` |
 | `UNIT_PLACED` | A unit was placed on the board (spawn, summon) | `actor_id`, `to_hex` |
-| `TOKEN_PLACED` | A token was placed on the board | `actor_id`, `target_id`, `to_hex` |
+| `TOKEN_PLACED` | A token was placed on the board. `metadata.token_type` is the real type for visible tokens/the owning team and `"mine"` for a facedown enemy mine or spectator | `actor_id`, `target_id`, `to_hex`, `metadata.token_type` |
 | `BOARD_ENTITY_PLACED` | A non-unit, non-token board entity was placed or repositioned | `actor_id`, `target_id`, `from_hex`, `to_hex`, `metadata.entity_kind` |
 | `UNIT_PUSHED` | A unit was forcibly moved | `actor_id`, `from_hex`, `to_hex` |
 | `TOKEN_PUSHED` | A token was forcibly moved | `actor_id`, `target_id`, `from_hex`, `to_hex` |
@@ -1251,7 +1251,7 @@ Events describe what happened during a game action. They are meant for animation
 | `EFFECT_CREATED` | A new area effect was placed | `metadata` (effect details). For NebKher's reality splits (`topology_split` / `topology_isolation`) also `metadata.split_axis` (`"q"`/`"r"`/`"s"`) and `metadata.split_value` — the line of hexes where that cube coordinate equals the value; draw the split there |
 | `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
-| `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id` (now in the deck), `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
+| `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Card IDs/names are `null` for recipients who cannot see those cards. Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id`, `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |

@@ -742,9 +742,23 @@ def test_emmitt_two_card_commit_and_retrieve(client, emmitt_game):
     assert r3.status_code == 200
     body = r3.json()
     assert body["current_phase"] == "RESOLUTION"
-    assert body["input_request"] is not None
-    assert body["input_request"]["player_id"] == "hero_emmitt"
-    assert set(body["input_request"]["valid_options"]) == {"reverse_time", "unstable_timeline"}
+    # The final commit starts an Emmitt-only choice, which must not ride back
+    # on Wasp's action response or appear in public/opponent state reads.
+    assert body["input_request"] is None
+    assert client.get(f"/games/{game_id}", headers=_auth(wa_token)).json()["input_request"] is None
+    assert (
+        client.get(f"/games/{game_id}", headers=_auth(emmitt_game["spectator_token"])).json()[
+            "input_request"
+        ]
+        is None
+    )
+
+    owner_request = client.get(f"/games/{game_id}", headers=_auth(em_token)).json()["input_request"]
+    assert owner_request["player_id"] == "hero_emmitt"
+    assert set(owner_request["valid_options"]) == {
+        "reverse_time",
+        "unstable_timeline",
+    }
 
     r4 = client.post(
         f"/games/{game_id}/input",

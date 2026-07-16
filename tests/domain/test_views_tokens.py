@@ -69,3 +69,13 @@ def test_faceup_token_visible_to_all():
     view = build_view(state, for_hero_id=HeroID("hero_blue"))
     token_view = view["tokens"][0]
     assert token_view["token_type"] == "mine_blast"
+
+
+def test_unplaced_token_supply_is_not_exposed():
+    """Clients only receive tokens that currently exist on the board."""
+    state = _make_state_with_mine()
+    state.remove_entity(BoardEntityID("mine_blast_1"))
+
+    assert build_view(state, for_hero_id=HeroID("hero_red"))["tokens"] == []
+    assert build_view(state, for_hero_id=HeroID("hero_blue"))["tokens"] == []
+    assert build_view(state, for_hero_id=None)["tokens"] == []

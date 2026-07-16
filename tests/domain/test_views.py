@@ -20,6 +20,7 @@ from goa2.domain.models import (
     CardTier,
     GamePhase,
     Hero,
+    StatType,
     TeamColor,
 )
 from goa2.domain.models.team import Team
@@ -320,6 +321,20 @@ class TestHeroScopedView:
         assert "range_value" in faceup
         assert "radius_value" in faceup
 
+    def test_facedown_played_card_item_is_hidden_from_every_viewer(self, sample_state):
+        """A printed item stat must not identify a facedown resolved card."""
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+        facedown, faceup = hero_b.played_cards
+        facedown.item = StatType.RANGE
+        faceup.item = StatType.MOVEMENT
+
+        for viewer in (HeroID("hero_a"), HeroID("hero_b"), None):
+            played = build_view(sample_state, for_hero_id=viewer)["teams"]["BLUE"]["heroes"][0][
+                "played_cards"
+            ]
+            assert played[0]["item"] is None
+            assert played[1]["item"] == StatType.MOVEMENT.value
+
     def test_own_hero_sees_deck_details(self, sample_state):
         """Hero sees their full deck."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
@@ -516,6 +531,35 @@ class TestCardViewHelper:
         assert "primary_action_value" in view  # Will be None
         assert "is_facedown" in view
         assert view["is_facedown"] is True
+
+    def test_facedown_card_masks_item_but_keeps_public_active_orientation(self):
+        from goa2.domain.views import _build_card_view
+
+        card = Card(
+            id="item_card",
+            name="Secret Item Card",
+            tier=CardTier.II,
+            color=CardColor.GREEN,
+            primary_action=ActionType.MOVEMENT,
+            primary_action_value=3,
+            effect_id="secret_effect",
+            effect_text="Secret effect",
+            initiative=4,
+            state=CardState.RESOLVED,
+            is_facedown=True,
+            item=StatType.RANGE,
+            is_active_base=True,
+        )
+
+        hidden = _build_card_view(card, is_own_hero=False)
+        owner = _build_card_view(card, is_own_hero=True)
+
+        assert hidden["item"] is None
+        assert hidden["is_active"] is True
+        assert owner["item"] == StatType.RANGE.value
+
+        card.is_facedown = False
+        assert _build_card_view(card, is_own_hero=False)["item"] == StatType.RANGE.value
 
     def test_faceup_card_shows_details_regardless_of_is_own_hero(self):
         """Faceup cards always show details."""

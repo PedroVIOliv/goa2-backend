@@ -69,6 +69,31 @@ def test_game_setup_initializes_token_pool():
         assert len(state.token_pool[token_type]) == expected_count
 
 
+def test_mine_subtypes_are_seeded_behind_generic_ids():
+    """Mine IDs are replayable but do not have one global subtype mapping."""
+
+    def mapping(seed: int) -> dict[str, TokenType]:
+        state = GameSetup.create_game(
+            "src/goa2/data/maps/forgotten_island.json",
+            ["Arien"],
+            ["Wasp"],
+            seed=seed,
+        )
+        return {
+            str(token.id): token.token_type
+            for token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
+            for token in state.token_pool[token_type]
+        }
+
+    first = mapping(1)
+    replay = mapping(1)
+    another_game = mapping(3)
+
+    assert first == replay
+    assert first != another_game
+    assert all(token_id.startswith("mine_") for token_id in first)
+
+
 def test_place_move_remove_token_lifecycle():
     state = _make_state()
     token = Token(id="smoke_bomb_1", name="Smoke Bomb", token_type=TokenType.SMOKE_BOMB)

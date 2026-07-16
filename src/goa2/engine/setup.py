@@ -111,6 +111,22 @@ class GameSetup:
             cheats_enabled=cheats_enabled,
         )
 
+        # Derive the deterministic game seed before creating hidden supplies.
+        # Mine subtype assignment uses a separate seed-derived stream so it is
+        # replayable without affecting the public tie-breaker coin flip.
+        if seed is None:
+            seed_material = "|".join(
+                [
+                    map_path,
+                    ",".join(red_heroes),
+                    ",".join(blue_heroes),
+                    str(cheats_enabled),
+                    game_type,
+                ]
+            )
+            seed = int.from_bytes(hashlib.sha256(seed_material.encode("utf-8")).digest()[:8], "big")
+        state.rng_seed = seed
+
         # 4. Determine Battle Zone & Wave counters per lane
         if not board.lanes:
             raise ValueError("Map does not have a defined lane!")
@@ -140,18 +156,6 @@ class GameSetup:
 
         # 8. Finalize Setup
         # Flip Coin
-        if seed is None:
-            seed_material = "|".join(
-                [
-                    map_path,
-                    ",".join(red_heroes),
-                    ",".join(blue_heroes),
-                    str(cheats_enabled),
-                    game_type,
-                ]
-            )
-            seed = int.from_bytes(hashlib.sha256(seed_material.encode("utf-8")).digest()[:8], "big")
-        state.rng_seed = seed
         rng = random.Random(seed)
         state.tie_breaker_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
 
@@ -180,24 +184,47 @@ class GameSetup:
 
     @staticmethod
     def _initialize_token_pool(state: GameState):
-        for token_type in TokenType:
-            supply = TOKEN_SUPPLY.get(token_type, 0)
-            state.token_pool[token_type] = []
+        state.token_pool = {token_type: [] for token_type in TokenType}
 
-            is_mine = token_type in (TokenType.MINE_BLAST, TokenType.MINE_DUD)
+        for token_type in TokenType:
+            if token_type == TokenType.MINE_DUD:
+                # Both mine subtypes are allocated together below so their
+                # generic IDs do not reveal a stable blast/dud boundary.
+                continue
+
+            if token_type == TokenType.MINE_BLAST:
+                mine_types = [
+                    *([TokenType.MINE_BLAST] * TOKEN_SUPPLY[TokenType.MINE_BLAST]),
+                    *([TokenType.MINE_DUD] * TOKEN_SUPPLY[TokenType.MINE_DUD]),
+                ]
+                mine_rng = random.Random(f"goa2:mine-supply:{state.rng_seed}")
+                mine_rng.shuffle(mine_types)
+                for mine_type in mine_types:
+                    token_id = state.create_entity_id("mine")
+                    token = Token(
+                        id=BoardEntityID(token_id),
+                        name=mine_type.value.replace("_", " ").title(),
+                        token_type=mine_type,
+                        is_passable=True,
+                        is_facedown=True,
+                    )
+                    state.register_entity(token, "token")
+                    state.token_pool[mine_type].append(token)
+                continue
+
+            supply = TOKEN_SUPPLY.get(token_type, 0)
+
             persists_end_of_round = token_type in (
                 TokenType.ZOMBIE,
                 TokenType.PYRO,
                 TokenType.TREE,
             )
             for _ in range(supply):
-                token_id = state.create_entity_id("mine" if is_mine else token_type.value)
+                token_id = state.create_entity_id(token_type.value)
                 token = Token(
                     id=BoardEntityID(token_id),
                     name=token_type.value.replace("_", " ").title(),
                     token_type=token_type,
-                    is_passable=is_mine,
-                    is_facedown=is_mine,
                     persists_end_of_round=persists_end_of_round,
                 )
                 state.register_entity(token, "token")

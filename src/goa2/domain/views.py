@@ -332,7 +332,9 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
             "initiative": card.current_initiative,
             "state": card.state.value,
             "is_facedown": card.is_facedown,
-            "item": card.item.value if card.item else None,
+            # The item stat is printed on the hidden card face and can narrow
+            # its identity. Keep the response shape stable but mask the value.
+            "item": None,
             "is_active": card.is_active,
         }
 
@@ -441,40 +443,49 @@ def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
 def _build_tokens_view(
     state: GameState, for_hero_id: HeroID | None = None, reveal_all: bool = False
 ) -> list[dict[str, Any]]:
-    """Build a view of tokens on the board with facedown hiding."""
+    """Build a view of placed tokens with facedown identities hidden."""
     viewer_team = None
     if for_hero_id:
         hero = state.get_hero(for_hero_id)
         if hero:
             viewer_team = hero.team
 
+    placed_tokens = sorted(
+        (
+            token
+            for tokens in state.token_pool.values()
+            for token in tokens
+            if BoardEntityID(str(token.id)) in state.entity_locations
+        ),
+        key=lambda token: str(token.id),
+    )
+
     tokens_view = []
-    for tokens in state.token_pool.values():
-        for token in tokens:
-            loc = state.entity_locations.get(BoardEntityID(str(token.id)))
+    for token in placed_tokens:
+        loc = state.entity_locations[BoardEntityID(str(token.id))]
 
-            visible_type = token.token_type.value
-            if token.is_facedown and not reveal_all:
-                owner_team = None
-                if token.owner_id:
-                    owner = state.get_hero(token.owner_id)
-                    if owner:
-                        owner_team = owner.team
-                if viewer_team is None or viewer_team != owner_team:
-                    visible_type = "mine"
+        visible_type = token.token_type.value
+        if token.is_facedown and not reveal_all:
+            owner_team = None
+            if token.owner_id:
+                owner = state.get_hero(token.owner_id)
+                if owner:
+                    owner_team = owner.team
+            if viewer_team is None or viewer_team != owner_team:
+                visible_type = "mine"
 
-            is_hidden = token.is_facedown and visible_type == "mine"
-            tokens_view.append(
-                {
-                    "id": str(token.id),
-                    "name": "Mine" if is_hidden else token.name,
-                    "token_type": visible_type,
-                    "owner_id": str(token.owner_id) if token.owner_id else None,
-                    "is_facedown": token.is_facedown,
-                    "is_passable": token.is_passable,
-                    "hex": ({"q": loc.q, "r": loc.r, "s": loc.s} if loc else None),
-                }
-            )
+        is_hidden = token.is_facedown and visible_type == "mine"
+        tokens_view.append(
+            {
+                "id": str(token.id),
+                "name": "Mine" if is_hidden else token.name,
+                "token_type": visible_type,
+                "owner_id": str(token.owner_id) if token.owner_id else None,
+                "is_facedown": token.is_facedown,
+                "is_passable": token.is_passable,
+                "hex": {"q": loc.q, "r": loc.r, "s": loc.s},
+            }
+        )
     return tokens_view
 
 
