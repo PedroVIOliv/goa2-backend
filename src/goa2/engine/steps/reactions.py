@@ -142,15 +142,19 @@ class ReactionWindowStep(GameStep):
                 return StepResult(is_finished=True)
 
             # Case B: Selected Card
-            if card_id:
-                def_val = 0
-                selected_card = next((c for c in valid_defense_cards if c.id == card_id), None)
-
-                # Get Base Value
-                if selected_card:
-                    def_val = selected_card.get_base_stat_value(block_stat)
-                elif not selected_card:
-                    raise ValueError("Selected card is not a valid defense card.")
+            selected_card = (
+                next((c for c in valid_defense_cards if c.id == card_id), None) if card_id else None
+            )
+            # An unrecognized id (bogus/stale client value) must not raise: the
+            # step has already been popped, so raising would drop it from the
+            # stack and corrupt the game. Re-open the reaction window instead.
+            if card_id and selected_card is None:
+                logger.debug(
+                    f"   [REACTION] Rejected invalid defense card {card_id!r}; re-requesting."
+                )
+                self.pending_input = None
+            elif selected_card:
+                def_val = selected_card.get_base_stat_value(block_stat)
 
                 # Compute Total Defense (Base + Items + Modifiers)
                 total_def = get_computed_stat(state, target_id, block_stat, def_val)

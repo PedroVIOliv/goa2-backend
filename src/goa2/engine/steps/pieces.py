@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
 from goa2.domain.input import SKIP, InputOption, InputRequestType, create_input_request
@@ -61,7 +63,10 @@ class ChooseActingPieceStep(GameStep):
                 state.acting_piece_id = BoardEntityID(str(selection))
                 logger.debug("   [PIECE] Bound acting piece %s", selection)
                 return StepResult(is_finished=True)
-            raise ValueError(f"Invalid acting piece selection: {selection}")
+            # A bogus id must not raise: the step has already been popped, so
+            # raising would drop it from the stack and corrupt the game. Re-prompt.
+            logger.debug("   [PIECE] Rejected invalid acting piece %r; re-requesting.", selection)
+            self.pending_input = None
 
         options = []
         for pid in pieces:
@@ -166,11 +171,14 @@ class SpawnHeroPieceStep(GameStep):
             if selection == SKIP:
                 return StepResult(is_finished=True)
 
+            target = None
             if isinstance(selection, dict):
-                target = Hex(**selection)
-                if target not in valid_hexes:
-                    raise ValueError(f"Invalid spawn hex: {selection}")
+                try:
+                    target = Hex(**selection)
+                except (TypeError, ValueError, ValidationError):
+                    target = None
 
+            if target is not None and target in valid_hexes:
                 new_piece = supply[0]
                 state.place_entity(BoardEntityID(new_piece), target)
                 return StepResult(
@@ -194,7 +202,12 @@ class SpawnHeroPieceStep(GameStep):
                     ],
                 )
 
-            raise ValueError(f"Unexpected spawn selection: {selection}")
+            # Malformed / unoffered hex must not raise (the step is already
+            # popped); re-request the spawn hex instead.
+            logger.debug(
+                "   [PIECE] Rejected invalid spawn selection %r; re-requesting.", selection
+            )
+            self.pending_input = None
 
         return StepResult(
             requires_input=True,
@@ -524,7 +537,9 @@ class RemoveHeroPieceStep(GameStep):
                     events=[remove_piece(str(selection))],
                     new_steps=new_steps,
                 )
-            raise ValueError(f"Invalid piece removal selection: {selection}")
+            # A bogus id must not raise (the step is already popped); re-prompt.
+            logger.debug("   [PIECE] Rejected invalid removal %r; re-requesting.", selection)
+            self.pending_input = None
 
         options = [InputOption(id=pid, text=pid) for pid in pieces]
         options.append(InputOption(id=SKIP, text="Keep all pieces"))

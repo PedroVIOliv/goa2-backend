@@ -87,6 +87,37 @@ def test_remove_one_piece_keeps_min_remaining():
     assert "hero_razzle" not in state.heroes_defeated_this_round
 
 
+def test_spawn_invalid_hex_rerequests():
+    """A malformed / unoffered spawn hex must re-prompt, not crash the engine.
+
+    The step is popped before resolve(), so raising would lose it and corrupt
+    the stack.
+    """
+    state = _state(n_pieces=1)
+    state.acting_piece_id = piece_id("hero_razzle", 1)
+    push_steps(state, [SpawnHeroPieceStep(hero_id="hero_razzle", max_count=3, radius=1)])
+
+    process_stack(state)
+    state.execution_stack[-1].pending_input = {"selection": {"bad": "keys"}}
+    result = process_stack(state)
+
+    assert result.input_request is not None
+    assert len(state.get_piece_ids("hero_razzle")) == 1
+
+
+def test_remove_invalid_selection_rerequests():
+    """A bogus removal id must re-prompt, not crash the engine."""
+    state = _state(n_pieces=2)
+    push_steps(state, [RemoveHeroPieceStep(hero_id="hero_razzle", mode="choose_one")])
+    process_stack(state)
+
+    state.execution_stack[-1].pending_input = {"selection": "not_a_real_piece"}
+    result = process_stack(state)
+
+    assert result.input_request is not None
+    assert len(state.get_piece_ids("hero_razzle")) == 2
+
+
 def test_remove_choose_one_noop_with_single_piece():
     state = _state(n_pieces=1)
     push_steps(state, [RemoveHeroPieceStep(hero_id="hero_razzle", mode="choose_one")])

@@ -207,9 +207,12 @@ def test_respawn_hero_variations(steps_state):
 
     # Pass respawn
     rh = RespawnHeroStep(hero_id="h1")
-    # Add a spawn point back
+    # Add a spawn point back (to both the board's spawn-point list and the tile,
+    # matching how real maps register spawn points — RespawnHeroStep validates
+    # the chosen hex against board.spawn_points).
     sp = SpawnPoint(location=Hex(q=0, r=0, s=0), team=TeamColor.RED, type=SpawnType.HERO)
     steps_state.board.tiles[Hex(q=0, r=0, s=0)].spawn_point = sp
+    steps_state.board.spawn_points = [sp]
     rh.pending_input = {"selection": "PASS"}
     ctx = {}
     assert rh.resolve(steps_state, ctx).is_finished is True

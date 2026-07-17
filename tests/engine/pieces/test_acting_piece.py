@@ -51,6 +51,23 @@ def test_two_pieces_prompt_and_bind():
     assert state.acting_piece_id == piece_id("hero_razzle", 2)
 
 
+def test_invalid_piece_selection_rerequests():
+    """A bogus acting-piece id must re-prompt, not crash the engine.
+
+    The handler pops the step before resolve(); raising on an invalid selection
+    would drop the popped step from the stack and corrupt the game.
+    """
+    state = _state(n_pieces=2)
+    push_steps(state, [ChooseActingPieceStep(hero_id="hero_razzle")])
+    process_stack(state)
+
+    state.execution_stack[-1].pending_input = {"selection": "not_a_real_piece"}
+    result = process_stack(state)
+
+    assert result.input_request is not None
+    assert state.acting_piece_id is None
+
+
 def test_normal_hero_is_noop():
     state = _state(n_pieces=1)
     push_steps(state, [ChooseActingPieceStep(hero_id="hero_knight")])

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
@@ -932,27 +932,16 @@ class RespawnHeroStep(GameStep):
         if state.has_board_presence(self.hero_id):
             return StepResult(is_finished=True)
 
-        if self.pending_input:
-            selection = self.pending_input.get("selection")
-            if selection == "PASS":
-                logger.debug(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
-                context["skipped_respawn"] = True
-                return StepResult(is_finished=True)
+        # PASS is handled before computing spawn hexes: declining to respawn is
+        # always valid, even when no spawn hex is available.
+        if self.pending_input and self.pending_input.get("selection") == "PASS":
+            logger.debug(f"   [RESPAWN] {self.hero_id} chose NOT to respawn.")
+            context["skipped_respawn"] = True
+            return StepResult(is_finished=True)
 
-            selected_hex_dict = selection if isinstance(selection, dict) else None
-            if selected_hex_dict:
-                selected_hex = Hex(**selected_hex_dict)
-                logger.debug(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
-                if hero.is_multi_piece:
-                    from goa2.engine.hero_pieces import pieces_in_supply
-
-                    supply = pieces_in_supply(state, hero)
-                    state.place_entity(BoardEntityID(supply[0]), selected_hex)
-                else:
-                    state.move_unit(UnitID(self.hero_id), selected_hex)
-                return StepResult(is_finished=True)
-
-        # Find hero spawn points for this team that aren't obstacles
+        # Find hero spawn points for this team that aren't obstacles. Computed up
+        # front so a submitted hex can be validated against the offered set
+        # before placing the hero (a player must not respawn just anywhere).
         valid_hexes = []
         team_spawn_hexes = []
         for sp in state.board.spawn_points:
@@ -977,8 +966,7 @@ class RespawnHeroStep(GameStep):
             logger.debug(f"   [RESPAWN] No empty spawn points for {self.hero_id}!")
             return StepResult(is_finished=True)
 
-        # If user already chose RESPAWN but hasn't picked hex yet, show hexes
-        if self.pending_input and self.pending_input.get("selection") == "RESPAWN":
+        def _hex_request() -> StepResult:
             return StepResult(
                 requires_input=True,
                 input_request=create_input_request(
@@ -989,6 +977,34 @@ class RespawnHeroStep(GameStep):
                     valid_hexes=valid_hexes,  # Pass raw Hex objects
                 ),
             )
+
+        if self.pending_input:
+            selection = self.pending_input.get("selection")
+            selected_hex_dict = selection if isinstance(selection, dict) else None
+            if selected_hex_dict:
+                try:
+                    selected_hex = Hex(**selected_hex_dict)
+                except (TypeError, ValueError, ValidationError):
+                    selected_hex = None
+                # Only accept a hex the player was actually offered; anything
+                # else (malformed, or an arbitrary board hex) re-opens the hex
+                # prompt rather than placing the hero somewhere illegal.
+                if selected_hex is None or selected_hex not in valid_hexes:
+                    logger.debug(f"   [RESPAWN] Rejected respawn hex {selection!r}; re-requesting.")
+                    return _hex_request()
+                logger.debug(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
+                if hero.is_multi_piece:
+                    from goa2.engine.hero_pieces import pieces_in_supply
+
+                    supply = pieces_in_supply(state, hero)
+                    state.place_entity(BoardEntityID(supply[0]), selected_hex)
+                else:
+                    state.move_unit(UnitID(self.hero_id), selected_hex)
+                return StepResult(is_finished=True)
+
+        # If user already chose RESPAWN but hasn't picked hex yet, show hexes
+        if self.pending_input and self.pending_input.get("selection") == "RESPAWN":
+            return _hex_request()
 
         # Otherwise, show YES/NO prompt first
         return StepResult(

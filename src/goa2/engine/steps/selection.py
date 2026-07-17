@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
@@ -345,15 +345,24 @@ class SelectStep(GameStep):
                 logger.debug("   [SKIP] Player chose to skip optional selection.")
                 return StepResult(is_finished=True)
 
-            # Type Conversion for Hex
+            # Type Conversion for Hex/Number. A malformed client value (a hex
+            # dict missing q/r/s, a non-numeric "number") must not raise: the
+            # step has already been popped, so raising here would drop it from
+            # the stack and corrupt the game. Treat any coercion failure as an
+            # invalid choice and re-request input.
+            coercion_failed = False
             if self.target_type == TargetType.HEX and isinstance(selection, dict):
-                selection = Hex(**selection)
+                try:
+                    selection = Hex(**selection)
+                except (TypeError, ValueError, ValidationError):
+                    coercion_failed = True
+            elif self.target_type == TargetType.NUMBER and selection is not None:
+                try:
+                    selection = int(selection)
+                except (TypeError, ValueError):
+                    coercion_failed = True
 
-            # Type Conversion for NUMBER (ensure int comparison)
-            if self.target_type == TargetType.NUMBER and selection is not None:
-                selection = int(selection)
-
-            if selection in valid_candidates:
+            if not coercion_failed and selection in valid_candidates:
                 context[self.output_key] = selection
                 if self.target_type == TargetType.CARD:
                     self._store_selected_card_metadata(
