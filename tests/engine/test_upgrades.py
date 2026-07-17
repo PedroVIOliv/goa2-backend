@@ -526,3 +526,73 @@ def test_no_pity_coin_when_only_ultimate_unlocked():
     # Should be level 8 with 0 gold (spent 7)
     assert h1.level == 8
     assert h1.gold == 0  # NOT 1 (no pity coin)
+
+
+def test_upgrade_input_rejected_for_hero_without_pending(upgrade_state):
+    """A client must not upgrade a hero that has no pending upgrade.
+
+    The UPGRADE_PHASE request is 'simultaneous' (any player may submit), and
+    both hero_id and card_id come straight from the client. Submitting an
+    upgrade for a hero with no earned upgrade must be a no-op — otherwise a
+    player gets a free extra card + item.
+    """
+    # h2 has a pending upgrade so the phase stays open; h1 has NONE.
+    upgrade_state.pending_upgrades["h1"] = 0
+    del upgrade_state.pending_upgrades["h1"]
+    upgrade_state.pending_upgrades["h2_keep"] = 1  # unrelated open slot
+
+    step = ResolveUpgradesStep()
+    step.pending_input = {"selection": {"hero_id": "h1", "card_id": "r2a"}}
+
+    step.resolve(upgrade_state, {})
+
+    h1 = upgrade_state.get_hero("h1")
+    assert "r2a" not in [c.id for c in h1.hand]  # free upgrade rejected
+    assert StatType.DEFENSE not in h1.items  # no item tucked
+
+
+def test_upgrade_input_rejects_tier_skip(upgrade_state):
+    """A client must not skip tiers by submitting a higher-tier deck card.
+
+    Only the lowest-tier eligible upgrade is a legal option. Submitting a
+    Tier III card directly (not among the offered options) must be a no-op.
+    """
+    # Give h1 a Tier III red card in the deck (not a legal option at Tier I->II).
+    r3 = Card(
+        id="r3",
+        name="Red III",
+        tier=CardTier.III,
+        color=CardColor.RED,
+        initiative=4,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=4,
+        effect_id="e_r3",
+        effect_text="e_r3",
+        item=StatType.ATTACK,
+    )
+    r3.state = CardState.DECK
+    h1 = upgrade_state.get_hero("h1")
+    h1.deck.append(r3)
+    upgrade_state.pending_upgrades["h1"] = 1
+
+    step = ResolveUpgradesStep()
+    step.pending_input = {"selection": {"hero_id": "h1", "card_id": "r3"}}
+
+    step.resolve(upgrade_state, {})
+
+    assert "r3" not in [c.id for c in h1.hand]  # tier skip rejected
+    assert upgrade_state.pending_upgrades["h1"] == 1  # slot not consumed
+
+
+def test_upgrade_input_accepts_legal_option(upgrade_state):
+    """The valid path is unchanged: a legal offered option is applied."""
+    upgrade_state.pending_upgrades["h1"] = 1
+
+    step = ResolveUpgradesStep()
+    step.pending_input = {"selection": {"hero_id": "h1", "card_id": "r2a"}}
+
+    step.resolve(upgrade_state, {})
+
+    h1 = upgrade_state.get_hero("h1")
+    assert "r2a" in [c.id for c in h1.hand]
+    assert "h1" not in upgrade_state.pending_upgrades  # slot consumed

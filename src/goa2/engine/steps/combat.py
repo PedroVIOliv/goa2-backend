@@ -1115,6 +1115,16 @@ class RespawnMinionAtHexStep(GameStep):
     lane_bound: bool = False
     hex_filters: list[FilterCondition] = Field(default_factory=list)
 
+    def _hex_passes_filters(self, state: GameState, context: dict[str, Any], h: Hex) -> bool:
+        """A submitted respawn hex is legal only if it is on the board, empty,
+        and satisfies every placement filter — the same constraints used to
+        build the offered hex list. This stops a client from respawning a minion
+        on an unoffered hex (out of range, off the spawn points, etc.)."""
+        tile = state.board.get_tile(h)
+        if tile is None or tile.is_occupied:
+            return False
+        return all(f.apply(h, state, context) for f in self.hex_filters)
+
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -1206,27 +1216,38 @@ class RespawnMinionAtHexStep(GameStep):
 
             # Round 1 answer: the hex.
             if stored_hex is None and isinstance(selection, dict):
-                hex_obj = Hex(**selection)
-                candidates = self._limbo_minions_for_hex(state, team_obj, hex_obj)
-                if not candidates:
-                    logger.debug("   [RESPAWN] No limbo supply for chosen hex's lane.")
-                    return StepResult(is_finished=True)
-                if len(candidates) == 1:
-                    return self._place_minion(state, candidates[0], hex_obj)
-                context[_LANE_RESPAWN_HEX_KEY] = selection
-                return StepResult(
-                    requires_input=True,
-                    input_request=create_input_request(
-                        request_type=InputRequestType.SELECT_OPTION,
-                        player_id=(
-                            str(state.current_actor_id) if state.current_actor_id else "system"
+                try:
+                    hex_obj = Hex(**selection)
+                except (TypeError, ValueError, ValidationError):
+                    hex_obj = None
+                # Only accept a hex that satisfies the placement filters (the
+                # same set offered in Round 0); anything else re-requests rather
+                # than placing the minion on an unoffered/illegal hex.
+                if hex_obj is None or not self._hex_passes_filters(state, context, hex_obj):
+                    logger.debug("   [RESPAWN] Rejected respawn hex %r; re-requesting.", selection)
+                    self.pending_input = None
+                else:
+                    candidates = self._limbo_minions_for_hex(state, team_obj, hex_obj)
+                    if not candidates:
+                        logger.debug("   [RESPAWN] No limbo supply for chosen hex's lane.")
+                        return StepResult(is_finished=True)
+                    if len(candidates) == 1:
+                        return self._place_minion(state, candidates[0], hex_obj)
+                    context[_LANE_RESPAWN_HEX_KEY] = selection
+                    return StepResult(
+                        requires_input=True,
+                        input_request=create_input_request(
+                            request_type=InputRequestType.SELECT_OPTION,
+                            player_id=(
+                                str(state.current_actor_id) if state.current_actor_id else "system"
+                            ),
+                            prompt="Choose a minion to respawn.",
+                            options=[
+                                {"id": str(m.id), "text": f"{m.type.value} Minion"}
+                                for m in candidates
+                            ],
                         ),
-                        prompt="Choose a minion to respawn.",
-                        options=[
-                            {"id": str(m.id), "text": f"{m.type.value} Minion"} for m in candidates
-                        ],
-                    ),
-                )
+                    )
 
             # Round 2 answer: the minion.
             if stored_hex is not None and isinstance(selection, str):
@@ -1303,26 +1324,30 @@ class RespawnMinionAtHexStep(GameStep):
         if self.pending_input:
             selected_hex_dict = self.pending_input.get("selection")
             if isinstance(selected_hex_dict, dict):
-                selected_hex = Hex(**selected_hex_dict)
-                tile = state.board.get_tile(selected_hex)
-                if tile and tile.is_occupied:
-                    logger.debug(
-                        f"   [ERROR] Cannot respawn {minion_id} at {selected_hex}. Occupied."
+                try:
+                    selected_hex = Hex(**selected_hex_dict)
+                except (TypeError, ValueError, ValidationError):
+                    selected_hex = None
+                # Only accept a hex that satisfies the placement filters (occupancy
+                # is included), so a client can't respawn on an unoffered hex.
+                if selected_hex is not None and self._hex_passes_filters(
+                    state, context, selected_hex
+                ):
+                    state.move_unit(UnitID(target_minion.id), selected_hex)
+                    logger.debug(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
+                    return StepResult(
+                        is_finished=True,
+                        events=[
+                            GameEvent(
+                                event_type=GameEventType.UNIT_PLACED,
+                                actor_id=str(target_minion.id),
+                                from_hex=None,
+                                to_hex=_hex_dict(selected_hex),
+                            )
+                        ],
                     )
-                    return StepResult(is_finished=True)
-
-                state.move_unit(UnitID(target_minion.id), selected_hex)
-                logger.debug(f"   [RESPAWN] Respawned {target_minion.id} at {selected_hex}")
-                return StepResult(
-                    is_finished=True,
-                    events=[
-                        GameEvent(
-                            event_type=GameEventType.UNIT_PLACED,
-                            actor_id=str(target_minion.id),
-                            from_hex=None,
-                            to_hex=_hex_dict(selected_hex),
-                        )
-                    ],
+                logger.debug(
+                    "   [RESPAWN] Rejected respawn hex %r; re-requesting.", selected_hex_dict
                 )
 
         # Collect valid hexes using filters

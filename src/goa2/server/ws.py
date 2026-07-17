@@ -18,6 +18,7 @@ from goa2.server.errors import (
     InvalidPhaseError,
     NotYourTurnError,
     validate_input_turn,
+    validate_simultaneous_input_scope,
 )
 from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.visibility import events_for_viewer, input_request_for_viewer
@@ -105,6 +106,11 @@ async def _handle_submit_input(
     if game.last_result and game.last_result.input_request:
         expected = game.last_result.input_request.player_id
         validate_input_turn(expected, hero_id, game.session.state)
+        # For a per-hero simultaneous phase (UPGRADE_PHASE), a player may only
+        # submit for their own hero.
+        validate_simultaneous_input_scope(
+            game.last_result.input_request, data.get("selection"), hero_id
+        )
 
     response = InputResponse(
         request_id=data.get("request_id", ""),

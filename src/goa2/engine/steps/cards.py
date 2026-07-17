@@ -2283,7 +2283,12 @@ class ResolveUpgradesStep(GameStep):
             if isinstance(selection, dict):
                 hero_id = selection.get("hero_id")
                 card_id = selection.get("card_id")
-                if hero_id and card_id:
+                # UPGRADE_PHASE is a 'simultaneous' request and hero_id/card_id
+                # come straight from the client. Only apply an upgrade the hero
+                # actually earned (has a pending slot) and was actually offered
+                # (a legal option) — otherwise a client could grant a free extra
+                # upgrade or skip tiers to a higher-tier deck card.
+                if hero_id and card_id and self._is_legal_upgrade(state, hero_id, card_id):
                     apply_hero_upgrade(state, hero_id, card_id)
             self.pending_input = None
 
@@ -2305,6 +2310,24 @@ class ResolveUpgradesStep(GameStep):
                 players=broadcast_data,
             ),
         )
+
+    def _is_legal_upgrade(self, state: GameState, hero_id: str, card_id: str) -> bool:
+        """A submitted upgrade is legal only if the hero has a pending upgrade
+        slot AND the chosen card is one of the currently offered option cards."""
+        if hero_id not in state.pending_upgrades:
+            logger.debug("   [UPGRADE] Rejected upgrade for %s: no pending slot.", hero_id)
+            return False
+        legal_ids = {
+            cid for opt in self._get_upgrade_options(state, hero_id) for cid in opt["pair"]
+        }
+        if card_id not in legal_ids:
+            logger.debug(
+                "   [UPGRADE] Rejected upgrade %s for %s: not an offered option.",
+                card_id,
+                hero_id,
+            )
+            return False
+        return True
 
     def _get_upgrade_options(self, state: GameState, hero_id: str):
         """

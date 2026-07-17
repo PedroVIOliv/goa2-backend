@@ -21,6 +21,7 @@ from goa2.server.errors import (
     CardNotInHandError,
     InvalidPhaseError,
     validate_input_turn,
+    validate_simultaneous_input_scope,
 )
 from goa2.server.models import (
     ActionResultResponse,
@@ -314,6 +315,11 @@ async def submit_input(
         if game.last_result and game.last_result.input_request:
             expected = game.last_result.input_request.player_id
             validate_input_turn(expected, player.hero_id, game.session.state)
+            # For a per-hero simultaneous phase (UPGRADE_PHASE), a player may
+            # only submit for their own hero.
+            validate_simultaneous_input_scope(
+                game.last_result.input_request, body.selection, player.hero_id
+            )
 
         response = InputResponse(
             request_id=body.request_id,

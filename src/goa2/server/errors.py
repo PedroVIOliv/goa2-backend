@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from goa2.domain.input import InputRequest
     from goa2.domain.state import GameState
 
 
@@ -69,3 +70,21 @@ def validate_input_turn(expected: str, hero_id: str, state: GameState) -> None:
         if hero and hero.team and hero.team.value == team_name:
             return
     raise NotYourTurnError(hero_id, expected)
+
+
+def validate_simultaneous_input_scope(
+    request: InputRequest | None, selection: Any, hero_id: str
+) -> None:
+    """Police per-hero ownership on a 'simultaneous' request.
+
+    UPGRADE_PHASE is addressed to ``"simultaneous"`` so any player may answer,
+    and the selection carries the hero_id it applies to. Without this check a
+    client could submit a selection naming another player's hero and force that
+    player's upgrade. A player may only submit for their own hero.
+    """
+    if request is None or request.player_id != "simultaneous":
+        return
+    if isinstance(selection, dict):
+        target = selection.get("hero_id")
+        if target is not None and str(target) != str(hero_id):
+            raise NotYourTurnError(hero_id, str(target))

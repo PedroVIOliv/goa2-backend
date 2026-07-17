@@ -157,6 +157,40 @@ class TestLaneBoundRespawn:
         assert state.unit_locations.get("red_l2") == _hex(0, 2)
         assert "red_l1" not in state.unit_locations
 
+    def test_rejects_hex_that_fails_placement_filters(self):
+        """A submitted respawn hex must satisfy the effect's hex_filters.
+
+        The offered hexes apply the filters (spawn point, battle zone, range,
+        obstacle). A client submitting an unoffered hex — here one out of range
+        of the hero — must not place the minion there, only re-request.
+        """
+        state = _make_compact_two_lane_state()
+        _add_limbo_minion(state, "red_l1", "lane_1", MinionType.MELEE)
+
+        # Tight range so (2,0) — a spawn hex in the battle zone — is out of range
+        # of the hero at (0,1) and therefore NOT offered.
+        step = RespawnMinionAtHexStep(
+            team=TeamColor.RED,
+            lane_bound=True,
+            hex_filters=[
+                SpawnPointTeamFilter(relation="FRIENDLY"),
+                BattleZoneFilter(),
+                ObstacleFilter(is_obstacle=False),
+                RangeFilter(max_range=1),
+            ],
+        )
+        push_steps(state, [step])
+        result = process_stack(state)
+        offered = _hex_option_ids(result.input_request)
+        assert "hex_2_0_-2" not in offered  # out of range → not offered
+
+        # Submit the unoffered, out-of-range hex anyway.
+        state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": 0, "s": -2}}
+        process_stack(state)
+
+        # The minion must NOT have been placed on the unoffered hex.
+        assert state.unit_locations.get("red_l1") != _hex(2, 0)
+
     def test_multiple_types_prompt_choice_within_lane(self):
         state = _make_compact_two_lane_state()
         _add_limbo_minion(state, "red_l1_melee", "lane_1", MinionType.MELEE)
