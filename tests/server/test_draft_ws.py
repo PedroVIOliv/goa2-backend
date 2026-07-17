@@ -78,3 +78,65 @@ def test_spectator_receives_public_state_without_you(client):
         assert msg["type"] == "STATE_UPDATE"
         assert msg["you"] is None
         assert msg["draft"]["status"] == "LOBBY"
+
+
+def test_old_same_token_disconnect_does_not_unregister_replacement(client):
+    d = _create(client)
+    token = d["player_token"]
+    url = f"/drafts/{d['draft_id']}/ws?token={token}"
+    first_context = client.websocket_connect(url)
+    first = first_context.__enter__()
+    second_context = client.websocket_connect(url)
+    second = second_context.__enter__()
+    first_closed = False
+    try:
+        first.receive_json()
+        second.receive_json()
+        first_context.__exit__(None, None, None)
+        first_closed = True
+
+        managed = client.app.state.draft_registry.get(d["draft_id"])
+        assert token in managed.ws_connections
+        second.send_json({"type": "GET_VIEW"})
+        assert second.receive_json()["type"] == "STATE_UPDATE"
+    finally:
+        if not first_closed:
+            first_context.__exit__(None, None, None)
+        second_context.__exit__(None, None, None)
+
+
+def test_broadcast_allows_connections_to_change_during_send(client):
+    import asyncio
+
+    from goa2.server.draft_ws import broadcast_draft
+
+    d = _create(client)
+    managed = client.app.state.draft_registry.get(d["draft_id"])
+
+    class MutatingSocket:
+        async def send_json(self, _data):
+            managed.ws_connections["new-token"] = object()
+
+    managed.ws_connections = {d["player_token"]: MutatingSocket()}
+    asyncio.run(broadcast_draft(managed, client.app.state.draft_registry))
+    assert "new-token" in managed.ws_connections
+
+
+def test_failed_broadcast_does_not_remove_reconnected_socket(client):
+    import asyncio
+
+    from goa2.server.draft_ws import broadcast_draft
+
+    d = _create(client)
+    token = d["player_token"]
+    managed = client.app.state.draft_registry.get(d["draft_id"])
+    replacement = object()
+
+    class ReplacedSocket:
+        async def send_json(self, _data):
+            managed.ws_connections[token] = replacement
+            raise RuntimeError("connection closed")
+
+    managed.ws_connections = {token: ReplacedSocket()}
+    asyncio.run(broadcast_draft(managed, client.app.state.draft_registry))
+    assert managed.ws_connections[token] is replacement

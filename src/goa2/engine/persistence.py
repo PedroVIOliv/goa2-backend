@@ -16,6 +16,7 @@ from typing import Any
 
 # Ensure step_types patching is applied before any serialization
 import goa2.engine.step_types as _step_types  # noqa: F401
+from goa2.domain.models import GamePhase
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack
 from goa2.engine.session import GameSession
@@ -105,9 +106,12 @@ def load_game(file_path: str) -> dict[str, Any]:
                 and stack_result.input_request.player_id == actor_id
             ):
                 stack_result.input_request.can_rollback = True
-            last_result = session._build_result(
-                stack_result.input_request, events=stack_result.events
-            )
+        last_result = session._build_result(stack_result.input_request, events=stack_result.events)
+    elif state.phase == GamePhase.GAME_OVER:
+        # Completed games have an empty execution stack, but clients still
+        # obtain the winner from the transient SessionResult. Reconstruct it
+        # from the authoritative persisted state after a restart.
+        last_result = session._build_result()
 
     return {
         "game_id": payload["game_id"],

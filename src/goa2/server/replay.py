@@ -44,6 +44,7 @@ from typing import Any
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
+from goa2.server.map_paths import resolve_map_path
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,7 @@ def _replay_ttl_days() -> int:
 
 def _resolve_map_path(map_name: str) -> str:
     """Resolve a map name to its JSON file path (mirrors routes_games._map_path)."""
-    base = os.path.join(os.path.dirname(__file__), "..", "data", "maps")
-    return os.path.normpath(os.path.join(base, f"{map_name}.json"))
+    return resolve_map_path(map_name)
 
 
 def _engine_revision() -> str:

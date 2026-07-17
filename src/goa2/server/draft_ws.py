@@ -50,17 +50,22 @@ async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
 
 async def broadcast_draft(md: ManagedDraft, registry: DraftRegistry) -> None:
     """Push a player-scoped STATE_UPDATE to every connected socket on this draft."""
-    dead_tokens: list[str] = []
-    for token, ws in md.ws_connections.items():
+    dead_connections: list[tuple[str, WebSocket]] = []
+    # Snapshot connections because sends yield and allow reconnects to mutate
+    # the registry while a broadcast is in progress.
+    for token, ws in list(md.ws_connections.items()):
         resolved = registry.resolve_token(token)
         if resolved is None:
-            dead_tokens.append(token)
+            dead_connections.append((token, ws))
             continue
         _, player_id, is_spectator, _ = resolved
         if not await _send_json(ws, _state_message(md, player_id, is_spectator)):
-            dead_tokens.append(token)
-    for t in dead_tokens:
-        md.ws_connections.pop(t, None)
+            dead_connections.append((token, ws))
+    for token, ws in dead_connections:
+        # A reconnect may have replaced the failed socket during an awaited
+        # send. Only remove the exact connection that was found to be dead.
+        if md.ws_connections.get(token) is ws:
+            md.ws_connections.pop(token, None)
 
 
 @router.websocket("/drafts/{draft_id}/ws")
@@ -115,4 +120,7 @@ async def draft_ws(websocket: WebSocket, draft_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        md.ws_connections.pop(token, None)
+        # An older same-token connection can close after a reconnect. It must
+        # not unregister the newer socket that replaced it.
+        if md.ws_connections.get(token) is websocket:
+            md.ws_connections.pop(token, None)

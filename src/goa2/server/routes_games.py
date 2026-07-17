@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +22,7 @@ from goa2.server.errors import (
     validate_input_turn,
     validate_simultaneous_input_scope,
 )
+from goa2.server.map_paths import MapFileNotFoundError, resolve_map_path
 from goa2.server.models import (
     ActionResultResponse,
     CommitCardRequest,
@@ -40,11 +40,10 @@ router = APIRouter(prefix="/games", tags=["games"])
 
 def _map_path(map_name: str) -> str:
     """Resolve a map name to its JSON file path."""
-    base = os.path.join(os.path.dirname(__file__), "..", "data", "maps")
-    path = os.path.normpath(os.path.join(base, f"{map_name}.json"))
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
-    return path
+    try:
+        return resolve_map_path(map_name)
+    except MapFileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found") from None
 
 
 def _log_result(

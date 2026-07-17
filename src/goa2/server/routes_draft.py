@@ -21,6 +21,7 @@ from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
 from goa2.server.draft_registry import DraftRegistry, ManagedDraft
 from goa2.server.draft_ws import broadcast_draft, draft_view_payload
+from goa2.server.map_paths import MapFileNotFoundError, maps_dir, resolve_map_path
 from goa2.server.models import (
     ClaimHeroRequest,
     CreateDraftRequest,
@@ -75,14 +76,14 @@ DraftPlayerDep = Annotated[DraftContext, Depends(get_draft_player)]
 
 
 def _maps_dir() -> str:
-    return os.path.join(os.path.dirname(__file__), "..", "data", "maps")
+    return str(maps_dir())
 
 
 def _map_path(map_name: str) -> str:
-    path = os.path.normpath(os.path.join(_maps_dir(), f"{map_name}.json"))
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
-    return path
+    try:
+        return resolve_map_path(map_name)
+    except MapFileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found") from None
 
 
 def _list_maps() -> list[str]:
