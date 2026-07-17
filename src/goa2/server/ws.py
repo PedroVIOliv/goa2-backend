@@ -155,11 +155,10 @@ async def _handle_commit_card(
     if card is None:
         raise CardNotInHandError(card_id, hero_id)
 
-    if game.replay_recorder:
-        game.replay_recorder.record_commit(
-            hero_id, card_id, session.state.round, session.state.turn
-        )
+    rec_round, rec_turn = session.state.round, session.state.turn
     result = session.commit_card(HeroID(hero_id), card)
+    if game.replay_recorder:
+        game.replay_recorder.record_commit(hero_id, card_id, rec_round, rec_turn)
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_card_commit(hero_id, card_id)
@@ -217,11 +216,10 @@ async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, 
     if session.current_phase != GamePhase.PLANNING:
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-    if game.replay_recorder:
-        game.replay_recorder.record_finish_planning(
-            hero_id, session.state.round, session.state.turn
-        )
+    rec_round, rec_turn = session.state.round, session.state.turn
     result = session.finish_planning(HeroID(hero_id))
+    if game.replay_recorder:
+        game.replay_recorder.record_finish_planning(hero_id, rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
     return {
@@ -242,9 +240,10 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     if session.current_phase != GamePhase.PLANNING:
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-    if game.replay_recorder:
-        game.replay_recorder.record_pass(hero_id, session.state.round, session.state.turn)
+    rec_round, rec_turn = session.state.round, session.state.turn
     result = session.pass_turn(HeroID(hero_id))
+    if game.replay_recorder:
+        game.replay_recorder.record_pass(hero_id, rec_round, rec_turn)
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_pass_turn(hero_id)

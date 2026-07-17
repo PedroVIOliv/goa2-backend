@@ -563,7 +563,7 @@ class TestStaticBarrierEndToEnd:
         assert result.input_request.request_type.value == "CHOOSE_ACTION"
 
         # Wasp chooses SKILL
-        submit_input(state, InputResponse(request_id="", selection="SKILL"))
+        submit_input(state, InputResponse(request_id=result.input_request.id, selection="SKILL"))
         result = process_stack(state)
 
         # After Wasp's SKILL action + FinalizeHeroTurnStep + FindNextActorStep,
@@ -587,7 +587,7 @@ class TestStaticBarrierEndToEnd:
         ), f"Expected current_actor_id=hero_arien, got {state.current_actor_id}"
 
         # Arien chooses MOVEMENT
-        submit_input(state, InputResponse(request_id="", selection="MOVEMENT"))
+        submit_input(state, InputResponse(request_id=result.input_request.id, selection="MOVEMENT"))
         result = process_stack(state)
 
         # Should get SELECT_HEX input request for movement destination

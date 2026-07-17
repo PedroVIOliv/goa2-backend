@@ -41,7 +41,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from goa2.domain.input import InputResponse
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
@@ -333,7 +332,10 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
     elif kind == "uncommit":
         session.uncommit_card(hero_id)
     elif kind == "input":
-        session.advance(InputResponse(request_id="", selection=decision["sel"]))
+        # Replay decisions are trusted server-side data; request UUIDs are
+        # intentionally not logged because they are transport correlation,
+        # not deterministic game decisions.
+        session.advance({"selection": decision["sel"]})
     elif kind == "rollback":
         # Restores the current actor's turn-start snapshot, exactly as live play
         # did. The reconstruction session took the same snapshot deterministically

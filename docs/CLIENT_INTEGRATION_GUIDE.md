@@ -233,11 +233,14 @@ phase is no longer PLANNING (all cards locked in).
 
 ### `POST /games/{game_id}/pass`
 
-Pass your turn during the PLANNING phase (the hero will not play a card this round).
+Pass during the PLANNING phase when the hero has no cards in hand (the hero
+will not play a card this round). A hero who can still play a card must commit
+one instead.
 
 **Request body:** empty
 
-**Response:** `200 OK` — returns `ActionResultResponse`.
+**Response:** `200 OK` — returns `ActionResultResponse`. `400` if the hero has
+cards in hand or already completed planning.
 
 ### `POST /games/{game_id}/planning-done`
 
@@ -265,12 +268,15 @@ Submit a response to an input request (e.g., selecting a unit, choosing a hex).
 
 ```json
 {
-  "request_id": "optional-id",
+  "request_id": "<input_request.request_id>",
   "selection": "hero_knight"
 }
 ```
 
-The `selection` value depends on the input request type — it may be a string (unit ID), a hex dict (`{"q": 0, "r": 1, "s": -1}`), an integer, or a card ID.
+`request_id` is required and must exactly match the pending input request. A
+missing, stale, or mismatched ID is rejected without applying the selection.
+The `selection` value depends on the input request type — it may be a string
+(unit ID), a hex dict (`{"q": 0, "r": 1, "s": -1}`), an integer, or a card ID.
 
 **Response:** `200 OK` — returns `ActionResultResponse`.
 
@@ -471,7 +477,7 @@ card this turn. See `POST /games/{game_id}/planning-done`.
 ```json
 {
   "type": "SUBMIT_INPUT",
-  "request_id": "",
+  "request_id": "<input_request.request_id>",
   "selection": "hero_knight"
 }
 ```
@@ -1034,6 +1040,7 @@ When the engine needs a hero's input, only that hero (or an authorized member fo
 
 ```json
 {
+  "request_id": "9af46c637790493db8176f323f415b1c",
   "type": "SELECT_HEX",
   "player_id": "hero_arien",
   "prompt": "Choose a hex to move to",
@@ -1044,7 +1051,9 @@ When the engine needs a hero's input, only that hero (or an authorized member fo
 }
 ```
 
-The `type` field determines what kind of input is needed and what options fields are present.
+The `request_id` correlates this prompt with its response. Echo it unchanged in
+every REST or WebSocket input response. The `type` field determines what kind
+of input is needed and what options fields are present.
 
 ### Common input request types
 
@@ -1068,7 +1077,7 @@ The `type` field determines what kind of input is needed and what options fields
 curl -X POST http://localhost:8000/games/{game_id}/input \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"selection": {"q": 1, "r": 0, "s": -1}}'
+  -d '{"request_id": "<input_request.request_id>", "selection": {"q": 1, "r": 0, "s": -1}}'
 ```
 
 **Via WebSocket:**
@@ -1076,6 +1085,7 @@ curl -X POST http://localhost:8000/games/{game_id}/input \
 ```json
 {
   "type": "SUBMIT_INPUT",
+  "request_id": "<input_request.request_id>",
   "selection": {"q": 1, "r": 0, "s": -1}
 }
 ```
@@ -1089,14 +1099,14 @@ literal string `"SKIP"` as the selection (**not** `null` — a null selection is
 treated as an invalid choice and the step re-requests input):
 
 ```json
-{"selection": "SKIP"}
+{"request_id": "<input_request.request_id>", "selection": "SKIP"}
 ```
 
 For multi-select inputs, submit the literal string `"DONE"` to finish selecting
 once the minimum number of selections has been made.
 
 ```json
-{"selection": "DONE"}
+{"request_id": "<input_request.request_id>", "selection": "DONE"}
 ```
 
 ### Controlled actions (Hanu — The Ultimate Trick)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -10,12 +11,14 @@ from goa2.domain.input import InputResponse
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.setup import GameSetup
+from goa2.server.registry import ManagedGame
 from goa2.server.replay import (
     ReplayRecorder,
     _resolve_map_path,
     cleanup_old_replays,
     replay_game,
 )
+from goa2.server.ws import _handle_commit_card, _handle_finish_planning, _handle_pass_turn
 
 MAP = "forgotten_island"
 RED = ["Arien"]
@@ -25,7 +28,11 @@ BLUE = ["Wasp"]
 def _strip_volatile(obj):
     """Drop non-deterministic instance identifiers (step_id = id(object()))."""
     if isinstance(obj, dict):
-        return {k: _strip_volatile(v) for k, v in obj.items() if k != "step_id"}
+        return {
+            k: _strip_volatile(v)
+            for k, v in obj.items()
+            if k not in {"step_id", "pending_request_id"}
+        }
     if isinstance(obj, list):
         return [_strip_volatile(v) for v in obj]
     return obj
@@ -87,6 +94,35 @@ def test_record_and_replay_roundtrip(tmp_path):
     assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
         live.state.model_dump(mode="json")
     )
+
+
+def test_rejected_websocket_actions_do_not_leave_phantom_replay_decisions(tmp_path):
+    live = _live_game()
+    recorder = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(recorder)
+    game = ManagedGame(
+        game_id="g1",
+        session=live,
+        player_tokens={},
+        spectator_token="spectator",
+        hero_to_token={},
+        replay_recorder=recorder,
+    )
+    hero_id = "hero_arien"
+    first_card = _first_card_id(live.state, hero_id)
+
+    with pytest.raises(ValueError):
+        asyncio.run(_handle_finish_planning(game, hero_id))
+    asyncio.run(_handle_commit_card(game, hero_id, {"card_id": first_card}))
+    second_card = _first_card_id(live.state, hero_id)
+    with pytest.raises(ValueError):
+        asyncio.run(_handle_commit_card(game, hero_id, {"card_id": second_card}))
+    with pytest.raises(ValueError):
+        asyncio.run(_handle_pass_turn(game, hero_id))
+
+    records = [json.loads(line) for line in recorder.path.read_text().splitlines()]
+    assert [record["type"] for record in records] == ["setup", "commit"]
+    replay_game(str(recorder.path))
 
 
 def test_replay_stops_at_decision_index(tmp_path):
@@ -285,7 +321,8 @@ def test_replay_roundtrip_with_rollback(tmp_path):
             sel = _pick(req)
             r, t = live.state.round, live.state.turn
             rec.record_input("", sel, r, t)
-            result = live.advance(InputResponse(request_id="", selection=sel))
+            assert result.input_request is not None
+            result = live.advance(InputResponse(request_id=result.input_request.id, selection=sel))
 
             # The first rollback-able input: undo and re-answer it.
             if req.get("can_rollback") and not did_rollback:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # -- Requests --
 
@@ -22,7 +22,7 @@ class CommitCardRequest(BaseModel):
 
 
 class SubmitInputRequest(BaseModel):
-    request_id: str = ""
+    request_id: str = Field(min_length=1)
     selection: Any = None
 
 

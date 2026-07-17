@@ -13,6 +13,7 @@ Phase 1 of Client-Readiness Roadmap:
 
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -127,7 +128,7 @@ class InputRequest(BaseModel):
     that accesses fields via request["type"], request["options"], etc.
     """
 
-    id: str = Field(default_factory=lambda: str(id(object())))  # Unique request ID
+    id: str = Field(default_factory=lambda: uuid4().hex)  # Unique request ID
     request_type: InputRequestType  # What kind of input is needed
     player_id: str  # WHO must answer (hero_id or team delegate)
     prompt: str = ""  # Human-readable instruction
@@ -180,6 +181,7 @@ class InputRequest(BaseModel):
         handlers while we transition to the typed model.
         """
         result: dict[str, Any] = {
+            "request_id": self.id,
             "type": self.request_type.value,
             "prompt": self.prompt,
             "player_id": self.player_id,
@@ -306,13 +308,13 @@ class InputResponse(BaseModel):
     The 'selection' field contains the player's choice.
     """
 
-    request_id: str = ""  # ID of the request being answered
+    request_id: str  # ID of the request being answered
     selection: Any = None  # The player's selection (ID, hex dict, etc.)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
-    def from_legacy(cls, legacy_dict: dict[str, Any], request_id: str = "") -> "InputResponse":
+    def from_legacy(cls, legacy_dict: dict[str, Any], request_id: str) -> "InputResponse":
         """
         Create an InputResponse from legacy handler response formats.
 

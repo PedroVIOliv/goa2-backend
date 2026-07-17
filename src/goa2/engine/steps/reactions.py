@@ -405,19 +405,17 @@ class ConfirmResolutionStep(GameStep):
             return StepResult(is_finished=True)
 
         if self.pending_input:
-            # Both CONFIRM and ROLLBACK just finish this step.
-            # Rollback is handled via the dedicated endpoint/message, not through input.
-            return StepResult(is_finished=True)
+            selection = self.pending_input.get("selection")
+            self.pending_input = None
+            if selection == "CONFIRM":
+                return StepResult(is_finished=True)
 
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.CHOOSE_ACTION,
                 player_id=self.hero_id,
-                prompt="Confirm your action or rollback to choose again.",
-                options=[
-                    {"id": "CONFIRM", "text": "Confirm"},
-                    {"id": "ROLLBACK", "text": "Rollback"},
-                ],
+                prompt="Confirm your action.",
+                options=[{"id": "CONFIRM", "text": "Confirm"}],
             ),
         )

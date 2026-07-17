@@ -1,5 +1,6 @@
 import pytest
 
+import goa2.scripts.rogue_effects  # noqa: F401 - register Rogue card effects
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.models import (

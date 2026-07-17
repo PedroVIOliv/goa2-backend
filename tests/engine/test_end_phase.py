@@ -2,7 +2,6 @@ import pytest
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputResponse
 from goa2.domain.models import Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.types import UnitID
@@ -144,7 +143,6 @@ def test_minion_battle_heavy_protection(battle_state):
     assert "r_melee2" in valid
 
     # Submit choice
-    InputResponse(selection="r_melee1")
     battle_state.execution_stack[-1].pending_input = {"selection": "r_melee1"}
     _ = process_stack(battle_state).input_request
 

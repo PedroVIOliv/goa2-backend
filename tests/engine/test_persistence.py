@@ -7,7 +7,7 @@ import pytest
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import GamePhase, Team, TeamColor
+from goa2.domain.models import CardState, GamePhase, Team, TeamColor
 from goa2.domain.models.enums import TargetType
 from goa2.domain.models.unit import Hero
 from goa2.domain.state import GameState
@@ -20,6 +20,7 @@ from goa2.engine.persistence import delete_game_save, load_all_games, load_game,
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
 from goa2.engine.steps import (
+    AskConfirmationStep,
     ForEachStep,
     LogMessageStep,
     MayRepeatNTimesStep,
@@ -96,6 +97,35 @@ def test_round_trip_preserves_entity_locations(full_state, save_dir):
         assert str(eid) in [str(k) for k in restored.entity_locations]
 
 
+def test_round_trip_relinks_active_cards_to_master_deck(full_state):
+    """Lifecycle containers must keep sharing the deck's canonical Card objects."""
+    hero = full_state.get_hero("hero_arien")
+    active = hero.hand[0].model_copy(deep=True)
+    active.state = CardState.UNRESOLVED
+    active.played_this_round = True
+    hero.hand = [card for card in hero.hand if card.id != active.id]
+    hero.current_turn_card = active
+    full_state.pending_inputs[hero.id] = active
+
+    restored = GameState.model_validate(full_state.model_dump(mode="json"))
+    restored_hero = restored.get_hero("hero_arien")
+    deck_card = next(card for card in restored_hero.deck if card.id == active.id)
+
+    assert restored_hero.current_turn_card is deck_card
+    assert restored.pending_inputs[restored_hero.id] is deck_card
+    assert deck_card.state == CardState.UNRESOLVED
+    assert deck_card.played_this_round is True
+
+
+def test_round_trip_relinks_every_hand_card_to_master_deck(full_state):
+    restored = GameState.model_validate(full_state.model_dump(mode="json"))
+
+    for team in restored.teams.values():
+        for hero in team.heroes:
+            deck_by_id = {card.id: card for card in hero.deck}
+            assert all(deck_by_id[card.id] is card for card in hero.hand)
+
+
 # ---------------------------------------------------------------------------
 # Steps on stack
 # ---------------------------------------------------------------------------
@@ -143,6 +173,25 @@ def test_round_trip_with_steps_on_stack():
     assert len(select.filters) == 2
     assert type(select.filters[0]).__name__ == "RangeFilter"
     assert type(select.filters[1]).__name__ == "TeamFilter"
+
+
+def test_pending_input_request_id_survives_round_trip():
+    state = GameState(
+        board=Board(),
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+        },
+    )
+    push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Continue?")])
+    first = process_stack(state).input_request
+    assert first is not None
+
+    restored = GameState.model_validate(state.model_dump(mode="json"))
+    second = process_stack(restored).input_request
+
+    assert second is not None
+    assert second.id == first.id
 
 
 # ---------------------------------------------------------------------------

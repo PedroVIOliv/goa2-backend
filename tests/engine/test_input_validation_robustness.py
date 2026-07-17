@@ -68,7 +68,10 @@ def test_reaction_window_invalid_card_rerequests():
     result = process_stack(state)
     assert result.input_request is not None
 
-    submit_input(state, InputResponse(request_id="x", selection="totally_bogus_card"))
+    submit_input(
+        state,
+        InputResponse(request_id=result.input_request.id, selection="totally_bogus_card"),
+    )
     result = process_stack(state)
 
     # Re-requests the same reaction window instead of crashing.
@@ -92,8 +95,9 @@ def test_reaction_window_valid_card_still_resolves():
     state.execution_context["attack_damage"] = 5
     state.execution_stack = [ReactionWindowStep(target_player_key="target_id")]
 
-    process_stack(state)
-    submit_input(state, InputResponse(request_id="x", selection="def1"))
+    result = process_stack(state)
+    assert result.input_request is not None
+    submit_input(state, InputResponse(request_id=result.input_request.id, selection="def1"))
     process_stack(state)
 
     assert state.execution_context["defense_card_id"] == "def1"
@@ -126,9 +130,11 @@ def test_respawn_hero_rejects_hex_not_offered():
     state, spawn = _respawn_state()
     state.execution_stack = [RespawnHeroStep(hero_id="hero_a")]
 
-    process_stack(state)
-    submit_input(state, InputResponse(request_id="x", selection="RESPAWN"))
-    process_stack(state)
+    result = process_stack(state)
+    assert result.input_request is not None
+    submit_input(state, InputResponse(request_id=result.input_request.id, selection="RESPAWN"))
+    result = process_stack(state)
+    assert result.input_request is not None
 
     # Submit an arbitrary empty hex that is NOT the offered spawn point.
     arbitrary = next(
@@ -137,7 +143,8 @@ def test_respawn_hero_rejects_hex_not_offered():
     submit_input(
         state,
         InputResponse(
-            request_id="x", selection={"q": arbitrary.q, "r": arbitrary.r, "s": arbitrary.s}
+            request_id=result.input_request.id,
+            selection={"q": arbitrary.q, "r": arbitrary.r, "s": arbitrary.s},
         ),
     )
     process_stack(state)
@@ -151,12 +158,17 @@ def test_respawn_hero_accepts_offered_hex():
     state, spawn = _respawn_state()
     state.execution_stack = [RespawnHeroStep(hero_id="hero_a")]
 
-    process_stack(state)
-    submit_input(state, InputResponse(request_id="x", selection="RESPAWN"))
-    process_stack(state)
+    result = process_stack(state)
+    assert result.input_request is not None
+    submit_input(state, InputResponse(request_id=result.input_request.id, selection="RESPAWN"))
+    result = process_stack(state)
+    assert result.input_request is not None
     submit_input(
         state,
-        InputResponse(request_id="x", selection={"q": spawn.q, "r": spawn.r, "s": spawn.s}),
+        InputResponse(
+            request_id=result.input_request.id,
+            selection={"q": spawn.q, "r": spawn.r, "s": spawn.s},
+        ),
     )
     process_stack(state)
 

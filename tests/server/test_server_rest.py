@@ -281,7 +281,7 @@ def test_pass_turn_spectator_forbidden(client, game_data):
 def test_submit_input_spectator_forbidden(client, game_data):
     resp = client.post(
         f"/games/{game_data['game_id']}/input",
-        json={"request_id": "", "selection": "x"},
+        json={"request_id": "spectator-request", "selection": "x"},
         headers=_auth(game_data["spectator_token"]),
     )
     assert resp.status_code == 403
@@ -760,9 +760,19 @@ def test_emmitt_two_card_commit_and_retrieve(client, emmitt_game):
         "unstable_timeline",
     }
 
+    stale = client.post(
+        f"/games/{game_id}/input",
+        json={"request_id": "stale-request", "selection": "unstable_timeline"},
+        headers=_auth(em_token),
+    )
+    assert stale.status_code == 400
+
     r4 = client.post(
         f"/games/{game_id}/input",
-        json={"selection": "unstable_timeline"},
+        json={
+            "request_id": owner_request["request_id"],
+            "selection": "unstable_timeline",
+        },
         headers=_auth(em_token),
     )
     assert r4.status_code == 200

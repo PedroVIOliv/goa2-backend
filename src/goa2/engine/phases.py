@@ -97,16 +97,18 @@ def pass_turn(state: GameState, hero_id: HeroID):
     Called when a player has no cards and must Pass.
     """
     if state.phase != GamePhase.PLANNING:
-        return
+        raise ValueError(f"Cannot pass in {state.phase} phase")
 
     hero = state.get_hero(hero_id)
     if not hero:
-        return
+        raise ValueError(f"Hero {hero_id} not found")
+
+    if hero_id in state.pending_inputs:
+        raise ValueError(f"{hero_id} has already completed planning this turn")
 
     # Rule Check: You must play a card if able.
     if len(hero.hand) > 0:
-        logger.warning("%s cannot pass. Hand has %s cards.", hero_id, len(hero.hand))
-        return
+        raise ValueError(f"{hero_id} cannot pass while holding {len(hero.hand)} card(s)")
 
     state.pending_inputs[hero_id] = None
     logger.info("%s passed.", hero_id)

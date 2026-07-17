@@ -283,7 +283,9 @@ def test_rogue_bypasses_sabotage_by_choosing_movement(sabotage_state):
             break
         # If input needed, provide default or skip
         if req["type"] == "CHOOSE_ACTION":
-            state.execution_stack[-1].pending_input = {"selection": "SKILL"}
+            option_ids = {option["id"] for option in req["options"]}
+            selection = "CONFIRM" if option_ids == {"CONFIRM"} else "SKILL"
+            state.execution_stack[-1].pending_input = {"selection": selection}
         else:
             # Try to provide dummy input to break loop if stuck?
             # For SELECT_HEX, pick something valid

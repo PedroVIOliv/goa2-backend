@@ -377,6 +377,63 @@ class GameState(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def unify_card_references(self) -> GameState:
+        """Restore the shared card identity used by the live lifecycle.
+
+        ``Hero.deck`` is the master card collection, while hand/current/played/
+        discard and the planning buffers hold references into it. JSON cannot
+        preserve those aliases, so a reload otherwise creates independent Card
+        objects whose state changes drift apart. An active lifecycle copy is
+        authoritative because it contains the newest state when loading an
+        already-split save produced by an older engine version.
+        """
+        deck_cards_by_hero: dict[str, dict[str, Card]] = {}
+
+        for team in self.teams.values():
+            for hero in team.heroes:
+                deck_ids = {card.id for card in hero.deck}
+                active_cards = [
+                    hero.current_turn_card,
+                    hero.extra_turn_card,
+                    *hero.hand,
+                    *hero.played_cards,
+                    *hero.discard_pile,
+                ]
+                active_by_id: dict[str, Card] = {}
+                for card in active_cards:
+                    if card is not None and card.id in deck_ids:
+                        active_by_id.setdefault(card.id, card)
+
+                canonical = {card.id: active_by_id.get(card.id, card) for card in hero.deck}
+                hero.deck = [canonical[card.id] for card in hero.deck]
+                hero.hand = [canonical.get(card.id, card) for card in hero.hand]
+                hero.played_cards = [
+                    canonical.get(card.id, card) if card is not None else None
+                    for card in hero.played_cards
+                ]
+                hero.discard_pile = [canonical.get(card.id, card) for card in hero.discard_pile]
+                if hero.current_turn_card is not None:
+                    hero.current_turn_card = canonical.get(
+                        hero.current_turn_card.id, hero.current_turn_card
+                    )
+                if hero.extra_turn_card is not None:
+                    hero.extra_turn_card = canonical.get(
+                        hero.extra_turn_card.id, hero.extra_turn_card
+                    )
+                deck_cards_by_hero[str(hero.id)] = canonical
+
+        for hero_id, card in list(self.pending_inputs.items()):
+            if card is not None:
+                self.pending_inputs[hero_id] = deck_cards_by_hero.get(str(hero_id), {}).get(
+                    card.id, card
+                )
+        for hero_id, card in list(self.pending_second_cards.items()):
+            self.pending_second_cards[hero_id] = deck_cards_by_hero.get(str(hero_id), {}).get(
+                card.id, card
+            )
+        return self
+
+    @model_validator(mode="after")
     def rebuild_occupancy_cache(self) -> GameState:
         """
         Synchronizes board.tiles.occupant_id based on entity_locations.
@@ -620,22 +677,32 @@ class GameState(BaseModel):
         Updates Location Record AND Tile Cache.
         Overwrites any existing position.
         """
-        # 1. Clear old location if exists
+        # Ad-hoc boards (map_id="") intentionally support virtual coordinates
+        # for isolated rules/effect scenarios. Boards loaded from a map file
+        # must never accept a virtual tile returned by Board.get_tile().
+        has_loaded_map = bool(self.board.map_id)
+        if has_loaded_map and not self.board.is_on_map(target_hex):
+            raise ValueError(
+                f"Cannot place entity {entity_id} at {target_hex}: Hex is not on the board"
+            )
+
+        target_tile = (
+            self.board.tiles[target_hex] if has_loaded_map else self.board.get_tile(target_hex)
+        )
+        if target_tile.occupant_id and str(target_tile.occupant_id) != str(entity_id):
+            raise ValueError(
+                f"Cannot place entity {entity_id} at {target_hex}: "
+                f"Tile is occupied by {target_tile.occupant_id}"
+            )
+
+        # Validate the destination before mutating either source of truth.
         old_hex = self.entity_locations.get(entity_id)
         if old_hex:
             old_tile = self.board.get_tile(old_hex)
             if old_tile and old_tile.occupant_id and str(old_tile.occupant_id) == str(entity_id):
                 old_tile.occupant_id = None
 
-        # 2. Update Record
         self.entity_locations[entity_id] = target_hex
-
-        # 3. Update New Tile Cache
-        target_tile = self.board.get_tile(target_hex)
-        if not target_tile or target_tile.occupant_id:
-            raise ValueError(
-                f"Cannot place entity {entity_id} at {target_hex}: Tile is occupied by {target_tile.occupant_id}"
-            )
         target_tile.occupant_id = entity_id
 
     def remove_entity(self, entity_id: BoardEntityID):

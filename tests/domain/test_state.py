@@ -78,6 +78,37 @@ def test_move_entity_clears_old_cache(empty_state):
     assert state.board.get_tile(target_hex).occupant_id == uid
 
 
+def test_place_entity_rejects_occupied_tile_atomically(empty_state):
+    state = empty_state
+    first_hex = Hex(q=0, r=0, s=0)
+    occupied_hex = Hex(q=1, r=0, s=-1)
+    state.place_entity(BoardEntityID("first"), first_hex)
+    state.place_entity(BoardEntityID("occupant"), occupied_hex)
+
+    with pytest.raises(ValueError, match="occupied"):
+        state.place_entity(BoardEntityID("first"), occupied_hex)
+
+    assert state.entity_locations["first"] == first_hex
+    assert state.entity_locations["occupant"] == occupied_hex
+    assert state.board.get_tile(first_hex).occupant_id == "first"
+    assert state.board.get_tile(occupied_hex).occupant_id == "occupant"
+
+
+def test_place_entity_rejects_off_map_hex_atomically(empty_state):
+    state = empty_state
+    state.board.map_id = "test_map"
+    first_hex = Hex(q=0, r=0, s=0)
+    off_map = Hex(q=20, r=-10, s=-10)
+    state.place_entity(BoardEntityID("first"), first_hex)
+
+    with pytest.raises(ValueError, match="not on the board"):
+        state.place_entity(BoardEntityID("first"), off_map)
+
+    assert state.entity_locations["first"] == first_hex
+    assert state.board.get_tile(first_hex).occupant_id == "first"
+    assert off_map not in state.entity_locations.values()
+
+
 def test_validator_rebuilds_cache():
     """Verify that loading state from dict/json syncs the board."""
     # Construct raw dict state directly

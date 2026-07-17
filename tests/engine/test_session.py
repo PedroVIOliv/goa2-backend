@@ -19,7 +19,7 @@ from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.session import GameSession, SessionResult, SessionResultType
 from goa2.engine.setup import GameSetup
-from goa2.engine.steps import LogMessageStep, SelectStep
+from goa2.engine.steps import AskConfirmationStep, LogMessageStep, SelectStep
 
 
 @pytest.fixture
@@ -50,12 +50,39 @@ class TestSubmitInput:
 
     def test_accepts_input_response(self, empty_state):
         """submit_input with InputResponse converts to dict."""
-        step = SelectStep(target_type=TargetType.UNIT, prompt="Pick")
+        step = AskConfirmationStep(player_id="hero_a", prompt="Continue?")
         push_steps(empty_state, [step])
-        resp = InputResponse(selection="hero_a")
+        request = process_stack(empty_state).input_request
+        assert request is not None
+        resp = InputResponse(request_id=request.id, selection="hero_a")
         submit_input(empty_state, resp)
         assert empty_state.execution_stack[-1].pending_input is not None
         assert empty_state.execution_stack[-1].pending_input.get("selection") == "hero_a"
+
+    def test_rejects_stale_response_without_mutating_next_prompt(self, empty_state):
+        push_steps(
+            empty_state,
+            [
+                AskConfirmationStep(player_id="hero_a", prompt="First?", output_key="first"),
+                AskConfirmationStep(player_id="hero_a", prompt="Second?", output_key="second"),
+            ],
+        )
+
+        first = process_stack(empty_state).input_request
+        assert first is not None
+        submit_input(empty_state, InputResponse(request_id=first.id, selection="YES"))
+        second = process_stack(empty_state).input_request
+        assert second is not None
+        assert second.id != first.id
+
+        with pytest.raises(ValueError, match="does not match"):
+            submit_input(empty_state, InputResponse(request_id=first.id, selection="YES"))
+
+        assert empty_state.execution_stack[-1].pending_input is None
+        submit_input(empty_state, InputResponse(request_id=second.id, selection="YES"))
+        process_stack(empty_state)
+        assert empty_state.execution_context["first"] is True
+        assert empty_state.execution_context["second"] is True
 
     def test_empty_stack_raises(self, empty_state):
         """submit_input with no pending step raises ValueError."""
@@ -71,6 +98,16 @@ class TestProcessStack:
         stack_result = process_stack(empty_state)
         assert isinstance(stack_result.input_request, InputRequest)
         assert stack_result.input_request.prompt == "Pick a unit"
+
+    def test_reprocessing_unanswered_step_preserves_request_id(self, empty_state):
+        push_steps(empty_state, [AskConfirmationStep(player_id="hero_a", prompt="Continue?")])
+
+        first = process_stack(empty_state).input_request
+        second = process_stack(empty_state).input_request
+
+        assert first is not None
+        assert second is not None
+        assert second.id == first.id
 
     def test_returns_none_when_empty(self, empty_state):
         """process_stack returns StackResult with no input_request when stack is empty."""

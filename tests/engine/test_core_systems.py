@@ -187,7 +187,8 @@ def test_phases_cannot_pass_with_cards():
     state.phase = GamePhase.PLANNING
 
     # Try to pass
-    phases.pass_turn(state, "h1")
+    with pytest.raises(ValueError, match="cannot pass"):
+        phases.pass_turn(state, "h1")
 
     # Should NOT have committed a pass
     assert "h1" not in state.pending_inputs

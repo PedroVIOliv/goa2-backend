@@ -38,6 +38,7 @@ class GameStep(BaseModel):
 
     step_id: str = Field(default_factory=lambda: str(id(object())))
     pending_input: Any | None = None
+    pending_request_id: str | None = None
     is_mandatory: bool = True
     active_if_key: str | None = None
     skip_if_key: str | None = None

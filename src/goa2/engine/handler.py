@@ -30,9 +30,18 @@ def submit_input(state: GameState, response: InputResponse | dict) -> None:
     current_step = state.execution_stack[-1]
 
     if isinstance(response, InputResponse):
+        expected_request_id = current_step.pending_request_id
+        if expected_request_id is None:
+            raise ValueError("The pending step has not issued an input request")
+        if response.request_id != expected_request_id:
+            raise ValueError(
+                f"Input response request_id {response.request_id!r} does not match "
+                f"pending request {expected_request_id!r}"
+            )
         current_step.pending_input = {"selection": response.selection}
     else:
         current_step.pending_input = response
+    current_step.pending_request_id = None
 
 
 def process_stack(state: GameState) -> StackResult:
@@ -67,6 +76,11 @@ def process_stack(state: GameState) -> StackResult:
         if result.requires_input:
             state.execution_stack.append(current_step)
             request = result.input_request
+            if request is not None:
+                if current_step.pending_request_id is None:
+                    current_step.pending_request_id = request.id
+                else:
+                    request.id = current_step.pending_request_id
             controller_id = _action_controller(state, request.player_id) if request else None
             if request is not None and controller_id is not None:
                 request.context["controlled_hero_id"] = request.player_id

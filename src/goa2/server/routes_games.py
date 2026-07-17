@@ -190,11 +190,10 @@ async def commit_card(
             ):
                 raise AlreadyCommittedError(player.hero_id)
 
-        if game.replay_recorder:
-            game.replay_recorder.record_commit(
-                player.hero_id, body.card_id, session.state.round, session.state.turn
-            )
+        rec_round, rec_turn = session.state.round, session.state.turn
         result = session.commit_card(HeroID(player.hero_id), card)
+        if game.replay_recorder:
+            game.replay_recorder.record_commit(player.hero_id, body.card_id, rec_round, rec_turn)
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
@@ -231,8 +230,7 @@ async def uncommit_card(
         card = state.pending_second_cards.get(hid) or state.pending_inputs.get(hid)
         rec_round, rec_turn = state.round, state.turn
         result = session.uncommit_card(hid)
-        # Record only after success so a failed attempt never lands in the
-        # replay (contrast: commits pre-validate, so they can record first).
+        # Record only after success so a failed attempt never lands in the replay.
         if game.replay_recorder:
             game.replay_recorder.record_uncommit(hid, rec_round, rec_turn)
         game.last_result = result
@@ -258,11 +256,10 @@ async def pass_turn(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-        if game.replay_recorder:
-            game.replay_recorder.record_pass(
-                player.hero_id, session.state.round, session.state.turn
-            )
+        rec_round, rec_turn = session.state.round, session.state.turn
         result = session.pass_turn(HeroID(player.hero_id))
+        if game.replay_recorder:
+            game.replay_recorder.record_pass(player.hero_id, rec_round, rec_turn)
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
@@ -288,11 +285,10 @@ async def planning_done(
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
-        if game.replay_recorder:
-            game.replay_recorder.record_finish_planning(
-                player.hero_id, session.state.round, session.state.turn
-            )
+        rec_round, rec_turn = session.state.round, session.state.turn
         result = session.finish_planning(HeroID(player.hero_id))
+        if game.replay_recorder:
+            game.replay_recorder.record_finish_planning(player.hero_id, rec_round, rec_turn)
         game.last_result = result
         _log_result(game, result)
         registry.save_game(game_id)

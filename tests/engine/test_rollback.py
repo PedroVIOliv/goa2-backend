@@ -90,12 +90,17 @@ def _setup_resolution(state):
     start_resolution_phase(state)
 
 
+def _respond(session: GameSession, result, selection: object):
+    assert result.input_request is not None
+    return session.advance(InputResponse(request_id=result.input_request.id, selection=selection))
+
+
 # ---- ConfirmResolutionStep basic behavior ----
 
 
 class TestConfirmResolutionStep:
-    def test_prompts_confirm_rollback(self):
-        """Confirm step shows CONFIRM/ROLLBACK options when rollback is available."""
+    def test_prompts_confirm_only(self):
+        """Rollback uses the dedicated endpoint, not a misleading input option."""
         step = ConfirmResolutionStep(hero_id="hero_a")
         state = _make_state()
         state.current_actor_id = "hero_a"
@@ -104,8 +109,7 @@ class TestConfirmResolutionStep:
         req = result.input_request
         assert req.player_id == "hero_a"
         option_ids = [o.id for o in req.options]
-        assert "CONFIRM" in option_ids
-        assert "ROLLBACK" in option_ids
+        assert option_ids == ["CONFIRM"]
 
     def test_auto_skips_when_rollback_frozen(self):
         """Confirm step auto-confirms when rollback is frozen."""
@@ -124,6 +128,17 @@ class TestConfirmResolutionStep:
         state.current_actor_id = "hero_a"
         result = step.resolve(state, {})
         assert result.is_finished
+
+    def test_non_confirm_input_is_rejected_and_re_requested(self):
+        step = ConfirmResolutionStep(hero_id="hero_a")
+        step.pending_input = {"selection": "ROLLBACK"}
+        state = _make_state()
+        state.current_actor_id = "hero_a"
+
+        result = step.resolve(state, {})
+
+        assert result.requires_input
+        assert step.pending_input is None
 
 
 # ---- Rollback disabled tracking ----
@@ -148,7 +163,7 @@ class TestRollbackSegmentBoundary:
         assert res1.input_request.can_rollback is True
 
         # Answer YES to proceed to foreign step
-        res2 = session.advance(InputResponse(selection="YES"))
+        res2 = _respond(session, res1, "YES")
         assert res2.input_request.player_id == "hero_b"
         # Snapshot cleared because of foreign input
         assert session._rollback_snapshot is None
@@ -171,7 +186,7 @@ class TestRollbackSegmentBoundary:
         assert session._rollback_snapshot is not None
         assert res1.input_request.can_rollback is True
 
-        res2 = session.advance(InputResponse(selection="YES"))
+        res2 = _respond(session, res1, "YES")
         assert res2.input_request.player_id == "hero_a"
         assert session._rollback_snapshot is not None
         assert res2.input_request.can_rollback is True
@@ -204,7 +219,7 @@ class TestSessionRollback:
         assert session._rollback_snapshot is not None
 
         # Choose HOLD
-        result2 = session.advance(InputResponse(selection="HOLD"))
+        result2 = _respond(session, result, "HOLD")
         # Should be at ConfirmResolutionStep
         assert result2.result_type == SessionResultType.INPUT_NEEDED
         assert result2.input_request.can_rollback is True
@@ -228,14 +243,14 @@ class TestSessionRollback:
         assert result.input_request.player_id == "hero_a"
 
         # Choose HOLD
-        session.advance(InputResponse(selection="HOLD"))
+        _respond(session, result, "HOLD")
 
         # Rollback
         r = session.rollback()
         assert r.input_request.player_id == "hero_a"
 
         # Choose HOLD again
-        session.advance(InputResponse(selection="HOLD"))
+        _respond(session, r, "HOLD")
 
         # Rollback again
         r2 = session.rollback()
@@ -248,14 +263,14 @@ class TestSessionRollback:
         _setup_resolution(state)
 
         # hero_a's action choice
-        session.advance()
+        result = session.advance()
         assert session._rollback_snapshot is not None
 
         # Choose HOLD
-        session.advance(InputResponse(selection="HOLD"))
+        result = _respond(session, result, "HOLD")
 
         # Confirm
-        result = session.advance(InputResponse(selection="CONFIRM"))
+        result = _respond(session, result, "CONFIRM")
 
         # Now hero_b acts, hero_a's snapshot should be cleared and new one for hero_b
         if result.input_request and result.input_request.player_id == "hero_b":
@@ -369,9 +384,9 @@ class TestCanRollbackFlag:
         _setup_resolution(state)
 
         # Action choice
-        session.advance()
+        initial = session.advance()
         # Choose HOLD
-        result = session.advance(InputResponse(selection="HOLD"))
+        result = _respond(session, initial, "HOLD")
         # Confirm step
         assert result.input_request is not None
         assert result.input_request.can_rollback is True
@@ -394,10 +409,10 @@ class TestRollbackPerActorIsolation:
         snapshot_a = session._rollback_snapshot
 
         # hero_a chooses HOLD
-        session.advance(InputResponse(selection="HOLD"))
+        hold_result = _respond(session, r1, "HOLD")
 
         # hero_a confirms
-        r_confirm = session.advance(InputResponse(selection="CONFIRM"))
+        r_confirm = _respond(session, hold_result, "CONFIRM")
 
         # Now it's hero_b's turn
         assert r_confirm.input_request is not None
@@ -410,7 +425,7 @@ class TestRollbackPerActorIsolation:
         assert snapshot_b is not snapshot_a
 
         # hero_b chooses HOLD
-        session.advance(InputResponse(selection="HOLD"))
+        _respond(session, r_confirm, "HOLD")
 
         # hero_b rolls back
         r_rollback = session.rollback()
@@ -488,9 +503,9 @@ class TestRollbackDuringControl:
         state = _control_state()
         session = GameSession(state)
 
-        session.advance()
+        result1 = session.advance()
         # Controller chooses HOLD for the controlled hero.
-        result2 = session.advance(InputResponse(selection="HOLD"))
+        result2 = _respond(session, result1, "HOLD")
         assert result2.input_request is not None
         assert result2.input_request.can_rollback is True
 
@@ -644,7 +659,7 @@ class TestScenarioCAndMineBlast:
         assert session._rollback_snapshot is not None
 
         # Actor submits YES
-        res2 = session.advance(InputResponse(selection="YES"))
+        res2 = _respond(session, res1, "YES")
 
         # 2. Prompt enemy for Enemy Choice
         assert res2.input_request.player_id == "hero_b"
@@ -654,7 +669,7 @@ class TestScenarioCAndMineBlast:
         assert session._rollback_snapshot is None
 
         # Enemy submits YES
-        res3 = session.advance(InputResponse(selection="YES"))
+        res3 = _respond(session, res2, "YES")
 
         # 3. PlaceUnitStep executes automatically (no input needed), then choice2 prompts hero_a
         assert res3.input_request.player_id == "hero_a"
@@ -667,7 +682,7 @@ class TestScenarioCAndMineBlast:
         assert state.entity_locations.get("hero_b") == Hex(q=1, r=0, s=-1)
 
         # Actor submits YES for Choice 2
-        res4 = session.advance(InputResponse(selection="YES"))
+        res4 = _respond(session, res3, "YES")
 
         # Now we land on ConfirmResolutionStep (or we can rollback before or after)
         assert res4.input_request is not None
@@ -727,11 +742,14 @@ class TestScenarioCAndMineBlast:
         state.execution_context["triggered_mine_ids"] = ["mine_1"]
         state.execution_context["mine_victim_id"] = "hero_a"
 
+        # Answer the active request before adding new work to the LIFO stack.
+        # Request correlation correctly rejects a response if another step is
+        # pushed above the step that issued it.
+        _respond(session, res1, "YES")
         push_steps(state, [trigger, choice2])
 
-        # Advance session to process the input, run the trigger step (which sets rollback_frozen),
-        # and then prompt Choice 2 (in our LIFO execution flow, the force discard step runs first).
-        res2 = session.advance(InputResponse(selection="YES"))
+        # Run the trigger step, which freezes rollback and prompts for discard.
+        res2 = session.advance()
 
         # Assert we are prompted for discard (since a blast mine forces the victim to discard a card)
         assert "select a card to discard" in res2.input_request.prompt

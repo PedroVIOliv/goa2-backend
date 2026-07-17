@@ -35,3 +35,30 @@ def test_select_card_without_labels_omits_options() -> None:
     )
     assert result["valid_options"] == ["card_1", "card_2"]
     assert "options" not in result
+
+
+def test_input_request_serializes_stable_correlation_id() -> None:
+    request = create_input_request(
+        request_type=InputRequestType.SELECT_OPTION,
+        player_id="hero_arien",
+        prompt="Choose",
+        options=["ONE"],
+    )
+
+    assert request.to_dict()["request_id"] == request.id
+    assert request.to_dict()["request_id"] == request.to_dict()["request_id"]
+
+
+def test_input_request_ids_are_unique() -> None:
+    first = create_input_request(
+        request_type=InputRequestType.SELECT_OPTION,
+        player_id="hero_arien",
+        prompt="Choose",
+    )
+    second = create_input_request(
+        request_type=InputRequestType.SELECT_OPTION,
+        player_id="hero_arien",
+        prompt="Choose",
+    )
+
+    assert first.id != second.id
