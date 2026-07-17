@@ -315,6 +315,36 @@ def test_step_registry_covers_concrete_step_classes():
 # ---------------------------------------------------------------------------
 
 
+def _minimal_filter_instance(filter_class):
+    """Construct every registered filter without maintaining a class allow-list."""
+    from enum import Enum
+    from typing import Literal, get_args, get_origin
+
+    kwargs = {}
+    for field_name, field_info in filter_class.model_fields.items():
+        if field_name == "type" or not field_info.is_required():
+            continue
+        annotation = field_info.annotation
+        origin = get_origin(annotation)
+        if annotation is str:
+            value = "test"
+        elif annotation is int:
+            value = 1
+        elif origin is list:
+            value = []
+        elif origin is Literal:
+            value = get_args(annotation)[0]
+        elif isinstance(annotation, type) and issubclass(annotation, Enum):
+            value = next(iter(annotation))
+        else:
+            pytest.fail(
+                f"No minimal value factory for {filter_class.__name__}.{field_name}: "
+                f"{annotation!r}"
+            )
+        kwargs[field_name] = value
+    return filter_class(**kwargs)
+
+
 def test_all_filter_types_round_trip(save_dir):
     """Each filter subclass serializes and deserializes correctly."""
     import inspect
@@ -338,27 +368,10 @@ def test_all_filter_types_round_trip(save_dir):
 
     assert len(filter_classes) >= 19  # Sanity check
 
-    # Try to instantiate each with minimal args and put in a SelectStep
+    # Instantiate every class; adding a filter with a new required field must
+    # update the generic value factory instead of silently skipping coverage.
     for fc in filter_classes:
-        fields = fc.model_fields
-        kwargs = {}
-        for fname, finfo in fields.items():
-            if fname == "type":
-                continue
-            if finfo.is_required():
-                # Provide minimal values
-                ann = finfo.annotation
-                if ann is str or ann == "str":
-                    kwargs[fname] = "test"
-                elif ann is int or ann == "int":
-                    kwargs[fname] = 1
-                elif str(ann).startswith("typing.List") or str(ann) == "list":
-                    kwargs[fname] = []
-
-        try:
-            instance = fc(**kwargs)
-        except Exception:
-            continue  # Some may need complex args; that's OK
+        instance = _minimal_filter_instance(fc)
 
         step = SelectStep(
             target_type=TargetType.UNIT,
@@ -373,6 +386,44 @@ def test_all_filter_types_round_trip(save_dir):
         assert (
             type(restored_filter).__name__ == type(instance).__name__
         ), f"Filter {type(instance).__name__} did not round-trip correctly"
+        assert restored_filter.model_dump(mode="json") == instance.model_dump(mode="json")
+
+
+def test_every_filter_type_round_trips_at_arbitrary_composite_depth():
+    """Every registered filter survives below all recursive composite containers."""
+    import inspect
+
+    from goa2.engine import filters as f_mod
+
+    instances = [
+        _minimal_filter_instance(cls)
+        for _, cls in inspect.getmembers(f_mod, inspect.isclass)
+        if issubclass(cls, f_mod.FilterCondition) and cls is not f_mod.FilterCondition
+    ]
+    nested = f_mod.OrFilter(
+        filters=[
+            f_mod.AndFilter(filters=[f_mod.CountMatchFilter(sub_filters=instances, min_count=2)])
+        ]
+    )
+    state = GameState(
+        board=Board(),
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=[]),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+        },
+        execution_stack=[SelectStep(target_type=TargetType.UNIT, prompt="test", filters=[nested])],
+    )
+
+    restored = GameState.model_validate(state.model_dump(mode="json"))
+    restored_or = restored.execution_stack[0].filters[0]
+    restored_and = restored_or.filters[0]
+    restored_count = restored_and.filters[0]
+    restored_instances = restored_count.sub_filters
+
+    assert len(restored_instances) == len(instances)
+    for actual, expected in zip(restored_instances, instances, strict=True):
+        assert type(actual) is type(expected)
+        assert actual.model_dump(mode="json") == expected.model_dump(mode="json")
 
 
 def test_filter_registry_covers_concrete_filter_classes():

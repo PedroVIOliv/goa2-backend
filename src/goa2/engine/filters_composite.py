@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from pydantic import Field
+from pydantic import Field, field_serializer, field_validator
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType
@@ -12,7 +12,7 @@ from goa2.domain.types import BoardEntityID, UnitID
 # -----------------------------------------------------------------------------
 # Base Filter
 # -----------------------------------------------------------------------------
-from goa2.engine.filters_base import FilterCondition
+from goa2.engine.filters_base import FilterCondition, dump_filters, revalidate_filters
 
 
 class OrFilter(FilterCondition):
@@ -20,6 +20,15 @@ class OrFilter(FilterCondition):
 
     type: FilterType = FilterType.OR_FILTER
     filters: list[FilterCondition] = Field(default_factory=list)
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def _deserialize_filters(cls, value: list[Any]) -> list[FilterCondition]:
+        return revalidate_filters(value)
+
+    @field_serializer("filters", mode="plain")
+    def _serialize_filters(self, value: list[Any]) -> list[Any]:
+        return dump_filters(value)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return any(f.apply(candidate, state, context) for f in self.filters)
@@ -30,6 +39,15 @@ class AndFilter(FilterCondition):
 
     type: FilterType = FilterType.AND_FILTER
     filters: list[FilterCondition] = Field(default_factory=list)
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def _deserialize_filters(cls, value: list[Any]) -> list[FilterCondition]:
+        return revalidate_filters(value)
+
+    @field_serializer("filters", mode="plain")
+    def _serialize_filters(self, value: list[Any]) -> list[Any]:
+        return dump_filters(value)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         return all(f.apply(candidate, state, context) for f in self.filters)
@@ -56,6 +74,15 @@ class CountMatchFilter(FilterCondition):
     include_tokens: bool = False
 
     ORIGIN_HEX_KEY: ClassVar[str] = "_cmf_origin_hex"
+
+    @field_validator("sub_filters", mode="before")
+    @classmethod
+    def _deserialize_sub_filters(cls, value: list[Any]) -> list[FilterCondition]:
+        return revalidate_filters(value)
+
+    @field_serializer("sub_filters", mode="plain")
+    def _serialize_sub_filters(self, value: list[Any]) -> list[Any]:
+        return dump_filters(value)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Accept either a Hex (e.g. Misa's swoop_in target hex) or a unit-ID

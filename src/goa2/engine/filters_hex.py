@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import Field, field_serializer
+from pydantic import Field, field_serializer, field_validator
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType, TokenType
@@ -16,6 +16,7 @@ from goa2.engine.filters_base import (
     BATCH_FREED_HEXES_KEY,
     FilterCondition,
     dump_filter_grid,
+    revalidate_filter_grid,
     revalidate_filters,
 )
 from goa2.engine.topology import get_topology_service
@@ -92,6 +93,11 @@ class HexBatchCompletableFilter(FilterCondition):
     @field_serializer("slot_filters", mode="plain")
     def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
         return dump_filter_grid(value)
+
+    @field_validator("slot_filters", mode="before")
+    @classmethod
+    def _deserialize_slot_filters(cls, value: list[list[Any]]) -> list[list[FilterCondition]]:
+        return revalidate_filter_grid(value)
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -227,6 +233,11 @@ class TokenRemovalCompletableFilter(FilterCondition):
     def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
         return dump_filter_grid(value)
 
+    @field_validator("slot_filters", mode="before")
+    @classmethod
+    def _deserialize_slot_filters(cls, value: list[list[Any]]) -> list[list[FilterCondition]]:
+        return revalidate_filter_grid(value)
+
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, str):
             return False
@@ -242,8 +253,7 @@ class TokenRemovalCompletableFilter(FilterCondition):
         search = HexBatchCompletableFilter(
             slot_index=0,
             slot_keys=self.slot_keys,
-            # Revalidate: after a save/load these may be degraded base
-            # instances, which the AnyFilter annotation would reject.
+            # Revalidate for backward compatibility with legacy degraded saves.
             slot_filters=[revalidate_filters(slot) for slot in self.slot_filters],
             free_hexes=[candidate_hex],
             removable_hexes=other_hexes,

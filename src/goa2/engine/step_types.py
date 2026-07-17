@@ -176,6 +176,7 @@ def rebuild_serialization_models() -> None:
     steps_mod.CollectUnitsStep.model_fields["filters"].annotation = list[AnyFilter]
     steps_mod.CheckUnitFiltersStep.model_fields["filters"].annotation = list[AnyFilter]
     steps_mod.MayRepeatNTimesStep.model_fields["steps_template"].annotation = list[AnyStep]
+    steps_mod.MayRepeatOnceStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.ForEachStep.model_fields["steps_template"].annotation = list[AnyStep]
     steps_mod.CreateEffectStep.model_fields["finishing_steps"].annotation = list[AnyStep]
     steps_mod.RespawnMinionAtHexStep.model_fields["hex_filters"].annotation = list[AnyFilter]
@@ -207,6 +208,7 @@ def rebuild_serialization_models() -> None:
         steps_mod.CollectUnitsStep,
         steps_mod.CheckUnitFiltersStep,
         steps_mod.MayRepeatNTimesStep,
+        steps_mod.MayRepeatOnceStep,
         steps_mod.ForEachStep,
         steps_mod.CreateEffectStep,
         ActiveEffect,

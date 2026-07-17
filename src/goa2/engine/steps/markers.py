@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import Field, field_serializer
+from pydantic import Field, field_serializer, field_validator
 
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
@@ -15,7 +15,12 @@ from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine import rules
-from goa2.engine.filters_base import FilterCondition, dump_filter_grid, revalidate_filters
+from goa2.engine.filters_base import (
+    FilterCondition,
+    dump_filter_grid,
+    revalidate_filter_grid,
+    revalidate_filters,
+)
 from goa2.engine.filters_units import TokenTypeFilter, UnitTypeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
@@ -273,6 +278,11 @@ class PlaceTokenBatchStep(GameStep):
     @field_serializer("slot_filters", mode="plain")
     def _serialize_slot_filters(self, value: list[list[Any]]) -> list[list[Any]]:
         return dump_filter_grid(value)
+
+    @field_validator("slot_filters", mode="before")
+    @classmethod
+    def _deserialize_slot_filters(cls, value: list[list[Any]]) -> list[list[FilterCondition]]:
+        return revalidate_filter_grid(value)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.filters_hex import (

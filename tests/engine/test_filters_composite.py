@@ -233,5 +233,8 @@ class TestCompositeFilterSerialization:
         restored = SelectStep.model_validate(data)
         or_f = restored.filters[0]
         assert isinstance(or_f, OrFilter)
-        assert isinstance(or_f.filters[0], AndFilter)
+        and_f = or_f.filters[0]
+        assert isinstance(and_f, AndFilter)
         assert isinstance(or_f.filters[1], UnitTypeFilter)
+        assert isinstance(and_f.filters[0], TeamFilter)
+        assert isinstance(and_f.filters[1], UnitTypeFilter)

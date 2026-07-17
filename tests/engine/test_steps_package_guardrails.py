@@ -342,14 +342,105 @@ def test_round_trip_token_removal_completable_filter():
     f = restored.execution_stack[0].filters[0]
     assert type(f).__name__ == "TokenRemovalCompletableFilter"
     assert f.remaining_removals == 2
-    # Nested slot filters may deserialize as base FilterCondition; consumers
-    # re-validate them lazily. What must survive the round-trip is the DATA.
-    from goa2.engine.filters_base import revalidate_filters
-
-    inner = revalidate_filters(f.slot_filters[1])[0]
+    inner = f.slot_filters[1][0]
     assert type(inner).__name__ == "RangeFilter"
     assert inner.min_range == 3
     assert inner.origin_hex_key == "tkb_hex_0"
+
+
+def test_arbitrarily_nested_step_templates_round_trip():
+    """Recursive AnyStep fields preserve concrete steps beyond one template level."""
+    from goa2.engine.steps import ForEachStep, LogMessageStep, MayRepeatNTimesStep
+
+    state = _make_state()
+    push_steps(
+        state,
+        [
+            ForEachStep(
+                list_key="outer",
+                item_key="outer_item",
+                steps_template=[
+                    MayRepeatNTimesStep(
+                        max_repeats=2,
+                        steps_template=[
+                            ForEachStep(
+                                list_key="inner",
+                                item_key="inner_item",
+                                steps_template=[LogMessageStep(message="deep")],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    restored = GameState.model_validate(state.model_dump(mode="json"))
+    outer = restored.execution_stack[0]
+    repeat = outer.steps_template[0]
+    inner = repeat.steps_template[0]
+    leaf = inner.steps_template[0]
+    assert type(outer).__name__ == "ForEachStep"
+    assert type(repeat).__name__ == "MayRepeatNTimesStep"
+    assert type(inner).__name__ == "ForEachStep"
+    assert type(leaf).__name__ == "LogMessageStep"
+    assert leaf.message == "deep"
+
+
+def test_every_declared_polymorphic_field_uses_the_registered_union():
+    """New nested step/filter fields cannot escape serialization patching silently."""
+    from typing import get_args
+
+    from goa2.domain.models.effect import ActiveEffect
+    from goa2.engine.effects import StatAura
+    from goa2.engine.filters_base import FilterCondition
+    from goa2.engine.step_types import AnyFilter, AnyStep
+
+    def all_subclasses(base):
+        result = []
+        for subclass in base.__subclasses__():
+            result.append(subclass)
+            result.extend(all_subclasses(subclass))
+        return result
+
+    def contains_exact(annotation, target) -> bool:
+        return annotation is target or any(
+            contains_exact(argument, target) for argument in get_args(annotation)
+        )
+
+    def source_annotations(model) -> dict:
+        annotations = {}
+        for ancestor in reversed(model.__mro__):
+            annotations.update(ancestor.__dict__.get("__annotations__", {}))
+        return annotations
+
+    def source_contains(annotation, target) -> bool:
+        if isinstance(annotation, str):
+            return target.__name__ in annotation
+        return contains_exact(annotation, target)
+
+    failures = []
+    models = [
+        model
+        for model in [*all_subclasses(GameStep), *all_subclasses(FilterCondition), StatAura]
+        if model.__module__.startswith("goa2.")
+    ]
+    for model in models:
+        source_hints = source_annotations(model)
+        for field_name, field_info in model.model_fields.items():
+            source_annotation = source_hints.get(field_name)
+            if source_annotation is None:
+                continue
+            for base in (GameStep, FilterCondition):
+                if source_contains(source_annotation, base) and contains_exact(
+                    field_info.annotation, base
+                ):
+                    failures.append(f"{model.__name__}.{field_name}")
+
+    assert not failures, f"Polymorphic fields missing AnyStep/AnyFilter patch: {failures}"
+    assert contains_exact(GameState.model_fields["execution_stack"].annotation, AnyStep)
+    assert contains_exact(ActiveEffect.model_fields["finishing_steps"].annotation, AnyStep)
+    assert contains_exact(StatAura.model_fields["count_filters"].annotation, AnyFilter)
 
 
 def test_round_trip_check_unit_on_board_step():
