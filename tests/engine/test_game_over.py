@@ -5,6 +5,7 @@ from goa2.domain.models import GamePhase, Hero, Team, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.engine.handler import process_stack
+from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.steps import DefeatUnitStep, LanePushStep, TriggerGameOverStep
 
 
@@ -65,6 +66,28 @@ def test_game_over_state_transition(game_state):
     assert game_state.winner == TeamColor.BLUE
     assert game_state.victory_condition == "TEST"
     assert len(game_state.execution_stack) == 0
+
+
+def test_individual_game_over_reports_hero_winner(game_state):
+    step = TriggerGameOverStep(
+        individual_winner_id=HeroID("hero_cutter"),
+        condition="A_FISTFUL_OF_COINS",
+    )
+    game_state.execution_stack.append(step)
+
+    result = GameSession(game_state).advance()
+
+    assert result.result_type == SessionResultType.GAME_OVER
+    assert result.winner == "hero_cutter"
+    assert game_state.phase == GamePhase.GAME_OVER
+    assert game_state.winner is None
+    assert game_state.individual_winner_id == "hero_cutter"
+    assert game_state.victory_condition == "A_FISTFUL_OF_COINS"
+    assert result.events[-1].metadata == {
+        "winner": "hero_cutter",
+        "winner_type": "HERO",
+        "condition": "A_FISTFUL_OF_COINS",
+    }
 
 
 def test_handler_stops_on_game_over(game_state):

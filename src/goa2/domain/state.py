@@ -58,11 +58,8 @@ class GameState(BaseModel):
     tie_breaker_team: TeamColor = TeamColor.RED
 
     winner: TeamColor | None = None
+    individual_winner_id: HeroID | None = None
     victory_condition: str | None = None
-    # Stub for Cutter's alternate solo victory ("A Fistful of Coins": 13+ coins
-    # => you alone win). The real individual-win path is not wired yet; this flag
-    # records that the threshold was reached so the rest of the kit can ship.
-    solo_win_pending: str | None = None
 
     input_stack: list[InputRequest] = Field(
         default_factory=list

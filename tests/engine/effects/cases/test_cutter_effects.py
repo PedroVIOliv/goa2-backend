@@ -2,8 +2,9 @@
 
 import pytest
 
+from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import MinionType, TeamColor
+from goa2.domain.models import GamePhase, MinionType, TeamColor
 from goa2.engine.steps import PerformPrimaryActionStep, SetContextFlagStep
 
 from ..builders import EffectScenarioBuilder, hero_card
@@ -286,7 +287,7 @@ def test_outsmart_nudges_up_to_three() -> None:
 # =============================================================================
 # BLUE — X Marks the Spot / A Fistful of Coins: "An enemy hero in radius chooses
 # one — • You place that hero in a space in radius. • You gain N coins."
-# (A Fistful: "If you have 13+ coins, you alone win the game." — win stubbed.)
+# (A Fistful: "If you have 13+ coins, you alone win the game.")
 # =============================================================================
 
 
@@ -368,11 +369,12 @@ def test_fistful_gains_three_coins() -> None:
     run.choose("blue_hero").expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(2).finish()
     assert cutter.gold == 3
-    assert state.solo_win_pending is None
+    assert state.individual_winner_id is None
+    assert state.phase != GamePhase.GAME_OVER
 
 
 @pytest.mark.effect_flow
-def test_fistful_solo_win_pending_at_thirteen() -> None:
+def test_fistful_solo_win_at_thirteen() -> None:
     state = _coins_state("a_fistful_of_coins")
     cutter = state.get_hero("hero_cutter")
     cutter.gold = 10  # +3 = 13
@@ -383,9 +385,18 @@ def test_fistful_solo_win_pending_at_thirteen() -> None:
     run.choose("blue_hero").expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(2).finish()
     assert cutter.gold == 13
-    # Win is stubbed: flag is set, but the game does not actually end.
-    assert state.solo_win_pending == "hero_cutter"
+    assert state.phase == GamePhase.GAME_OVER
+    assert state.individual_winner_id == "hero_cutter"
     assert state.winner is None
+    assert state.victory_condition == "A_FISTFUL_OF_COINS"
+    event_types = [event.event_type for event in run.events]
+    assert event_types.index(GameEventType.GOLD_GAINED) < event_types.index(GameEventType.GAME_OVER)
+    game_over = next(event for event in run.events if event.event_type == GameEventType.GAME_OVER)
+    assert game_over.metadata == {
+        "winner": "hero_cutter",
+        "winner_type": "HERO",
+        "condition": "A_FISTFUL_OF_COINS",
+    }
 
 
 @pytest.mark.effect_flow
@@ -400,7 +411,26 @@ def test_fistful_no_solo_win_below_thirteen() -> None:
     run.choose("blue_hero").expect_input(InputRequestType.SELECT_NUMBER)
     run.choose(2).finish()
     assert cutter.gold == 12
-    assert state.solo_win_pending is None
+    assert state.individual_winner_id is None
+    assert state.phase != GamePhase.GAME_OVER
+
+
+@pytest.mark.effect_flow
+def test_fistful_placement_branch_does_not_check_solo_win() -> None:
+    state = _coins_state("a_fistful_of_coins")
+    cutter = state.get_hero("hero_cutter")
+    cutter.gold = 13
+
+    run = run_card(state, "hero_cutter")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_hero").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 0, "r": 3, "s": -3}).finish()
+
+    assert cutter.gold == 13
+    assert state.individual_winner_id is None
+    assert state.phase != GamePhase.GAME_OVER
 
 
 def _hex_options(run) -> set:

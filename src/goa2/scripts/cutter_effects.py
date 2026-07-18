@@ -215,7 +215,7 @@ class OutsmartEffect(_OutmaneuverEffect):
 # =============================================================================
 # BLUE — X Marks the Spot / A Fistful of Coins
 # "An enemy hero in radius chooses one — • You place that hero in a space in
-#  radius. • You gain N coins." (A Fistful: 13+ coins => you alone win — stubbed.)
+#  radius. • You gain N coins." (A Fistful: 13+ coins => you alone win.)
 # =============================================================================
 
 
@@ -305,7 +305,7 @@ class XMarksTheSpotEffect(_CoinChoiceEffect):
 
 @register_effect("a_fistful_of_coins")
 class AFistfulOfCoinsEffect(_CoinChoiceEffect):
-    """Radius 3, 3 coins, solo-win check (stubbed)."""
+    """Radius 3, 3 coins, followed by the solo-win check."""
 
     coins = 3
     solo_win = True

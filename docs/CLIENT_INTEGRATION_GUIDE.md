@@ -197,7 +197,7 @@ Get the current game view for the authenticated player.
 
 The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present only when the authenticated hero is allowed to answer it. Opponents and spectators receive `null`. Team-level requests are visible only to that team's heroes; simultaneous upgrade requests contain only the authenticated hero's entry.
 
-The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `response.get("winner")` rather than assuming it exists.
+The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID (for example, `"hero_cutter"`) for an individual victory. Check for its presence with `response.get("winner")` rather than assuming it exists.
 
 ### `POST /games/{game_id}/cards`
 
@@ -414,7 +414,7 @@ All mutation endpoints return this shape:
 | `current_phase` | string | Current game phase (see [Game Flow](#game-flow)) |
 | `events` | array | Recipient-scoped game events emitted during this action (see [Events](#events)) |
 | `input_request` | object/null | Present only when the authenticated action performer may answer the pending request. It can be `null` even when `result_type` is `INPUT_NEEDED` if the action advanced to another player's decision |
-| `winner` | string/null | `"RED"` or `"BLUE"` when `result_type` is `GAME_OVER` |
+| `winner` | string/null | `"RED"`/`"BLUE"` for a team victory or a hero ID for an individual victory when `result_type` is `GAME_OVER` |
 
 ---
 
@@ -540,7 +540,7 @@ Sent on connection, on `GET_VIEW` requests, and broadcast to all connected clien
 
 The `input_request` key is present only when the receiving hero is allowed to answer the pending request. It is omitted for opponents and spectators. Team-level requests go only to that team, and simultaneous upgrade requests contain only the receiving hero's `players` entry. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
 
-The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"`. Check for its presence with `msg.get("winner")` rather than assuming it exists.
+The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID for an individual victory. Check for its presence with `msg.get("winner")` rather than assuming it exists.
 
 The `events` key is only present on **broadcasts that follow a mutation**. It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. Event metadata is projected independently for each recipient: hidden card IDs/names are `null` (or omitted from ID lists), and facedown mine placement reports `metadata.token_type: "mine"` outside the owning team. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
 
@@ -606,7 +606,7 @@ PLANNING → REVELATION → RESOLUTION → CLEANUP → LEVEL_UP → PLANNING
 | `RESOLUTION` | Heroes act in initiative order. The engine pauses for input requests (selecting targets, movement hexes, etc.). | Respond to `input_request`s via `submit_input`. Call `advance` when `result_type` is `ACTION_COMPLETE` or `PHASE_CHANGED` to continue. |
 | `CLEANUP` | Round-end bookkeeping (discard cards, reset effects). | Call `advance` to progress. |
 | `LEVEL_UP` | Heroes upgrade cards if they've earned enough gold. May require input for upgrade choices. | Respond to any `input_request`s, then `advance`. |
-| `GAME_OVER` | A team's life counters have reached 0. | Check the `winner` field. |
+| `GAME_OVER` | A victory condition has ended the game, such as depleted life counters or an individual hero victory. | Check the `winner` field. |
 
 ### Typical client loop
 
@@ -1273,7 +1273,7 @@ Events describe what happened during a game action. They are meant for animation
 | `TURN_ENDED` | A hero's turn ended | `actor_id` |
 | `TIE_BREAKER_FLIPPED` | The Tie Breaker coin flipped (after a cross-team tie winner's turn, or via Ignatia's ultimate) | `metadata.tie_breaker_team`, `metadata.coin_face` |
 | `RUNES_PLACED` | A hero's rune slots changed (Snorri) | `actor_id`, `metadata.rune_slots` (the new arrangement, e.g. `{"1": "axe", "2": "bird", "3": "anvil", "4": "horn"}`) |
-| `GAME_OVER` | The game ended | `metadata.winner` |
+| `GAME_OVER` | The game ended | `metadata.winner`, `metadata.winner_type` (`TEAM` or `HERO`), `metadata.condition` |
 
 ### Using events for animation
 

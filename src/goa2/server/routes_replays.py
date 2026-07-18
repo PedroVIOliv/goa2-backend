@@ -161,7 +161,11 @@ def get_replay_state(
         ) from e
 
     state = session.state
-    winner = state.winner.value if state.winner else None
+    winner: str | None
+    if state.individual_winner_id is not None:
+        winner = str(state.individual_winner_id)
+    else:
+        winner = state.winner.value if state.winner else None
     return {
         "view": build_view(state, reveal_all=True),
         "position": {

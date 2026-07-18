@@ -142,6 +142,33 @@ def test_completed_game_reports_winner_after_restart(tmp_path):
             assert message["winner"] == "RED"
 
 
+def test_completed_solo_game_reports_hero_winner_after_restart(tmp_path):
+    """An individual winner survives persistence and both client transports."""
+    from goa2.domain.models import GamePhase
+
+    save_dir = str(tmp_path)
+    with _make_client(save_dir) as client1:
+        data = _create_game(client1)
+        game_id = data["game_id"]
+        spectator_token = data["spectator_token"]
+        game = client1.app.state.registry.get(game_id)
+        game.session.state.phase = GamePhase.GAME_OVER
+        game.session.state.individual_winner_id = "hero_arien"
+        game.session.state.victory_condition = "TEST_SOLO"
+        game.session.state.execution_stack.clear()
+        client1.app.state.registry.save_game(game_id)
+
+    with _make_client(save_dir) as client2:
+        response = client2.get(f"/games/{game_id}", headers=_auth(spectator_token))
+        assert response.status_code == 200
+        assert response.json()["winner"] == "hero_arien"
+
+        with client2.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as websocket:
+            message = websocket.receive_json()
+            assert message["type"] == "STATE_UPDATE"
+            assert message["winner"] == "hero_arien"
+
+
 def test_committed_card_survives_restart(tmp_path):
     """Commit a card, restart, verify the card is committed."""
     save_dir = str(tmp_path)

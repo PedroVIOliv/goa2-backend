@@ -2099,13 +2099,26 @@ class TriggerGameOverStep(GameStep):
     """
 
     type: StepType = StepType.TRIGGER_GAME_OVER
-    winner: TeamColor
+    winner: TeamColor | None = None
+    individual_winner_id: HeroID | None = None
     condition: str
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        logger.debug(f"   [GAME OVER] Victory for {self.winner.name}! Reason: {self.condition}")
+        if (self.winner is None) == (self.individual_winner_id is None):
+            raise ValueError("TriggerGameOverStep requires exactly one team or individual winner")
+
+        if self.individual_winner_id is not None:
+            winner = str(self.individual_winner_id)
+            winner_type = "HERO"
+        else:
+            assert self.winner is not None
+            winner = self.winner.value
+            winner_type = "TEAM"
+
+        logger.debug(f"   [GAME OVER] Victory for {winner}! Reason: {self.condition}")
 
         state.winner = self.winner
+        state.individual_winner_id = self.individual_winner_id
         state.victory_condition = self.condition
         state.phase = GamePhase.GAME_OVER
 
@@ -2119,7 +2132,8 @@ class TriggerGameOverStep(GameStep):
                 GameEvent(
                     event_type=GameEventType.GAME_OVER,
                     metadata={
-                        "winner": self.winner.name,
+                        "winner": winner,
+                        "winner_type": winner_type,
                         "condition": self.condition,
                     },
                 )

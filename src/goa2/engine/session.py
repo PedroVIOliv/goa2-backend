@@ -243,7 +243,9 @@ class GameSession:
         )
 
     def _determine_winner(self) -> str | None:
-        # Authoritative: TriggerGameOverStep sets state.winner for all victory types
+        # Authoritative: TriggerGameOverStep records an individual or team winner.
+        if self.state.individual_winner_id is not None:
+            return str(self.state.individual_winner_id)
         if self.state.winner is not None:
             return self.state.winner.value
 

@@ -148,13 +148,13 @@ is adjacent in the move direction, +2 attack; else move stands, no attack.
 - Cutter picks an enemy hero in radius; **that hero's player** chooses A or B.
 - A → Cutter places the hero on an empty hex in radius.
 - B → Cutter gains 2 (X) / 3 (Fistful) coins.
-- Fistful at ≥13 coins → win-check fires (**stubbed**: event/flag only, game does not end).
+- Fistful at ≥13 coins after choosing the coin option → Cutter wins alone and the game ends immediately.
 
 **Should NOT do**
 - Target a minion / friendly / out-of-radius hero.
 - Let Cutter make the A/B choice (must be the enemy hero's player).
 - Place onto an occupied/obstacle hex or outside radius.
-- Trigger the win below 13 coins; or actually end the game at 13 (stub only).
+- Trigger the win below 13 coins, or when the enemy chooses the placement option.
 
 ## 7. Grappling Bolt — pull self to an obstacle
 

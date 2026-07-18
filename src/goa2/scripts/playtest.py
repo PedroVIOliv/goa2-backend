@@ -1291,7 +1291,15 @@ def run_playtest():
     red_lives = red_team.life_counters if red_team else 0
     blue_lives = blue_team.life_counters if blue_team else 0
 
-    if red_team and blue_team:
+    if state.individual_winner_id is not None:
+        winner = str(state.individual_winner_id)
+        victory_text = f"{winner} WINS ALONE!"
+        print(f"\n  {Colors.YELLOW}{Colors.BOLD}{victory_text}{Colors.RESET}")
+    elif state.winner is not None:
+        winner = state.winner.value
+        color = Colors.RED if state.winner == TeamColor.RED else Colors.BLUE
+        print(f"\n  {color}{Colors.BOLD}{winner} TEAM WINS!{Colors.RESET}")
+    elif red_team and blue_team:
         if red_team.life_counters <= 0:
             winner = "BLUE"
             print(f"\n  {Colors.BLUE}{Colors.BOLD}BLUE TEAM WINS!{Colors.RESET}")

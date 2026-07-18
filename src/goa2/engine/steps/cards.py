@@ -1575,14 +1575,7 @@ class GainCoinsStep(GameStep):
 
 
 class CheckSoloWinStep(GameStep):
-    """Cutter's "A Fistful of Coins" alternate victory check (STUBBED).
-
-    Card text: "If you have 13 or more coins, you alone win the game." The engine
-    only models team victories today (``state.winner`` is a ``TeamColor``), so we
-    do NOT end the game here. Instead, when the hero's gold reaches the threshold
-    we record it on ``state.solo_win_pending`` so the kit can ship and the real
-    individual-win path can be wired later. Below the threshold this is a no-op.
-    """
+    """Resolve Cutter's alternate victory after A Fistful of Coins gains coins."""
 
     type: StepType = StepType.CHECK_SOLO_WIN
     hero_key: str = ""  # context key → hero ID (falls back to current actor)
@@ -1599,12 +1592,22 @@ class CheckSoloWinStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
         if hero.gold >= self.threshold:
-            # TODO: wire a real individual victory (TriggerGameOverStep with a
-            # single-hero winner). Stubbed: record the pending solo win only.
-            state.solo_win_pending = str(hero_id)
             logger.debug(
-                f"   [SOLO WIN] {hero_id} reached {hero.gold} coins "
-                f"(>= {self.threshold}) — solo victory pending (stub)."
+                "   [SOLO WIN] %s reached %s coins (>= %s)",
+                hero_id,
+                hero.gold,
+                self.threshold,
+            )
+            from goa2.engine.steps.combat import TriggerGameOverStep
+
+            return StepResult(
+                is_finished=True,
+                new_steps=[
+                    TriggerGameOverStep(
+                        individual_winner_id=HeroID(str(hero_id)),
+                        condition="A_FISTFUL_OF_COINS",
+                    )
+                ],
             )
         return StepResult(is_finished=True)
 
