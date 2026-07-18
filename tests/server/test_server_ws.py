@@ -490,6 +490,119 @@ def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_dat
     assert spectator_event["metadata"]["token_type"] == "mine"
 
 
+def test_ws_broadcast_captures_one_immutable_state_snapshot(client, game_data):
+    import asyncio
+
+    from goa2.server.ws import broadcast
+
+    class BlockingSocket:
+        def __init__(self, entered, release):
+            self.entered = entered
+            self.release = release
+            self.message = None
+
+        async def send_json(self, data):
+            self.message = data
+            self.entered.set()
+            await self.release.wait()
+
+    class RecordingSocket:
+        def __init__(self):
+            self.message = None
+
+        async def send_json(self, data):
+            self.message = data
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    state = game.session.state
+    original_turn = state.turn
+
+    async def scenario():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        first = BlockingSocket(entered, release)
+        second = RecordingSocket()
+        game.ws_connections = {
+            _token_for(game_data, "hero_arien"): first,
+            _token_for(game_data, "hero_wasp"): second,
+        }
+
+        task = asyncio.create_task(broadcast(game, client.app.state.registry))
+        await entered.wait()
+        # Simulate another request mutating live state while network I/O is
+        # stalled. Every recipient must still receive the pre-I/O snapshot.
+        state.turn = original_turn + 1
+        release.set()
+        await task
+        return first.message, second.message
+
+    first_message, second_message = asyncio.run(scenario())
+
+    assert first_message["view"]["turn"] == original_turn
+    assert second_message["view"]["turn"] == original_turn
+
+
+def test_ws_broadcasts_are_serialized_per_game(client, game_data):
+    import asyncio
+
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.server.ws import broadcast
+
+    class FirstSendBlocksSocket:
+        def __init__(self, entered, release):
+            self.entered = entered
+            self.release = release
+            self.messages = []
+
+        async def send_json(self, data):
+            self.messages.append(data)
+            if len(self.messages) == 1:
+                self.entered.set()
+                await self.release.wait()
+
+    game = client.app.state.registry.get(game_data["game_id"])
+
+    def event(sequence):
+        return GameEvent(
+            event_type=GameEventType.TURN_ENDED,
+            actor_id="hero_arien",
+            metadata={"sequence": sequence},
+        ).model_dump()
+
+    async def scenario():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        second_invoked = asyncio.Event()
+        socket = FirstSendBlocksSocket(entered, release)
+        game.ws_connections = {_token_for(game_data, "hero_arien"): socket}
+
+        first = asyncio.create_task(
+            broadcast(game, client.app.state.registry, events=[event("first")])
+        )
+        await entered.wait()
+
+        async def send_second():
+            second_invoked.set()
+            await broadcast(game, client.app.state.registry, events=[event("second")])
+
+        second = asyncio.create_task(send_second())
+        await second_invoked.wait()
+        await asyncio.sleep(0)
+        messages_while_first_is_blocked = len(socket.messages)
+
+        release.set()
+        await asyncio.gather(first, second)
+        return messages_while_first_is_blocked, socket.messages
+
+    blocked_count, messages = asyncio.run(scenario())
+
+    assert blocked_count == 1
+    assert [message["events"][0]["metadata"]["sequence"] for message in messages] == [
+        "first",
+        "second",
+    ]
+
+
 # ---- Game over tests ----
 
 

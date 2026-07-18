@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from goa2.domain.models import Hero
+from goa2.domain.models import Card, Hero
 
 HERO_DIFFICULTY_STARS = {
     # 1 Star
@@ -55,8 +55,46 @@ class HeroRegistry:
     _heroes: ClassVar[dict[str, Hero]] = {}
 
     @classmethod
-    def register(cls, hero: Hero):
+    def register(cls, hero: Hero) -> None:
+        """Register a hero definition while enforcing global card-ID uniqueness.
+
+        Several engine and visibility lifecycles intentionally use a bare card
+        ID as their key, so definitions cannot safely reuse an ID across heroes,
+        spells, or ultimate cards. Re-registering the same hero remains allowed
+        for tests and development reloads; its previous definition is excluded
+        from the collision check.
+        """
+        cards = cls._cards(hero)
+        incoming_ids: set[str] = set()
+        for card in cards:
+            card_id = str(card.id)
+            if card_id in incoming_ids:
+                raise ValueError(
+                    f"Card ID collision: {card_id!r} is defined more than once "
+                    f"by {hero.name!r}. Card IDs must be globally unique."
+                )
+            incoming_ids.add(card_id)
+
+        for existing_name, existing_hero in cls._heroes.items():
+            if existing_name == hero.name:
+                continue
+            existing_ids = {str(card.id) for card in cls._cards(existing_hero)}
+            collisions = incoming_ids & existing_ids
+            if collisions:
+                card_id = sorted(collisions)[0]
+                raise ValueError(
+                    f"Card ID collision: {card_id!r} is defined by both "
+                    f"{existing_name!r} and {hero.name!r}. Card IDs must be globally unique."
+                )
+
         cls._heroes[hero.name] = hero
+
+    @staticmethod
+    def _cards(hero: Hero) -> list[Card]:
+        cards = [*hero.deck, *hero.spells]
+        if hero.ultimate_card is not None:
+            cards.append(hero.ultimate_card)
+        return cards
 
     @classmethod
     def get(cls, name: str) -> Hero | None:

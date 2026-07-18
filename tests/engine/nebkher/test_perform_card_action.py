@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType, InputResponse
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -34,7 +35,7 @@ from goa2.domain.models.enums import StatType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.setup import GameSetup
 from goa2.engine.steps import PerformCardActionStep, PlaceMarkerStep, PlaceTokenStep
 from goa2.engine.steps.utility import SetContextFlagStep
@@ -150,6 +151,25 @@ def test_menu_routed_to_performer() -> None:
     state = _state()
     result = _run_perform(state, _card("enemy_attack_card"))
     assert result.input_request.player_id == "hero_actor"
+
+
+def test_invalid_action_rerequests_the_same_menu() -> None:
+    state = _state()
+    first = _run_perform(state, _card("enemy_attack_card"))
+    assert first.input_request is not None
+    expected_options = _option_ids(first)
+
+    submit_input(
+        state,
+        InputResponse(request_id=first.input_request.id, selection="NOT_AN_OPTION"),
+    )
+    retried = process_stack(state)
+
+    assert retried.input_request is not None
+    assert retried.input_request.request_type == InputRequestType.CHOOSE_ACTION
+    assert _option_ids(retried) == expected_options
+    assert len(state.execution_stack) == 1
+    assert isinstance(state.execution_stack[-1], PerformCardActionStep)
 
 
 def test_primary_defense_card_offers_only_non_defense_options() -> None:

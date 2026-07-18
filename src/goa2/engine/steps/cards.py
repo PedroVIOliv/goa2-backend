@@ -1954,11 +1954,26 @@ class PerformCardActionStep(GameStep):
                     }
                 )
 
+        def request_action() -> StepResult:
+            return StepResult(
+                requires_input=True,
+                input_request=create_input_request(
+                    request_type=InputRequestType.CHOOSE_ACTION,
+                    player_id=performer_id,
+                    prompt=f"Choose an action to perform on {card.name}",
+                    options=options,
+                ),
+            )
+
         if self.pending_input:
             choice_id = self.pending_input.get("selection")
             selected_opt = next((o for o in options if o["id"] == choice_id), None)
             if not selected_opt:
-                return StepResult(is_finished=True)
+                logger.debug(
+                    "   [PERFORM ANY] Rejected invalid action %r; re-requesting.", choice_id
+                )
+                self.pending_input = None
+                return request_action()
 
             act_type = cast(ActionType, selected_opt["type"])
             val = cast(int, selected_opt["value"])
@@ -1997,15 +2012,7 @@ class PerformCardActionStep(GameStep):
                 ],
             )
 
-        return StepResult(
-            requires_input=True,
-            input_request=create_input_request(
-                request_type=InputRequestType.CHOOSE_ACTION,
-                player_id=performer_id,
-                prompt=f"Choose an action to perform on {card.name}",
-                options=options,
-            ),
-        )
+        return request_action()
 
     def _build_action_steps(
         self,

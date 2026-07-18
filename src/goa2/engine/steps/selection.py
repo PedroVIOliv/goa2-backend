@@ -5,16 +5,16 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar
 
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 from goa2.domain.events import GameEvent, GameEventType
-from goa2.domain.hex import Hex
 from goa2.domain.input import (
     DONE,
     SKIP,
     InputOption,
     InputRequestType,
     create_input_request,
+    parse_hex_selection,
 )
 from goa2.domain.models import (
     ActionType,
@@ -351,11 +351,12 @@ class SelectStep(GameStep):
             # the stack and corrupt the game. Treat any coercion failure as an
             # invalid choice and re-request input.
             coercion_failed = False
-            if self.target_type == TargetType.HEX and isinstance(selection, dict):
-                try:
-                    selection = Hex(**selection)
-                except (TypeError, ValueError, ValidationError):
+            if self.target_type == TargetType.HEX:
+                parsed_hex = parse_hex_selection(selection)
+                if parsed_hex is None:
                     coercion_failed = True
+                else:
+                    selection = parsed_hex
             elif self.target_type == TargetType.NUMBER and selection is not None:
                 try:
                     selection = int(selection)

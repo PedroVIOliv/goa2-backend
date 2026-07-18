@@ -25,6 +25,20 @@ from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
 router = APIRouter()
 
+MUTATION_MESSAGE_TYPES = frozenset(
+    {
+        "SUBMIT_INPUT",
+        "COMMIT_CARD",
+        "UNCOMMIT_CARD",
+        "PASS_TURN",
+        "FINISH_PLANNING",
+        "ROLLBACK",
+        "CHEATS_GOLD",
+    }
+)
+
+CapturedBroadcast = list[tuple[str, WebSocket, dict[str, Any]]]
+
 
 def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
     """Build a STATE_UPDATE message for a specific player."""
@@ -53,6 +67,41 @@ async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
         return False
 
 
+def _capture_broadcast(
+    game: ManagedGame,
+    events: list[dict[str, Any]] | None = None,
+) -> CapturedBroadcast:
+    """Capture every recipient's scoped payload from one state snapshot.
+
+    Callers must hold ``game.lock`` so no mutation can interleave while the
+    player-specific views and event projections are being materialized.
+    """
+    messages: CapturedBroadcast = []
+    for token, ws in list(game.ws_connections.items()):
+        hero_id = game.player_tokens.get(token)
+        msg = _build_state_update(game, hero_id)
+        if events:
+            msg["events"] = events_for_viewer(events, game.session.state, hero_id)
+        messages.append((token, ws, msg))
+    return messages
+
+
+async def _send_captured_broadcast(
+    game: ManagedGame,
+    messages: CapturedBroadcast,
+) -> None:
+    """Send already-materialized payloads and prune failed connections."""
+    dead_connections: list[tuple[str, WebSocket]] = []
+    for token, ws, msg in messages:
+        if not await _send_json(ws, msg):
+            dead_connections.append((token, ws))
+    for token, ws in dead_connections:
+        # A reconnect may have replaced this failed socket while the broadcast
+        # was awaiting I/O. Never remove the newer connection by token alone.
+        if game.ws_connections.get(token) is ws:
+            game.ws_connections.pop(token, None)
+
+
 async def broadcast(
     game: ManagedGame,
     registry: GameRegistry,
@@ -65,21 +114,10 @@ async def broadcast(
     animations cannot expose hidden cards or facedown token identities.
     Connect/GET_VIEW updates pass nothing and stay event-free.
     """
-    dead_connections: list[tuple[str, WebSocket]] = []
-    # Snapshot the registry because a reconnect can replace a socket while a
-    # send yields control back to the event loop.
-    for token, ws in list(game.ws_connections.items()):
-        hero_id = game.player_tokens.get(token)
-        msg = _build_state_update(game, hero_id)
-        if events:
-            msg["events"] = events_for_viewer(events, game.session.state, hero_id)
-        if not await _send_json(ws, msg):
-            dead_connections.append((token, ws))
-    for token, ws in dead_connections:
-        # A reconnect may have replaced this failed socket while the broadcast
-        # was awaiting I/O. Never remove the newer connection by token alone.
-        if game.ws_connections.get(token) is ws:
-            game.ws_connections.pop(token, None)
+    async with game.outbound_lock:
+        async with game.lock:
+            messages = _capture_broadcast(game, events)
+        await _send_captured_broadcast(game, messages)
 
 
 def _log_ws_result(game: ManagedGame, result) -> None:
@@ -365,20 +403,20 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     # A player token owns one live connection. Register the new socket before
     # closing its predecessor so the old handler's cleanup cannot leave a gap;
     # identity-safe cleanup below ensures it cannot remove this replacement.
-    previous_websocket = game.ws_connections.get(token)
-    game.ws_connections[token] = websocket
-    if previous_websocket is not None and previous_websocket is not websocket:
-        await previous_websocket.close(
-            code=4002,
-            reason="Connection superseded by a newer session",
-        )
+    async with game.outbound_lock:
+        async with game.lock:
+            previous_websocket = game.ws_connections.get(token)
+            game.ws_connections[token] = websocket
+            initial = _build_state_update(game, hero_id if not is_spectator else None)
+        if previous_websocket is not None and previous_websocket is not websocket:
+            await previous_websocket.close(
+                code=4002,
+                reason="Connection superseded by a newer session",
+            )
+        await websocket.send_json(initial)
 
     if game.game_logger:
         game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
-
-    # Send initial state
-    initial = _build_state_update(game, hero_id if not is_spectator else None)
-    await websocket.send_json(initial)
 
     try:
         while True:
@@ -386,87 +424,77 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send_json({"type": "ERROR", "detail": "Invalid JSON"})
+                async with game.outbound_lock:
+                    await websocket.send_json({"type": "ERROR", "detail": "Invalid JSON"})
                 continue
 
             msg_type = data.get("type", "")
 
             if is_spectator and msg_type != "GET_VIEW":
-                await websocket.send_json(
-                    {"type": "ERROR", "detail": "Spectators can only GET_VIEW"}
-                )
+                async with game.outbound_lock:
+                    await websocket.send_json(
+                        {"type": "ERROR", "detail": "Spectators can only GET_VIEW"}
+                    )
                 continue
 
             try:
-                async with game.lock:
-                    if msg_type == "SUBMIT_INPUT":
-                        reply = await _handle_submit_input(game, hero_id, data)
-                    elif msg_type == "COMMIT_CARD":
-                        reply = await _handle_commit_card(game, hero_id, data)
-                    elif msg_type == "UNCOMMIT_CARD":
-                        reply = await _handle_uncommit_card(game, hero_id)
-                    elif msg_type == "PASS_TURN":
-                        reply = await _handle_pass_turn(game, hero_id)
-                    elif msg_type == "FINISH_PLANNING":
-                        reply = await _handle_finish_planning(game, hero_id)
-                    elif msg_type == "ROLLBACK":
-                        reply = await _handle_rollback(game, hero_id)
-                    elif msg_type == "CHEATS_GOLD":
-                        reply = await _handle_cheats_gold(game, hero_id, data)
-                    elif msg_type == "GET_VIEW":
-                        hid = hero_id if not is_spectator else None
-                        reply = _build_state_update(game, hid)
-                    else:
-                        reply = {
-                            "type": "ERROR",
-                            "detail": f"Unknown message type: {msg_type}",
-                        }
+                async with game.outbound_lock:
+                    async with game.lock:
+                        if msg_type == "SUBMIT_INPUT":
+                            reply = await _handle_submit_input(game, hero_id, data)
+                        elif msg_type == "COMMIT_CARD":
+                            reply = await _handle_commit_card(game, hero_id, data)
+                        elif msg_type == "UNCOMMIT_CARD":
+                            reply = await _handle_uncommit_card(game, hero_id)
+                        elif msg_type == "PASS_TURN":
+                            reply = await _handle_pass_turn(game, hero_id)
+                        elif msg_type == "FINISH_PLANNING":
+                            reply = await _handle_finish_planning(game, hero_id)
+                        elif msg_type == "ROLLBACK":
+                            reply = await _handle_rollback(game, hero_id)
+                        elif msg_type == "CHEATS_GOLD":
+                            reply = await _handle_cheats_gold(game, hero_id, data)
+                        elif msg_type == "GET_VIEW":
+                            hid = hero_id if not is_spectator else None
+                            reply = _build_state_update(game, hid)
+                        else:
+                            reply = {
+                                "type": "ERROR",
+                                "detail": f"Unknown message type: {msg_type}",
+                            }
 
-                # Auto-save after mutations
-                if msg_type in (
-                    "SUBMIT_INPUT",
-                    "COMMIT_CARD",
-                    "UNCOMMIT_CARD",
-                    "PASS_TURN",
-                    "FINISH_PLANNING",
-                    "ROLLBACK",
-                    "CHEATS_GOLD",
-                ):
-                    registry.save_game(game.game_id)
+                        # Materialize both the direct reply and every scoped
+                        # broadcast while they still describe this mutation.
+                        sender_reply = reply
+                        if reply.get("type") == "ACTION_RESULT":
+                            sender_reply = {
+                                **reply,
+                                "events": events_for_viewer(
+                                    reply.get("events", []), game.session.state, hero_id
+                                ),
+                            }
+                        messages = (
+                            _capture_broadcast(game, reply.get("events"))
+                            if msg_type in MUTATION_MESSAGE_TYPES
+                            else []
+                        )
 
-                # Send a recipient-scoped reply while retaining the internal
-                # events below for per-recipient broadcast projections.
-                sender_reply = reply
-                if reply.get("type") == "ACTION_RESULT":
-                    sender_reply = {
-                        **reply,
-                        "events": events_for_viewer(
-                            reply.get("events", []), game.session.state, hero_id
-                        ),
-                    }
-                await websocket.send_json(sender_reply)
+                    if msg_type in MUTATION_MESSAGE_TYPES:
+                        registry.save_game(game.game_id)
 
-                # Broadcast state after mutations. ``broadcast`` applies the
-                # visibility rules independently for every connection.
-                if msg_type in (
-                    "SUBMIT_INPUT",
-                    "COMMIT_CARD",
-                    "UNCOMMIT_CARD",
-                    "PASS_TURN",
-                    "FINISH_PLANNING",
-                    "ROLLBACK",
-                    "CHEATS_GOLD",
-                ):
-                    await broadcast(game, registry, events=reply.get("events"))
+                    await websocket.send_json(sender_reply)
+                    await _send_captured_broadcast(game, messages)
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError) as exc:
                 if game.game_logger:
                     game.game_logger.log_error(str(exc), hero_id)
-                await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                async with game.outbound_lock:
+                    await websocket.send_json({"type": "ERROR", "detail": str(exc)})
             except ValueError as exc:
                 if game.game_logger:
                     game.game_logger.log_error(str(exc), hero_id)
-                await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                async with game.outbound_lock:
+                    await websocket.send_json({"type": "ERROR", "detail": str(exc)})
 
     except WebSocketDisconnect:
         pass

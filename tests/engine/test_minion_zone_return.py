@@ -4,11 +4,12 @@ import pytest
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType, InputResponse
 from goa2.domain.models import Card, Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
 from goa2.domain.types import UnitID
-from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.steps import FinalizeHeroTurnStep, ReturnMinionToZoneStep
 
 
@@ -89,6 +90,34 @@ def test_team_choice_multiple_paths(zone_state):
     if result is not None:
         assert result["type"] == "SELECT_HEX"
         assert result["player_id"] == "team:RED"
+
+
+def test_malformed_return_hex_rerequests_without_losing_step(zone_state):
+    alternative = Hex(q=2, r=-1, s=-1)
+    zone_state.board.zones["battle_zone"].hexes.add(alternative)
+    zone_state.board.tiles[alternative] = Tile(hex=alternative, zone_id="battle_zone")
+
+    minion = create_minion("r1", TeamColor.RED)
+    zone_state.teams[TeamColor.RED].minions.append(minion)
+    outside = Hex(q=2, r=-2, s=0)
+    zone_state.move_unit(minion.id, outside)
+    push_steps(zone_state, [ReturnMinionToZoneStep()])
+
+    first = process_stack(zone_state).input_request
+    assert first is not None
+    assert first.request_type == InputRequestType.SELECT_HEX
+
+    submit_input(
+        zone_state,
+        InputResponse(request_id=first.id, selection={"q": 1}),
+    )
+    retried = process_stack(zone_state).input_request
+
+    assert retried is not None
+    assert retried.request_type == InputRequestType.SELECT_HEX
+    assert len(zone_state.execution_stack) == 1
+    assert isinstance(zone_state.execution_stack[-1], ReturnMinionToZoneStep)
+    assert zone_state.get_position(str(minion.id)) == outside
 
 
 def test_multiple_minions_tiebreaker_order(zone_state):

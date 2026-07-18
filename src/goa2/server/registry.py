@@ -29,6 +29,7 @@ class ManagedGame:
     hero_to_token: dict[str, str]  # hero_id -> token (reverse)
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    outbound_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_result: SessionResult | None = None
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None

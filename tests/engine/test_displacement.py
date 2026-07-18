@@ -2,10 +2,11 @@ import pytest
 
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType, InputResponse
 from goa2.domain.models import Hero, Minion, MinionType, Team, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
-from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.steps import ResolveDisplacementStep
 
 
@@ -111,6 +112,30 @@ def test_displacement_prompt(displacement_state):
     process_stack(displacement_state)  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == target
+
+
+def test_displacement_malformed_hex_rerequests_without_losing_step(displacement_state):
+    displacement_state.remove_entity("m_block")
+    push_steps(
+        displacement_state,
+        [ResolveDisplacementStep(displacements=[("m_disp", Hex(q=0, r=0, s=0))])],
+    )
+
+    first = process_stack(displacement_state).input_request
+    assert first is not None
+    assert first.request_type == InputRequestType.SELECT_HEX
+
+    submit_input(
+        displacement_state,
+        InputResponse(request_id=first.id, selection={"q": 1}),
+    )
+    retried = process_stack(displacement_state).input_request
+
+    assert retried is not None
+    assert retried.request_type == InputRequestType.SELECT_HEX
+    assert len(displacement_state.execution_stack) == 1
+    assert isinstance(displacement_state.execution_stack[-1], ResolveDisplacementStep)
+    assert displacement_state.get_position("m_disp") is None
 
 
 def test_displacement_multi_unit_selection(displacement_state):

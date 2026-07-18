@@ -10,7 +10,7 @@ from pydantic import Field
 from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputRequestType, create_input_request
+from goa2.domain.input import InputRequestType, create_input_request, parse_hex_selection
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -1583,17 +1583,18 @@ class ResolveDisplacementStep(GameStep):
 
         if self.pending_input:
             selection = self.pending_input.get("selection")
-            if selection:
-                target_hex = Hex(**selection)
-                if target_hex in candidates:
-                    logger.debug(f"   [DISPLACE] Team chose {target_hex} for {uid}")
-                    return StepResult(
-                        is_finished=True,
-                        new_steps=[
-                            PlaceUnitStep(unit_id=uid, target_hex_arg=target_hex),
-                            ResolveDisplacementStep(displacements=remaining),
-                        ],
-                    )
+            target_hex = parse_hex_selection(selection)
+            if target_hex in candidates:
+                logger.debug(f"   [DISPLACE] Team chose {target_hex} for {uid}")
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[
+                        PlaceUnitStep(unit_id=uid, target_hex_arg=target_hex),
+                        ResolveDisplacementStep(displacements=remaining),
+                    ],
+                )
+            logger.debug("   [DISPLACE] Rejected invalid hex %r; re-requesting.", selection)
+            self.pending_input = None
 
         if len(candidates) == 1:
             target = candidates[0]

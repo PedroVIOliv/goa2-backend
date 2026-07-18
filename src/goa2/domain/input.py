@@ -15,7 +15,9 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from goa2.domain.hex import Hex
 
 # Selection sentinels — the literal string values a client submits to skip or
 # finish an input request. These are part of the client contract; both the
@@ -23,6 +25,24 @@ from pydantic import BaseModel, ConfigDict, Field
 # to skip: a null selection fails the skip check and the step re-requests input.
 SKIP = "SKIP"  # Skip an optional (non-mandatory) selection.
 DONE = "DONE"  # Finish a multi-select once its minimum is satisfied.
+
+
+def parse_hex_selection(selection: Any) -> Hex | None:
+    """Parse a client hex selection without letting malformed input escape.
+
+    Input payloads deliberately keep ``selection`` open-ended, so the step that
+    issued a hex prompt must treat bad shapes and invalid cube coordinates as an
+    invalid choice and re-request input. Returning ``None`` gives specialized
+    steps the same safe coercion contract as ``SelectStep``.
+    """
+    if isinstance(selection, Hex):
+        return selection
+    if not isinstance(selection, dict):
+        return None
+    try:
+        return Hex.model_validate(selection)
+    except (TypeError, ValueError, ValidationError):
+        return None
 
 
 class InputRequestType(StrEnum):

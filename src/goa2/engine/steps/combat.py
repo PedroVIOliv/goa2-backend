@@ -10,7 +10,12 @@ from pydantic import Field, ValidationError
 from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.hex import Hex
-from goa2.domain.input import InputOption, InputRequestType, create_input_request
+from goa2.domain.input import (
+    InputOption,
+    InputRequestType,
+    create_input_request,
+    parse_hex_selection,
+)
 from goa2.domain.models import (
     CardColor,
     GamePhase,
@@ -1937,17 +1942,17 @@ class ReturnMinionToZoneStep(GameStep):
         # If pending input, process it
         if self.pending_input:
             selection = self.pending_input.get("selection")
-            if selection:
-                target_hex = Hex(**selection) if isinstance(selection, dict) else selection
-
-                if target_hex in candidates:
-                    logger.debug(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
-                    new_steps: list[GameStep] = [
-                        PlaceUnitStep(unit_id=minion_id, target_hex_arg=target_hex),
-                    ]
-                    if remaining:
-                        new_steps.append(ReturnMinionToZoneStep())
-                    return StepResult(is_finished=True, new_steps=new_steps)
+            target_hex = parse_hex_selection(selection)
+            if target_hex in candidates:
+                logger.debug(f"   [ZONE] Returning {minion_id} to zone at {target_hex}")
+                new_steps: list[GameStep] = [
+                    PlaceUnitStep(unit_id=minion_id, target_hex_arg=target_hex),
+                ]
+                if remaining:
+                    new_steps.append(ReturnMinionToZoneStep())
+                return StepResult(is_finished=True, new_steps=new_steps)
+            logger.debug("   [ZONE] Rejected invalid hex %r; re-requesting.", selection)
+            self.pending_input = None
 
         # Auto-move if only one candidate
         if len(candidates) == 1:

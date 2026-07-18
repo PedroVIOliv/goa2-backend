@@ -252,7 +252,7 @@ def create_brogan() -> Hero:
             effect_text="Target a unit adjacent to you. After the attack: Move into the space it occupied, if able.",
         ),
         Card(
-            id="shield",
+            id="brogan_shield",
             name="Shield",
             image_id="GreenIA",
             tier=CardTier.I,
