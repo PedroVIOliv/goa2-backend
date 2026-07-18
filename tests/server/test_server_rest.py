@@ -840,6 +840,35 @@ def test_can_commit_second_card_flag(client, emmitt_game):
     assert _hero_view(client, game_id, em_token, "hero_emmitt")["can_commit_second_card"] is False
 
 
+def test_two_committed_cards_are_both_exposed_during_planning(client, emmitt_game):
+    """The planning view uses extra_turn_card for the buffered first commit."""
+    game_id = emmitt_game["game_id"]
+    em_token = _token_for(emmitt_game, "hero_emmitt")
+    wa_token = _token_for(emmitt_game, "hero_wasp")
+
+    client.post(
+        f"/games/{game_id}/cards", json={"card_id": "reverse_time"}, headers=_auth(em_token)
+    )
+    after_first = _hero_view(client, game_id, em_token, "hero_emmitt")
+    assert after_first["current_turn_card"]["id"] == "reverse_time"
+    assert after_first["extra_turn_card"] is None
+
+    client.post(
+        f"/games/{game_id}/cards",
+        json={"card_id": "unstable_timeline"},
+        headers=_auth(em_token),
+    )
+
+    owner_view = _hero_view(client, game_id, em_token, "hero_emmitt")
+    assert owner_view["current_turn_card"]["id"] == "unstable_timeline"
+    assert owner_view["extra_turn_card"]["id"] == "reverse_time"
+
+    opponent_view = _hero_view(client, game_id, wa_token, "hero_emmitt")
+    assert opponent_view["current_turn_card"]["is_facedown"] is True
+    assert opponent_view["extra_turn_card"]["is_facedown"] is True
+    assert "id" not in opponent_view["extra_turn_card"]
+
+
 def test_can_commit_second_card_false_for_normal_hero(client, game_data):
     """A hero without the two-card ultimate never sees the flag set."""
     game_id = game_data["game_id"]

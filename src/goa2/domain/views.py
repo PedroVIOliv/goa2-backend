@@ -182,6 +182,14 @@ def _build_hero_view(
         state, hero.id
     )
 
+    # play_card() points current_turn_card at the latest commit. While a
+    # two-card hero is still in Planning, expose the first buffered commit in
+    # the existing extra_turn_card slot so clients can render both cards.
+    # Engine state keeps extra_turn_card reserved for the revealed second card.
+    extra_turn_card = hero.extra_turn_card
+    if state.phase == GamePhase.PLANNING and hero.id in state.pending_second_cards:
+        extra_turn_card = state.pending_inputs.get(hero.id)
+
     return {
         "id": hero.id,
         "name": hero.name,
@@ -228,12 +236,11 @@ def _build_hero_view(
             if hero.current_turn_card
             else None
         ),
-        # Second revealed card (Emmitt's Alternative Timelines): set only
-        # between revelation and the retrieve choice; face-up, so public
+        # Other committed card (Emmitt's Alternative Timelines): the first
+        # commit during two-card Planning, then the second revealed card until
+        # the retrieve choice.
         "extra_turn_card": (
-            _build_card_view(hero.extra_turn_card, is_own_hero=is_own_hero)
-            if hero.extra_turn_card
-            else None
+            _build_card_view(extra_turn_card, is_own_hero=is_own_hero) if extra_turn_card else None
         ),
         # Two-card Planning (Emmitt's Alternative Timelines): True only for the
         # requesting hero while they may still commit a second card or call

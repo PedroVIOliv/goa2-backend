@@ -254,6 +254,9 @@ If the hero played two cards, immediately after revelation the server issues a
 mandatory `SELECT_CARD` input request (routed to that hero) to retrieve one of
 the two revealed cards back to hand; the other resolves normally. Both cards
 are visible to all players until the choice is made (see `extra_turn_card`).
+During PLANNING after the second commit, `current_turn_card` contains the latest
+commit and `extra_turn_card` contains the first buffered commit. A single commit
+does not populate `extra_turn_card`. Facedown-card visibility rules still apply.
 
 **Request body:** empty
 
@@ -717,6 +720,11 @@ Each team contains:
   "ultimate_card": null
 }
 ```
+
+For heroes that can commit two cards, `extra_turn_card` also exposes the first
+buffered card during PLANNING after the second card is committed;
+`current_turn_card` is the latest commit. Both remain facedown, so only the
+owning hero receives their identities.
 
 **`rune_slots`** (object, `{slot_index: rune_type}` with string keys `"1"`-`"4"`) —
 Snorri's rune slots. Absent/empty slots are simply missing keys (default `{}`).
