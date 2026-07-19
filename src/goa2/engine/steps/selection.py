@@ -824,6 +824,7 @@ class ResolveTieBreakerStep(GameStep):
             state.unresolved_hero_ids.remove(HeroID(winner_id))
 
         state.current_actor_id = HeroID(winner_id)
+        state.resolution_owner_id = HeroID(winner_id)
 
         new_steps: list[GameStep] = []
         if winner_id not in state.entity_locations:

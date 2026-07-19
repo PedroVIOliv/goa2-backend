@@ -8,6 +8,7 @@ not team affiliation (allies see enemies' faceup cards too).
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from goa2.domain.models.base import Turret
@@ -16,11 +17,16 @@ from goa2.domain.models.enums import GamePhase, StatType
 from goa2.domain.models.spell import SpellCard
 from goa2.domain.models.unit import Hero, HeroPiece, Minion
 from goa2.domain.state import GameState
+from goa2.domain.time_control import public_clock_view
 from goa2.domain.types import BoardEntityID, HeroID
 
 
 def build_view(
-    state: GameState, for_hero_id: HeroID | None = None, *, reveal_all: bool = False
+    state: GameState,
+    for_hero_id: HeroID | None = None,
+    *,
+    reveal_all: bool = False,
+    now_ms: int | None = None,
 ) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
@@ -71,7 +77,7 @@ def build_view(
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
 
-    return {
+    view = {
         "phase": state.phase.value,
         "round": state.round,
         "turn": state.turn,
@@ -95,6 +101,18 @@ def build_view(
         "board_entities": board_entities_view,
         "hero_pieces": hero_pieces_view,
     }
+    view["time_control"] = (
+        state.time_control.model_dump(mode="json") if state.time_control is not None else None
+    )
+    view["clock"] = (
+        public_clock_view(
+            state.clock,
+            now_ms if now_ms is not None else time.time_ns() // 1_000_000,
+        )
+        if state.clock is not None
+        else None
+    )
+    return view
 
 
 def _build_unresolved_cards_view(

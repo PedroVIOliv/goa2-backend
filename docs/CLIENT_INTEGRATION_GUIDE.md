@@ -55,6 +55,31 @@ Response:
 
 Save these tokens — they are the only way to authenticate.
 
+Games are untimed unless creation (or draft-lobby settings) includes an explicit
+`time_control` object:
+
+```json
+{
+  "planning_allowance_seconds": 60,
+  "resolution_allowance_seconds": 45,
+  "response_grant_seconds": 15,
+  "initial_time_bank_seconds": 120,
+  "time_bank_increment_seconds": 10,
+  "max_time_bank_seconds": 240,
+  "upgrade_allowance_seconds": 45,
+  "automatic_turn_limit": 2
+}
+```
+
+Time fields are integers from 0 through 86,400, `automatic_turn_limit` is an
+integer from 0 through 100, and the maximum Time Bank must be at least its
+initial value. The automatic limit counts consecutive shared turns completed
+without an accepted human gameplay decision; `0` disables inactivity
+suspension. A timed game stays in its public ready check until
+every player readies through `POST /games/{game_id}/ready` with
+`{"ready":true}`, or the WebSocket `SET_READY` message below. Game decisions
+are rejected until then. Disconnecting does not pause a running clock.
+
 ### 3. Get the game view
 
 ```bash
@@ -495,6 +520,19 @@ Request a fresh state update (available to both players and spectators):
 }
 ```
 
+#### `SET_READY`
+
+Timed matches only. Players may toggle readiness until the final player readies;
+that final mutation starts every incomplete Planning clock together. Spectators
+cannot ready.
+
+```json
+{
+  "type": "SET_READY",
+  "ready": true
+}
+```
+
 #### `ROLLBACK`
 
 Rollback the current actor's resolution to the action choice. Only the player the current input request is addressed to (its `player_id`) can send this, and only when `can_rollback` is `true`. Under Hanu's ultimate (action control) that is the controller, not the controlled hero.
@@ -659,9 +697,26 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "markers": { ... },
   "tokens": [ ... ],
   "board_entities": [ ... ],
-  "hero_pieces": { ... }
+  "hero_pieces": { ... },
+  "time_control": null,
+  "clock": null
 }
 ```
+
+For a timed match, `time_control` is the immutable creation configuration and
+`clock` is a public snapshot containing `status`, `server_now_ms`, the shared
+`turn_key`, `ready_hero_ids`, active clock kind/targets, and every hero's
+remaining Planning, Resolution, Response, Upgrade, and Time Bank milliseconds.
+Clients should extrapolate running values from `server_now_ms`; the server does
+not broadcast one-second ticks. Timeout outcomes arrive as `TIMER_EXPIRED`
+events, while the authoritative state update contains the resulting automatic
+decision.
+
+After `automatic_turn_limit` consecutive fully automatic shared turns, the
+clock status becomes `SUSPENDED_FOR_INACTIVITY` before the next Planning phase.
+Deadline tasks stop and no more fallback choices are made. Every player must
+ready again through the same REST endpoint or WebSocket message; the completed
+ready check starts that pending shared turn with its normal fresh allowances.
 
 ### Top-level fields
 
@@ -681,6 +736,8 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 | `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
+| `time_control` | object/null | Immutable time-control values, or null for an untimed match |
+| `clock` | object/null | Public authoritative clock snapshot, or null for an untimed match |
 
 ### Team data
 
@@ -1395,7 +1452,9 @@ All match settings (map, game type, draft mode, cheats) default at creation but 
   "map_name": "forgotten_island",
   "game_type": "LONG",
   "draft_mode": "sequential_ban_pick",
-  "cheats_enabled": false
+  "cheats_enabled": false,
+  "max_hero_stars": 4,
+  "time_control": null
 }
 ```
 
@@ -1407,9 +1466,23 @@ are left unchanged. Broadcasts a `STATE_UPDATE` like any other mutation:
   "map_name": "forgotten_island",
   "game_type": "QUICK",
   "draft_mode": "sequential_ban_pick",
-  "cheats_enabled": true
+  "cheats_enabled": true,
+  "max_hero_stars": 3,
+  "time_control": {
+    "planning_allowance_seconds": 60,
+    "resolution_allowance_seconds": 45,
+    "response_grant_seconds": 15,
+    "initial_time_bank_seconds": 120,
+    "time_bank_increment_seconds": 10,
+    "max_time_bank_seconds": 240,
+    "upgrade_allowance_seconds": 45,
+    "automatic_turn_limit": 2
+  }
 }
 ```
+
+Sending `"time_control": null` explicitly disables clocks; omitting it leaves
+the current lobby setting unchanged.
 
 At `start`, the number of **assigned** players (those on a team) must be a supported match size
 (2, 4, 5, or 6) — otherwise `start` returns `400`. Each team must have at least one player and a

@@ -29,6 +29,7 @@ from goa2.server.routes_bug_reports import public_router as bug_reports_router
 from goa2.server.routes_draft import router as draft_router
 from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
+from goa2.server.time_control import resume_timers, stop_timers
 from goa2.server.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
@@ -75,11 +76,13 @@ async def lifespan(app: FastAPI):
         logger.info("Restored %d game(s) from %s", count, save_dir)
     app.state.registry = registry
     app.state.draft_registry = DraftRegistry()
+    await resume_timers(registry)
 
     cleanup_task = asyncio.create_task(_cleanup_loop(registry))
     try:
         yield
     finally:
+        await stop_timers(registry)
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup_task

@@ -111,7 +111,12 @@ class GameSession:
         if self._rollback_snapshot is None:
             raise ValueError("No rollback snapshot available")
 
+        live_time_control = self.state.time_control
+        live_clock = self.state.clock
         self.state = GameState.model_validate(self._restore_snapshot(self._rollback_snapshot))
+        # A rules rollback never refunds elapsed clock time.
+        self.state.time_control = live_time_control
+        self.state.clock = live_clock
         # Don't clear snapshot — player may rollback again after re-choosing
 
         from goa2.engine.handler import process_stack
@@ -135,6 +140,8 @@ class GameSession:
         """
         snap = self.state.model_dump(mode="json")
         snap.pop("board", None)
+        snap.pop("time_control", None)
+        snap.pop("clock", None)
         return snap
 
     def _restore_snapshot(self, snapshot: dict) -> dict:
@@ -145,6 +152,10 @@ class GameSession:
         """
         data = dict(snapshot)
         data["board"] = self.state.board.model_dump(mode="json")
+        data["time_control"] = (
+            self.state.time_control.model_dump(mode="json") if self.state.time_control else None
+        )
+        data["clock"] = self.state.clock.model_dump(mode="json") if self.state.clock else None
         return data
 
     def _manage_rollback(self, stack_result) -> None:

@@ -389,6 +389,7 @@ def resolve_next_action(state: GameState):
     if len(tied_hero_ids) == 1:
         hero_id = tied_hero_ids[0]
         state.current_actor_id = hero_id
+        state.resolution_owner_id = hero_id
 
         # Remove from pool immediately (Acting/Resolved)
         if hero_id in state.unresolved_hero_ids:

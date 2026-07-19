@@ -31,7 +31,18 @@ from goa2.server.models import (
     GameViewResponse,
     GiveGoldRequest,
     PlayerToken,
+    ReadyRequest,
     SubmitInputRequest,
+)
+from goa2.server.time_control import (
+    client_decision_timed_out,
+    finalize_timed_mutation,
+    mark_human_action,
+    merge_timer_events,
+    now_ms,
+    prepare_timed_mutation,
+    set_player_ready,
+    stop_clock_for_accepted_decision,
 )
 from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
@@ -103,6 +114,7 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
         body.cheats_enabled,
         body.game_type,
         seed=seed,
+        time_control=body.time_control,
     )
     session = GameSession(state)
 
@@ -123,6 +135,7 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
             game_type=body.game_type,
             cheats=body.cheats_enabled,
             seed=seed,
+            time_control=body.time_control,
         )
 
     return CreateGameResponse(
@@ -132,6 +145,46 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
         ],
         spectator_token=game.spectator_token,
     )
+
+
+@router.post("/{game_id}/ready", response_model=GameViewResponse)
+async def set_ready(
+    game_id: str,
+    body: ReadyRequest,
+    player: PlayerDep,
+    registry: RegistryDep,
+) -> GameViewResponse:
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot change ready state")
+    game = registry.get(game_id)
+    async with game.outbound_lock:
+        async with game.lock:
+            timestamp = now_ms()
+            set_player_ready(game, player.hero_id, body.ready, timestamp)
+            finalize_timed_mutation(game, registry, timestamp)
+            state = game.session.state
+            response = GameViewResponse(
+                view=build_view(state, for_hero_id=HeroID(player.hero_id), now_ms=timestamp),
+                input_request=input_request_for_viewer(
+                    game.last_result.input_request if game.last_result else None,
+                    state,
+                    player.hero_id,
+                ),
+                winner=game.last_result.winner if game.last_result else None,
+            )
+
+            # REST and WebSocket ready actions share the same public, atomic
+            # transition. Materialize recipient-scoped updates before releasing
+            # the game lock so every connected client sees the exact state that
+            # this response reports.
+            from goa2.server.ws import _capture_broadcast
+
+            messages = _capture_broadcast(game)
+
+        from goa2.server.ws import _send_captured_broadcast
+
+        await _send_captured_broadcast(game, messages)
+    return response
 
 
 @router.get("/{game_id}", response_model=GameViewResponse)
@@ -165,6 +218,9 @@ async def commit_card(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
+        if client_decision_timed_out(timer_events, hero_id=player.hero_id):
+            raise ValueError("Decision already timed out")
         session = game.session
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
@@ -190,14 +246,21 @@ async def commit_card(
                 raise AlreadyCommittedError(player.hero_id)
 
         rec_round, rec_turn = session.state.round, session.state.turn
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            completes_planning=True,
+        )
         result = session.commit_card(HeroID(player.hero_id), card)
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_commit(player.hero_id, body.card_id, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -216,6 +279,9 @@ async def uncommit_card(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
+        if client_decision_timed_out(timer_events, hero_id=player.hero_id):
+            raise ValueError("Decision already timed out")
         session = game.session
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
@@ -226,17 +292,26 @@ async def uncommit_card(
         # between the phase check and the session call.
         state = session.state
         hid = HeroID(player.hero_id)
+        if state.clock and state.clock.players[hid].planning_locked_by_timeout:
+            raise ValueError("Planning is locked after an automatic timeout decision")
         card = state.pending_second_cards.get(hid) or state.pending_inputs.get(hid)
         rec_round, rec_turn = state.round, state.turn
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            completes_planning=True,
+        )
         result = session.uncommit_card(hid)
+        mark_human_action(game)
         # Record only after success so a failed attempt never lands in the replay.
         if game.replay_recorder:
             game.replay_recorder.record_uncommit(hid, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         if game.game_logger and card is not None:
             game.game_logger.log_card_uncommit(hid, card.id)
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -251,19 +326,29 @@ async def pass_turn(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
+        if client_decision_timed_out(timer_events, hero_id=player.hero_id):
+            raise ValueError("Decision already timed out")
         session = game.session
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
         rec_round, rec_turn = session.state.round, session.state.turn
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            completes_planning=True,
+        )
         result = session.pass_turn(HeroID(player.hero_id))
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_pass(player.hero_id, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -280,17 +365,27 @@ async def planning_done(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
+        if client_decision_timed_out(timer_events, hero_id=player.hero_id):
+            raise ValueError("Decision already timed out")
         session = game.session
         if session.current_phase != GamePhase.PLANNING:
             raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
         rec_round, rec_turn = session.state.round, session.state.turn
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            completes_planning=True,
+        )
         result = session.finish_planning(HeroID(player.hero_id))
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_finish_planning(player.hero_id, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -306,6 +401,13 @@ async def submit_input(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
+        if client_decision_timed_out(
+            timer_events,
+            hero_id=player.hero_id,
+            request_id=body.request_id,
+        ):
+            raise ValueError("Decision already timed out")
         # Turn validation (skip for simultaneous phases like UPGRADE_PHASE)
         if game.last_result and game.last_result.input_request:
             expected = game.last_result.input_request.player_id
@@ -325,12 +427,19 @@ async def submit_input(
         # Record only after the engine accepts the input, tagged with the
         # pre-advance round/turn, so a rejected selection leaves no phantom decision.
         rec_round, rec_turn = game.session.state.round, game.session.state.turn
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            request_id=body.request_id,
+        )
         result = game.session.advance(response)
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_input(player.hero_id, body.selection, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -345,10 +454,13 @@ async def advance(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
         result = game.session.advance()
+        mark_human_action(game)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -363,6 +475,7 @@ async def rollback_action(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
         session = game.session
         if session.state.current_actor_id is None:
             raise HTTPException(status_code=400, detail="No active resolution to rollback")
@@ -371,15 +484,23 @@ async def rollback_action(
         if game.current_responder != player.hero_id:
             raise HTTPException(status_code=403, detail="Only the current actor can rollback")
         rec_round, rec_turn = session.state.round, session.state.turn
+        request = game.last_result.input_request if game.last_result else None
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            request_id=request.id if request else None,
+        )
         try:
             result = session.rollback()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_rollback(player.hero_id, rec_round, rec_turn)
+        result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -395,6 +516,7 @@ async def give_gold_cheat(
     game = registry.get(game_id)
 
     async with game.lock:
+        timer_events = prepare_timed_mutation(game, registry=registry)
         session = game.session
 
         if not session.state.cheats_enabled:
@@ -410,7 +532,13 @@ async def give_gold_cheat(
         if body.amount <= 0:
             raise HTTPException(status_code=400, detail="Amount must be a positive integer")
 
+        stop_clock_for_accepted_decision(
+            game,
+            hero_id=player.hero_id,
+            completes_planning=True,
+        )
         hero.gold += body.amount
+        mark_human_action(game)
         if game.replay_recorder:
             game.replay_recorder.record_cheat_gold(
                 body.hero_id, body.amount, session.state.round, session.state.turn
@@ -425,7 +553,7 @@ async def give_gold_cheat(
         result = ActionResultResponse(
             result_type="ACTION_COMPLETE",
             current_phase=session.current_phase.value,
-            events=[event.model_dump()],
+            events=[*[ev.model_dump() for ev in timer_events], event.model_dump()],
             input_request=None,
             winner=None,
         )
@@ -433,5 +561,5 @@ async def give_gold_cheat(
         if game.game_logger:
             game.game_logger.log_events([event.model_dump()])
 
-        registry.save_game(game_id)
+        finalize_timed_mutation(game, registry)
         return result

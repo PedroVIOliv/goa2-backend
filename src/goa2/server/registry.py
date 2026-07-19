@@ -34,6 +34,7 @@ class ManagedGame:
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None
     replay_recorder: ReplayRecorder | None = None
+    timer_task: asyncio.Task[None] | None = None
 
     @property
     def current_responder(self) -> str | None:
@@ -110,7 +111,9 @@ class GameRegistry:
         return None
 
     def remove(self, game_id: str) -> None:
-        self._games.pop(game_id, None)
+        game = self._games.pop(game_id, None)
+        if game is not None and game.timer_task is not None:
+            game.timer_task.cancel()
         if self._save_dir:
             from goa2.engine.persistence import delete_game_save
 
@@ -196,7 +199,7 @@ class GameRegistry:
                     removed += 1
             else:
                 # No save file — remove from memory
-                self._games.pop(game_id, None)
+                self.remove(game_id)
                 removed += 1
 
         return removed
@@ -222,3 +225,7 @@ class GameRegistry:
 
     def __len__(self) -> int:
         return len(self._games)
+
+    def all_games(self) -> list[ManagedGame]:
+        """Return a stable snapshot used to resume/cancel deadline tasks."""
+        return list(self._games.values())

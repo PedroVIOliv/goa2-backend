@@ -41,6 +41,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from goa2.domain.time_control import TimeControlConfig
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
@@ -120,6 +121,7 @@ class ReplayRecorder:
         game_type: str,
         cheats: bool,
         seed: int,
+        time_control: TimeControlConfig | None = None,
     ) -> None:
         """Write the setup header. No-op if the log already has a header."""
         if self.has_setup:
@@ -135,6 +137,9 @@ class ReplayRecorder:
                 "game_type": game_type,
                 "cheats": cheats,
                 "seed": seed,
+                "time_control": (
+                    time_control.model_dump(mode="json") if time_control is not None else None
+                ),
                 "engine": _engine_revision(),
                 "created_at": time.time(),
             }
@@ -166,6 +171,38 @@ class ReplayRecorder:
         self._append(
             {"type": "cheat_gold", "r": round_num, "t": turn, "hero": hero_id, "amount": amount}
         )
+
+    def record_timer_timeout(
+        self,
+        *,
+        action: str,
+        hero_id: str,
+        round_num: int,
+        turn: int,
+        card_id: str | None = None,
+        selection: Any = None,
+        request_id: str | None = None,
+        team_id: str | None = None,
+        eligible_hero_ids: list[str] | None = None,
+    ) -> None:
+        """Record the exact automatic decision; replay never runs a clock."""
+        record: dict[str, Any] = {
+            "type": "timer_timeout",
+            "action": action,
+            "r": round_num,
+            "t": turn,
+            "hero": hero_id,
+        }
+        if card_id is not None:
+            record["card"] = card_id
+        if action == "input":
+            record["sel"] = selection
+        if request_id is not None:
+            record["request_id"] = request_id
+        if team_id is not None:
+            record["team"] = team_id
+            record["eligible_heroes"] = list(eligible_hero_ids or [])
+        self._append(record)
 
 
 def create_replay_recorder(game_id: str, replay_dir: str | None = None) -> ReplayRecorder:
@@ -204,6 +241,7 @@ def load_replay(path: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
 def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
     """Create a fresh GameSession from a replay setup header (seeded, no decisions)."""
+    configured = setup.get("time_control")
     state = GameSetup.create_game(
         _resolve_map_path(setup["map"]),
         setup["red"],
@@ -211,6 +249,7 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
         setup.get("cheats", False),
         setup.get("game_type", "LONG"),
         seed=setup["seed"],
+        time_control=(TimeControlConfig.model_validate(configured) if configured else None),
     )
     return GameSession(state)
 
@@ -313,6 +352,12 @@ def _decision_at_or_after(
 def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
     kind = decision.get("type")
     hero_id = HeroID(decision["hero"])
+
+    if kind == "timer_timeout":
+        action = decision.get("action")
+        translated = {**decision, "type": action}
+        _apply_decision(session, translated)
+        return
 
     if kind == "commit":
         hero = session.state.get_hero(hero_id)

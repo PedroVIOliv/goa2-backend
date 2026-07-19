@@ -110,6 +110,7 @@ class FinalizeHeroTurnStep(GameStep):
         context.clear()
         state.acting_piece_id = None
         state.current_actor_id = None
+        state.resolution_owner_id = None
 
         return StepResult(
             is_finished=True,

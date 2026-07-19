@@ -117,6 +117,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         state.cheats,
         state.game_type,
         seed=seed,
+        time_control=state.time_control,
     )
     session = GameSession(game_state)
     hero_ids = [h.id for team in game_state.teams.values() for h in team.heroes]
@@ -130,6 +131,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             game_type=state.game_type,
             cheats=state.cheats,
             seed=seed,
+            time_control=state.time_control,
         )
     name_to_id = {h.name: h.id for team in game_state.teams.values() for h in team.heroes}
     for player in state.players:
@@ -174,6 +176,7 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         now=time.time(),
         cheats=body.cheats_enabled,
         max_hero_stars=body.max_hero_stars,
+        time_control=body.time_control,
     )
     md = registry.create(state)
     return CreateDraftResponse(
@@ -203,6 +206,9 @@ async def update_settings(
         _map_path(body.map_name)  # 404 if missing
     md = registry.get(draft_id)
     async with md.lock:
+        time_control = (
+            body.time_control if "time_control" in body.model_fields_set else service.UNSET
+        )
         service.update_settings(
             md.state,
             map_name=body.map_name,
@@ -210,6 +216,7 @@ async def update_settings(
             draft_mode=body.draft_mode,
             cheats=body.cheats_enabled,
             max_hero_stars=body.max_hero_stars,
+            time_control=time_control,
         )
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)

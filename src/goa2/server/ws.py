@@ -21,6 +21,15 @@ from goa2.server.errors import (
     validate_simultaneous_input_scope,
 )
 from goa2.server.registry import GameRegistry, ManagedGame
+from goa2.server.time_control import (
+    client_decision_timed_out,
+    finalize_timed_mutation,
+    mark_human_action,
+    now_ms,
+    prepare_timed_mutation,
+    set_player_ready,
+    stop_clock_for_accepted_decision,
+)
 from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
 router = APIRouter()
@@ -34,6 +43,7 @@ MUTATION_MESSAGE_TYPES = frozenset(
         "FINISH_PLANNING",
         "ROLLBACK",
         "CHEATS_GOLD",
+        "SET_READY",
     }
 )
 
@@ -159,7 +169,13 @@ async def _handle_submit_input(
     # Record only after the engine accepts the input, tagged with the pre-advance
     # round/turn, so a rejected selection leaves no phantom decision in the log.
     rec_round, rec_turn = game.session.state.round, game.session.state.turn
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        request_id=response.request_id,
+    )
     result = game.session.advance(response)
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_input(hero_id, data.get("selection"), rec_round, rec_turn)
     game.last_result = result
@@ -194,7 +210,13 @@ async def _handle_commit_card(
         raise CardNotInHandError(card_id, hero_id)
 
     rec_round, rec_turn = session.state.round, session.state.turn
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        completes_planning=True,
+    )
     result = session.commit_card(HeroID(hero_id), card)
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_commit(hero_id, card_id, rec_round, rec_turn)
     game.last_result = result
@@ -225,9 +247,17 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
     # session call.
     state = session.state
     hid = HeroID(hero_id)
+    if state.clock and state.clock.players[hid].planning_locked_by_timeout:
+        raise ValueError("Planning is locked after an automatic timeout decision")
     card = state.pending_second_cards.get(hid) or state.pending_inputs.get(hid)
     rec_round, rec_turn = state.round, state.turn
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        completes_planning=True,
+    )
     result = session.uncommit_card(hid)
+    mark_human_action(game)
     # Record only after success so a failed attempt never lands in the replay.
     if game.replay_recorder:
         game.replay_recorder.record_uncommit(hero_id, rec_round, rec_turn)
@@ -247,6 +277,20 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
     }
 
 
+async def _handle_set_ready(
+    game: ManagedGame, hero_id: str, data: dict[str, Any]
+) -> dict[str, Any]:
+    ready = data.get("ready")
+    if not isinstance(ready, bool):
+        raise ValueError("ready must be a boolean")
+    set_player_ready(game, hero_id, ready, now_ms())
+    return {
+        "type": "READY_UPDATED",
+        "hero_id": hero_id,
+        "ready": ready,
+    }
+
+
 async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     """Handle FINISH_PLANNING message (done-signal for a two-card-capable
     hero — Emmitt's Alternative Timelines — playing only one card)."""
@@ -255,7 +299,13 @@ async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, 
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
     rec_round, rec_turn = session.state.round, session.state.turn
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        completes_planning=True,
+    )
     result = session.finish_planning(HeroID(hero_id))
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_finish_planning(hero_id, rec_round, rec_turn)
     game.last_result = result
@@ -279,7 +329,13 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         raise InvalidPhaseError("PLANNING", session.current_phase.value)
 
     rec_round, rec_turn = session.state.round, session.state.turn
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        completes_planning=True,
+    )
     result = session.pass_turn(HeroID(hero_id))
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_pass(hero_id, rec_round, rec_turn)
     game.last_result = result
@@ -309,7 +365,14 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     if responder != hero_id:
         raise NotYourTurnError(hero_id, responder or "(no active actor)")
     rec_round, rec_turn = session.state.round, session.state.turn
+    request = game.last_result.input_request if game.last_result else None
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        request_id=request.id if request else None,
+    )
     result = session.rollback()
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_rollback(hero_id, rec_round, rec_turn)
     game.last_result = result
@@ -347,7 +410,13 @@ async def _handle_cheats_gold(
     if amount <= 0:
         return {"type": "ERROR", "detail": "Amount must be a positive integer"}
 
+    stop_clock_for_accepted_decision(
+        game,
+        hero_id=hero_id,
+        completes_planning=True,
+    )
     hero.gold += amount
+    mark_human_action(game)
     if game.replay_recorder:
         game.replay_recorder.record_cheat_gold(
             target_hero_id, amount, session.state.round, session.state.turn
@@ -421,6 +490,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     try:
         while True:
             raw = await websocket.receive_text()
+            timer_events: list[GameEvent] = []
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
@@ -440,7 +510,29 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
             try:
                 async with game.outbound_lock:
                     async with game.lock:
-                        if msg_type == "SUBMIT_INPUT":
+                        timer_events = (
+                            prepare_timed_mutation(game, registry=registry)
+                            if msg_type in MUTATION_MESSAGE_TYPES and msg_type != "SET_READY"
+                            else []
+                        )
+                        request_id = (
+                            str(data.get("request_id", "")) if msg_type == "SUBMIT_INPUT" else None
+                        )
+                        lost_deadline_race = msg_type in {
+                            "SUBMIT_INPUT",
+                            "COMMIT_CARD",
+                            "UNCOMMIT_CARD",
+                            "PASS_TURN",
+                            "FINISH_PLANNING",
+                        } and client_decision_timed_out(
+                            timer_events,
+                            hero_id=hero_id,
+                            request_id=request_id,
+                        )
+                        reply: dict[str, Any]
+                        if lost_deadline_race:
+                            reply = {"type": "ERROR", "detail": "Decision already timed out"}
+                        elif msg_type == "SUBMIT_INPUT":
                             reply = await _handle_submit_input(game, hero_id, data)
                         elif msg_type == "COMMIT_CARD":
                             reply = await _handle_commit_card(game, hero_id, data)
@@ -454,6 +546,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             reply = await _handle_rollback(game, hero_id)
                         elif msg_type == "CHEATS_GOLD":
                             reply = await _handle_cheats_gold(game, hero_id, data)
+                        elif msg_type == "SET_READY":
+                            reply = await _handle_set_ready(game, hero_id, data)
                         elif msg_type == "GET_VIEW":
                             hid = hero_id if not is_spectator else None
                             reply = _build_state_update(game, hid)
@@ -462,6 +556,16 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                 "type": "ERROR",
                                 "detail": f"Unknown message type: {msg_type}",
                             }
+
+                        timer_event_dicts = [event.model_dump() for event in timer_events]
+                        if timer_event_dicts and reply.get("type") == "ACTION_RESULT":
+                            reply = {
+                                **reply,
+                                "events": [*timer_event_dicts, *reply.get("events", [])],
+                            }
+
+                        if msg_type in MUTATION_MESSAGE_TYPES and not lost_deadline_race:
+                            finalize_timed_mutation(game, registry)
 
                         # Materialize both the direct reply and every scoped
                         # broadcast while they still describe this mutation.
@@ -474,27 +578,31 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                 ),
                             }
                         messages = (
-                            _capture_broadcast(game, reply.get("events"))
+                            _capture_broadcast(
+                                game,
+                                reply.get("events") or timer_event_dicts,
+                            )
                             if msg_type in MUTATION_MESSAGE_TYPES
                             else []
                         )
 
-                    if msg_type in MUTATION_MESSAGE_TYPES:
-                        registry.save_game(game.game_id)
-
                     await websocket.send_json(sender_reply)
                     await _send_captured_broadcast(game, messages)
 
-            except (NotYourTurnError, InvalidPhaseError, CardNotInHandError) as exc:
+            except (NotYourTurnError, InvalidPhaseError, CardNotInHandError, ValueError) as exc:
                 if game.game_logger:
                     game.game_logger.log_error(str(exc), hero_id)
                 async with game.outbound_lock:
+                    error_messages: CapturedBroadcast = []
+                    if timer_events:
+                        async with game.lock:
+                            error_messages = _capture_broadcast(
+                                game,
+                                [event.model_dump() for event in timer_events],
+                            )
                     await websocket.send_json({"type": "ERROR", "detail": str(exc)})
-            except ValueError as exc:
-                if game.game_logger:
-                    game.game_logger.log_error(str(exc), hero_id)
-                async with game.outbound_lock:
-                    await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                    if error_messages:
+                        await _send_captured_broadcast(game, error_messages)
 
     except WebSocketDisconnect:
         pass

@@ -21,6 +21,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import Marker, MarkerType
+from goa2.domain.time_control import GameClockState, TimeControlConfig
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,14 @@ class GameState(BaseModel):
     rng_seed: int | None = None
 
     current_actor_id: HeroID | None = None  # ID of the Hero currently acting (Resolution Phase)
+    # Owner of the unresolved card being resolved. Unlike current_actor_id,
+    # defenses and reactions do not temporarily replace this value.
+    resolution_owner_id: HeroID | None = None
+
+    # Optional server-authoritative match clock. Missing values preserve
+    # untimed behavior for existing requests and legacy saves.
+    time_control: TimeControlConfig | None = None
+    clock: GameClockState | None = None
 
     # The team that currently wins ties (Red or Blue)
     # Flips every time a different-team tie is resolved.

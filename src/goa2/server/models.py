@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from goa2.domain.time_control import TimeControlConfig
+
 # -- Requests --
 
 
@@ -15,6 +17,11 @@ class CreateGameRequest(BaseModel):
     blue_heroes: list[str]
     cheats_enabled: bool = False
     game_type: str = "LONG"
+    time_control: TimeControlConfig | None = None
+
+
+class ReadyRequest(BaseModel):
+    ready: bool = True
 
 
 class CommitCardRequest(BaseModel):
@@ -120,6 +127,7 @@ class CreateDraftRequest(BaseModel):
     draft_mode: str = "sequential_ban_pick"
     cheats_enabled: bool = False
     max_hero_stars: int = 4
+    time_control: TimeControlConfig | None = None
 
 
 class UpdateDraftSettingsRequest(BaseModel):
@@ -130,6 +138,8 @@ class UpdateDraftSettingsRequest(BaseModel):
     draft_mode: str | None = None
     cheats_enabled: bool | None = None
     max_hero_stars: int | None = None
+    # Explicit null disables timers; omission leaves the setting unchanged.
+    time_control: TimeControlConfig | None = None
 
 
 class JoinDraftRequest(BaseModel):

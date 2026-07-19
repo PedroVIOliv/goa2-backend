@@ -137,6 +137,20 @@ class InputOption(BaseModel):
         return cls(id=str(value), text=text or str(value), metadata={})
 
 
+def selection_value(option: InputOption) -> Any:
+    """Return the exact JSON-compatible value accepted for an option."""
+    if "hex" in option.metadata:
+        return option.metadata["hex"]
+    if "raw" in option.metadata:
+        raw = option.metadata["raw"]
+        if hasattr(raw, "q") and hasattr(raw, "r") and hasattr(raw, "s"):
+            return {"q": raw.q, "r": raw.r, "s": raw.s}
+        return raw
+    if option.id.lstrip("-").isdigit():
+        return int(option.id)
+    return option.id
+
+
 class InputRequest(BaseModel):
     """
     Unified input request sent to clients.
@@ -215,22 +229,6 @@ class InputRequest(BaseModel):
         if self.can_rollback:
             result["can_rollback"] = True
 
-        # Helper to extract serializable value from option
-        def get_serializable_value(opt: InputOption) -> Any:
-            # Check for hex dict in metadata (always use dict form for JSON compatibility)
-            if "hex" in opt.metadata:
-                return opt.metadata["hex"]  # Already a dict
-            # Check for raw value - convert Hex objects to dicts
-            if "raw" in opt.metadata:
-                raw = opt.metadata["raw"]
-                if hasattr(raw, "q") and hasattr(raw, "r") and hasattr(raw, "s"):
-                    return {"q": raw.q, "r": raw.r, "s": raw.s}
-                return raw
-            # Try to convert id back to int for number options
-            if opt.id.lstrip("-").isdigit():
-                return int(opt.id)
-            return opt.id
-
         # Convert options based on request type for backwards compatibility
         if self.request_type in (
             InputRequestType.SELECT_UNIT,
@@ -239,7 +237,7 @@ class InputRequest(BaseModel):
             InputRequestType.SELECT_CARD,
         ):
             # These expect valid_options as list of raw values
-            result["valid_options"] = [get_serializable_value(opt) for opt in self.options]
+            result["valid_options"] = [selection_value(opt) for opt in self.options]
             # Also add as candidates for MultiSelectStep compatibility
             result["candidates"] = result["valid_options"]
             # For NUMBER and CARD options with labels, include options with

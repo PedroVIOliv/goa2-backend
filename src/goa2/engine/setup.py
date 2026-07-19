@@ -17,6 +17,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.spawn import SpawnType
 from goa2.domain.state import GameState
+from goa2.domain.time_control import TimeControlConfig, create_game_clock
 from goa2.domain.types import BoardEntityID
 from goa2.engine.map_loader import load_map
 
@@ -71,6 +72,7 @@ class GameSetup:
         cheats_enabled: bool = False,
         game_type: str = "LONG",
         seed: int | None = None,
+        time_control: TimeControlConfig | None = None,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -109,6 +111,7 @@ class GameSetup:
             },
             phase=GamePhase.SETUP,
             cheats_enabled=cheats_enabled,
+            time_control=time_control,
         )
 
         # Derive the deterministic game seed before creating hidden supplies.
@@ -165,6 +168,14 @@ class GameSetup:
 
         record_position_snapshot(state)
         state.phase = GamePhase.PLANNING
+        if time_control is not None:
+            hero_ids = [str(hero.id) for team in state.teams.values() for hero in team.heroes]
+            state.clock = create_game_clock(
+                time_control,
+                hero_ids,
+                round_number=state.round,
+                turn_number=state.turn,
+            )
 
         logger.info(
             "Game created (%s). Map: %s tiles. Players: %s. Waves: %s. Life: %s.",

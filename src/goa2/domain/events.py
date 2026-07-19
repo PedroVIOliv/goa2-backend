@@ -56,6 +56,7 @@ class GameEventType(StrEnum):
     # Turn flow
     TURN_ENDED = "TURN_ENDED"
     GAME_OVER = "GAME_OVER"
+    TIMER_EXPIRED = "TIMER_EXPIRED"
     # Mines
     MINE_TRIGGERED = "MINE_TRIGGERED"
     # NebKher: a hero laughed diabolically as part of performing an action

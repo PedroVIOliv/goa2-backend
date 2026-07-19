@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import random
+from typing import cast
 
 from goa2.domain.models import TeamColor
+from goa2.domain.time_control import TimeControlConfig
 from goa2.draft.errors import (
     DraftFullError,
     HeroNotClaimableError,
@@ -18,6 +20,7 @@ from goa2.draft.modes import get_mode
 # Hard cap on lobby size — the engine's largest supported bracket is 6 players.
 # Team sizes are not preset; they emerge from who joins each side.
 MAX_PLAYERS = 6
+UNSET = object()
 
 
 def get_player(state: DraftState, player_id: str) -> DraftPlayer:
@@ -63,6 +66,7 @@ def create_draft(
     now: float,
     cheats: bool = False,
     max_hero_stars: int = 4,
+    time_control: TimeControlConfig | None = None,
 ) -> DraftState:
     get_mode(draft_mode)  # validate mode name early (raises KeyError -> caller maps)
     state = DraftState(
@@ -72,6 +76,7 @@ def create_draft(
         draft_mode=draft_mode,
         cheats=cheats,
         max_hero_stars=max_hero_stars,
+        time_control=time_control,
         created_at=now,
     )
     state.players.append(DraftPlayer(id="p1", display_name=host_name, is_host=True))
@@ -86,6 +91,7 @@ def update_settings(
     draft_mode: str | None = None,
     cheats: bool | None = None,
     max_hero_stars: int | None = None,
+    time_control: TimeControlConfig | None | object = UNSET,
 ) -> None:
     """Host-editable lobby settings. LOBBY-only. Only validates the draft mode name;
     map and game_type are validated by the route layer against the engine."""
@@ -101,6 +107,8 @@ def update_settings(
         state.cheats = cheats
     if max_hero_stars is not None:
         state.max_hero_stars = max_hero_stars
+    if time_control is not UNSET:
+        state.time_control = cast(TimeControlConfig | None, time_control)
 
 
 def join(state: DraftState, display_name: str) -> DraftPlayer:
