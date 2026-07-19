@@ -166,6 +166,127 @@ class TestGameTypeConfig:
             GameSetup.get_game_config("LONG", 7)
 
 
+class TestTwoLaneConfig:
+    """Two-lane maps: 2 x 7 wave counters; 6 LC (6-8p) / 7 LC (9-10p)."""
+
+    def test_6_players(self):
+        assert GameSetup.get_game_config("LONG", 6, lane_count=2) == (7, 6)
+
+    def test_8_players(self):
+        assert GameSetup.get_game_config("LONG", 8, lane_count=2) == (7, 6)
+
+    def test_9_players(self):
+        assert GameSetup.get_game_config("LONG", 9, lane_count=2) == (7, 7)
+
+    def test_10_players(self):
+        assert GameSetup.get_game_config("LONG", 10, lane_count=2) == (7, 7)
+
+    def test_above_10_players_raises(self):
+        with pytest.raises(ValueError, match="Unsupported player count"):
+            GameSetup.get_game_config("LONG", 11, lane_count=2)
+
+    def test_game_type_does_not_change_two_lane_config(self):
+        # The rulebook has no QUICK/LONG split for two-lane maps.
+        assert GameSetup.get_game_config("QUICK", 8, lane_count=2) == (
+            GameSetup.get_game_config("LONG", 8, lane_count=2)
+        )
+
+    def test_game_type_still_validated(self):
+        with pytest.raises(ValueError, match="Invalid game_type"):
+            GameSetup.get_game_config("BLITZ", 8, lane_count=2)
+
+    def test_small_player_counts_use_next_bracket(self):
+        # Below the rulebook minimum (dev/test games): next bracket applies,
+        # same as the single-lane uneven-count rule.
+        assert GameSetup.get_game_config("LONG", 2, lane_count=2) == (7, 6)
+
+    def test_unsupported_lane_count_raises(self):
+        with pytest.raises(ValueError, match="lane count"):
+            GameSetup.get_game_config("LONG", 6, lane_count=3)
+
+    def test_lane_count_default_is_single_lane(self):
+        assert GameSetup.get_game_config("LONG", 4) == (5, 6)
+
+
+TWO_LANE_MAP = "src/goa2/data/maps/across_the_river.json"
+
+
+def _register_dummies(count: int) -> list[str]:
+    """Register `count` minimal heroes with globally unique card IDs."""
+    names = []
+    for i in range(count):
+        name = f"Dummy{i + 1}"
+        HeroRegistry.register(
+            Hero(
+                id=HeroID(f"hero_dummy_{i + 1}"),
+                name=name,
+                deck=[
+                    Card(
+                        id=f"dummy{i + 1}_slash",
+                        name="Slash",
+                        tier=CardTier.I,
+                        color=CardColor.RED,
+                        initiative=5,
+                        primary_action=ActionType.ATTACK,
+                        primary_action_value=4,
+                        effect_id="none",
+                        effect_text="",
+                    ),
+                ],
+                team=TeamColor.RED,
+            )
+        )
+        names.append(name)
+    return names
+
+
+class TestTwoLaneGameSetup:
+    def test_create_game_uses_two_lane_config(self):
+        names = _register_dummies(6)
+        state = GameSetup.create_game(TWO_LANE_MAP, names[:3], names[3:])
+        assert len(state.board.lanes) == 2
+        assert state.wave_counters == {lane_id: 7 for lane_id in state.board.lanes}
+        for team in state.teams.values():
+            assert team.life_counters == 6
+
+    def _assert_heroes_on_spawns_or_adjacent(self, state):
+        # Rulebook: extra heroes (>3 per team) are placed in an empty space
+        # adjacent to one of their team's occupied hero spawn points.
+        from goa2.domain.models.spawn import SpawnType
+
+        for team in state.teams.values():
+            spawn_locs = {
+                sp.location
+                for sp in state.board.spawn_points
+                if sp.type == SpawnType.HERO and sp.team == team.color
+            }
+            for hero in team.heroes:
+                pos = state.get_position(hero.id)
+                assert pos is not None, f"{hero.name} was not placed on the board"
+                assert pos in spawn_locs or any(n in spawn_locs for n in pos.neighbors()), (
+                    f"{hero.name} at {pos} is neither on nor adjacent to a "
+                    f"{team.color.value} hero spawn point"
+                )
+
+    def test_8_players_extra_heroes_placed_adjacent_to_spawns(self):
+        # across_the_river has 3 hero spawn points per team; the 4th hero
+        # goes to an empty hex adjacent to an occupied spawn point.
+        names = _register_dummies(8)
+        state = GameSetup.create_game(TWO_LANE_MAP, names[:4], names[4:])
+        assert state.wave_counters == {lane_id: 7 for lane_id in state.board.lanes}
+        for team in state.teams.values():
+            assert team.life_counters == 6
+        self._assert_heroes_on_spawns_or_adjacent(state)
+
+    def test_10_players_extra_heroes_placed_adjacent_to_spawns(self):
+        names = _register_dummies(10)
+        state = GameSetup.create_game(TWO_LANE_MAP, names[:5], names[5:])
+        assert state.wave_counters == {lane_id: 7 for lane_id in state.board.lanes}
+        for team in state.teams.values():
+            assert team.life_counters == 7
+        self._assert_heroes_on_spawns_or_adjacent(state)
+
+
 class TestQuickGameSetup:
     def test_quick_game_2v2(self, map_path, setup_registry):
         red_heroes = ["Arien"]

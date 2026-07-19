@@ -159,11 +159,13 @@ lane (Tide of Darkness) fall back to the full supply.
 
 ## Still TBD
 
-1. **8–10 player setup config.** `GameSetup.get_game_config()` supports up
-   to 6 players. Double-lane is 6–8 players (2×7 waves, 6 life) and 9–10
-   players (2×7 waves, 7 life). Also missing: the rule that extra heroes
-   (>3 per team) are placed in empty spaces **adjacent to** their team's
-   occupied hero spawn points.
+1. ~~**8–10 player setup config.**~~ DONE: `GameSetup.get_game_config()`
+   takes `lane_count` (derived from the map in `create_game`). Two-lane
+   games get 2×7 waves and 6 LC (6–8p) / 7 LC (9–10p) regardless of
+   QUICK/LONG; extra heroes (>3 per team) are placed in empty spaces
+   adjacent to their team's occupied hero spawn points, and setup raises
+   if no placement exists. See `tests/engine/test_game_setup.py`
+   (`TestTwoLaneConfig`, `TestTwoLaneGameSetup`).
 
 2. **Simultaneous minion battles.** Pushes triggered by the same check ARE
    resolved simultaneously by the coordinator, but `MinionBattleStep` still

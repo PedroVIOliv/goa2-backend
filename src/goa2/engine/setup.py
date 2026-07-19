@@ -30,21 +30,30 @@ class GameSetup:
     """
 
     @staticmethod
-    def get_game_config(game_type: str, total_players: int) -> tuple[int, int]:
+    def get_game_config(game_type: str, total_players: int, lane_count: int = 1) -> tuple[int, int]:
         """
-        Returns (wave_counters, life_counters) for the given game type and player count.
-        Uneven player counts use the next configured player-count bracket.
+        Returns (wave_counters_per_lane, life_counters) for the given game
+        type, player count, and lane count. Uneven player counts use the next
+        configured player-count bracket.
 
         Rules:
-          Quick Game: 3 waves, 4 LC (4p) / 4 LC (5p) / 5 LC (6p)
-          Long Game:  5 waves, 6 LC (4-5p) / 8 LC (6p)
+          Single lane:
+            Quick Game: 3 waves, 4 LC (4p) / 4 LC (5p) / 5 LC (6p)
+            Long Game:  5 waves, 6 LC (4-5p) / 8 LC (6p)
+          Two lanes (no QUICK/LONG split):
+            2 x 7 waves, 6 LC (6-8p) / 7 LC (9-10p)
         """
         try:
             gt = GameType(game_type)
         except ValueError as exc:
             raise ValueError(f"Invalid game_type '{game_type}'. Must be QUICK or LONG.") from exc
 
-        if gt == GameType.QUICK:
+        if lane_count == 2:
+            lc_lookup = {8: 6, 10: 7}
+            waves = 7
+        elif lane_count != 1:
+            raise ValueError(f"Unsupported lane count {lane_count}. Supported: 1 or 2.")
+        elif gt == GameType.QUICK:
             lc_lookup = {2: 3, 4: 4, 5: 4, 6: 5}
             waves = 3
         else:
@@ -90,7 +99,9 @@ class GameSetup:
 
         # 2. Calculate Wave & Life Counters
         total_players = len(red_heroes) + len(blue_heroes)
-        waves_per_lane, life_counters = GameSetup.get_game_config(game_type, total_players)
+        waves_per_lane, life_counters = GameSetup.get_game_config(
+            game_type, total_players, lane_count=len(board.lanes)
+        )
 
         # 3. Initialize State
         state = GameState(
@@ -285,6 +296,22 @@ class GameSetup:
                     spawn_loc = sp.location
                     break
 
+            if spawn_loc is None:
+                # Rulebook (8-10 players): extra heroes are placed in an empty
+                # space adjacent to one of their team's occupied hero spawn
+                # points. Spawn-point and neighbor order are fixed, so the
+                # placement is deterministic.
+                spawn_loc = next(
+                    (
+                        adj
+                        for sp in available_spawns
+                        if state.board.get_tile(sp.location).is_occupied
+                        for adj in sp.location.neighbors()
+                        if state.board.is_on_map(adj) and not state.board.get_tile(adj).is_obstacle
+                    ),
+                    None,
+                )
+
             if spawn_loc:
                 if hero.is_multi_piece:
                     # Multi-piece heroes (Razzle) never occupy the board
@@ -296,7 +323,10 @@ class GameSetup:
                 else:
                     state.place_entity(hero.id, spawn_loc)
             else:
-                logger.warning("No spawn point available for %s", hero.name)
+                raise ValueError(
+                    f"No hero spawn point available for {hero.name}: the map has "
+                    f"too few {team_color.value} hero spawn points for this team size."
+                )
 
     @staticmethod
     def _spawn_initial_minions(state: GameState, zone_id: str, lane_id: str | None = None):
