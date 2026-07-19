@@ -857,13 +857,33 @@ class GuessCardColorStep(GameStep):
     victim_key: str = ""  # context key → hero ID whose hand restricts the options
 
     def _valid_colors(self, state: GameState, context: dict[str, Any]) -> list[str]:
+        """Colors that could be in the victim's hand, from the guesser's view.
+
+        The guess universe is the victim's in-play cards: hand + played cards
+        + current/extra turn card + discard. Faceup cards in that universe are
+        publicly accounted for; a color is guessable while at least one copy
+        remains unaccounted — i.e. it sits in the hand or facedown somewhere
+        (Takahide's Bushido, hidden commits). The deck zone is outside the
+        universe and never contributes.
+        """
         if self.victim_key:
             victim_id = context.get(self.victim_key)
             if victim_id:
                 victim = state.get_hero(HeroID(str(victim_id)))
                 if victim:
-                    hand_colors = {c.color.value for c in victim.hand if c.color}
-                    restricted = [c for c in self.VALID_COLORS if c in hand_colors]
+                    possible = {c.color.value for c in victim.hand if c.color}
+                    outside_hand = [
+                        *victim.played_cards,
+                        *victim.discard_pile,
+                        victim.current_turn_card,
+                        victim.extra_turn_card,
+                    ]
+                    possible |= {
+                        c.color.value
+                        for c in outside_hand
+                        if c is not None and c.is_facedown and c.color
+                    }
+                    restricted = [c for c in self.VALID_COLORS if c in possible]
                     if restricted:
                         return restricted
         return list(self.VALID_COLORS)
@@ -1055,6 +1075,10 @@ class RevealAndResolveGuessStep(GameStep):
             context[self.correct_output_key] = None
             context[self.wrong_output_key] = True
             logger.debug(f"   [GUESS] Wrong! Card is {actual_color}, guessed {guessed_color}")
+
+        # The reveal leaks hidden hand info to the actor; rolling back past it
+        # would allow re-guessing with that knowledge (same rule as mines).
+        context["rollback_frozen"] = True
 
         return StepResult(
             is_finished=True,

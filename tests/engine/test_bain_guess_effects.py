@@ -61,6 +61,24 @@ def _make_filler_card(card_id="filler", color=CardColor.RED):
     )
 
 
+def _make_gold_card(card_id="gold"):
+    return Card(
+        id=card_id,
+        name="Gold Filler",
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        secondary_actions={},
+        is_ranged=False,
+        range_value=0,
+        primary_action_value=1,
+        effect_id="filler",
+        effect_text="",
+        is_facedown=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -279,6 +297,156 @@ class TestGuessCardColorStep:
         option_ids = {o["id"] for o in req["options"]}
         assert option_ids == {"BLUE", "GOLD", "GREEN", "RED", "SILVER"}
 
+    def test_victim_restriction_offers_hand_colors(self, board):
+        """With a victim and no hidden zones, options are the hand's colors."""
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED", "BLUE"}
+
+    def test_victim_restriction_excludes_faceup_discard_color(self, board):
+        """A color visible faceup outside the hand is publicly known absent."""
+        from goa2.domain.models import CardState
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        faceup_green = _make_filler_card("e_green", color=CardColor.GREEN)
+        faceup_green.state = CardState.DISCARD
+        enemy.discard_pile = [faceup_green]
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED", "BLUE"}
+
+    def test_victim_restriction_includes_facedown_discard_color(self, board):
+        """A facedown card outside the hand (Takahide's Bushido) has a hidden
+        identity, so its color could still be in hand — the option pool must
+        include it rather than leak its absence."""
+        from goa2.domain.models import CardState
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [_make_filler_card("e_red", color=CardColor.RED)]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        hidden_green = _make_filler_card("e_green", color=CardColor.GREEN)
+        hidden_green.state = CardState.DISCARD
+        hidden_green.is_facedown = True
+        enemy.discard_pile = [hidden_green]
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED", "GREEN"}
+
+    def test_victim_restriction_ignores_deck_zone_entirely(self, board):
+        """The guess universe is hand + played + current turn + discard. Cards
+        in the deck zone (upgrade stock OR Takahide's starts_in_deck cycle)
+        are outside it and never widen the pool."""
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [_make_filler_card("e_red", color=CardColor.RED)]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        cycling_blue = _make_filler_card("e_blue", color=CardColor.BLUE)
+        cycling_blue.starts_in_deck = True
+        enemy.deck = [
+            cycling_blue,
+            _make_filler_card("e_green_stock_1", color=CardColor.GREEN),
+            _make_filler_card("e_green_stock_2", color=CardColor.GREEN),
+        ]
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED"}
+
+    def test_victim_restriction_duplicate_colors_need_one_hidden_copy(self, board):
+        """Takahide-style duplicate colors: with two golds faceup in discard
+        and one still in hand, GOLD stays guessable — a copy remains hidden."""
+        from goa2.domain.models import CardState
+        from goa2.engine.steps import GuessCardColorStep
+
+        gold_in_hand = _make_gold_card("e_gold_1")
+        enemy_hand = [_make_filler_card("e_red", color=CardColor.RED), gold_in_hand]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        for cid in ("e_gold_2", "e_gold_3"):
+            spent = _make_gold_card(cid)
+            spent.state = CardState.DISCARD
+            enemy.discard_pile.append(spent)
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED", "GOLD"}
+
+    def test_victim_restriction_includes_facedown_played_card_color(self, board):
+        """A facedown card in a played/resolved slot is identity-hidden and
+        must widen the pool."""
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [_make_filler_card("e_red", color=CardColor.RED)]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        hidden_blue = _make_filler_card("e_blue", color=CardColor.BLUE)
+        hidden_blue.is_facedown = True
+        enemy.played_cards = [hidden_blue, None]
+        state.execution_context["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [GuessCardColorStep(output_key="guessed_color", victim_key="guess_victim")],
+        )
+
+        req = process_stack(state).input_request
+        option_ids = {o["id"] for o in req["options"]}
+        assert option_ids == {"RED", "BLUE"}
+
     def test_stores_selection_in_context(self, board):
         """Selected color is stored in context at output_key."""
         from goa2.engine.steps import GuessCardColorStep
@@ -370,6 +538,92 @@ class TestRevealAndResolveGuessStep:
         _ = process_stack(state).input_request
         assert ctx.get("guess_correct") is None
         assert ctx.get("guess_wrong") is True
+
+    def test_reveal_freezes_rollback_on_correct_guess(self, board):
+        """Revealing the chosen card leaks hidden info, so the actor must not
+        be able to rollback to the guess prompt afterwards."""
+        from goa2.engine.steps import RevealAndResolveGuessStep
+
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, [])
+        ctx = state.execution_context
+        ctx["chosen_card"] = "e_red"
+        ctx["guessed_color"] = "RED"
+        ctx["guess_victim"] = "hero_enemy"
+
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        enemy.hand = [_make_filler_card("e_red", color=CardColor.RED)]
+
+        push_steps(
+            state,
+            [
+                RevealAndResolveGuessStep(
+                    card_key="chosen_card",
+                    guess_key="guessed_color",
+                    victim_key="guess_victim",
+                    correct_output_key="guess_correct",
+                    wrong_output_key="guess_wrong",
+                ),
+            ],
+        )
+
+        _ = process_stack(state).input_request
+        assert ctx.get("rollback_frozen") is True
+
+    def test_reveal_freezes_rollback_on_wrong_guess(self, board):
+        from goa2.engine.steps import RevealAndResolveGuessStep
+
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, [])
+        ctx = state.execution_context
+        ctx["chosen_card"] = "e_red"
+        ctx["guessed_color"] = "BLUE"
+        ctx["guess_victim"] = "hero_enemy"
+
+        enemy = state.get_hero(HeroID("hero_enemy"))
+        enemy.hand = [_make_filler_card("e_red", color=CardColor.RED)]
+
+        push_steps(
+            state,
+            [
+                RevealAndResolveGuessStep(
+                    card_key="chosen_card",
+                    guess_key="guessed_color",
+                    victim_key="guess_victim",
+                    correct_output_key="guess_correct",
+                    wrong_output_key="guess_wrong",
+                ),
+            ],
+        )
+
+        _ = process_stack(state).input_request
+        assert ctx.get("rollback_frozen") is True
+
+    def test_noop_reveal_does_not_freeze_rollback(self, board):
+        """If nothing was revealed (no chosen card in context), rollback must
+        stay available."""
+        from goa2.engine.steps import RevealAndResolveGuessStep
+
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, [])
+        ctx = state.execution_context
+        ctx["guess_victim"] = "hero_enemy"
+
+        push_steps(
+            state,
+            [
+                RevealAndResolveGuessStep(
+                    card_key="chosen_card",
+                    guess_key="guessed_color",
+                    victim_key="guess_victim",
+                    correct_output_key="guess_correct",
+                    wrong_output_key="guess_wrong",
+                ),
+            ],
+        )
+
+        _ = process_stack(state).input_request
+        assert ctx.get("rollback_frozen") is not True
 
 
 # ===========================================================================
