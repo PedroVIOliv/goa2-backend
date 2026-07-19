@@ -530,32 +530,40 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             request_id=request_id,
                         )
                         reply: dict[str, Any]
-                        if lost_deadline_race:
-                            reply = {"type": "ERROR", "detail": "Decision already timed out"}
-                        elif msg_type == "SUBMIT_INPUT":
-                            reply = await _handle_submit_input(game, hero_id, data)
-                        elif msg_type == "COMMIT_CARD":
-                            reply = await _handle_commit_card(game, hero_id, data)
-                        elif msg_type == "UNCOMMIT_CARD":
-                            reply = await _handle_uncommit_card(game, hero_id)
-                        elif msg_type == "PASS_TURN":
-                            reply = await _handle_pass_turn(game, hero_id)
-                        elif msg_type == "FINISH_PLANNING":
-                            reply = await _handle_finish_planning(game, hero_id)
-                        elif msg_type == "ROLLBACK":
-                            reply = await _handle_rollback(game, hero_id)
-                        elif msg_type == "CHEATS_GOLD":
-                            reply = await _handle_cheats_gold(game, hero_id, data)
-                        elif msg_type == "SET_READY":
-                            reply = await _handle_set_ready(game, hero_id, data)
-                        elif msg_type == "GET_VIEW":
-                            hid = hero_id if not is_spectator else None
-                            reply = _build_state_update(game, hid)
-                        else:
-                            reply = {
-                                "type": "ERROR",
-                                "detail": f"Unknown message type: {msg_type}",
-                            }
+                        try:
+                            if lost_deadline_race:
+                                reply = {"type": "ERROR", "detail": "Decision already timed out"}
+                            elif msg_type == "SUBMIT_INPUT":
+                                reply = await _handle_submit_input(game, hero_id, data)
+                            elif msg_type == "COMMIT_CARD":
+                                reply = await _handle_commit_card(game, hero_id, data)
+                            elif msg_type == "UNCOMMIT_CARD":
+                                reply = await _handle_uncommit_card(game, hero_id)
+                            elif msg_type == "PASS_TURN":
+                                reply = await _handle_pass_turn(game, hero_id)
+                            elif msg_type == "FINISH_PLANNING":
+                                reply = await _handle_finish_planning(game, hero_id)
+                            elif msg_type == "ROLLBACK":
+                                reply = await _handle_rollback(game, hero_id)
+                            elif msg_type == "CHEATS_GOLD":
+                                reply = await _handle_cheats_gold(game, hero_id, data)
+                            elif msg_type == "SET_READY":
+                                reply = await _handle_set_ready(game, hero_id, data)
+                            elif msg_type == "GET_VIEW":
+                                hid = hero_id if not is_spectator else None
+                                reply = _build_state_update(game, hid)
+                            else:
+                                reply = {
+                                    "type": "ERROR",
+                                    "detail": f"Unknown message type: {msg_type}",
+                                }
+                        except BaseException:
+                            if msg_type in MUTATION_MESSAGE_TYPES:
+                                # Restore any clocks paused by a handler before
+                                # releasing game.lock, even for cancellation or
+                                # an unexpected engine exception.
+                                finalize_timed_mutation(game, registry)
+                            raise
 
                         timer_event_dicts = [event.model_dump() for event in timer_events]
                         if timer_event_dicts and reply.get("type") == "ACTION_RESULT":
@@ -594,8 +602,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     game.game_logger.log_error(str(exc), hero_id)
                 async with game.outbound_lock:
                     error_messages: CapturedBroadcast = []
-                    if timer_events:
-                        async with game.lock:
+                    async with game.lock:
+                        if timer_events:
                             error_messages = _capture_broadcast(
                                 game,
                                 [event.model_dump() for event in timer_events],

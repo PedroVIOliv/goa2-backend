@@ -6,7 +6,8 @@ import asyncio
 import logging
 import random
 import time
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 from typing import Any
 
 from goa2.domain.events import GameEvent, GameEventType
@@ -610,6 +611,48 @@ def finalize_timed_mutation(
     reconcile_game_clock(game, timestamp)
     registry.save_game(game.game_id)
     schedule_deadline(game, registry)
+
+
+@asynccontextmanager
+async def timed_rest_mutation(
+    game: ManagedGame,
+    registry: GameRegistry,
+) -> AsyncIterator[list[GameEvent]]:
+    """Run one REST mutation with failure-safe clock and timeout delivery.
+
+    REST requests can win the game-lock race after a deadline has elapsed but
+    before the deadline worker runs. In that case the request applies the
+    automatic decision itself and must broadcast the resulting state. The
+    ``finally`` also guarantees that a clock paused for backend processing is
+    reconciled and rescheduled when the requested game action is rejected.
+    """
+    messages = []
+    async with game.outbound_lock:
+        try:
+            async with game.lock:
+                timer_events = prepare_timed_mutation(game)
+                try:
+                    yield timer_events
+                finally:
+                    finalize_timed_mutation(game, registry)
+                    if timer_events:
+                        from goa2.server.ws import _capture_broadcast
+
+                        messages = _capture_broadcast(
+                            game,
+                            [event.model_dump() for event in timer_events],
+                        )
+        except Exception:
+            if messages:
+                from goa2.server.ws import _send_captured_broadcast
+
+                await _send_captured_broadcast(game, messages)
+            raise
+
+        if messages:
+            from goa2.server.ws import _send_captured_broadcast
+
+            await _send_captured_broadcast(game, messages)
 
 
 def schedule_deadline(game: ManagedGame, registry: GameRegistry) -> None:

@@ -18,6 +18,7 @@ from goa2.engine.steps.cards import ResolveUpgradesStep
 from goa2.server.app import create_app
 from goa2.server.map_paths import resolve_map_path
 from goa2.server.registry import GameRegistry, ManagedGame
+from goa2.server.replay import ReplayRecorder, replay_game
 from goa2.server.time_control import (
     _apply_input_timeout,
     _timeout_selection,
@@ -244,6 +245,106 @@ def test_rest_ready_updates_are_broadcast_to_connected_clients(client: TestClien
         update = ws.receive_json()
         assert update["type"] == "STATE_UPDATE"
         assert update["view"]["clock"]["ready_hero_ids"] == ["hero_wasp"]
+
+
+def test_rejected_rest_action_restarts_paused_planning_clocks(client: TestClient) -> None:
+    created = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "time_control": _api_config(),
+        },
+    ).json()
+    game_id = created["game_id"]
+    arien_token = _api_token(created, "hero_arien")
+    wasp_token = _api_token(created, "hero_wasp")
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(arien_token))
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(wasp_token))
+
+    # Passing with cards in hand is rejected after the route has paused every
+    # Planning clock to exclude backend processing time.
+    rejected = client.post(f"/games/{game_id}/pass", headers=_auth(arien_token))
+    assert rejected.status_code == 400
+    assert "cannot pass while holding" in rejected.json()["detail"]
+
+    game = client.app.state.registry.get(game_id)
+    clock = game.session.state.clock
+    assert clock is not None
+    assert set(clock.active_hero_ids) == {"hero_arien", "hero_wasp"}
+    assert game.timer_task is not None and not game.timer_task.done()
+
+
+def test_rejected_websocket_action_restarts_paused_planning_clocks(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "time_control": _api_config(),
+        },
+    ).json()
+    game_id = created["game_id"]
+    arien_token = _api_token(created, "hero_arien")
+    wasp_token = _api_token(created, "hero_wasp")
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(arien_token))
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(wasp_token))
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "PASS_TURN"})
+        error = ws.receive_json()
+        assert error["type"] == "ERROR"
+        assert "cannot pass while holding" in error["detail"]
+
+        game = client.app.state.registry.get(game_id)
+        clock = game.session.state.clock
+        assert clock is not None
+        assert set(clock.active_hero_ids) == {"hero_arien", "hero_wasp"}
+        assert game.timer_task is not None and not game.timer_task.done()
+
+
+def test_rest_deadline_race_broadcasts_automatic_timeout(client: TestClient) -> None:
+    created = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "time_control": _api_config(),
+        },
+    ).json()
+    game_id = created["game_id"]
+    arien_token = _api_token(created, "hero_arien")
+    wasp_token = _api_token(created, "hero_wasp")
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(arien_token))
+    client.post(f"/games/{game_id}/ready", json={"ready": True}, headers=_auth(wasp_token))
+
+    game = client.app.state.registry.get(game_id)
+    clock = game.session.state.clock
+    arien = game.session.state.get_hero(HeroID("hero_arien"))
+    assert clock is not None and arien is not None
+    clock.players["hero_arien"].planning_allowance_ms = 0
+    clock.players["hero_arien"].time_bank_ms = 0
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws:
+        ws.receive_json()
+        late = client.post(
+            f"/games/{game_id}/cards",
+            json={"card_id": arien.hand[0].id},
+            headers=_auth(arien_token),
+        )
+        assert late.status_code == 400
+        assert late.json()["detail"] == "Decision already timed out"
+
+        update = ws.receive_json()
+        assert update["type"] == "STATE_UPDATE"
+        assert any(event["event_type"] == "TIMER_EXPIRED" for event in update["events"])
+        assert update["view"]["clock"]["players"]["hero_arien"]["planning_locked_by_timeout"]
 
 
 def test_websocket_ready_requires_a_boolean(client: TestClient) -> None:
@@ -647,6 +748,56 @@ def test_resolution_timeout_freezes_rollback_before_automatic_input(monkeypatch)
         "rollback_frozen": True,
         "snapshot": None,
     }
+
+
+def test_resolution_timeout_replay_matches_live_control_flow(tmp_path) -> None:
+    config = _config(
+        resolution_allowance_seconds=0,
+        response_grant_seconds=0,
+        initial_time_bank_seconds=0,
+        time_bank_increment_seconds=0,
+        max_time_bank_seconds=0,
+    )
+    game = _game(config)
+    game.replay_recorder = ReplayRecorder("timed-replay", str(tmp_path))
+    game.replay_recorder.record_setup(
+        map_name="forgotten_island",
+        red_heroes=["Arien"],
+        blue_heroes=["Wasp"],
+        game_type="LONG",
+        cheats=False,
+        seed=123,
+        time_control=config,
+    )
+    _start(game)
+
+    state = game.session.state
+    arien = state.get_hero(HeroID("hero_arien"))
+    wasp = state.get_hero(HeroID("hero_wasp"))
+    assert arien is not None and wasp is not None
+    arien_card = max(arien.hand, key=lambda card: card.initiative)
+    wasp_card = min(wasp.hand, key=lambda card: card.initiative)
+
+    game.replay_recorder.record_commit(arien.id, arien_card.id, state.round, state.turn)
+    game.session.commit_card(arien.id, arien_card)
+    game.replay_recorder.record_commit(wasp.id, wasp_card.id, state.round, state.turn)
+    game.last_result = game.session.commit_card(wasp.id, wasp_card)
+    reconcile_game_clock(game, 0)
+
+    apply_due_timeouts(game, 0, rng=random.Random(2))
+    live_request = game.last_result.input_request if game.last_result else None
+    assert live_request is not None
+
+    replayed = replay_game(str(game.replay_recorder.path))
+    replay_result = replayed.advance()
+    replay_request = replay_result.input_request
+    assert replay_request is not None
+    assert replay_request.player_id == live_request.player_id
+    assert replay_request.request_type == live_request.request_type
+    assert replayed.state.current_actor_id == state.current_actor_id
+    assert replayed.state.resolution_owner_id == state.resolution_owner_id
+    assert replayed.state.time_control == config
+    assert replayed.state.clock is None
 
 
 def test_timeout_chain_yields_when_resolution_target_changes(monkeypatch) -> None:

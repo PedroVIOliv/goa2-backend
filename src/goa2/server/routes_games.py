@@ -40,9 +40,9 @@ from goa2.server.time_control import (
     mark_human_action,
     merge_timer_events,
     now_ms,
-    prepare_timed_mutation,
     set_player_ready,
     stop_clock_for_accepted_decision,
+    timed_rest_mutation,
 )
 from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
@@ -217,8 +217,7 @@ async def commit_card(
         raise HTTPException(status_code=403, detail="Spectators cannot commit cards")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         if client_decision_timed_out(timer_events, hero_id=player.hero_id):
             raise ValueError("Decision already timed out")
         session = game.session
@@ -260,7 +259,6 @@ async def commit_card(
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -278,8 +276,7 @@ async def uncommit_card(
         raise HTTPException(status_code=403, detail="Spectators cannot uncommit cards")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         if client_decision_timed_out(timer_events, hero_id=player.hero_id):
             raise ValueError("Decision already timed out")
         session = game.session
@@ -311,7 +308,6 @@ async def uncommit_card(
         if game.game_logger and card is not None:
             game.game_logger.log_card_uncommit(hid, card.id)
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -325,8 +321,7 @@ async def pass_turn(
         raise HTTPException(status_code=403, detail="Spectators cannot pass")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         if client_decision_timed_out(timer_events, hero_id=player.hero_id):
             raise ValueError("Decision already timed out")
         session = game.session
@@ -348,7 +343,6 @@ async def pass_turn(
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -364,8 +358,7 @@ async def planning_done(
         raise HTTPException(status_code=403, detail="Spectators cannot finish planning")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         if client_decision_timed_out(timer_events, hero_id=player.hero_id):
             raise ValueError("Decision already timed out")
         session = game.session
@@ -385,7 +378,6 @@ async def planning_done(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -400,8 +392,7 @@ async def submit_input(
         raise HTTPException(status_code=403, detail="Spectators cannot submit input")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         if client_decision_timed_out(
             timer_events,
             hero_id=player.hero_id,
@@ -439,7 +430,6 @@ async def submit_input(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -453,14 +443,12 @@ async def advance(
         raise HTTPException(status_code=403, detail="Spectators cannot advance")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         result = game.session.advance()
         mark_human_action(game)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -474,8 +462,7 @@ async def rollback_action(
         raise HTTPException(status_code=403, detail="Spectators cannot rollback")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         session = game.session
         if session.state.current_actor_id is None:
             raise HTTPException(status_code=400, detail="No active resolution to rollback")
@@ -500,7 +487,6 @@ async def rollback_action(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         _log_result(game, result)
-        finalize_timed_mutation(game, registry)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -515,8 +501,7 @@ async def give_gold_cheat(
         raise HTTPException(status_code=403, detail="Spectators cannot use cheats")
     game = registry.get(game_id)
 
-    async with game.lock:
-        timer_events = prepare_timed_mutation(game, registry=registry)
+    async with timed_rest_mutation(game, registry) as timer_events:
         session = game.session
 
         if not session.state.cheats_enabled:
@@ -561,5 +546,4 @@ async def give_gold_cheat(
         if game.game_logger:
             game.game_logger.log_events([event.model_dump()])
 
-        finalize_timed_mutation(game, registry)
         return result

@@ -180,6 +180,7 @@ Create a new game. No authentication required.
 | `blue_heroes` | string[] | required | Hero IDs for the blue team |
 | `cheats_enabled` | boolean | `false` | Enable cheats for this game (unlocks gold cheat API) |
 | `game_type` | string | `"LONG"` | `"QUICK"` or `"LONG"`. Controls wave and life counter setup (see below) |
+| `time_control` | object/null | `null` | Optional timed-match configuration shown in the quick-start example above |
 
 **Game types:**
 
@@ -223,6 +224,29 @@ Get the current game view for the authenticated player.
 The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present only when the authenticated hero is allowed to answer it. Opponents and spectators receive `null`. Team-level requests are visible only to that team's heroes; simultaneous upgrade requests contain only the authenticated hero's entry.
 
 The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID (for example, `"hero_cutter"`) for an individual victory. Check for its presence with `response.get("winner")` rather than assuming it exists.
+
+### `POST /games/{game_id}/ready`
+
+Set the authenticated hero's readiness during a timed match's initial ready
+check or an inactivity-resume ready check. Sending `false` removes that hero
+from the ready set. The final required `true` starts the match clocks.
+
+**Request body:**
+
+```json
+{
+  "ready": true
+}
+```
+
+**Response:** `200 OK` — returns `GameViewResponse` with the updated public
+clock snapshot. The mutation also broadcasts a `STATE_UPDATE` to every
+connected game WebSocket.
+
+**Error conditions:**
+
+- `400` — The match is untimed, or its clock is already running/finished.
+- `403` — A spectator attempted to change readiness.
 
 ### `POST /games/{game_id}/cards`
 
@@ -533,6 +557,17 @@ cannot ready.
 }
 ```
 
+The sender first receives a direct `READY_UPDATED` acknowledgement, followed
+by the same `STATE_UPDATE` broadcast sent to every connected client:
+
+```json
+{
+  "type": "READY_UPDATED",
+  "hero_id": "hero_arien",
+  "ready": true
+}
+```
+
 #### `ROLLBACK`
 
 Rollback the current actor's resolution to the action choice. Only the player the current input request is addressed to (its `player_id`) can send this, and only when `can_rollback` is `true`. Under Hanu's ultimate (action control) that is the controller, not the controlled hero.
@@ -564,6 +599,12 @@ Give gold to a hero (cheats must be enabled and game must be in PLANNING phase):
 - `Amount must be a positive integer` — The amount must be > 0
 
 ### Server-to-client messages
+
+#### `READY_UPDATED`
+
+Direct acknowledgement of an accepted `SET_READY` message. It contains the
+authenticated hero ID and the requested boolean value. A `STATE_UPDATE`
+broadcast follows with the authoritative ready set and clock status.
 
 #### `STATE_UPDATE`
 
@@ -617,6 +658,11 @@ After a mutation (`COMMIT_CARD`, `PASS_TURN`, `FINISH_PLANNING`, `SUBMIT_INPUT`)
 2. **All** connected clients (including the acting player) receive a `STATE_UPDATE` broadcast with their player-scoped view, carrying a recipient-scoped projection of the action's `events`
 
 This means the acting player gets both messages, with the same recipient-safe events on each — animate from one source only (the `STATE_UPDATE` broadcast is recommended, since every client receives it). Different players may receive different metadata for the same event when private information is involved. The authoritative state lives on `STATE_UPDATE.view`; events are animation hints.
+
+`SET_READY` follows the same two-message pattern, using `READY_UPDATED` as its
+direct response. A timeout discovered while processing a REST mutation is also
+broadcast before that REST request completes, even when the late request is
+rejected with `Decision already timed out`.
 
 ### Spectator restrictions
 
@@ -1336,6 +1382,7 @@ Events describe what happened during a game action. They are meant for animation
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |
 | `LIFE_COUNTER_CHANGED` | A team's life counter changed | `metadata.team`, `metadata.amount` |
 | `TURN_ENDED` | A hero's turn ended | `actor_id` |
+| `TIMER_EXPIRED` | A match clock expired and the server applied an automatic legal decision. Hidden card IDs remain recipient-scoped. | `actor_id`, `metadata.clock_kind`, `metadata.automatic_action`; optional `metadata.request_id`, `metadata.selection`, `metadata.card_id`, `metadata.team`, `metadata.eligible_hero_ids` |
 | `TIE_BREAKER_FLIPPED` | The Tie Breaker coin flipped (after a cross-team tie winner's turn, or via Ignatia's ultimate) | `metadata.tie_breaker_team`, `metadata.coin_face` |
 | `RUNES_PLACED` | A hero's rune slots changed (Snorri) | `actor_id`, `metadata.rune_slots` (the new arrangement, e.g. `{"1": "axe", "2": "bird", "3": "anvil", "4": "horn"}`) |
 | `GAME_OVER` | The game ended | `metadata.winner`, `metadata.winner_type` (`TEAM` or `HERO`), `metadata.condition` |

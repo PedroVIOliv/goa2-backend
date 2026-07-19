@@ -41,6 +41,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from goa2.domain.models import GamePhase
 from goa2.domain.time_control import TimeControlConfig
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
@@ -242,6 +243,7 @@ def load_replay(path: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
     """Create a fresh GameSession from a replay setup header (seeded, no decisions)."""
     configured = setup.get("time_control")
+    time_control = TimeControlConfig.model_validate(configured) if configured else None
     state = GameSetup.create_game(
         _resolve_map_path(setup["map"]),
         setup["red"],
@@ -249,8 +251,13 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
         setup.get("cheats", False),
         setup.get("game_type", "LONG"),
         seed=setup["seed"],
-        time_control=(TimeControlConfig.model_validate(configured) if configured else None),
+        time_control=time_control,
     )
+    if time_control is not None:
+        # Replays record exact decisions, not readiness or wall-clock receipt
+        # times. Preserve the configured rules for inspection but do not expose
+        # a fabricated WAITING_FOR_PLAYERS clock as if it were live history.
+        state.clock = None
     return GameSession(state)
 
 
@@ -355,6 +362,13 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
 
     if kind == "timer_timeout":
         action = decision.get("action")
+        if action == "input" and session.state.phase == GamePhase.RESOLUTION:
+            # Live automatic Resolution/Response choices are final: they clear
+            # the rollback snapshot and make ConfirmResolutionStep auto-finish.
+            # Reproduce that control-flow effect before applying the selection.
+            session.state.execution_context["rollback_frozen"] = True
+            session._rollback_snapshot = None
+            session._rollback_actor_id = None
         translated = {**decision, "type": action}
         _apply_decision(session, translated)
         return
