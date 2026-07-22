@@ -706,10 +706,15 @@ class FastTravelDestinationFilter(FilterCondition):
     - Unit must be in a safe zone (no enemies)
     - Destination must be in same zone or adjacent safe zone
     - Destination must be empty
+    - Destination must be reachable given board topology (reality splits) and
+      must not be behind a static barrier
+    - When `require_zone_change` is set (Silverarrow's Shoot and Scoot: "fast
+      travel to an *adjacent* zone"), the current zone is excluded
     """
 
     type: FilterType = FilterType.FAST_TRAVEL_DESTINATION
     unit_id: str | None = None
+    require_zone_change: bool = False
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -748,6 +753,20 @@ class FastTravelDestinationFilter(FilterCondition):
         # Check if candidate is in a safe zone and empty
         cand_zone_id = state.board.get_zone_for_hex(candidate)
         if cand_zone_id not in safe_zones:
+            return False
+
+        # "Fast travel to an adjacent zone" must actually leave the current one.
+        if self.require_zone_change and cand_zone_id == current_zone_id:
+            return False
+
+        # Fast travel is bound by topology (reality splits) ...
+        if not get_topology_service().are_connected(
+            current_hex, candidate, state, unit_ids=[str(uid)]
+        ):
+            return False
+
+        # ... and by static barriers, which make hexes obstacles for this actor.
+        if state.validator.is_obstacle_for_actor(state, candidate, str(uid), context):
             return False
 
         tile = state.board.get_tile(candidate)

@@ -590,8 +590,11 @@ class ChooseMinionRemovalStep(GameStep):
     """
     Self-looping step: the losing team chooses which minion to remove.
     Heavy minions can only be chosen once all non-heavy minions are gone.
-    Skips player choice when remaining_to_remove >= total_loser_minions - 1
-    (no meaningful choice).
+
+    The prompt is skipped only when the casualty is forced: either exactly one
+    minion is currently eligible, or every currently eligible minion must go.
+    Eligibility is recalculated after each removal, so a batch that clears the
+    ordinary minions still asks about the heavy ones that follow.
     """
 
     type: StepType = StepType.CHOOSE_MINION_REMOVAL
@@ -635,19 +638,27 @@ class ChooseMinionRemovalStep(GameStep):
         if not minions:
             return StepResult(is_finished=True)
 
-        n = len(minions)
+        valid = self._get_valid_choices(minions)
 
-        # Skip condition: no meaningful choice
-        if self.remaining_to_remove >= n - 1:
-            # Auto-remove all, sorted non-heavy first
-            minions.sort(key=lambda m: m.is_heavy)
-            removal_steps: list[GameStep] = []
-            for m in minions[: self.remaining_to_remove]:
-                removal_steps.append(RemoveUnitStep(unit_id=str(m.id)))
+        # Forced casualties: only one eligible minion, or every eligible minion
+        # must be removed. Either way there is nothing to decide.
+        if len(valid) == 1 or self.remaining_to_remove >= len(valid):
+            forced = valid[: self.remaining_to_remove]
+            removal_steps: list[GameStep] = [RemoveUnitStep(unit_id=str(m.id)) for m in forced]
+            left = self.remaining_to_remove - len(forced)
+            if left > 0:
+                # Eligibility changes once these are gone (heavy minions become
+                # selectable), so re-enter rather than removing blindly.
+                removal_steps.append(
+                    ChooseMinionRemovalStep(
+                        losing_team=self.losing_team,
+                        remaining_to_remove=left,
+                        zone_id=self.zone_id,
+                    )
+                )
             return StepResult(is_finished=True, new_steps=removal_steps)
 
         # Player choice needed
-        valid = self._get_valid_choices(minions)
         if self.pending_input:
             chosen_id = self.pending_input.get("selection")
             self.pending_input = None

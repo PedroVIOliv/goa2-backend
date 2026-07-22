@@ -1,7 +1,8 @@
 """P1: starts_in_deck flag + Takahide starting-hand composition."""
 
 from goa2.data.heroes.registry import HeroRegistry
-from goa2.domain.models import Card, CardState
+from goa2.domain.models import Card, CardState, TeamColor
+from goa2.engine.setup import GameSetup
 
 
 def fresh_takahide():
@@ -41,6 +42,26 @@ def test_starts_in_deck_survives_serialization():
     restored = type(hero).model_validate_json(dumped)
     sting = next(c for c in restored.deck if c.id == "sting_like_a_bee")
     assert sting.starts_in_deck is True
+
+
+def test_production_setup_honors_starts_in_deck():
+    """Full GameSetup (not just initialize_state) must leave Sting/Strike in the deck."""
+    state = GameSetup.create_game(
+        "src/goa2/data/maps/forgotten_island.json",
+        ["Takahide"],
+        ["Arien"],
+    )
+    takahide = next(h for h in state.teams[TeamColor.RED].heroes if h.name == "Takahide")
+    assert {c.id for c in takahide.hand} == {
+        "float_like_a_butterfly",
+        "bushido",
+        "proven_warrior",
+        "come_to_aid",
+        "set_an_example",
+    }
+    for cid in ("sting_like_a_bee", "strike_like_a_tiger"):
+        card = next(c for c in takahide.deck if c.id == cid)
+        assert card.state == CardState.DECK
 
 
 def test_other_heroes_unaffected():

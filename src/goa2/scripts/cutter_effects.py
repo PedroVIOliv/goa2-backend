@@ -316,8 +316,9 @@ class AFistfulOfCoinsEffect(_CoinChoiceEffect):
 # "Move N in a straight line, ignoring obstacles, to a space adjacent to an enemy
 #  hero; that hero discards a card, if able."
 #
-# Bound sentence: the landing must enable the discard, so the destination must be
-# adjacent to a NON-IMMUNE enemy hero (skip_immune on the adjacency anchor).
+# The adjacency is a presence condition, so an immune enemy hero still anchors a
+# legal landing space (audit §1.4). The discard is a separate, targeting step and
+# simply fizzles against a hero who cannot be affected.
 # =============================================================================
 
 
@@ -335,7 +336,7 @@ class _BraceChargeEffect(CardEffect):
     ) -> list[GameStep]:
         return [
             # Mandatory straight-line move (ignoring obstacles) onto an empty hex
-            # adjacent to a non-immune enemy hero.
+            # adjacent to an enemy hero (immune ones count — audit §1.4).
             SelectStep(
                 target_type=TargetType.HEX,
                 prompt="Charge in a straight line to a space adjacent to an enemy hero",
@@ -346,7 +347,7 @@ class _BraceChargeEffect(CardEffect):
                     InStraightLineFilter(origin_id=str(hero.id)),
                     StraightLinePathFilter(origin_id=str(hero.id), pass_through_obstacles=True),
                     ObstacleFilter(is_obstacle=False),
-                    AdjacencyFilter(target_tags=["ENEMY", "HERO"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY", "HERO"]),
                 ],
             ),
             MoveUnitStep(

@@ -12,8 +12,9 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
+from goa2.domain.models.token import Token, TokenType
 from goa2.domain.state import GameState
-from goa2.domain.types import HeroID
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     DefeatUnitStep,
@@ -191,6 +192,40 @@ def test_respawn_filters_occupied_spawn_points():
     # Spawn point is blocked, but BFS fallback finds nearby hexes
     assert result.requires_input is True
     assert spawn_hex not in result.input_request["valid_hexes"]
+
+
+def _place_token(state, hex_pos, token_id="token_1"):
+    token = Token(id=BoardEntityID(token_id), name="Blocker Token", token_type=TokenType.ROCK)
+    state.register_entity(token, "token")
+    state.place_entity(BoardEntityID(token_id), hex_pos)
+    return token
+
+
+def test_token_does_not_block_marked_respawn_space():
+    """Audit §3.8: a token does not block a marked respawn space."""
+    spawn_hex = Hex(q=0, r=0, s=0)
+    state, _hero = _make_respawn_state(spawn_hex)
+    _place_token(state, spawn_hex)
+
+    step = RespawnHeroStep(hero_id="Hero")
+    result = step.resolve(state, {})
+
+    assert result.requires_input is True
+    assert spawn_hex.model_dump() in result.input_request["valid_hexes"]
+
+
+def test_respawning_onto_a_token_clears_the_token():
+    """Audit §3.8: the respawning hero clears the token it lands on."""
+    spawn_hex = Hex(q=0, r=0, s=0)
+    state, _hero = _make_respawn_state(spawn_hex)
+    _place_token(state, spawn_hex)
+
+    step = RespawnHeroStep(hero_id="Hero", pending_input={"selection": spawn_hex.model_dump()})
+    result = step.resolve(state, {})
+
+    assert result.is_finished is True
+    assert state.get_position("Hero") == spawn_hex
+    assert state.entity_locations.get(BoardEntityID("token_1")) is None
 
 
 def test_respawn_offers_empty_spawn_point():

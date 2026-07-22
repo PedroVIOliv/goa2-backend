@@ -1,6 +1,21 @@
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
-from goa2.domain.models import ActionType, Hero, Minion, MinionType, Team, TeamColor
+from goa2.domain.models import (
+    ActionType,
+    AffectsFilter,
+    Hero,
+    Minion,
+    MinionType,
+    Team,
+    TeamColor,
+)
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.handler import process_stack, push_steps
@@ -248,3 +263,107 @@ def test_fast_travel_prevention_effect():
     res = state.validator.can_perform_action(state, "hero1", ActionType.FAST_TRAVEL)
     assert res.allowed is False
     assert "prevented by effect" in res.reason
+
+
+# =============================================================================
+# Audit §3.7 — Fast travel respects topology and static barriers
+# =============================================================================
+
+
+def _two_zone_state():
+    """Z1 (start, q<0) adjacent to Z2 (q>0), one hero in Z1."""
+    state = setup_base_state()
+    z1 = Zone(id="z1", hexes={Hex(q=-2, r=0, s=2), Hex(q=-1, r=0, s=1)}, neighbors=["z2"])
+    z2 = Zone(id="z2", hexes={Hex(q=1, r=0, s=-1), Hex(q=2, r=0, s=-2)}, neighbors=["z1"])
+    state.board.zones = {"z1": z1, "z2": z2}
+    state.board.populate_tiles_from_zones()
+
+    hero = Hero(id=HeroID("hero1"), name="H1", team=TeamColor.RED, deck=[], hand=[], items={})
+    state.teams[TeamColor.RED].heroes.append(hero)
+    state.current_actor_id = "hero1"
+    state.place_entity("hero1", Hex(q=-2, r=0, s=2))
+    return state
+
+
+def _offered_hexes(state):
+    push_steps(state, [FastTravelSequenceStep(unit_id="hero1")])
+    req = process_stack(state).input_request
+    if req is None:
+        return []
+    return req["valid_options"]
+
+
+def test_fast_travel_cannot_cross_a_reality_split():
+    """Audit §3.7: a destination across a reality split is illegal."""
+    state = _two_zone_state()
+    state.active_effects.append(
+        ActiveEffect(
+            id="split_1",
+            source_id="nebkher",
+            effect_type=EffectType.TOPOLOGY_SPLIT,
+            split_axis="q",
+            split_value=0,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_ROUND,
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+    )
+
+    offered = _offered_hexes(state)
+
+    # Hero sits at q=-2 (NEGATIVE side); q>0 hexes are across the split.
+    assert Hex(q=-1, r=0, s=1).model_dump() in offered
+    assert Hex(q=1, r=0, s=-1).model_dump() not in offered
+    assert Hex(q=2, r=0, s=-2).model_dump() not in offered
+
+
+def test_fast_travel_cannot_cross_a_static_barrier():
+    """Audit §3.7: a static barrier blocks the destination like any obstacle."""
+    state = _two_zone_state()
+    # Wasp sits in a third, non-adjacent zone so z1/z2 stay enemy-free.
+    state.board.zones["z3"] = Zone(id="z3", hexes={Hex(q=3, r=0, s=-3)}, neighbors=[])
+    state.board.populate_tiles_from_zones()
+    enemy = Hero(id=HeroID("wasp"), name="Wasp", team=TeamColor.BLUE, deck=[], hand=[], items={})
+    state.teams[TeamColor.BLUE].heroes.append(enemy)
+    state.place_entity("wasp", Hex(q=3, r=0, s=-3))
+    state.active_effects.append(
+        ActiveEffect(
+            id="barrier_1",
+            source_id="wasp",
+            effect_type=EffectType.STATIC_BARRIER,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ENEMY_HEROES),
+            duration=DurationType.THIS_ROUND,
+            barrier_radius=1,
+            barrier_origin_id="wasp",
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+    )
+
+    offered = _offered_hexes(state)
+
+    # Hero is outside the barrier radius, so hexes inside it are obstacles.
+    assert Hex(q=-1, r=0, s=1).model_dump() in offered
+    assert Hex(q=1, r=0, s=-1).model_dump() in offered
+    assert Hex(q=2, r=0, s=-2).model_dump() not in offered
+
+
+# =============================================================================
+# Audit §5.1 — Shoot and Scoot excludes Silverarrow's current zone
+# =============================================================================
+
+
+def test_fast_travel_to_adjacent_zone_excludes_current_zone():
+    """Audit §5.1: 'fast travel to an adjacent zone' must leave the current zone."""
+    state = _two_zone_state()
+
+    push_steps(state, [FastTravelSequenceStep(unit_id="hero1", require_zone_change=True)])
+    req = process_stack(state).input_request
+    offered = req["valid_options"] if req else []
+
+    assert Hex(q=-1, r=0, s=1).model_dump() not in offered
+    assert Hex(q=1, r=0, s=-1).model_dump() in offered
+    assert Hex(q=2, r=0, s=-2).model_dump() in offered

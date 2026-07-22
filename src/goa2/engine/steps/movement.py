@@ -478,6 +478,9 @@ class FastTravelSequenceStep(GameStep):
     type: StepType = StepType.FAST_TRAVEL_SEQUENCE
     unit_id: str | None = None
     destination_key: str = "target_hex"
+    # Silverarrow's Shoot and Scoot: "fast travel to an adjacent zone" — the
+    # current zone is not adjacent to itself, so it is not a legal destination.
+    require_zone_change: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
@@ -515,7 +518,12 @@ class FastTravelSequenceStep(GameStep):
                     target_type=TargetType.HEX,
                     prompt="Select Fast Travel Destination",
                     output_key=self.destination_key,
-                    filters=[FastTravelDestinationFilter(unit_id=actor_id)],
+                    filters=[
+                        FastTravelDestinationFilter(
+                            unit_id=actor_id,
+                            require_zone_change=self.require_zone_change,
+                        )
+                    ],
                     is_mandatory=False,
                 ),
                 PlaceUnitStep(

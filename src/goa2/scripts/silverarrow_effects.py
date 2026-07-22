@@ -626,7 +626,8 @@ class ShootAndScootEffect(CardEffect):
                 is_ranged=True,
                 target_filters=[RangeFilter(min_range=r, max_range=r)],
             ),
-            FastTravelSequenceStep(unit_id=str(hero.id)),
+            # "to an adjacent zone" — the current zone is not adjacent to itself.
+            FastTravelSequenceStep(unit_id=str(hero.id), require_zone_change=True),
         ]
 
 

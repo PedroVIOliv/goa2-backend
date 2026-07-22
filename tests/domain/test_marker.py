@@ -236,21 +236,11 @@ class TestGameStateMarkers:
         marker = game_state.get_marker(MarkerType.VENOM)
         assert marker.target_id == "hero_2"
 
-    def test_return_markers_by_source(self, game_state):
-        """return_markers_by_source removes markers placed by a source."""
-        game_state.place_marker(MarkerType.VENOM, "hero_1", -1, "hero_rogue")
+    def test_no_by_source_cleanup_exists(self, game_state):
+        """A marker does not leave play because the hero who placed it died.
 
-        removed = game_state.return_markers_by_source("hero_rogue")
-
-        assert len(removed) == 1
-        assert removed[0].is_placed is False
-
-    def test_return_markers_by_source_only_affects_source(self, game_state):
-        """return_markers_by_source doesn't affect markers from other sources."""
-        game_state.place_marker(MarkerType.VENOM, "hero_1", -1, "hero_rogue")
-
-        removed = game_state.return_markers_by_source("hero_other")
-
-        assert len(removed) == 0
-        marker = game_state.get_marker(MarkerType.VENOM)
-        assert marker.is_placed is True
+        Markers return to supply at end of round, or when the hero they are ON
+        is defeated. There is no rule returning a marker to supply because its
+        placer was defeated, so no such helper exists.
+        """
+        assert not hasattr(game_state, "return_markers_by_source")

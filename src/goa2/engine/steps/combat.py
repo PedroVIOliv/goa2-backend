@@ -534,12 +534,10 @@ class DefeatUnitStep(GameStep):
                 f"   [DEATH] Returned {len(markers_from)} marker(s) from defeated {actual_victim_id}"
             )
 
-        # Return markers placed by the defeated hero
-        markers_by = state.return_markers_by_source(actual_victim_id)
-        if markers_by:
-            logger.debug(
-                f"   [DEATH] Returned {len(markers_by)} marker(s) placed by defeated {actual_victim_id}"
-            )
+        # Markers this hero PLACED are deliberately left alone: they belong to
+        # the heroes carrying them and stay until end of round (or until that
+        # hero is defeated). Bain's Bounty still costs its extra life counter
+        # after Bain is gone.
 
         # Cancel all active effects created by the defeated unit
         EffectManager.expire_by_source(state, actual_victim_id)
@@ -729,8 +727,9 @@ class CheckMinionProtectionStep(GameStep):
             return StepResult(is_finished=True)
 
         # Collect untried active MINION_PROTECTION effects covering this minion.
-        # Offer optional (card-discard) protections BEFORE the mandatory totem
-        # sacrifice, so a totem only fires as a fallback.
+        # The mandatory totem sacrifice replaces the prospective defeat FIRST;
+        # optional (card-discard) protections like Brogan's are only considered
+        # when no totem applies to this minion.
         candidates = [
             e
             for e in state.active_effects
@@ -743,7 +742,7 @@ class CheckMinionProtectionStep(GameStep):
                 or getattr(minion, "type", None) in e.protected_minion_types
             )
         ]
-        candidates.sort(key=lambda e: e.sacrifice_origin_token)
+        candidates.sort(key=lambda e: not e.sacrifice_origin_token)
         protection = candidates[0] if candidates else None
 
         if not protection:
@@ -919,6 +918,18 @@ class CheckMinionProtectionStep(GameStep):
         )
 
 
+def _token_on_hex(state: GameState, hex_pos: Hex) -> Token | None:
+    """The Token occupying `hex_pos`, if the hex is blocked only by a token.
+
+    Returns None for empty hexes, terrain, and hexes held by a unit.
+    """
+    tile = state.board.get_tile(hex_pos)
+    if not tile or tile.is_terrain or not tile.occupant_id:
+        return None
+    occupant = state.get_entity(BoardEntityID(str(tile.occupant_id)))
+    return occupant if isinstance(occupant, Token) else None
+
+
 class RespawnHeroStep(GameStep):
     """
     Handles the Hero Respawn choice.
@@ -952,7 +963,12 @@ class RespawnHeroStep(GameStep):
         for sp in state.board.spawn_points:
             if sp.is_hero_spawn and sp.team == hero.team:
                 team_spawn_hexes.append(sp.location)
-                if not state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id):
+                blocked = state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id)
+                # A token never blocks a marked respawn space: the hero
+                # respawns onto it and clears the token.
+                if blocked and _token_on_hex(state, sp.location) is not None:
+                    blocked = False
+                if not blocked:
                     valid_hexes.append(sp.location)
 
         # Fallback: BFS from spawn points to find nearest non-obstacle hex
@@ -998,6 +1014,22 @@ class RespawnHeroStep(GameStep):
                     logger.debug(f"   [RESPAWN] Rejected respawn hex {selection!r}; re-requesting.")
                     return _hex_request()
                 logger.debug(f"   [RESPAWN] {self.hero_id} respawning at {selected_hex}")
+                events: list[GameEvent] = []
+                cleared = _token_on_hex(state, selected_hex)
+                if cleared is not None:
+                    from goa2.engine.steps.markers import _remove_token_from_board
+
+                    from_hex, _ = _remove_token_from_board(state, str(cleared.id))
+                    logger.debug(f"   [RESPAWN] Cleared token {cleared.id} from {selected_hex}")
+                    events.append(
+                        GameEvent(
+                            event_type=GameEventType.TOKEN_REMOVED,
+                            actor_id=self.hero_id,
+                            target_id=str(cleared.id),
+                            from_hex=from_hex.model_dump() if from_hex else None,
+                            metadata={"reason": "respawn"},
+                        )
+                    )
                 if hero.is_multi_piece:
                     from goa2.engine.hero_pieces import pieces_in_supply
 
@@ -1005,7 +1037,7 @@ class RespawnHeroStep(GameStep):
                     state.place_entity(BoardEntityID(supply[0]), selected_hex)
                 else:
                     state.move_unit(UnitID(self.hero_id), selected_hex)
-                return StepResult(is_finished=True)
+                return StepResult(is_finished=True, events=events)
 
         # If user already chose RESPAWN but hasn't picked hex yet, show hexes
         if self.pending_input and self.pending_input.get("selection") == "RESPAWN":

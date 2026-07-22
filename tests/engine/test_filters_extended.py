@@ -171,35 +171,27 @@ def test_adjacency_filter(extended_state):
     assert f_adj_enemy_minion.apply(Hex(q=0, r=0, s=0), extended_state, {}) is True
 
 
-def test_adjacency_filter_skip_immune(extended_state):
-    """AdjacencyFilter with skip_immune=True should exclude hexes
-    where the only adjacent enemies are immune."""
+def test_adjacency_filter_counts_immune_units(extended_state):
+    """Audit §1.4: immune units still satisfy an "adjacent to an enemy" condition.
+
+    Immunity governs targeting and effects, not presence — so AdjacencyFilter
+    has no immunity escape hatch at all.
+    """
     extended_state.current_actor_id = "h1"
     # h1(Red) at (0,0,0), m1(Blue,Melee) at (1,0,-1), m2(Blue,Heavy) at (3,0,-3)
     # m2 is immune (heavy with m1 as support in same zone)
-    # h2(Blue) at (2,0,-2) is NOT immune
 
-    f_skip = AdjacencyFilter(target_tags=["ENEMY"], skip_immune=True)
-    f_no_skip = AdjacencyFilter(target_tags=["ENEMY"])
+    f_enemy = AdjacencyFilter(target_tags=["ENEMY"])
+    assert "skip_immune" not in AdjacencyFilter.model_fields
 
-    # (0,0,0) is adjacent to m1 (not immune) → both should pass
-    assert f_no_skip.apply(Hex(q=0, r=0, s=0), extended_state, {}) is True
-    assert f_skip.apply(Hex(q=0, r=0, s=0), extended_state, {}) is True
+    assert f_enemy.apply(Hex(q=0, r=0, s=0), extended_state, {}) is True
+    assert f_enemy.apply(Hex(q=2, r=0, s=-2), extended_state, {}) is True
 
-    # (2,0,-2) is adjacent to m2 (immune) AND m1 (not immune) → m1 makes it pass
-    # But also h2 is at (2,0,-2) — it's the occupant, not a neighbor.
-    # Neighbors of (2,0,-2): (1,0,-1)=m1, (3,0,-3)=m2
-    assert f_no_skip.apply(Hex(q=2, r=0, s=-2), extended_state, {}) is True
-    assert f_skip.apply(Hex(q=2, r=0, s=-2), extended_state, {}) is True  # m1 is not immune
-
-    # Create a hex adjacent ONLY to m2 (immune heavy) — place a tile at (4,0,-4)
-    # neighbors of (4,0,-4) include (3,0,-3)=m2 but no other occupied hexes
+    # A hex adjacent ONLY to the immune heavy minion still counts as adjacent
+    # to an enemy.
     new_hex = Hex(q=4, r=0, s=-4)
     extended_state.board.tiles[new_hex] = Tile(hex=new_hex)
-    # Without skip_immune: passes (m2 is enemy)
-    assert f_no_skip.apply(new_hex, extended_state, {}) is True
-    # With skip_immune: fails (m2 is immune, no other adjacent enemy)
-    assert f_skip.apply(new_hex, extended_state, {}) is False
+    assert f_enemy.apply(new_hex, extended_state, {}) is True
 
 
 def test_immunity_filter(extended_state):

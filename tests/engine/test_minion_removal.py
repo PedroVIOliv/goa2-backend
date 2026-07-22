@@ -57,3 +57,90 @@ def test_removal_rejects_protected_heavy_minion(removal_state):
     result = step.resolve(removal_state, {})
     assert result.is_finished
     assert _removed_ids(result) == ["m_light1"]
+
+
+# =============================================================================
+# Audit §4.5 — the losing team chooses whenever the choice is meaningful
+# =============================================================================
+
+
+def _state_with(*minions):
+    board = Board()
+    zone_hexes = {Hex(q=i, r=0, s=-i) for i in range(len(minions))}
+    board.zones = {"Z": Zone(id="Z", label="Z", hexes=zone_hexes)}
+    board.populate_tiles_from_zones()
+
+    state = GameState(
+        board=board,
+        teams={
+            TeamColor.RED: Team(color=TeamColor.RED, heroes=[], minions=list(minions)),
+            TeamColor.BLUE: Team(color=TeamColor.BLUE, heroes=[], minions=[]),
+        },
+    )
+    for i, m in enumerate(minions):
+        state.place_entity(str(m.id), Hex(q=i, r=0, s=-i))
+    return state
+
+
+def _light(name):
+    return Minion(id=name, name=name, type=MinionType.MELEE, team=TeamColor.RED)
+
+
+def _heavy(name):
+    return Minion(id=name, name=name, type=MinionType.HEAVY, team=TeamColor.RED)
+
+
+def test_two_ordinary_minions_removing_one_asks_the_losing_team():
+    """Audit §4.5: choosing the survivor is a real choice."""
+    state = _state_with(_light("a"), _light("b"))
+    step = ChooseMinionRemovalStep(losing_team="RED", remaining_to_remove=1, zone_id="Z")
+
+    result = step.resolve(state, {})
+
+    assert result.requires_input
+    assert set(result.input_request["candidates"]) == {"a", "b"}
+
+
+def test_one_ordinary_and_one_heavy_auto_removes_the_ordinary():
+    """Audit §4.5: a forced casualty needs no prompt."""
+    state = _state_with(_light("a"), _heavy("h"))
+    step = ChooseMinionRemovalStep(losing_team="RED", remaining_to_remove=1, zone_id="Z")
+
+    result = step.resolve(state, {})
+
+    assert result.is_finished
+    assert _removed_ids(result) == ["a"]
+
+
+def test_all_eligible_minions_forced_are_auto_removed():
+    """Audit §4.5: two ordinary + one heavy, remove two -> both ordinary, no prompt."""
+    state = _state_with(_light("a"), _light("b"), _heavy("h"))
+    step = ChooseMinionRemovalStep(losing_team="RED", remaining_to_remove=2, zone_id="Z")
+
+    result = step.resolve(state, {})
+
+    assert result.is_finished
+    assert sorted(_removed_ids(result)) == ["a", "b"]
+
+
+def test_eligibility_is_recalculated_before_progressing_to_heavies():
+    """Audit §4.5: one ordinary + two heavy, remove two -> forced ordinary, then a choice."""
+    state = _state_with(_light("a"), _heavy("h1"), _heavy("h2"))
+    step = ChooseMinionRemovalStep(losing_team="RED", remaining_to_remove=2, zone_id="Z")
+
+    result = step.resolve(state, {})
+
+    assert result.is_finished
+    assert _removed_ids(result) == ["a"]
+    follow_up = [s for s in result.new_steps if isinstance(s, ChooseMinionRemovalStep)]
+    assert len(follow_up) == 1
+    assert follow_up[0].remaining_to_remove == 1
+
+    # After the ordinary minion is gone, the two heavies are a real choice.
+    state.remove_entity("a")
+    state.teams[TeamColor.RED].minions = [
+        m for m in state.teams[TeamColor.RED].minions if m.id != "a"
+    ]
+    second = follow_up[0].resolve(state, {})
+    assert second.requires_input
+    assert set(second.input_request["candidates"]) == {"h1", "h2"}

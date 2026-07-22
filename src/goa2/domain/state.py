@@ -233,17 +233,11 @@ class GameState(BaseModel):
         """True if a marker target (hero ID or piece ID) belongs to hero_id."""
         return self.hero_owner_id(marker_target) == str(hero_id)
 
-    def return_markers_by_source(self, source_id: str) -> list[Marker]:
-        """
-        Return all markers placed by a specific source (e.g., on source defeat).
-        Returns list of markers that were removed.
-        """
-        removed = []
-        for marker in self.markers.values():
-            if marker.source_id == source_id:
-                marker.remove()
-                removed.append(marker)
-        return removed
+    # NOTE: there is deliberately no `return_markers_by_source`. A marker does
+    # not leave play because the hero who placed it was defeated — it returns to
+    # supply at end of round, or when the hero it is ON is defeated
+    # (`return_markers_from_hero`). Bain's Bounty keeps imposing its extra life
+    # loss after Bain is gone.
 
     @property
     def validator(self) -> Any:

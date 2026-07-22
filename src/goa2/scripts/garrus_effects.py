@@ -182,7 +182,7 @@ class _DashPushEffect(CardEffect):
                 filters=[
                     RangeFilter(max_range=self.dash_distance),
                     MovementPathFilter(range_val=self.dash_distance),
-                    AdjacencyFilter(target_tags=["ENEMY", "HERO"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY", "HERO"]),
                     ObstacleFilter(is_obstacle=False),
                 ],
                 is_mandatory=False,

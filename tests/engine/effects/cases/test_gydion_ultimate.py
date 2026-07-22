@@ -76,15 +76,16 @@ def test_declining_archwizard_returns_all_spent_spells() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.CONFIRM_PASSIVE).choose("NO").finish()
 
+    assert gydion.wish_cast_count == 0
     assert len(gydion.spellbook) == len(gydion.spells) == 22
     assert all(spell.is_facedown for spell in gydion.spellbook)
     assert any(event.event_type == GameEventType.SPELLBOOK_PREPARED for event in run.events)
 
 
 @pytest.mark.effect_flow
-def test_accepting_archwizard_casts_wish_instead_of_returning_spells() -> None:
+def test_accepting_archwizard_casts_wish_instead_of_preparing() -> None:
     state, gydion = _state()
-    _prepare(gydion, "wish", "shield", "magic_missile")
+    _prepare(gydion, *(spell.id for spell in gydion.spells))
     run = run_card(state, gydion.id)
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
@@ -94,15 +95,12 @@ def test_accepting_archwizard_casts_wish_instead_of_returning_spells() -> None:
     run.choose("wish")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
     run.expect_input(InputRequestType.SELECT_CARD)
-    assert {option.id for option in run.latest_request.options} == {
-        "shield",
-        "magic_missile",
-    }
+    assert "wish" not in {option.id for option in run.latest_request.options}
+    assert "magic_missile" in {option.id for option in run.latest_request.options}
     run.choose("magic_missile").expect_input(InputRequestType.CHOOSE_ACTION)
     run.choose("HOLD").finish()
 
     assert gydion.wish_cast_count == 1
-    assert [spell.id for spell in gydion.spellbook] == ["shield"]
     assert state.get_card_by_id("wish").state == CardState.OUTSIDE_SPELLBOOK
     assert state.get_card_by_id("magic_missile").state == CardState.OUTSIDE_SPELLBOOK
     assert not any(event.event_type == GameEventType.SPELLBOOK_PREPARED for event in run.events)
@@ -116,7 +114,7 @@ def test_accepting_archwizard_casts_wish_instead_of_returning_spells() -> None:
 @pytest.mark.effect_flow
 def test_archwizard_wish_counts_even_when_caster_holds() -> None:
     state, gydion = _state()
-    _prepare(gydion, "wish", "shield")
+    _prepare(gydion, *(spell.id for spell in gydion.spells))
     run = run_card(state, gydion.id)
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
@@ -125,7 +123,7 @@ def test_archwizard_wish_counts_even_when_caster_holds() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
 
     assert gydion.wish_cast_count == 1
-    assert [spell.id for spell in gydion.spellbook] == ["shield"]
+    assert state.get_card_by_id("wish").state == CardState.OUTSIDE_SPELLBOOK
     assert not any(event.event_type == GameEventType.SPELLBOOK_PREPARED for event in run.events)
 
 
@@ -142,18 +140,39 @@ def test_archwizard_is_not_offered_when_wish_is_outside_spellbook() -> None:
 
 
 @pytest.mark.effect_flow
-def test_archwizard_is_not_offered_when_no_spell_would_be_returned() -> None:
+def test_archwizard_is_offered_when_no_spell_has_been_spent() -> None:
+    """Audit §5.4: Wish is offered exactly when nothing has been spent."""
     state, gydion = _state()
     _prepare(gydion, *(spell.id for spell in gydion.spells))
     run = run_card(state, gydion.id)
 
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL").finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.CONFIRM_PASSIVE).confirm()
+    run.expect_input(InputRequestType.SELECT_CARD).choose("wish")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
 
-    assert len(gydion.spellbook) == len(gydion.spells)
-    prepared = [
-        event for event in run.events if event.event_type == GameEventType.SPELLBOOK_PREPARED
-    ]
-    assert prepared[0].metadata["returned_spell_ids"] == []
+    assert gydion.wish_cast_count == 1
+
+
+@pytest.mark.effect_flow
+def test_archwizard_is_offered_when_a_spell_has_been_spent() -> None:
+    """Wish may be cast whether or not spells have been spent.
+
+    The only gate is that Wish itself is in the spellbook.
+    """
+    state, gydion = _state()
+    _prepare(gydion, *(spell.id for spell in gydion.spells if spell.id != "shield"))
+    run = run_card(state, gydion.id)
+
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.CONFIRM_PASSIVE).confirm()
+    run.expect_input(InputRequestType.SELECT_CARD).choose("wish")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("HOLD").finish()
+
+    assert gydion.wish_cast_count == 1
+    # Casting Wish replaces the preparation: the spent spell stays spent.
+    assert state.get_card_by_id("shield").state == CardState.OUTSIDE_SPELLBOOK
+    assert not any(event.event_type == GameEventType.SPELLBOOK_PREPARED for event in run.events)
 
 
 @pytest.mark.effect_flow
@@ -174,7 +193,7 @@ def test_copied_prepare_spells_refills_normally_without_archwizard_offer() -> No
     gydion.spells = [spell.model_copy(deep=True) for spell in template.spells]
     gydion.ultimate_card = template.ultimate_card.model_copy(deep=True)
     gydion.level = 8
-    _prepare(gydion, "wish", "shield")
+    _prepare(gydion, *(spell.id for spell in gydion.spells))
     run = run_card(state, "hero_copier")
 
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL").finish()

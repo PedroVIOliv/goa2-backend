@@ -376,7 +376,7 @@ class MadDashEffect(CardEffect):
                 filters=[
                     RangeFilter(min_range=2, max_range=2),
                     InStraightLineFilter(origin_id=hero.id),
-                    AdjacencyFilter(target_tags=["ENEMY"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
                     StraightLinePathFilter(origin_id=hero.id),
                 ],
@@ -413,7 +413,7 @@ class BullrushEffect(CardEffect):
                 filters=[
                     RangeFilter(min_range=2, max_range=3),
                     InStraightLineFilter(origin_id=hero.id),
-                    AdjacencyFilter(target_tags=["ENEMY"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
                     StraightLinePathFilter(origin_id=hero.id),
                 ],
@@ -450,7 +450,7 @@ class FuriousChargeEffect(CardEffect):
                 filters=[
                     RangeFilter(min_range=2, max_range=4),
                     InStraightLineFilter(origin_id=hero.id),
-                    AdjacencyFilter(target_tags=["ENEMY"], skip_immune=True),
+                    AdjacencyFilter(target_tags=["ENEMY"]),
                     ObstacleFilter(is_obstacle=False),
                     StraightLinePathFilter(origin_id=hero.id),
                 ],

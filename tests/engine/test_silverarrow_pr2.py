@@ -279,3 +279,5 @@ class TestShootAndScoot:
         scoot = steps[1]
         assert isinstance(scoot, FastTravelSequenceStep)
         assert scoot.unit_id == "hero_silverarrow"
+        # Audit §5.1: "adjacent zone" excludes Silverarrow's current zone.
+        assert scoot.require_zone_change is True

@@ -130,7 +130,10 @@ class CrackInRealityEffect(CardEffect):
 @register_effect("shift_reality")
 class ShiftRealityEffect(CrackInRealityEffect):
     """Tier-3 split: additionally, units on either side cannot interact with
-    NebKher himself (mutual isolation); only units on the line can."""
+    NebKher himself; only units on the line can. The restriction is one-way —
+    NebKher is not affected by his own ability, so for his movement, targeting,
+    placement and radius the split does not exist. The protection follows him
+    wherever he moves, not the cast-time hex."""
 
     topology_effect_type: EffectType = EffectType.TOPOLOGY_ISOLATION
 

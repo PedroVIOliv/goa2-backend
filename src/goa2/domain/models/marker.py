@@ -62,7 +62,8 @@ class Marker(BaseModel):
         type: The marker type (VENOM, etc.)
         target_id: Hero or hero-piece ID if placed, None if in supply
         value: Effect magnitude when placed (e.g., -1 or -2 for stat debuffs)
-        source_id: Hero ID who placed this marker (for cleanup on defeat)
+        source_id: Hero ID who placed this marker (informational; the marker
+            outlives its placer's defeat)
     """
 
     type: MarkerType

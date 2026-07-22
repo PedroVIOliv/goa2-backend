@@ -27,6 +27,11 @@ helpers (`EffectScenarioBuilder` + `run_card`), marked `effect_contract` /
 5. **Shift Reality**: isolation is **mutual** — units on either side cannot
    interact with NebKher AND NebKher cannot interact with them; only
    units on the line can.
+   > **SUPERSEDED 2026-07-21** (rules-audit response §3.4): the isolation is
+   > **one-way**. Units on either side still cannot interact with NebKher and
+   > line units still can, but NebKher is *not* affected by his own ability —
+   > for his movement, targeting, placement and radius the split does not
+   > exist. See `docs/audit_claims_tracker.md` §3.4.
 6. **Illusionary Force/Army equivalence**: active only **during NebKher's
    own actions**. During his attacks the minion defense modifier applies
    (an Illusion adjacent to his target counts as an enemy-of-target melee

@@ -14,7 +14,10 @@ Regions:
 - POSITIVE: Hexes where axis coordinate > split_value
 
 Tier 2 (TOPOLOGY_SPLIT): NEGATIVE <-> POSITIVE blocked, ZERO bridges both
-Tier 3 (TOPOLOGY_ISOLATION): Same as Tier 2 + isolated_hex only reachable from ZERO
+Tier 3 (TOPOLOGY_ISOLATION): Same as Tier 2, plus the caster's own space is
+reachable only from ZERO. That last restriction is ONE-WAY: the caster ignores
+his own reality shift entirely, so queries originating from his space are always
+connected. Note these queries are directional — `origin` is the acting side.
 
 Usage:
     from goa2.engine.topology import get_topology_service
@@ -91,10 +94,17 @@ class TopologyService:
         """
         Check if two hexes can interact given active topology constraints.
 
-        This is the core connectivity check. Two hexes are connected if:
+        This is the core connectivity check. Under a plain split, two hexes are
+        connected if:
         1. No topology constraints exist, OR
         2. They are in the same region, OR
         3. At least one is in the ZERO region (bridge)
+
+        NOT symmetric. `origin` is the acting side, `target` the side being
+        acted upon, and TOPOLOGY_ISOLATION treats them differently: side units
+        cannot reach the caster, but the caster reaches everything. Pass the
+        hexes in the direction of the interaction — swapping them can flip the
+        answer.
 
         Returns:
             True if hexes can interact, False if blocked by topology
@@ -403,8 +413,12 @@ class TopologyService:
 
         This adds an additional rule: the caster's hex can only be
         interacted with from the ZERO region. Units on either side cannot
-        target or reach the caster directly — and the isolation is mutual
-        (the caster can only interact with the bridge too).
+        target or reach the caster directly.
+
+        The restriction is strictly one-way. The caster is not affected by his
+        own ability: for his movement, targeting, placement and radius queries
+        the split does not exist at all, so an interaction *originating* from
+        the caster's hex is always connected.
 
         The isolation is bound to the UNIT, not the cast-time hex: the
         source's live board position takes precedence, with the stored
@@ -414,26 +428,19 @@ class TopologyService:
         Returns:
             True if connected (can interact), False if blocked
         """
-        # First apply base split rules
+        isolated = state.get_position(str(effect.source_id)) or effect.isolated_hex
+
+        # The caster ignores his own reality shift entirely.
+        if isolated and origin == isolated:
+            return True
+
+        # Everyone else is bound by the base split rules ...
         if not self._check_split(origin, target, effect):
             return False
 
-        isolated = state.get_position(str(effect.source_id)) or effect.isolated_hex
-
-        # Then check isolation of the caster's hex
-        if isolated:
-            # If targeting the isolated hex, origin must be in ZERO region
-            if target == isolated:
-                origin_region = self._get_region(origin, effect)
-                if origin_region != "ZERO":
-                    return False
-
-            # If originating from the isolated hex, target must be in ZERO region
-            # (the caster can only interact with the bridge too)
-            if origin == isolated:
-                target_region = self._get_region(target, effect)
-                if target_region != "ZERO":
-                    return False
+        # ... and can only reach the caster from the ZERO region.
+        if isolated and target == isolated:
+            return self._get_region(origin, effect) == "ZERO"
 
         return True
 

@@ -428,7 +428,7 @@ def test_crack_in_reality_splits_board_along_chosen_axis() -> None:
 
 
 @pytest.mark.effect_flow
-def test_shift_reality_isolates_nebkher_mutually() -> None:
+def test_shift_reality_isolates_nebkher_one_way() -> None:
     state = _grid_state("shift_reality")
 
     run = run_card(state, NEB)
@@ -443,11 +443,12 @@ def test_shift_reality_isolates_nebkher_mutually() -> None:
     neb_hex = Hex(q=2, r=0, s=-2)
     off_line = Hex(q=1, r=0, s=-1)
     on_line = Hex(q=2, r=1, s=-3)
-    # Units on either side cannot interact with NebKher (mutual)…
+    # Units on either side cannot interact with NebKher…
     assert not are_connected(off_line, neb_hex, state)
-    assert not are_connected(neb_hex, off_line, state)
-    # …but units ON the line can.
+    # …but units ON the line can…
     assert are_connected(on_line, neb_hex, state)
+    # …and NebKher himself ignores his own reality shift (audit §3.4).
+    assert are_connected(neb_hex, off_line, state)
 
 
 # =============================================================================

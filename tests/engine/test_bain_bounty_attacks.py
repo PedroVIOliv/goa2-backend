@@ -198,6 +198,48 @@ def test_defeat_without_bounty_normal_penalty(game_state):
     assert game_state.teams[TeamColor.BLUE].life_counters == initial_counters - 1
 
 
+def test_markers_survive_their_placers_defeat(game_state):
+    """No marker leaves play because the hero who placed it was defeated.
+
+    Bounty is the case the audit called out (§4.7), but the rule is general —
+    Venom and Poison behave the same way.
+    """
+    bounty = game_state.get_marker(MarkerType.BOUNTY)
+    bounty.place(target_id="enemy_hero", value=0, source_id="hero_bain")
+    venom = game_state.get_marker(MarkerType.VENOM)
+    venom.place(target_id="enemy_hero_2", value=-1, source_id="hero_bain")
+
+    push_steps(game_state, [DefeatUnitStep(victim_id="hero_bain")])
+    result = process_stack(game_state).input_request
+    while result is not None:
+        result = process_stack(game_state).input_request
+
+    assert bounty.target_id == "enemy_hero"
+    assert venom.target_id == "enemy_hero_2"
+
+
+def test_bounty_survives_bains_own_defeat(game_state):
+    """Audit §4.7: Bounty stays on its target after Bain is defeated."""
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero", value=0, source_id="hero_bain")
+
+    push_steps(game_state, [DefeatUnitStep(victim_id="hero_bain")])
+    result = process_stack(game_state).input_request
+    while result is not None:
+        result = process_stack(game_state).input_request
+
+    assert marker.target_id == "enemy_hero"
+
+    # ...and it still imposes the extra life loss.
+    initial_counters = game_state.teams[TeamColor.BLUE].life_counters
+    push_steps(game_state, [DefeatUnitStep(victim_id="enemy_hero")])
+    result = process_stack(game_state).input_request
+    while result is not None:
+        result = process_stack(game_state).input_request
+
+    assert game_state.teams[TeamColor.BLUE].life_counters == initial_counters - 2
+
+
 # =============================================================================
 # Dead or Alive Tests
 # =============================================================================

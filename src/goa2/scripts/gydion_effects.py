@@ -135,7 +135,10 @@ class TheArchwizardEffect(CardEffect):
         if performing_card_id != "prepare_spells":
             return False
         owner = state.get_spellbook_owner()
-        if owner is None or not owner.cast_spells:
+        # The only gate is that Wish is in the spellbook to be cast. Whether any
+        # spell has been spent is irrelevant — Wish may replace the preparation
+        # either way.
+        if owner is None:
             return False
         return any(spell.id == "wish" for spell in owner.spellbook)
 

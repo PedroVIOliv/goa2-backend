@@ -10,7 +10,8 @@ Regions (based on split_axis and split_value):
 - POSITIVE: Hexes where axis coordinate > split_value
 
 Tier 2 (TOPOLOGY_SPLIT): NEGATIVE <-> POSITIVE blocked, ZERO bridges both
-Tier 3 (TOPOLOGY_ISOLATION): Same as Tier 2 + isolated_hex only reachable from ZERO
+Tier 3 (TOPOLOGY_ISOLATION): Same as Tier 2, plus the caster's own space is
+reachable only from ZERO — one-way, since the caster ignores his own shift.
 """
 
 import math
@@ -129,7 +130,8 @@ def isolation_state(split_state):
     State with TOPOLOGY_ISOLATION (Tier 3).
     Same as split_state but the Center hex (0,0,0) is isolated.
 
-    The isolated hex can only be reached from the ZERO region.
+    The isolated hex can only be reached from the ZERO region — but the caster
+    standing on it reaches every region, since he ignores his own shift.
     """
     # Replace the split effect with an isolation effect
     split_state.active_effects.clear()
@@ -344,19 +346,63 @@ class TestTopologyIsolation:
 
         assert not topo.are_connected(right, isolated, isolation_state)
 
-    def test_isolated_hex_can_only_reach_zero(self, topo, isolation_state):
-        """From isolated hex, can only interact with ZERO region."""
-        isolated = Hex(q=0, r=0, s=0)  # Isolated center
+    def test_isolation_is_one_way(self, topo, isolation_state):
+        """Audit §3.4: NebKher is not affected by his own Shift Reality.
+
+        Side units cannot reach him, but he reaches everything.
+        """
+        isolated = Hex(q=0, r=0, s=0)  # NebKher
         below = Hex(q=0, r=1, s=-1)  # ZERO
         left = Hex(q=-1, r=0, s=1)  # NEGATIVE
         right = Hex(q=1, r=0, s=-1)  # POSITIVE
 
-        # Can reach ZERO
         assert topo.are_connected(isolated, below, isolation_state)
+        assert topo.are_connected(isolated, left, isolation_state)
+        assert topo.are_connected(isolated, right, isolation_state)
 
-        # Cannot reach NEGATIVE or POSITIVE
-        assert not topo.are_connected(isolated, left, isolation_state)
-        assert not topo.are_connected(isolated, right, isolation_state)
+
+class TestNebkherSelfExemption:
+    """Audit §3.4: the protection follows NebKher; he ignores the split."""
+
+    @pytest.fixture
+    def shifted_state(self, isolation_state):
+        """NebKher casts on the zero line, then moves to the POSITIVE side."""
+        nebkher = Hero(id="nebkher", name="NebKher", team=TeamColor.BLUE, deck=[])
+        isolation_state.teams[TeamColor.BLUE].heroes.append(nebkher)
+        isolation_state.place_entity("nebkher", Hex(q=1, r=0, s=-1))
+        return isolation_state
+
+    def test_protection_follows_nebkher(self, topo, shifted_state):
+        nebkher_hex = Hex(q=1, r=0, s=-1)
+        cast_hex = Hex(q=0, r=0, s=0)  # ZERO — no longer protected
+        left = Hex(q=-1, r=0, s=1)  # NEGATIVE
+        far_right = Hex(q=2, r=0, s=-2)  # POSITIVE, same side as NebKher
+        below = Hex(q=0, r=1, s=-1)  # ZERO
+
+        # Side units cannot interact with NebKher, on either side.
+        assert not topo.are_connected(left, nebkher_hex, shifted_state)
+        assert not topo.are_connected(far_right, nebkher_hex, shifted_state)
+
+        # Zero-line units still can.
+        assert topo.are_connected(below, nebkher_hex, shifted_state)
+
+        # The cast-time hex is no longer isolated.
+        assert topo.are_connected(below, cast_hex, shifted_state)
+
+    def test_nebkher_ignores_his_own_split(self, topo, shifted_state):
+        nebkher_hex = Hex(q=1, r=0, s=-1)
+        left = Hex(q=-1, r=0, s=1)  # NEGATIVE — across the line
+        below = Hex(q=0, r=1, s=-1)  # ZERO
+
+        assert topo.are_connected(nebkher_hex, left, shifted_state)
+        assert topo.are_connected(nebkher_hex, below, shifted_state)
+        assert topo.distance(nebkher_hex, left, shifted_state) == 2
+
+    def test_other_units_are_still_split(self, topo, shifted_state):
+        left = Hex(q=-1, r=0, s=1)  # NEGATIVE
+        far_right = Hex(q=2, r=0, s=-2)  # POSITIVE
+
+        assert not topo.are_connected(left, far_right, shifted_state)
 
 
 # =============================================================================

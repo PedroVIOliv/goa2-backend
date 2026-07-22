@@ -278,7 +278,9 @@ class GameSetup:
             hero.hand = []
 
             for card in hero.deck:
-                if card.tier in [CardTier.I, CardTier.UNTIERED]:
+                # `starts_in_deck` cards (Takahide's Sting/Strike) are Tier I but
+                # begin the game in the deck rather than the opening hand.
+                if card.tier in [CardTier.I, CardTier.UNTIERED] and not card.starts_in_deck:
                     hero.return_card_to_hand(card)
                 else:
                     card.state = CardState.DECK
