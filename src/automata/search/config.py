@@ -33,3 +33,7 @@ class SearchConfig:
 
     # RNG seed for determinization + tie-breaking (reproducible searches).
     seed: int = 0
+
+    # Use a heuristic expansion prior (reveal promising moves first under
+    # progressive widening). Disable to fall back to random expansion order.
+    use_prior: bool = True

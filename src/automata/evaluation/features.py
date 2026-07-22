@@ -1,8 +1,13 @@
-"""State evaluation features for heuristic (and later, MCTS rollout) agents.
+"""State evaluation features for heuristic (and later, learned) agents.
 
-`evaluate_state(state, team)` returns a scalar from ``team``'s perspective:
-positive = good for that team. It reuses the engine's own lane/push helpers so
-the notion of "winning the push" matches the rules exactly.
+`state_features(state, team)` returns a named feature vector (differentials
+from ``team``'s perspective); `evaluate_state(state, team)` is the hand-weighted
+dot product of that vector — positive = good for ``team``. Splitting the two
+lets the same features feed a *learned* value/policy later (Rungs 2-3) without
+recomputing anything, while keeping today's behavior byte-identical.
+
+It reuses the engine's own lane/push helpers so "winning the push" matches the
+rules exactly.
 
 Signals (rulebook win conditions first):
 - Life-counter differential  — a team loses at 0 (hero-kill race).
@@ -21,13 +26,19 @@ from goa2.engine.map_logic import endgame_totals
 # Terminal sentinel; dwarfs positional signal so wins/losses dominate.
 WIN_SCORE = 1_000_000.0
 
-# Feature weights (hand-tuned; life and push are the win conditions).
-W_LIFE = 100.0
-W_PUSH = 60.0
-W_MINION = 8.0
-W_LEVEL = 5.0
-W_ALIVE = 15.0
-W_GOLD = 1.0
+# Feature weights (hand-tuned; life and push are the win conditions). Keyed by
+# feature name so weights and features stay aligned as the set grows.
+FEATURE_WEIGHTS: dict[str, float] = {
+    "life_diff": 100.0,
+    "push_diff": 60.0,
+    "minion_diff": 8.0,
+    "level_diff": 5.0,
+    "alive_diff": 15.0,
+    "gold_diff": 1.0,
+}
+
+# Stable ordering for callers that want a plain vector (e.g. learned models).
+FEATURE_NAMES: tuple[str, ...] = tuple(FEATURE_WEIGHTS.keys())
 
 
 def _enemy(team: TeamColor) -> TeamColor:
@@ -54,15 +65,14 @@ def _heroes_alive(state: GameState, team: TeamColor) -> int:
     return sum(1 for h in state.teams[team].heroes if state.has_board_presence(h.id))
 
 
-def evaluate_state(state: GameState, team: TeamColor) -> float:
-    """Score ``state`` from ``team``'s perspective (higher = better)."""
-    enemy = _enemy(team)
+def state_features(state: GameState, team: TeamColor) -> dict[str, float]:
+    """Named feature differentials for ``state`` from ``team``'s perspective.
 
-    # Terminal.
-    if state.winner is not None:
-        winner = state.winner.upper() if isinstance(state.winner, str) else state.winner
-        won = winner == team.value or winner == team.name
-        return WIN_SCORE if won else -WIN_SCORE
+    Non-terminal only — terminal states are handled by ``evaluate_state`` (and,
+    for learning, by the recorded game outcome). Every value is an *own minus
+    enemy* differential so the sign already encodes "good for us".
+    """
+    enemy = _enemy(team)
 
     my_life = state.teams[team].life_counters
     en_life = state.teams[enemy].life_counters
@@ -75,11 +85,32 @@ def evaluate_state(state: GameState, team: TeamColor) -> float:
     my_gold = sum(h.gold for h in state.teams[team].heroes)
     en_gold = sum(h.gold for h in state.teams[enemy].heroes)
 
-    return (
-        W_LIFE * (my_life - en_life)
-        + W_PUSH * (push.get(team, 0) - push.get(enemy, 0))
-        + W_MINION * (minions.get(team, 0) - minions.get(enemy, 0))
-        + W_LEVEL * (my_level - en_level)
-        + W_ALIVE * (_heroes_alive(state, team) - _heroes_alive(state, enemy))
-        + W_GOLD * (my_gold - en_gold)
-    )
+    return {
+        "life_diff": float(my_life - en_life),
+        "push_diff": float(push.get(team, 0) - push.get(enemy, 0)),
+        "minion_diff": float(minions.get(team, 0) - minions.get(enemy, 0)),
+        "level_diff": float(my_level - en_level),
+        "alive_diff": float(_heroes_alive(state, team) - _heroes_alive(state, enemy)),
+        "gold_diff": float(my_gold - en_gold),
+    }
+
+
+def feature_vector(state: GameState, team: TeamColor) -> list[float]:
+    """``state_features`` as a plain vector in canonical ``FEATURE_NAMES`` order."""
+    feats = state_features(state, team)
+    return [feats[name] for name in FEATURE_NAMES]
+
+
+def evaluate_state(state: GameState, team: TeamColor) -> float:
+    """Score ``state`` from ``team``'s perspective (higher = better).
+
+    Terminal states dominate; otherwise the hand-weighted dot product of
+    ``state_features``.
+    """
+    if state.winner is not None:
+        winner = state.winner.upper() if isinstance(state.winner, str) else state.winner
+        won = winner == team.value or winner == team.name
+        return WIN_SCORE if won else -WIN_SCORE
+
+    feats = state_features(state, team)
+    return sum(FEATURE_WEIGHTS[name] * feats[name] for name in FEATURE_WEIGHTS)
