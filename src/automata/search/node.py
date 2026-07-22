@@ -53,13 +53,43 @@ class Node:
         self.visits += 1
         self.total_value += value
 
-    def select(self, legal: list[Key], cfg_uct_c: float, rng: random.Random) -> Key:
-        """Pick a *previously expanded* legal action by UCB1.
+    def select(
+        self,
+        legal: list[Key],
+        cfg_uct_c: float,
+        rng: random.Random,
+        priors: dict[Key, float] | None = None,
+        puct_c: float = 0.0,
+    ) -> Key:
+        """Pick a *previously expanded* legal action.
 
         Callers must only invoke this when `should_expand` is False, i.e. there
         is at least one expanded legal child.
+
+        With ``priors`` (normalized prior probabilities P(a)) and ``puct_c`` > 0,
+        use the PUCT rule (AlphaZero-style):
+
+            score(a) = Q(a) + puct_c · P(a) · √(N_parent) / (1 + N(a))
+
+        The prior biases exploration toward moves the policy likes; unlike UCB1,
+        an unvisited child's score is finite (its P(a)·√N term), so a strong
+        prior is trusted rather than every child being force-tried first.
+        Without priors it falls back to plain UCB1.
         """
         expanded = [k for k in legal if k in self.children]
+
+        if priors is not None and puct_c > 0.0:
+            sqrt_n = math.sqrt(self.visits + 1)
+
+            def puct(k: Key) -> float:
+                child = self.children[k]
+                p = priors.get(k, 0.0)
+                return child.q + puct_c * p * sqrt_n / (1 + child.visits)
+
+            best = max(puct(k) for k in expanded)
+            top = [k for k in expanded if puct(k) == best]
+            return rng.choice(top)
+
         log_n = math.log(self.visits + 1)
 
         def ucb(k: Key) -> float:

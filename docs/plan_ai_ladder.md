@@ -1,0 +1,112 @@
+# AI Ladder Plan (automata)
+
+Living plan for the Guards of Atlantis II AI (`src/automata`). The end goal is a
+strong AI opponent: ISMCTS guided by a learned value + policy. We climb a ladder
+where **every rung must beat the previous baseline on the eval matrix**
+(`automata.evaluation.cli` → `baselines.json`). We escalate ML complexity only
+when the evidence justifies it — linear/GBM before any neural net.
+
+## Guiding constraints
+
+- **ISMCTS is required** — simultaneous moves + hidden hands make minimax
+  infeasible. Opponents are folded into a fixed default policy (cut B) and their
+  hidden commits into `runtime.determinize`; every tree node is one of *our*
+  decisions (a MAX node).
+- **Full rollouts are too expensive** (~1.4 ms/clone, and an ISMCTS *game* costs
+  ~28 s even at 2 iters). Rollouts truncate at a round-count cutoff and defer to
+  a value function. Search eval is therefore small-sample and deliberate.
+- **The eval matrix is the yardstick.** No strength claim without it.
+
+## Architecture seams (all in place, backed by hand-crafted impls)
+
+| Seam | Interface | Today's impl | Learned drop-in |
+|------|-----------|--------------|-----------------|
+| Value | `evaluation.value.ValueFn` | `HeuristicValue` (→ `evaluate_state`) | `LearnedValue(model)` |
+| Features | `evaluation.features.state_features` / `feature_vector` | 6 differential features + `FEATURE_WEIGHTS` | NN encoder input |
+| Policy | `search.prior.Policy` → `PolicyResult(order, weights\|None)` | `HeuristicPrior` (weights = scores) | `LearnedPolicy(model)` |
+| Data | `runtime.trajectory.TrajectoryRecorder` | `Null`/`InMemory`/`Jsonl` | training-set source |
+
+`ISMCTSAgent` takes an injectable `value_fn` and builds a `HeuristicPrior`; the
+search loop reads `value_fn(...)` at leaves and `policy(...).order` at expansion.
+The `weights` slot is unused today — it's reserved for PUCT (Rung 1) / learned
+policy (Rung 3), so no signature will change when those land.
+
+## Status
+
+- **Rung 0 — instrumentation & baselines: DONE.** Eval matrix + committed
+  `baselines.json`. Trajectory recording (full `GameState` snapshots, off by
+  default). Feature extraction. Value/Policy protocols.
+- **Heuristic fixed** (commits `7c16966`, `e88d683`): `_hex_score` gained an
+  intra-zone enemy-approach gradient. 39.5% → **93.5%** vs random; games no
+  longer stall (heur-vs-heur terminates ~22 rounds). This strengthens the
+  ISMCTS default policy *and* prior.
+
+### Current baseline (`baselines.json`, 2v2 Wasp/Xargatha vs Arien/Brogan)
+
+| Matchup | A win-rate | Note |
+|---------|-----------|------|
+| random vs random | 50% | sanity ✓ |
+| heuristic vs random | 95% | heuristic dominates ✓ |
+| ismcts vs heuristic | 100% (4 games) | directional — search beats base policy |
+| ismcts vs ismcts_noprior | 100% (4 games) | directional — prior helps |
+
+ISMCTS rows are tiny-sample (games are expensive); treat as directional until a
+larger deliberate run.
+
+## Next rungs
+
+### Rung 1 — Squeeze the search (no learning). **← next**
+Cheap, high-confidence wins before any ML:
+1. **PUCT selection.** Use `PolicyResult.weights` as prior `P(a)` in the UCB
+   term: `Q(a) + c·P(a)·√N_parent/(1+N(a))`. Today the prior only orders
+   expansion; PUCT also biases selection. Requires: normalize weights →
+   probabilities, thread into `Node.select`, add a `puct_c` config knob.
+   **DONE but DEFAULT OFF.** Implemented (`Node.select` + `_normalize_weights` +
+   `puct_c`). Measured **2-10 (16.7%) vs plain UCB1** at 8 iters / 12 games —
+   PUCT *hurt* at low budget: a strong hand-crafted prior over-commits and
+   under-explores, while UCB1's force-try-every-child explores better with so
+   few playouts. So `puct_c` defaults to 0 (UCB1). Kept as a knob; expected to
+   pay off with a *learned* policy (Rung 3) and/or higher iteration budgets —
+   revisit then. Lesson: expansion-ordering prior helps (kept on); prior-in-
+   selection does not, yet.
+2. **Larger, deliberate ISMCTS eval.** Establish a *real* (not 4-game) win-rate
+   for ismcts-vs-heuristic and prior-on-vs-off, so Rung-1 gains are measurable.
+   Run in the background; record numbers. **PARTIAL** — 16-iter/40-game runs are
+   >1h and impractical as a loop; the PUCT comparison used 8 iters/12 games
+   (~30min). Need a cheaper, repeatable eval protocol (fewer iters, or cache).
+3. **Tune** `iterations`, `cutoff_rounds`, `uct_c`/`puct_c`, widening via the
+   matrix. Gate: search strength must not regress. **TODO.**
+
+### Rung 2 — Learned value function
+1. Generate self-play trajectories (`JsonlRecorder`) at scale.
+2. Build a training-data loader that joins decision rows → game outcome, over
+   `feature_vector` (or raw snapshot → features offline).
+3. Fit a model (start **logistic / linear**, then GBM) predicting win prob;
+   wrap as `LearnedValue(ValueFn)`.
+4. Gate: `ISMCTSAgent(value_fn=LearnedValue)` must beat `HeuristicValue` search
+   on the matrix.
+
+### Rung 3 — Learned policy prior
+1. From the same trajectories, learn `P(move | state)` (state → chosen key).
+2. Wrap as `LearnedPolicy(Policy)` returning real `weights`; feeds PUCT directly.
+3. Gate: beat `HeuristicPrior` at equal iteration budget.
+
+### Rung 4 — NN + joint training (only if Rungs 2–3 plateau)
+Single net with value + policy heads; AlphaZero-style self-play → train → eval
+loop, ISMCTS-adapted. Big infra/compute step — justified only once linear/GBM
+stops improving. `state_features` becomes the encoder input; `ValueFn`/`Policy`
+become the net heads.
+
+## Deliberate non-goals / parked
+
+- **Openings book** (`openings-wip` branch): Round-1 opening data (colors +
+  minions + partial hexes). Could later serve as a Round-1 policy prior, but
+  positioning extraction stalled (~55% auto-resolved). Parked; revisit only if a
+  Round-1-specific prior is wanted.
+- No ML infra until Rung 2 evidence justifies it.
+
+## Known issues (pre-existing, out of scope)
+
+- `heuristic_agent.py:45` (`_qrs`) mypy `assignment` error — predates this work.
+- ruff `__all__`/import-sort nits in `agents/__init__.py` and some older
+  `tests/ai/*` files.
