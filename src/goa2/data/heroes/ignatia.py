@@ -43,7 +43,7 @@ def create_ignatia() -> Hero:
         Card(
             id="scorching_blaze",
             name="Scorching Blaze",
-            image_id="BlueIIIA",  # Evolution of Searing Heat
+            image_id="BlueIIIB",  # Evolution of Searing Heat
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -58,7 +58,7 @@ def create_ignatia() -> Hero:
         Card(
             id="violent_conflagration",
             name="Violent Conflagration",
-            image_id="BlueIIIB",  # Evolution of Abrupt Combustion -> Spontaneous Immolation
+            image_id="BlueIIIA",  # Evolution of Abrupt Combustion -> Spontaneous Immolation
             tier=CardTier.III,
             color=CardColor.BLUE,
             initiative=10,
@@ -138,7 +138,7 @@ def create_ignatia() -> Hero:
         Card(
             id="searing_heat",
             name="Searing Heat",
-            image_id="BlueIIA",  # Linear Movement Base Trail
+            image_id="BlueIIB",  # Linear Movement Base Trail
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=9,
@@ -153,7 +153,7 @@ def create_ignatia() -> Hero:
         Card(
             id="spontaneous_immolation",
             name="Spontaneous Immolation",
-            image_id="BlueIIB",  # Evolution of Abrupt Combustion
+            image_id="BlueIIA",  # Evolution of Abrupt Combustion
             tier=CardTier.II,
             color=CardColor.BLUE,
             initiative=9,
