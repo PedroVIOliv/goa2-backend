@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from automata.evaluation.matchup import MatchupResult, evaluate
 from automata.agents.random_agent import RandomAgent
+from automata.evaluation.matchup import MatchupResult, evaluate
 
 RED = ["Wasp", "Xargatha"]
 BLUE = ["Arien", "Brogan"]
+
+
+def _random(seed: int) -> RandomAgent:
+    """Module-level (picklable) factory so parallel eval can ship it to workers."""
+    return RandomAgent(seed)
 
 
 def test_evaluate_runs_and_aggregates() -> None:
@@ -47,3 +52,21 @@ def test_wilson_ci_bounds() -> None:
     assert hi == 1.0
     assert 0.6 < lo < 1.0
     assert r.a_winrate == 1.0
+
+
+def test_parallel_eval_matches_serial() -> None:
+    # Games are fully determined by seed, so N workers must produce the exact
+    # same aggregate as serial. Uses a picklable module-level factory.
+    serial = evaluate(
+        _random, _random, red_heroes=RED, blue_heroes=BLUE, games=8, base_seed=0, workers=1
+    )
+    parallel = evaluate(
+        _random, _random, red_heroes=RED, blue_heroes=BLUE, games=8, base_seed=0, workers=4
+    )
+    assert (serial.a_wins, serial.b_wins, serial.draws) == (
+        parallel.a_wins,
+        parallel.b_wins,
+        parallel.draws,
+    )
+    assert serial.avg_rounds == parallel.avg_rounds
+

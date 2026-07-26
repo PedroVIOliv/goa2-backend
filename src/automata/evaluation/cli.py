@@ -38,18 +38,38 @@ AgentFactory = Callable[[int], Agent]
 # NOTE: an ISMCTS *game* is expensive (~28s at 2 iters, ~160s at 16), since each
 # decision runs many determinized playouts. So search matchups run at a small
 # game count + low iteration budget by default; the fast (random/heuristic)
-# matchups run a larger sample. Bump --games / SEARCH_ITERS for a real eval run.
+# matchups run a larger sample. Bump --games / --search-iters for a real eval
+# run, and use --workers to parallelize across CPU cores.
+
+
+class _Factory:
+    """Picklable agent factory (seed -> Agent) for a named agent kind.
+
+    A module-level callable (not a lambda) so the eval harness can ship it to
+    worker processes when ``--workers`` > 1.
+    """
+
+    def __init__(self, kind: str, search_iters: int) -> None:
+        self.kind = kind
+        self.search_iters = search_iters
+
+    def __call__(self, seed: int) -> Agent:
+        if self.kind == "random":
+            return RandomAgent(seed)
+        if self.kind == "heuristic":
+            return HeuristicAgent(seed)
+        if self.kind == "ismcts":
+            return ISMCTSAgent(SearchConfig(iterations=self.search_iters, seed=seed))
+        if self.kind == "ismcts_noprior":
+            return ISMCTSAgent(
+                SearchConfig(iterations=self.search_iters, seed=seed, use_prior=False)
+            )
+        raise ValueError(f"unknown agent kind: {self.kind!r}")
 
 
 def _factories(search_iters: int) -> dict[str, AgentFactory]:
-    return {
-        "random": lambda s: RandomAgent(s),
-        "heuristic": lambda s: HeuristicAgent(s),
-        "ismcts": lambda s: ISMCTSAgent(SearchConfig(iterations=search_iters, seed=s)),
-        "ismcts_noprior": lambda s: ISMCTSAgent(
-            SearchConfig(iterations=search_iters, seed=s, use_prior=False)
-        ),
-    }
+    kinds = ("random", "heuristic", "ismcts", "ismcts_noprior")
+    return {k: _Factory(k, search_iters) for k in kinds}
 
 
 # The matchups that define the ladder. Each later rung must beat the agent it
@@ -69,9 +89,11 @@ def run_matrix(
     *,
     search_games: int | None = None,
     search_iters: int = 8,
+    workers: int = 1,
 ) -> list[MatchupResult]:
     """Run every matchup. Fast matchups use ``games``; slow (ISMCTS) matchups
-    use ``search_games`` (default: min(games, 6)) at ``search_iters`` budget."""
+    use ``search_games`` (default: min(games, 6)) at ``search_iters`` budget.
+    ``workers`` > 1 parallelizes each matchup's games across processes."""
     facts = _factories(search_iters)
     sg = search_games if search_games is not None else min(games, 6)
     results: list[MatchupResult] = []
@@ -86,6 +108,7 @@ def run_matrix(
             base_seed=base_seed,
             label_a=a_name,
             label_b=b_name,
+            workers=workers,
         )
         results.append(res)
     return results
@@ -116,6 +139,9 @@ def main() -> None:
     parser.add_argument(
         "--search-iters", type=int, default=8, help="ISMCTS iterations per decision."
     )
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Parallel worker processes (games are independent)."
+    )
     parser.add_argument("--out", type=str, default=None, help="Write results JSON here.")
     args = parser.parse_args()
 
@@ -124,6 +150,7 @@ def main() -> None:
         args.seed,
         search_games=args.search_games,
         search_iters=args.search_iters,
+        workers=args.workers,
     )
     for r in results:
         print(r.summary())

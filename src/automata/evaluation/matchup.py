@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 from ..agents.base import Agent
@@ -71,6 +72,57 @@ class MatchupResult:
         )
 
 
+@dataclass(frozen=True)
+class _GameOutcome:
+    a_won: bool | None  # True/False for decisive, None for draw
+    rounds: int
+
+
+def _play_game(
+    i: int,
+    a_factory: AgentFactory,
+    b_factory: AgentFactory,
+    red_heroes: list[str],
+    blue_heroes: list[str],
+    base_seed: int,
+    alternate_sides: bool,
+    map_path: str,
+    game_type: str,
+) -> _GameOutcome:
+    """Play one game (index ``i``) and return its outcome from A's perspective.
+
+    Pure and self-contained (depends only on its args + the per-game seed), so it
+    is safe to run in a worker process. Determinism is per-game, so parallel
+    execution yields the same aggregate as serial.
+    """
+    seed = base_seed + i
+    # A plays Red on even games, Blue on odd games (when alternating).
+    a_is_red = (i % 2 == 0) or not alternate_sides
+    a_agent = a_factory(seed * 2 + 1)
+    b_agent = b_factory(seed * 2 + 2)
+
+    red_agent, blue_agent = (a_agent, b_agent) if a_is_red else (b_agent, a_agent)
+    agents: dict[str, Agent] = {}
+    for name in red_heroes:
+        agents[hero_id(name)] = red_agent
+    for name in blue_heroes:
+        agents[hero_id(name)] = blue_agent
+
+    result = run_game(
+        red_heroes, blue_heroes, agents, map_path=map_path, game_type=game_type, seed=seed
+    )
+    winner = (result.winner or "").upper()
+    if winner not in ("RED", "BLUE"):
+        return _GameOutcome(a_won=None, rounds=result.rounds)
+    return _GameOutcome(a_won=(winner == "RED") == a_is_red, rounds=result.rounds)
+
+
+# Module-level shim so ProcessPoolExecutor can pickle the per-game call. It
+# receives one tuple of (index, all fixed args) and unpacks it.
+def _play_game_star(args: tuple[object, ...]) -> _GameOutcome:
+    return _play_game(*args)  # type: ignore[arg-type]
+
+
 def evaluate(
     a_factory: AgentFactory,
     b_factory: AgentFactory,
@@ -84,39 +136,44 @@ def evaluate(
     game_type: str = "QUICK",
     label_a: str = "A",
     label_b: str = "B",
+    workers: int = 1,
 ) -> MatchupResult:
-    """Play ``games`` matches of A vs B and aggregate the outcome."""
-    a_wins = b_wins = draws = 0
-    total_rounds = 0
+    """Play ``games`` matches of A vs B and aggregate the outcome.
 
-    for i in range(games):
-        seed = base_seed + i
-        # A plays Red on even games, Blue on odd games (when alternating).
-        a_is_red = (i % 2 == 0) or not alternate_sides
-        a_agent = a_factory(seed * 2 + 1)
-        b_agent = b_factory(seed * 2 + 2)
+    ``workers`` > 1 runs games across a process pool (games are independent and
+    CPU-bound, so this is a near-linear speedup). Results are identical to serial
+    because each game is fully determined by its seed. Two requirements when
+    ``workers`` > 1:
 
-        red_agent, blue_agent = (a_agent, b_agent) if a_is_red else (b_agent, a_agent)
-        agents: dict[str, Agent] = {}
-        for name in red_heroes:
-            agents[hero_id(name)] = red_agent
-        for name in blue_heroes:
-            agents[hero_id(name)] = blue_agent
+    * the ``a_factory`` / ``b_factory`` must be picklable (module-level callables
+      or picklable objects, not lambdas/closures);
+    * the calling script must guard its entry point with
+      ``if __name__ == "__main__":`` — on spawn-start platforms (macOS/Windows)
+      the workers re-import the caller's module, and an unguarded call spawns
+      recursively. The CLI (``automata.evaluation.cli``) already does this.
+    """
+    fixed = (
+        a_factory,
+        b_factory,
+        red_heroes,
+        blue_heroes,
+        base_seed,
+        alternate_sides,
+        map_path,
+        game_type,
+    )
 
-        result = run_game(
-            red_heroes, blue_heroes, agents, map_path=map_path, game_type=game_type, seed=seed
-        )
-        total_rounds += result.rounds
+    if workers <= 1:
+        outcomes = [_play_game(i, *fixed) for i in range(games)]
+    else:
+        tasks = [(i, *fixed) for i in range(games)]
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            outcomes = list(pool.map(_play_game_star, tasks))
 
-        winner = (result.winner or "").upper()
-        if winner not in ("RED", "BLUE"):
-            draws += 1
-            continue
-        a_won = (winner == "RED") == a_is_red
-        if a_won:
-            a_wins += 1
-        else:
-            b_wins += 1
+    a_wins = sum(1 for o in outcomes if o.a_won is True)
+    b_wins = sum(1 for o in outcomes if o.a_won is False)
+    draws = sum(1 for o in outcomes if o.a_won is None)
+    total_rounds = sum(o.rounds for o in outcomes)
 
     return MatchupResult(
         label_a=label_a,

@@ -22,6 +22,13 @@ class SearchConfig:
     # times (2 ≈ one full wave resolved), then substitute the value function.
     cutoff_rounds: int = 2
 
+    # Hard ply cap on a rollout: stop after this many of *our* decisions even if
+    # the round cutoff hasn't been reached, then substitute the value function.
+    # Engine step-processing dominates rollout cost, so bounding decisions
+    # directly caps that cost (a round can contain many decisions/inputs). 0
+    # disables the cap (round cutoff only). Trades rollout depth for speed.
+    rollout_max_plies: int = 0
+
     # Progressive widening: a node with visit count N may reveal at most
     # ⌈C · N^alpha⌉ children. Tames wide positioning nodes (many legal hexes).
     widening_c: float = 2.0

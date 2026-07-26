@@ -265,9 +265,19 @@ def _normalize_weights(
 def _rollout(
     sim: _Simulator, decision: Decision, cfg: SearchConfig, value_fn: ValueFn
 ) -> float:
-    """Default-policy playout from `decision` until the round-count cutoff."""
+    """Default-policy playout from `decision` until a cutoff, then value-fn.
+
+    Stops at the round-count cutoff or, if ``cfg.rollout_max_plies`` > 0, after
+    that many decisions — whichever comes first. Bounding plies directly caps
+    the engine step-processing that dominates rollout cost.
+    """
     start_round = sim.state.round
+    plies = 0
+    max_plies = cfg.rollout_max_plies
     while not decision.is_terminal and (sim.state.round - start_round) < cfg.cutoff_rounds:
+        if max_plies and plies >= max_plies:
+            break
+        plies += 1
         if decision.kind == "CARD":
             hero = decision.hero
             assert hero is not None

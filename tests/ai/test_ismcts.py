@@ -45,6 +45,33 @@ def test_search_returns_legal_card() -> None:
         assert card is None
 
 
+def test_rollout_ply_cap_still_returns_legal_card() -> None:
+    # A capped rollout (rollout_max_plies) must still yield a legal, valid move.
+    register_all_effects()
+    state = GameSetup.create_game(DEFAULT_MAP, RED, BLUE, game_type="QUICK", seed=2)
+    cfg = SearchConfig(iterations=4, cutoff_rounds=2, seed=0, rollout_max_plies=3)
+    agent = ISMCTSAgent(cfg)
+    hero = state.teams[next(iter(state.teams))].heroes[0]
+    card = agent.choose_card(state, hero)
+    if hero.hand:
+        assert card is not None
+        assert card.id in {c.id for c in hero.hand}
+
+
+def test_rollout_ply_cap_is_deterministic() -> None:
+    register_all_effects()
+
+    def choose() -> object:
+        state = GameSetup.create_game(DEFAULT_MAP, RED, BLUE, game_type="QUICK", seed=2)
+        cfg = SearchConfig(iterations=4, cutoff_rounds=2, seed=7, rollout_max_plies=4)
+        agent = ISMCTSAgent(cfg)
+        hero = state.teams[next(iter(state.teams))].heroes[0]
+        c = agent.choose_card(state, hero)
+        return c.id if c else None
+
+    assert choose() == choose()
+
+
 def test_ismcts_progresses_without_stalling() -> None:
     register_all_effects()
     agents = _agents(ISMCTSAgent(_tiny_cfg()), HeuristicAgent(1))
