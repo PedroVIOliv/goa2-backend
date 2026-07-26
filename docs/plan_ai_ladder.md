@@ -71,11 +71,19 @@ Cheap, high-confidence wins before any ML:
    selection does not, yet.
 2. **Larger, deliberate ISMCTS eval.** Establish a *real* (not 4-game) win-rate
    for ismcts-vs-heuristic and prior-on-vs-off, so Rung-1 gains are measurable.
-   Run in the background; record numbers. **PARTIAL** — 16-iter/40-game runs are
-   >1h and impractical as a loop; the PUCT comparison used 8 iters/12 games
-   (~30min). Need a cheaper, repeatable eval protocol (fewer iters, or cache).
+   Run in the background; record numbers. **Eval made cheaper (done):**
+   - **Parallel eval** — `matchup.evaluate(workers=N)` runs games across a
+     process pool (~5x on 8 cores, identical aggregate; games are
+     seed-determined). CLI has `--workers`. Requires picklable factories +
+     `__main__` guard (spawn platforms).
+   - **Rollout ply cap** — `SearchConfig.rollout_max_plies` bounds decisions per
+     rollout (engine step-processing is ~93% of search cost). ~2.8x faster per
+     ISMCTS game at cap=8; cap8-vs-uncapped measured 3-3 over 6 games (no
+     obvious strength loss, small sample). Good default for fast eval; too-small
+     caps weaken play (games drag longer).
 3. **Tune** `iterations`, `cutoff_rounds`, `uct_c`/`puct_c`, widening via the
-   matrix. Gate: search strength must not regress. **TODO.**
+   (now-parallel) matrix. Gate: search strength must not regress. **TODO** —
+   now practical with parallel + ply-cap.
 
 ### Rung 2 — Learned value function
 1. Generate self-play trajectories (`JsonlRecorder`) at scale.
