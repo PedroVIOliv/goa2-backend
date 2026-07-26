@@ -1,0 +1,246 @@
+{
+  "center": {
+    "config": {
+      "cutoff_rounds": 2,
+      "iterations": 16,
+      "rollout_max_plies": 8,
+      "uct_c": 1.4,
+      "widening_c": 2.0
+    },
+    "result": {
+      "avg_rounds": 8.2,
+      "ci": [
+        0.798,
+        0.993
+      ],
+      "draws": 0,
+      "losses": 1,
+      "secs": 188.3,
+      "winrate": 0.958,
+      "wins": 23
+    }
+  },
+  "games_per_config": 24,
+  "note": "Rung-1 tuning sweep: ISMCTS vs fixed HeuristicAgent, 24 games/config, one-factor-at-a-time around a center. Win-rate is saturated (~87.5-100%) because search dominates the heuristic, so most single-param differences are within overlapping Wilson CIs (noise). Real signal: iterations helps monotonically (8->87.5%, 16->95.8%, 32->100%); rollout_max_plies=6 is too aggressive (87.5%), 8-12 hold strength at ~2x less cost than uncapped. cutoff_rounds and uct_c and widening_c are indistinguishable here. Defaults updated: iterations 200->32, cutoff_rounds 2->1, rollout_max_plies 0->12. To discriminate finer tuning, need a stronger opponent (ismcts-vs-ismcts).",
+  "opponent": "heuristic",
+  "sweeps": {
+    "cutoff_rounds": [
+      {
+        "avg_rounds": 8.3,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 183.9,
+        "value": 1,
+        "winrate": 1.0,
+        "wins": 24
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 186.8,
+        "value": 2,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 185.4,
+        "value": 3,
+        "winrate": 0.958,
+        "wins": 23
+      }
+    ],
+    "iterations": [
+      {
+        "avg_rounds": 8.8,
+        "ci": [
+          0.69,
+          0.957
+        ],
+        "draws": 0,
+        "losses": 3,
+        "secs": 88.7,
+        "value": 8,
+        "winrate": 0.875,
+        "wins": 21
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 186.1,
+        "value": 16,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 7.6,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 316.3,
+        "value": 32,
+        "winrate": 1.0,
+        "wins": 24
+      }
+    ],
+    "rollout_max_plies": [
+      {
+        "avg_rounds": 6.9,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 444.1,
+        "value": 0,
+        "winrate": 1.0,
+        "wins": 24
+      },
+      {
+        "avg_rounds": 9.5,
+        "ci": [
+          0.69,
+          0.957
+        ],
+        "draws": 0,
+        "losses": 3,
+        "secs": 168.9,
+        "value": 6,
+        "winrate": 0.875,
+        "wins": 21
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 186.7,
+        "value": 8,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 7.8,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 216.0,
+        "value": 12,
+        "winrate": 1.0,
+        "wins": 24
+      }
+    ],
+    "uct_c": [
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 185.2,
+        "value": 1.0,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 185.5,
+        "value": 1.4,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 189.5,
+        "value": 2.0,
+        "winrate": 0.958,
+        "wins": 23
+      }
+    ],
+    "widening_c": [
+      {
+        "avg_rounds": 8.0,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 157.7,
+        "value": 1.0,
+        "winrate": 1.0,
+        "wins": 24
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.798,
+          0.993
+        ],
+        "draws": 0,
+        "losses": 1,
+        "secs": 186.5,
+        "value": 2.0,
+        "winrate": 0.958,
+        "wins": 23
+      },
+      {
+        "avg_rounds": 8.2,
+        "ci": [
+          0.862,
+          1.0
+        ],
+        "draws": 0,
+        "losses": 0,
+        "secs": 179.6,
+        "value": 3.0,
+        "winrate": 1.0,
+        "wins": 24
+      }
+    ]
+  }
+}

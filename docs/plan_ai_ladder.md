@@ -82,8 +82,19 @@ Cheap, high-confidence wins before any ML:
      obvious strength loss, small sample). Good default for fast eval; too-small
      caps weaken play (games drag longer).
 3. **Tune** `iterations`, `cutoff_rounds`, `uct_c`/`puct_c`, widening via the
-   (now-parallel) matrix. Gate: search strength must not regress. **TODO** —
-   now practical with parallel + ply-cap.
+   (now-parallel) matrix. Gate: search strength must not regress. **DONE** —
+   one-factor sweep vs the heuristic (24 games/config, `evaluation/tuning_results.json`):
+   - `iterations` helps monotonically: 8→87.5%, 16→95.8%, **32→100%**.
+   - `rollout_max_plies`: 6 too aggressive (87.5%); **8–12 hold ~96–100%** at
+     ~2x less cost than uncapped.
+   - `cutoff_rounds` {1,2,3}, `uct_c` {1.0,1.4,2.0}, `widening_c` {1,2,3} all
+     **indistinguishable** (within overlapping Wilson CIs) — the search is
+     *saturated* vs the heuristic, so this sweep can't discriminate fine tuning.
+   - **Defaults updated:** `iterations` 200→32, `cutoff_rounds` 2→1,
+     `rollout_max_plies` 0→12 (the old 200/uncapped default was untuned and
+     impractically slow with no measured benefit).
+   - **Next tuning needs a stronger opponent** (ismcts-vs-ismcts) to escape
+     heuristic-saturation and discriminate finer settings / re-test PUCT.
 
 ### Rung 2 — Learned value function
 1. Generate self-play trajectories (`JsonlRecorder`) at scale.
