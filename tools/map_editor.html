@@ -59,6 +59,37 @@
   #board .badge text {
     font: 700 9px monospace; text-anchor: middle; dominant-baseline: middle; pointer-events: none;
   }
+
+  /* With a map image loaded the grid becomes a transparent overlay so the art
+     shows through. Ghost hexes keep hit-testing via pointer-events. */
+  body.has-image #board polygon { fill: none; pointer-events: all; }
+  body.has-image #board polygon.painted { fill-opacity: .5; }
+  body.has-image #board { background: #2a2724; }
+  #mapImage { pointer-events: none; }
+  /* While picking anchors, clicks must reach the image, not the grid. */
+  body.aligning #board polygon { pointer-events: none; }
+  body.aligning #board { cursor: crosshair; }
+
+  /* Anchors sit on top of painted terrain art, so every stroke gets a dark halo
+     underneath and the label a light one, or they vanish into the map. */
+  .anchor .halo { fill: none; stroke: rgba(0, 0, 0, .65); stroke-width: 7; }
+  .anchor .ring { fill: none; stroke-width: 3; }
+  .anchor .cross { stroke-width: 3; }
+  .anchor text {
+    font: 700 15px monospace; text-anchor: middle; dominant-baseline: middle;
+    paint-order: stroke; stroke: rgba(255, 255, 255, .9); stroke-width: 3.5px;
+  }
+  .anchor.a .ring, .anchor.a .cross { stroke: #ff4d2e; }
+  .anchor.a text { fill: #d8341a; }
+  .anchor.b .ring, .anchor.b .cross { stroke: #37b0ff; }
+  .anchor.b text { fill: #1874b8; }
+  .anchor.pending .ring { stroke-dasharray: 5 4; }
+
+  #calibOut {
+    font: 11px/1.5 monospace; background: #fff; border: 1px solid #ddd; border-radius: 4px;
+    padding: 6px; margin: 6px 0; white-space: pre; overflow-x: auto;
+  }
+  #imageName { font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -81,6 +112,29 @@
       <button id="rotReset" title="Reset rotation to 0°">Reset</button>
     </div>
     <p class="hint">Rotate the board to line up with your reference image. Coordinates and export are unaffected.</p>
+  </section>
+
+  <section>
+    <h2>Map image</h2>
+    <div class="row">
+      <button id="loadImageBtn" title="Load the map PNG this grid should line up with">Load image&hellip;</button>
+      <button id="alignBtn" title="Solve the alignment from two clicks">Align</button>
+      <button id="verifyBtn" title="Click a third hex centre to measure the fit">Verify</button>
+    </div>
+    <div id="imageName"></div>
+    <div class="row" id="trimRow" hidden>
+      <label style="font-size:12px;color:#777">scale</label>
+      <input type="range" id="trimScale" min="-2" max="2" step="0.01" value="0" title="Fine scale trim, %">
+      <label style="font-size:12px;color:#777">rot</label>
+      <input type="range" id="trimRot" min="-2" max="2" step="0.01" value="0" title="Fine rotation trim, degrees">
+      <button id="trimReset" title="Clear the fine trim">Reset</button>
+    </div>
+    <div id="calibOut"></div>
+    <div class="row">
+      <button id="copyConfigBtn" title="Copy the MapConfig for goa2-frontend">Copy MapConfig</button>
+    </div>
+    <p class="hint">Align: click the centre of hex <b>A</b> then hex <b>B</b> on the image. Arrow keys nudge, hold shift for bigger steps. The image is not saved between sessions, so reload it after a refresh.</p>
+    <input type="file" id="imageInput" accept="image/*" hidden>
   </section>
 
   <section>
@@ -124,8 +178,10 @@
 
 <svg id="board" xmlns="http://www.w3.org/2000/svg">
   <g id="world">
+    <image id="mapImage" hidden></image>
     <g id="hexes"></g>
     <g id="badges"></g>
+    <g id="anchors"></g>
   </g>
 </svg>
 
@@ -137,7 +193,8 @@
  *   { mapName, zones: [{id,label,color}],
  *     hexes: Map<"q,r", {zoneId, tags: []}>,
  *     lanes: {laneId: [zoneId, ...]},      // ids internally, labels in JSON
- *     battleZones: {laneId: zoneId} }      // starting Battle Zone per lane
+ *     battleZones: {laneId: zoneId},       // starting Battle Zone per lane
+ *     calib }                              // map-image alignment, or null
  * ------------------------------------------------------------------ */
 "use strict";
 
@@ -156,8 +213,176 @@ function hexPoints(cx, cy) {
   return pts.join(" ");
 }
 
+/* ------------------------------------------------------------------ *
+ * Map-image calibration
+ *
+ * Aligning the grid to a map image is a 2D similarity transform: scale,
+ * rotation, translation. Four unknowns, so two point correspondences
+ * determine it exactly — no slider hunting.
+ *
+ * The image placement is one complex pair (m, c): image pixel p renders at
+ * SVG point m*p + c. Composition, nudging and fine trim are all complex
+ * arithmetic on that pair, and it drops straight into an SVG matrix().
+ *
+ * The frontend places a hex at
+ *   world = origin + hexSize * zu(q,r) * e^(-i*theta)      [x + i*z]
+ *   zu(q,r) = 1.5q + i*sqrt(3)*(q/2 + r)                   (flat-top)
+ * while this editor draws pointy-top at
+ *   zE(q,r) = hexX + i*hexY
+ * and the two are related by exactly zE = HEX_SIZE * e^(-i*pi/6) * zu.
+ * That -30 degrees is where the +30 in the exported rotationDeg comes from.
+ * goa2-frontend asserts the same identity in maps/geometry.test.ts.
+ * ------------------------------------------------------------------ */
+
+const cAdd = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const cSub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const cMul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const cAbs = (a) => Math.hypot(a[0], a[1]);
+const cArg = (a) => Math.atan2(a[1], a[0]);
+const cPolar = (r, t) => [r * Math.cos(t), r * Math.sin(t)];
+const cScale = (a, k) => [a[0] * k, a[1] * k];
+
+function cDiv(a, b) {
+  const d = b[0] * b[0] + b[1] * b[1];
+  return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];
+}
+
+/** Identity placement: pixels drawn 1:1 at the SVG origin. */
+function identityPlacement() {
+  return { m: [1, 0], c: [0, 0] };
+}
+
+/** Apply a placement to an image pixel, giving an SVG point. */
+function placePixel(pl, px, py) {
+  return cAdd(cMul(pl.m, [px, py]), pl.c);
+}
+
+/** Invert a placement: SVG point back to an image pixel. */
+function unplacePoint(pl, x, y) {
+  return cDiv(cSub([x, y], pl.c), pl.m);
+}
+
+/** Placement as an SVG transform. A similarity, so b = Im m and c = -Im m. */
+function placementTransform(pl) {
+  const [a, b] = pl.m;
+  return `matrix(${a} ${b} ${-b} ${a} ${pl.c[0]} ${pl.c[1]})`;
+}
+
+/**
+ * Solve the placement from two anchors. `anchors` are the SVG points the user
+ * clicked as the true centres of hexes A and B; `hexes` are those two hexes.
+ * `current` is the placement the clicks were made against.
+ *
+ * Finds the similarity T with T(click_i) = hexCentre_i and composes it onto the
+ * current placement, so the clicked features land under their hexes.
+ */
+function solvePlacement(current, anchors, hexes) {
+  const e1 = [hexX(hexes[0].q, hexes[0].r), hexY(hexes[0].q, hexes[0].r)];
+  const e2 = [hexX(hexes[1].q, hexes[1].r), hexY(hexes[1].q, hexes[1].r)];
+  const span = cSub(anchors[1], anchors[0]);
+  if (cAbs(span) < 1e-9) throw new Error("Anchor clicks are in the same place.");
+  if (cAbs(cSub(e2, e1)) < 1e-9) throw new Error("Anchor hexes are the same hex.");
+  const m = cDiv(cSub(e2, e1), span);
+  const c = cSub(e1, cMul(m, anchors[0]));
+  return { m: cMul(m, current.m), c: cAdd(cMul(m, current.c), c) };
+}
+
+/**
+ * Placement -> the four numbers goa2-frontend's MapConfig needs, plus the
+ * normalised image point of the check hex.
+ *
+ * imageSize is the world span the frontend gives the plane horizontally; its
+ * vertical span follows the image aspect, which makes pixel -> world a uniform
+ * scale of imageSize/imageW and keeps the whole chain a similarity.
+ */
+function placementToConfig(pl, imageW, imageH, imageSize, checkHex) {
+  const k = cAbs(pl.m);
+  if (!(k > 0) || !(imageW > 0) || !(imageH > 0)) throw new Error("No image loaded.");
+  const hexSize = HEX_SIZE * imageSize / (imageW * k);
+  let rotationDeg = (cArg(pl.m) * 180) / Math.PI + 30;
+  rotationDeg = ((rotationDeg % 360) + 360) % 360;
+
+  // origin = -(S/W) * (W/2 + i*H/2 + c/m)
+  const centre = [imageW / 2, imageH / 2];
+  const o = cScale(cAdd(centre, cDiv(pl.c, pl.m)), -imageSize / imageW);
+
+  const config = { imageSize, hexSize, rotationDeg, origin: { x: o[0], z: o[1] } };
+  if (checkHex) {
+    const p = unplacePoint(pl, hexX(checkHex.q, checkHex.r), hexY(checkHex.q, checkHex.r));
+    config.check = { hex: checkHex, u: p[0] / imageW, v: p[1] / imageH };
+  }
+  return config;
+}
+
+/**
+ * How far `hex`'s centre sits from the SVG point the user says is its centre, in
+ * hex radii. Once placed, image and grid share the SVG frame, so this is a plain
+ * distance. The two align anchors are exact by construction, so this is only
+ * meaningful for a third, independent click — which is also what catches a
+ * non-similarity problem such as a stretched image.
+ */
+function hexCentreError(hex, point) {
+  return cAbs(cSub([hexX(hex.q, hex.r), hexY(hex.q, hex.r)], point)) / HEX_SIZE;
+}
+
+/**
+ * The two hexes furthest apart in the set, as [a, b] sorted for a stable
+ * answer. Far-apart anchors keep click error from being amplified into the
+ * scale and rotation, and on an imported map they are outline corners, which
+ * are the easiest features to find on the art.
+ */
+function farthestHexPair(keys) {
+  const pts = keys.map((key) => {
+    const [q, r] = key.split(",").map(Number);
+    return { q, r, x: hexX(q, r), y: hexY(q, r) };
+  });
+  if (pts.length < 2) return null;
+  let best = null;
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+      if (!best || d > best.d) best = { d, a: pts[i], b: pts[j] };
+    }
+  }
+  // Top-most first, so the A/B labels read in a predictable order on screen.
+  const [a, b] = best.a.y <= best.b.y ? [best.a, best.b] : [best.b, best.a];
+  return [{ q: a.q, r: a.r }, { q: b.q, r: b.r }];
+}
+
+/** The MapConfig .ts file body for goa2-frontend, ready to paste. */
+function configToTs(mapName, cfg) {
+  const camel = mapName.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  const lines = [
+    `import type { MapConfig } from "./types";`,
+    ``,
+    ``,
+    `export const ${camel}: MapConfig = {`,
+    `  name: "${mapName}",`,
+    `  imagePath: "/map/${mapName}.png",`,
+    `  imageSize: ${cfg.imageSize},`,
+    `  hexSize: ${cfg.hexSize.toFixed(5)},`,
+    `  origin: { x: ${cfg.origin.x.toFixed(4)}, z: ${cfg.origin.z.toFixed(4)} },`,
+    `  rotationDeg: ${cfg.rotationDeg.toFixed(2)},`,
+  ];
+  if (cfg.check) {
+    const h = cfg.check.hex;
+    lines.push(
+      `  check: { hex: { q: ${h.q}, r: ${h.r}, s: ${-h.q - h.r} },` +
+      ` u: ${cfg.check.u.toFixed(6)}, v: ${cfg.check.v.toFixed(6)} },`,
+    );
+  }
+  lines.push(`};`, ``);
+  return lines.join("\n");
+}
+
 function makeState() {
-  return { mapName: "new_map", zones: [], hexes: new Map(), lanes: { lane_1: [] }, battleZones: {} };
+  return {
+    mapName: "new_map", zones: [], hexes: new Map(), lanes: { lane_1: [] },
+    battleZones: {},
+    // Map-image alignment. The image itself is too big for localStorage, so only
+    // the placement and the dimensions it was solved against are kept.
+    calib: null,  // {m:[re,im], c:[re,im], imageName, imageW, imageH, checkHex}
+  };
 }
 
 function newZoneId() {
@@ -333,6 +558,7 @@ function serializeState(st) {
   return JSON.stringify({
     mapName: st.mapName, zones: st.zones, lanes: st.lanes,
     battleZones: st.battleZones, hexes: [...st.hexes.entries()],
+    calib: st.calib,
   });
 }
 
@@ -344,6 +570,7 @@ function deserializeState(json) {
   st.lanes = raw.lanes && Object.keys(raw.lanes).length ? raw.lanes : { lane_1: [] };
   st.battleZones = raw.battleZones || {};
   st.hexes = new Map(raw.hexes || []);
+  st.calib = raw.calib || null;
   return st;
 }
 
@@ -361,6 +588,8 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     makeState, parseImport, parseCsvImport, buildExport, validateExport,
     serializeState, deserializeState, badgeFor, hexX, hexY,
+    HEX_SIZE, identityPlacement, placePixel, unplacePoint, placementTransform,
+    solvePlacement, placementToConfig, hexCentreError, farthestHexPair, configToTs,
   };
 }
 </script>
@@ -395,6 +624,18 @@ const els = {
   eraseBtn: document.getElementById("eraseBtn"),
   customTag: document.getElementById("customTag"),
   fileInput: document.getElementById("fileInput"),
+  mapImage: document.getElementById("mapImage"),
+  imageInput: document.getElementById("imageInput"),
+  imageName: document.getElementById("imageName"),
+  loadImageBtn: document.getElementById("loadImageBtn"),
+  alignBtn: document.getElementById("alignBtn"),
+  verifyBtn: document.getElementById("verifyBtn"),
+  copyConfigBtn: document.getElementById("copyConfigBtn"),
+  calibOut: document.getElementById("calibOut"),
+  trimRow: document.getElementById("trimRow"),
+  trimScale: document.getElementById("trimScale"),
+  trimRot: document.getElementById("trimRot"),
+  trimReset: document.getElementById("trimReset"),
 };
 
 let state = makeState();
@@ -565,6 +806,21 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") spaceDown = false; });
 
+/* Arrow keys nudge the map image; Esc leaves align/verify picking. */
+document.addEventListener("keydown", (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (e.key === "Escape" && (alignClicks || verify)) {
+    cancelPicking("Cancelled.");
+    e.preventDefault();
+    return;
+  }
+  const step = e.shiftKey ? 10 : 1;
+  const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (!delta || !hasImage()) return;
+  nudge(delta[0], delta[1]);
+  e.preventDefault();
+});
+
 let pan = null; // {startX, startY, vbx, vby}
 
 /* ---------------- tools ---------------- */
@@ -606,6 +862,18 @@ svg.addEventListener("pointerdown", (e) => {
     return;
   }
   if (e.button !== 0) return;
+  // Calibration picking owns the click when active.
+  if (alignClicks) { takeAlignClick(svgPointFromEvent(e)); return; }
+  if (verify && verify.stage === "point") { takeVerifyClick(svgPointFromEvent(e)); return; }
+  if (verify && verify.stage === "hex") {
+    const vk = keyFromEventTarget(e.target);
+    if (!vk) return;
+    const [vq, vr] = vk.split(",").map(Number);
+    verify = { stage: "point", hex: { q: vq, r: vr } };
+    renderCalib();
+    setStatus([`Now click where hex ${vq},${vr}'s centre really is on the image.`], "ok");
+    return;
+  }
   const key = keyFromEventTarget(e.target);
   if (!key) return;
   painting = true;
@@ -631,6 +899,351 @@ window.addEventListener("pointermove", (e) => {
 window.addEventListener("pointerup", () => {
   pan = null;
   if (painting) { painting = false; renderZonePanel(); }
+});
+
+/* ---------------- map image / calibration ---------------- */
+
+/* The image is drawn inside gWorld beneath the grid, so the view-rotation control
+ * rotates both together. The placement lives in state.calib and survives reload;
+ * the bitmap does not (a 3000px map PNG blows the localStorage quota), so after a
+ * refresh the numbers are intact and only the file has to be dropped again. */
+
+const gAnchors = document.getElementById("anchors");
+const IMAGE_SIZE = 10;        // world units the frontend plane spans horizontally
+const CHECK_TOLERANCE = 0.05; // hex radii, matching goa2-frontend maps/geometry.ts
+
+let imageEl = null;           // the loaded HTMLImageElement, or null
+let placement = identityPlacement();
+let anchorHexes = null;       // [hexA, hexB] labelled on the grid
+let alignClicks = null;       // clicks collected so far in align mode, or null
+let verify = null;            // {stage:"hex"} | {stage:"point", hex}
+let verifyError = null;       // last measured error, in hex radii
+let trimBase = null;          // placement the trim sliders work from
+let aligned = false;          // has this image been aligned, or is it just parked?
+
+function hasImage() { return !!imageEl; }
+
+/** Pointer event -> a point in grid coordinates, undoing the visual board rotation. */
+function svgPointFromEvent(e) {
+  const rect = svg.getBoundingClientRect();
+  const x = vb.x + ((e.clientX - rect.left) / rect.width) * vb.w;
+  const y = vb.y + ((e.clientY - rect.top) / rect.height) * (vb.w * rect.height / rect.width);
+  if (!viewRot) return [x, y];
+  const t = (-viewRot * Math.PI) / 180;
+  const dx = x - pivot.x, dy = y - pivot.y;
+  return [
+    pivot.x + dx * Math.cos(t) - dy * Math.sin(t),
+    pivot.y + dx * Math.sin(t) + dy * Math.cos(t),
+  ];
+}
+
+/** Adopt a placement as the new baseline: trim sliders reset to work from it. */
+function setPlacement(pl) {
+  placement = pl;
+  trimBase = { m: pl.m, c: pl.c };
+  els.trimScale.value = 0;
+  els.trimRot.value = 0;
+  if (imageEl) {
+    state.calib = {
+      m: placement.m, c: placement.c,
+      imageName: state.calib ? state.calib.imageName : "",
+      imageW: imageEl.naturalWidth, imageH: imageEl.naturalHeight,
+      checkHex: anchorHexes ? anchorHexes[1] : (state.calib ? state.calib.checkHex : null),
+      aligned: aligned,
+    };
+    commit();
+  }
+}
+
+/** The four frontend numbers for the current placement, or null. */
+function currentConfig() {
+  if (!imageEl) return null;
+  try {
+    return placementToConfig(
+      placement, imageEl.naturalWidth, imageEl.naturalHeight, IMAGE_SIZE,
+      state.calib ? state.calib.checkHex : null,
+    );
+  } catch { return null; }
+}
+
+function renderCalibPanel() {
+  els.alignBtn.disabled = !imageEl || state.hexes.size < 2;
+  els.verifyBtn.disabled = !imageEl || state.hexes.size < 1;
+  els.copyConfigBtn.disabled = !aligned || !currentConfig();
+  els.alignBtn.classList.toggle("active", !!alignClicks);
+  els.verifyBtn.classList.toggle("active", !!verify);
+  els.trimRow.hidden = !imageEl;
+
+  const calib = state.calib;
+  els.imageName.textContent = calib && calib.imageName
+    ? (imageEl ? `${calib.imageName} (${calib.imageW}x${calib.imageH})`
+               : `${calib.imageName} — alignment kept, reload the file to see the art`)
+    : "No image loaded.";
+
+  const cfg = aligned ? currentConfig() : null;
+  if (!cfg) {
+    els.calibOut.hidden = false;
+    els.calibOut.textContent = imageEl
+      ? "Not aligned yet — press Align."
+      : "Load the map image this grid should line up with.";
+    return;
+  }
+  els.calibOut.hidden = false;
+  const lines = [
+    `hexSize     ${cfg.hexSize.toFixed(5)}`,
+    `origin      x ${cfg.origin.x.toFixed(4)}  z ${cfg.origin.z.toFixed(4)}`,
+    `rotationDeg ${cfg.rotationDeg.toFixed(2)}`,
+  ];
+  if (verifyError !== null) {
+    lines.push(`verify      ${verifyError.toFixed(3)} hex radii ` +
+      (verifyError > CHECK_TOLERANCE ? "<< over tolerance" : "ok"));
+  }
+  els.calibOut.textContent = lines.join("\n");
+}
+
+function renderAnchors() {
+  gAnchors.textContent = "";
+  const marks = [];
+  if (anchorHexes) {
+    marks.push({ hex: anchorHexes[0], cls: "a", label: "A", pending: !!alignClicks && alignClicks.length < 1 });
+    marks.push({ hex: anchorHexes[1], cls: "b", label: "B", pending: !!alignClicks && alignClicks.length < 2 });
+  }
+  if (verify && verify.stage === "point") {
+    marks.push({ hex: verify.hex, cls: "b", label: "?", pending: true });
+  }
+  const NS = "http://www.w3.org/2000/svg";
+  for (const mark of marks) {
+    const { q, r } = mark.hex;
+    const cx = hexX(q, r), cy = hexY(q, r);
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("class", `anchor ${mark.cls}${mark.pending ? " pending" : ""}`);
+    if (viewRot) g.setAttribute("transform", badgeTransform(q, r));
+
+    const R = HEX_SIZE * 0.78;
+    const arm = HEX_SIZE * 1.5;
+    // Crosshair arms stop short of the centre, so the pixel the user is aiming
+    // at is never covered by the marker itself.
+    const gap = HEX_SIZE * 0.3;
+    const shapes = [
+      ["circle", { cx, cy, r: R }],
+      ["line", { x1: cx - arm, y1: cy, x2: cx - gap, y2: cy }],
+      ["line", { x1: cx + gap, y1: cy, x2: cx + arm, y2: cy }],
+      ["line", { x1: cx, y1: cy - arm, x2: cx, y2: cy - gap }],
+      ["line", { x1: cx, y1: cy + gap, x2: cx, y2: cy + arm }],
+    ];
+    // Halo pass first, then the coloured pass on top.
+    for (const cls of ["halo", null]) {
+      for (const [tag, attrs] of shapes) {
+        const el = document.createElementNS(NS, tag);
+        for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+        el.setAttribute("class", cls || (tag === "circle" ? "ring" : "cross"));
+        g.appendChild(el);
+      }
+    }
+    const text = document.createElementNS(NS, "text");
+    text.setAttribute("x", cx);
+    text.setAttribute("y", cy - R - 9);
+    text.textContent = mark.label;
+    g.appendChild(text);
+    gAnchors.appendChild(g);
+  }
+}
+
+function renderCalib() {
+  document.body.classList.toggle("has-image", !!imageEl);
+  // Clicks must reach the image, not the grid, while a point is being picked.
+  document.body.classList.toggle(
+    "aligning", !!alignClicks || !!(verify && verify.stage === "point"));
+  if (imageEl) {
+    els.mapImage.removeAttribute("hidden");
+    els.mapImage.setAttribute("width", imageEl.naturalWidth);
+    els.mapImage.setAttribute("height", imageEl.naturalHeight);
+    els.mapImage.setAttribute("transform", placementTransform(placement));
+  } else {
+    els.mapImage.setAttribute("hidden", "");
+  }
+  renderAnchors();
+  renderCalibPanel();
+}
+
+/** Initial placement for a fresh image: roughly covering the grid, so the first
+ *  align clicks have something visible to aim at. */
+function initialPlacement(img) {
+  const span = Math.max(img.naturalWidth, img.naturalHeight);
+  const k = 34 * HEX_SIZE / span;
+  return { m: [k, 0], c: [-k * img.naturalWidth / 2, -k * img.naturalHeight / 2] };
+}
+
+function loadImageFile(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const prev = state.calib;
+    const mismatch = !!prev && !!prev.imageW &&
+      (prev.imageW !== img.naturalWidth || prev.imageH !== img.naturalHeight);
+    imageEl = img;
+    els.mapImage.setAttribute("href", url);
+    anchorHexes = null;
+    alignClicks = null;
+    verify = null;
+    verifyError = null;
+    state.calib = {
+      m: [1, 0], c: [0, 0], imageName: file.name,
+      imageW: img.naturalWidth, imageH: img.naturalHeight,
+      checkHex: prev && !mismatch ? prev.checkHex : null,
+    };
+    const reuse = prev && prev.m && !mismatch;
+    aligned = !!(reuse && prev.aligned);
+    setPlacement(reuse ? { m: prev.m, c: prev.c } : initialPlacement(img));
+    renderCalib();
+    fitView();
+    const msgs = [`Loaded ${file.name} (${img.naturalWidth}x${img.naturalHeight}).`];
+    if (mismatch) {
+      msgs.push(`The stored alignment was solved against ${prev.imageW}x${prev.imageH}, ` +
+        `so it does not apply here. Align again.`);
+    } else if (reuse) {
+      msgs.push("Restored the stored alignment.");
+    } else {
+      msgs.push("Press Align, then click the centre of hex A and hex B on the image.");
+    }
+    setStatus(msgs, mismatch ? "warn" : "ok");
+  };
+  img.onerror = () => setStatus([`Could not read ${file.name} as an image.`], "err");
+  img.src = url;
+}
+
+function startAlign() {
+  const pair = farthestHexPair([...state.hexes.keys()]);
+  if (!pair) { setStatus(["Import or paint some hexes first."], "warn"); return; }
+  anchorHexes = pair;
+  alignClicks = [];
+  verify = null;
+  verifyError = null;
+  renderCalib();
+  setStatus([
+    "Click the centre of hex A on the image — the red circle marks which hex that is.",
+    "Then hex B (blue). Esc cancels.",
+  ], "ok");
+}
+
+function takeAlignClick(point) {
+  alignClicks.push(point);
+  if (alignClicks.length < 2) {
+    renderCalib();
+    setStatus(["Now click the centre of hex B, the blue circle."], "ok");
+    return;
+  }
+  let solved;
+  try {
+    solved = solvePlacement(placement, alignClicks, anchorHexes);
+  } catch (err) {
+    alignClicks = null;
+    renderCalib();
+    setStatus([`Align failed: ${err.message}`], "err");
+    return;
+  }
+  alignClicks = null;
+  aligned = true;
+  setPlacement(solved);
+  renderCalib();
+  setStatus([
+    "Aligned. Arrow keys nudge, the sliders trim scale and rotation.",
+    "Verify measures the error at a third hex; Copy MapConfig when it looks right.",
+  ], "ok");
+}
+
+function takeVerifyClick(point) {
+  const hex = verify.hex;
+  verifyError = hexCentreError(hex, point);
+  verify = null;
+  renderCalib();
+  const over = verifyError > CHECK_TOLERANCE;
+  setStatus([
+    `Hex ${hex.q},${hex.r} is off by ${verifyError.toFixed(3)} hex radii.`,
+    over ? "Over tolerance — nudge, or align again with anchors further apart."
+         : "Within tolerance.",
+  ], over ? "warn" : "ok");
+}
+
+function nudge(dx, dy) {
+  if (!imageEl) return;
+  setPlacement({ m: placement.m, c: cAdd(placement.c, [dx, dy]) });
+  renderCalib();
+}
+
+/* Fine trim about the grid centroid, so the map does not swing away as the slider
+ * moves. Always applied to the pre-trim placement, so dragging back to zero
+ * restores it exactly:  p -> f*(old(p) - P) + P. */
+function applyTrim() {
+  if (!trimBase || !imageEl) return;
+  const scale = parseFloat(els.trimScale.value) || 0;
+  const rot = parseFloat(els.trimRot.value) || 0;
+  const f = cPolar(1 + scale / 100, (rot * Math.PI) / 180);
+  const P = [pivot.x, pivot.y];
+  placement = {
+    m: cMul(trimBase.m, f),
+    c: cAdd(cMul(trimBase.c, f), cMul(cSub([1, 0], f), P)),
+  };
+  if (state.calib) {
+    state.calib = { ...state.calib, m: placement.m, c: placement.c };
+    commit();
+  }
+  renderCalib();
+}
+
+els.loadImageBtn.addEventListener("click", () => els.imageInput.click());
+els.imageInput.addEventListener("change", () => {
+  const file = els.imageInput.files[0];
+  els.imageInput.value = "";
+  if (file) loadImageFile(file);
+});
+
+svg.addEventListener("dragover", (e) => e.preventDefault());
+svg.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = [...(e.dataTransfer.files || [])].find((f) => /^image\//.test(f.type));
+  if (file) loadImageFile(file);
+});
+
+els.alignBtn.addEventListener("click", () => {
+  if (alignClicks) { cancelPicking("Align cancelled."); return; }
+  startAlign();
+});
+
+els.verifyBtn.addEventListener("click", () => {
+  if (verify) { cancelPicking("Verify cancelled."); return; }
+  alignClicks = null;
+  verify = { stage: "hex" };
+  renderCalib();
+  setStatus(["Click the hex you want to check."], "ok");
+});
+
+function cancelPicking(message) {
+  alignClicks = null;
+  verify = null;
+  renderCalib();
+  setStatus([message], "");
+}
+
+els.trimScale.addEventListener("input", applyTrim);
+els.trimRot.addEventListener("input", applyTrim);
+els.trimReset.addEventListener("click", () => {
+  els.trimScale.value = 0;
+  els.trimRot.value = 0;
+  applyTrim();
+});
+
+els.copyConfigBtn.addEventListener("click", () => {
+  const cfg = currentConfig();
+  if (!cfg) { setStatus(["Load and align an image first."], "warn"); return; }
+  const ts = configToTs(state.mapName, cfg);
+  navigator.clipboard.writeText(ts).then(
+    () => setStatus([
+      `Copied. Paste as goa2-frontend/src/components/board3d/maps/${state.mapName}.ts,`,
+      "then add it to maps/index.ts.",
+    ], "ok"),
+    () => setStatus(["Clipboard blocked — the numbers are in the readout above."], "warn"),
+  );
 });
 
 /* ---------------- panels ---------------- */
@@ -856,18 +1469,28 @@ function setStatus(messages, cls) {
 }
 
 let saveTimer = null;
+
+function saveNow() {
+  clearTimeout(saveTimer);
+  try { localStorage.setItem(STORAGE_KEY, serializeState(state)); } catch { /* full/blocked */ }
+}
+
 function commit() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try { localStorage.setItem(STORAGE_KEY, serializeState(state)); } catch { /* full/blocked */ }
-  }, 250);
+  saveTimer = setTimeout(saveNow, 250);
 }
+
+/* Flush before the page goes away. The map image is deliberately not persisted,
+ * so refreshing is a normal part of this workflow — losing the alignment you
+ * just solved to a pending debounce would not be. */
+window.addEventListener("pagehide", saveNow);
 
 function renderAll() {
   els.mapName.value = state.mapName;
   renderZonePanel();
   renderTagPanel();
   renderLanePanel();
+  renderCalib();
 }
 
 els.mapName.addEventListener("change", () => {
@@ -881,6 +1504,14 @@ document.getElementById("newMap").addEventListener("click", () => {
   state = makeState();
   activeZoneId = null;
   customTags = [];
+  imageEl = null;
+  placement = identityPlacement();
+  anchorHexes = null;
+  alignClicks = null;
+  verify = null;
+  verifyError = null;
+  trimBase = null;
+  aligned = false;
   localStorage.removeItem(STORAGE_KEY);
   bounds = { qMin: -25, qMax: 24, rMin: -20, rMax: 19 };
   buildGrid();
@@ -905,9 +1536,15 @@ els.fileInput.addEventListener("change", () => {
       setStatus([`Import failed: ${err.message}`], "err");
       return;
     }
+    const keptCalib = imageEl ? state.calib : null;
     state = result.state;
+    state.calib = keptCalib;
     state.mapName = file.name.replace(/\.(json|csv)$/i, "") || "new_map";
     activeZoneId = state.zones[0] ? state.zones[0].id : null;
+    anchorHexes = null;
+    alignClicks = null;
+    verify = null;
+    verifyError = null;
     setMode({ kind: "paint" });
     buildGrid();
     renderAll();
@@ -938,6 +1575,10 @@ if (saved) {
     state = deserializeState(saved);
     activeZoneId = state.zones[0] ? state.zones[0].id : null;
   } catch { state = makeState(); }
+}
+if (state.calib && state.calib.m) {
+  placement = { m: state.calib.m, c: state.calib.c };
+  aligned = !!state.calib.aligned;
 }
 buildGrid();
 renderAll();

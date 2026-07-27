@@ -107,7 +107,10 @@ New lane helpers on `GameState`:
 - A real two-lane map exists: `src/goa2/data/maps/across_the_river.json`
   (6 zones per lane, shared base zones, starting Battle Zones MidA2/MidB2).
   Maps are produced by the browser map editor (`tools/map_editor.html` —
-  CSV geometry import, rotation, ★ starting-zone marker).
+  CSV geometry import, rotation, ★ starting-zone marker). The editor also
+  loads the map image and solves the frontend's render calibration from two
+  clicks; see `tools/map_editor.test.mjs` and
+  `goa2-frontend/docs/superpowers/specs/2026-07-27-map-calibration-in-editor-design.md`.
 
 ### Double-lane endgame rules (shipped)
 
