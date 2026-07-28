@@ -82,13 +82,26 @@ class Node:
         limit = max(1, math.ceil(widen_c * (self.visits**widen_alpha)))
         return len(expanded) < limit
 
-    def expand(self, legal: list[Key], rng: random.Random) -> Key:
+    def expand(
+        self,
+        legal: list[Key],
+        rng: random.Random,
+        order: list[Key] | None = None,
+    ) -> Key:
         """Reveal one new legal child and return its key.
 
-        First-cut ordering is random; a heuristic prior can be slotted here later
-        so the most promising moves are revealed first under widening.
+        When ``order`` (a best-first ranking of the legal keys, e.g. from an
+        expansion prior) is given, reveal the highest-ranked *unexpanded* key so
+        progressive widening surfaces promising moves first. Otherwise the
+        ordering is random. Either way this only affects *which* legal child is
+        revealed next, never legality or value.
         """
-        unexpanded = [k for k in legal if k not in self.children]
-        key = rng.choice(unexpanded)
+        unexpanded = {k for k in legal if k not in self.children}
+        if order is not None:
+            key = next((k for k in order if k in unexpanded), None)
+            if key is None:  # order missing some legal keys; fall back
+                key = rng.choice([k for k in legal if k in unexpanded])
+        else:
+            key = rng.choice([k for k in legal if k in unexpanded])
         self.children[key] = Node()
         return key

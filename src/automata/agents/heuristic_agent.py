@@ -91,29 +91,37 @@ class HeuristicAgent:
     def choose_card(self, state: GameState, hero: Hero) -> Card | None:
         if not hero.hand:
             return None
+        # Highest score; break ties by initiative (act earlier), then rng.
+        best = max(
+            hero.hand,
+            key=lambda c: (self.score_card(state, hero, c), c.initiative, self._rng.random()),
+        )
+        return best
+
+    def score_card(self, state: GameState, hero: Hero, card: Card) -> float:
+        """Static desirability of committing ``card`` for ``hero`` (higher = better).
+
+        Public so the search layer can reuse it as an expansion prior. Pure and
+        side-effect free; does not consult the RNG (callers break ties).
+        """
         team = hero.team or TeamColor.RED
         pos = state.unit_locations.get(hero.id)
         enemies = self._enemy_positions(state, team)
         nearest = min((_dist(pos, e) for e in enemies), default=99) if pos else 99
 
-        def score(card: Card) -> float:
-            pa = card.primary_action
-            val = card.primary_action_value or 0
-            if pa == ActionType.ATTACK:
-                reach = card.range_value or 1
-                reachable = nearest <= reach
-                return 10 + val + (5 if reachable else -3)
-            if pa == ActionType.SKILL:
-                return 6
-            if pa == ActionType.MOVEMENT:
-                return 5 + (3 if nearest > 2 else 0)
-            if pa == ActionType.DEFENSE:
-                return 4
-            return 3
-
-        # Highest score; break ties by initiative (act earlier), then rng.
-        best = max(hero.hand, key=lambda c: (score(c), c.initiative, self._rng.random()))
-        return best
+        pa = card.primary_action
+        val = card.primary_action_value or 0
+        if pa == ActionType.ATTACK:
+            reach = card.range_value or 1
+            reachable = nearest <= reach
+            return 10 + val + (5 if reachable else -3)
+        if pa == ActionType.SKILL:
+            return 6
+        if pa == ActionType.MOVEMENT:
+            return 5 + (3 if nearest > 2 else 0)
+        if pa == ActionType.DEFENSE:
+            return 4
+        return 3
 
     # --- resolution --------------------------------------------------------
     def choose_input(self, state: GameState, request: InputRequest) -> Any:
@@ -126,32 +134,38 @@ class HeuristicAgent:
         if not opts:
             return "SKIP" if request.can_skip else None
 
+        best = max(opts, key=lambda o: self.score_option(state, request, o))
+        return option_selection_value(best)
+
+    def score_option(self, state: GameState, request: InputRequest, option: Any) -> float:
+        """Static desirability of an input ``option`` (higher = better).
+
+        Public so the search layer can reuse it as an expansion prior. Mirrors
+        the per-request-type ranking used by :meth:`choose_input`. Pure and
+        side-effect free.
+        """
+        rt = request.request_type.value
+
         if rt == "CHOOSE_ACTION":
-            best = max(opts, key=self._action_priority)
-            return option_selection_value(best)
+            return float(self._action_priority(option))
 
         if rt in ("SELECT_UNIT", "SELECT_ENEMY", "SELECT_UNIT_OR_TOKEN"):
-            hero_team = self._acting_team(state, request)
-            best = max(opts, key=lambda o: self._unit_score(state, o, hero_team))
-            return option_selection_value(best)
+            return self._unit_score(state, option, self._acting_team(state, request))
 
         if rt in ("SELECT_HEX", "MOVEMENT_HEX", "FAST_TRAVEL_DESTINATION", "CHOOSE_RESPAWN_HEX"):
-            hero_team = self._acting_team(state, request)
-            best = max(opts, key=lambda o: self._hex_score(state, o, hero_team))
-            return option_selection_value(best)
+            return self._hex_score(state, option, self._acting_team(state, request))
 
         if rt == "SELECT_NUMBER":
             # More (push/move/repeat) is usually better.
-            return max((option_selection_value(o) for o in opts), key=lambda v: _as_int(v))
+            return float(_as_int(option_selection_value(option)))
 
         if rt in ("DEFENSE_CARD", "SELECT_CARD_OR_PASS"):
-            # Prefer to defend (survive) rather than skip into defeat; pick the
-            # option advertising the highest defense value if present.
-            best = max(opts, key=lambda o: _as_int(o.metadata.get("defense", 0)))
-            return option_selection_value(best)
+            # Prefer to defend (survive) rather than skip into defeat.
+            return float(_as_int(option.metadata.get("defense", 0)))
 
-        # Default: first concrete option.
-        return option_selection_value(opts[0])
+        # Default: no preference between concrete options.
+        return 0.0
+
 
     # --- scoring -----------------------------------------------------------
     def _action_priority(self, option: Any) -> int:
@@ -188,9 +202,26 @@ class HeuristicAgent:
         zid = self._zone_of(state, _HexLike(hexd))
         if zid is None:
             return 0.0
+        # Coarse push signal: how many zones this hex is toward the enemy throne.
+        # Zone-granular (0..~3 on a 5-zone lane) — the *strategic* signal.
         lane_id = next(iter(state.battle_zones), None)
         toward_enemy = zones_between(state, team, lane_id, zid) if lane_id else 0
-        return float(toward_enemy)
+
+        # Intra-zone placement gradient: prefer landing closer to the nearest
+        # enemy so the agent closes distance to fight instead of stalling. This
+        # matters for BOTH ordinary movement and fast travel — fast travel picks
+        # a better zone (and may free up movement steps), but *placement within*
+        # that zone is still critical, so we never discard this term. Raw cube
+        # distance ignores terrain, so it stays a sub-unit tie-breaker: the
+        # zone-push term (x10) dominates and it never trades a better zone for a
+        # few hexes. Distance ~10 -> ~0 pull; adjacent -> ~1.0 pull.
+        enemies = self._enemy_positions(state, team)
+        approach = 0.0
+        if enemies:
+            nearest = min(_dist(hexd, e) for e in enemies)
+            approach = max(0.0, 1.0 - nearest / 10.0)
+
+        return 10.0 * float(toward_enemy) + approach
 
     def _choose_upgrade(self, request: InputRequest) -> Any:
         players = request.context.get("players", {})

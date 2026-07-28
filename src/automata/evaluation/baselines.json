@@ -1,0 +1,74 @@
+{
+  "base_seed": 0,
+  "blue": [
+    "Arien",
+    "Brogan"
+  ],
+  "games": 40,
+  "generated_at": "2026-07-21T06:17:49.237332+00:00",
+  "matchups": [
+    {
+      "a": "random",
+      "a_winrate": 0.5,
+      "a_wins": 20,
+      "avg_rounds": 27.43,
+      "b": "random",
+      "b_wins": 20,
+      "draws": 0,
+      "games": 40,
+      "wilson_ci": [
+        0.352,
+        0.648
+      ]
+    },
+    {
+      "a": "heuristic",
+      "a_winrate": 0.95,
+      "a_wins": 38,
+      "avg_rounds": 13.18,
+      "b": "random",
+      "b_wins": 2,
+      "draws": 0,
+      "games": 40,
+      "wilson_ci": [
+        0.835,
+        0.9862
+      ]
+    },
+    {
+      "a": "ismcts",
+      "a_winrate": 1.0,
+      "a_wins": 4,
+      "avg_rounds": 7.25,
+      "b": "heuristic",
+      "b_wins": 0,
+      "draws": 0,
+      "games": 4,
+      "wilson_ci": [
+        0.5101,
+        1.0
+      ]
+    },
+    {
+      "a": "ismcts",
+      "a_winrate": 1.0,
+      "a_wins": 4,
+      "avg_rounds": 7.0,
+      "b": "ismcts_noprior",
+      "b_wins": 0,
+      "draws": 0,
+      "games": 4,
+      "wilson_ci": [
+        0.5101,
+        1.0
+      ]
+    }
+  ],
+  "notes": "Rung-0 baseline. Fast matchups (random/heuristic) use --games; ISMCTS matchups use a small --search-games at low --search-iters because a single ISMCTS game is expensive (~28s at 2 iters). ISMCTS rows are therefore directional (wide Wilson CI), not conclusive; rerun with higher budgets for a real strength claim. Every later rung must beat the agent it improves on in these matchups over a meaningful sample.",
+  "red": [
+    "Wasp",
+    "Xargatha"
+  ],
+  "search_games": 4,
+  "search_iterations": 2
+}
