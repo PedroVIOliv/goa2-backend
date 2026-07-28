@@ -22,7 +22,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.engine.map_logic import zones_between
 
-from .base import option_selection_value
+from .base import HexLike, hex_distance, option_selection_value
 
 # CHOOSE_ACTION priority (higher = preferred as the played action).
 _ACTION_PRIORITY = {
@@ -34,26 +34,6 @@ _ACTION_PRIORITY = {
     ActionType.CLEAR: 1,
     ActionType.HOLD: 0,
 }
-
-
-def _qrs(loc: Any) -> tuple[int, int, int] | None:
-    if loc is None:
-        return None
-    if isinstance(loc, dict):
-        dq, dr = int(loc.get("q", 0)), int(loc.get("r", 0))
-        return (dq, dr, int(loc.get("s", -dq - dr)))
-    aq, ar = getattr(loc, "q", None), getattr(loc, "r", None)
-    if aq is None or ar is None:
-        return None
-    s = getattr(loc, "s", None)
-    return (int(aq), int(ar), int(s if s is not None else -aq - ar))
-
-
-def _dist(a: Any, b: Any) -> int:
-    ca, cb = _qrs(a), _qrs(b)
-    if ca is None or cb is None:
-        return 99
-    return (abs(ca[0] - cb[0]) + abs(ca[1] - cb[1]) + abs(ca[2] - cb[2])) // 2
 
 
 class HeuristicAgent:
@@ -107,7 +87,7 @@ class HeuristicAgent:
         team = hero.team or TeamColor.RED
         pos = state.unit_locations.get(hero.id)
         enemies = self._enemy_positions(state, team)
-        nearest = min((_dist(pos, e) for e in enemies), default=99) if pos else 99
+        nearest = min((hex_distance(pos, e) for e in enemies), default=99) if pos else 99
 
         pa = card.primary_action
         val = card.primary_action_value or 0
@@ -199,7 +179,7 @@ class HeuristicAgent:
         hexd = option.metadata.get("hex")
         if hexd is None:
             return 0.0
-        zid = self._zone_of(state, _HexLike(hexd))
+        zid = self._zone_of(state, HexLike(hexd))
         if zid is None:
             return 0.0
         # Coarse push signal: how many zones this hex is toward the enemy throne.
@@ -218,7 +198,7 @@ class HeuristicAgent:
         enemies = self._enemy_positions(state, team)
         approach = 0.0
         if enemies:
-            nearest = min(_dist(hexd, e) for e in enemies)
+            nearest = min(hex_distance(hexd, e) for e in enemies)
             approach = max(0.0, 1.0 - nearest / 10.0)
 
         return 10.0 * float(toward_enemy) + approach
@@ -243,27 +223,6 @@ class HeuristicAgent:
                 pair = group.get("pair") or [d["id"] for d in group.get("card_details", [])]
                 return {"hero_id": hid, "card_id": pair[0]}
         return None
-
-
-class _HexLike:
-    """Wrap a {q,r,s} dict so `x in zone.hexes` works (Hex equality by coords)."""
-
-    __slots__ = ("q", "r", "s")
-
-    def __init__(self, d: dict[str, Any]) -> None:
-        self.q = d.get("q", 0)
-        self.r = d.get("r", 0)
-        self.s = d.get("s", d.get("q", 0) * -1 - d.get("r", 0))
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            getattr(other, "q", None) == self.q
-            and getattr(other, "r", None) == self.r
-            and getattr(other, "s", None) == self.s
-        )
-
-    def __hash__(self) -> int:
-        return hash((self.q, self.r, self.s))
 
 
 def _as_int(v: Any) -> int:

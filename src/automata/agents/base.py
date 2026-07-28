@@ -50,3 +50,67 @@ def option_selection_value(option: Any) -> Any:
     if "raw" in meta:
         return meta["raw"]
     return option.id
+
+
+# --------------------------------------------------------------------------- #
+# Shared hex geometry. Agents receive locations in loose forms — {q,r,s} dicts
+# (option metadata, entity_locations), engine Hex objects, or anything with
+# .q/.r/.s — so these tolerate all of them, unlike the engine's typed
+# Hex.distance. Shared here so every agent (and feature extractor) reuses one
+# implementation.
+# --------------------------------------------------------------------------- #
+
+Cube = tuple[int, int, int]
+
+
+def to_cube(loc: Any) -> Cube | None:
+    """Coerce a loose location into cube coords ``(q, r, s)``, or None.
+
+    Accepts a ``{q, r, s}`` dict, an engine ``Hex``, or any object exposing
+    ``.q``/``.r`` (``.s`` derived if absent). Returns None for None / unparseable
+    inputs.
+    """
+    if loc is None:
+        return None
+    if isinstance(loc, dict):
+        dq, dr = int(loc.get("q", 0)), int(loc.get("r", 0))
+        return (dq, dr, int(loc.get("s", -dq - dr)))
+    aq, ar = getattr(loc, "q", None), getattr(loc, "r", None)
+    if aq is None or ar is None:
+        return None
+    s = getattr(loc, "s", None)
+    return (int(aq), int(ar), int(s if s is not None else -aq - ar))
+
+
+def hex_distance(a: Any, b: Any) -> int:
+    """Cube hex distance between two loose locations.
+
+    Returns a large sentinel (99) when either side is unparseable, so callers
+    can treat "unknown" as "very far" without special-casing None.
+    """
+    ca, cb = to_cube(a), to_cube(b)
+    if ca is None or cb is None:
+        return 99
+    return (abs(ca[0] - cb[0]) + abs(ca[1] - cb[1]) + abs(ca[2] - cb[2])) // 2
+
+
+class HexLike:
+    """Wrap a ``{q, r, s}`` dict so ``x in zone.hexes`` works (Hex equality by
+    coords). Lets agents membership-test loose hex dicts against engine zones."""
+
+    __slots__ = ("q", "r", "s")
+
+    def __init__(self, d: dict[str, Any]) -> None:
+        self.q = d.get("q", 0)
+        self.r = d.get("r", 0)
+        self.s = d.get("s", d.get("q", 0) * -1 - d.get("r", 0))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            getattr(other, "q", None) == self.q
+            and getattr(other, "r", None) == self.r
+            and getattr(other, "s", None) == self.s
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.q, self.r, self.s))
