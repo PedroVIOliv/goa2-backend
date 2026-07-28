@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from automata.evaluation.matchup import MatchupResult, evaluate
 from automata.agents.random_agent import RandomAgent
+from automata.evaluation.matchup import MatchupResult, evaluate
 
 RED = ["Wasp", "Xargatha"]
 BLUE = ["Arien", "Brogan"]

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from automata.runtime.harness import run_game
 from automata.agents.random_agent import RandomAgent
+from automata.runtime.harness import run_game
 
 
 def test_random_quick_game_completes() -> None:
