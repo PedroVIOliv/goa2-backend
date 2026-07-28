@@ -9,8 +9,8 @@ each ENEMY hero that has already committed a hidden card this turn, takes it bac
 and re-commits a uniformly-random card from that hero's hand. Our own team's
 commits/passes are kept (we control them and, in the AI, know their hands).
 
-Why hand *composition* is not resampled: verified (see ENGINE_INTEGRATION.md)
-that opponents' hands are near-fully determined by public information — hero
+Why hand *composition* is not resampled: verified that opponents' hands are
+near-fully determined by public information — hero
 identity (full deck known), level, and visible item stat-bonuses (every
 color+tier pair has distinct item stats, so the tucked item reveals which pair
 member is in hand). So the true state's hands are already a legal sample; the
