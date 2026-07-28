@@ -23,6 +23,7 @@ from typing import Protocol
 from goa2.domain.models.card import Card
 from goa2.domain.state import GameState
 
+from ..agents.base import option_selection_value
 from ..agents.heuristic_agent import HeuristicAgent
 from .ismcts import Decision
 from .node import Key, action_key
@@ -84,7 +85,7 @@ class HeuristicPrior:
             request = decision.request
             scores = {}
             for opt in request.options:
-                key = action_key(_selection_of(opt))
+                key = action_key(option_selection_value(opt))
                 if key in scores:
                     continue
                 scores[key] = self._h.score_option(state, request, opt)
@@ -92,13 +93,3 @@ class HeuristicPrior:
             # so concrete positive-scoring actions are revealed ahead of it.
             return scores
         return None
-
-
-def _selection_of(option: object) -> object:
-    """Raw engine selection behind an option (mirrors ``option_selection_value``)."""
-    meta = getattr(option, "metadata", {}) or {}
-    if "hex" in meta:
-        return meta["hex"]
-    if "raw" in meta:
-        return meta["raw"]
-    return getattr(option, "id", option)
