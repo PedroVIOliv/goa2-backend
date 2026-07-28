@@ -49,7 +49,7 @@ def option_selection_value(option: Any) -> Any:
         return meta["hex"]
     if "raw" in meta:
         return meta["raw"]
-    return option.id
+    return getattr(option, "id", option)
 
 
 # --------------------------------------------------------------------------- #
