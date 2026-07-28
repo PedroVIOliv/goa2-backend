@@ -40,13 +40,13 @@ def _qrs(loc: Any) -> tuple[int, int, int] | None:
     if loc is None:
         return None
     if isinstance(loc, dict):
-        q, r = int(loc.get("q", 0)), int(loc.get("r", 0))
-        return (q, r, int(loc.get("s", -q - r)))
-    q, r = getattr(loc, "q", None), getattr(loc, "r", None)
-    if q is None or r is None:
+        dq, dr = int(loc.get("q", 0)), int(loc.get("r", 0))
+        return (dq, dr, int(loc.get("s", -dq - dr)))
+    aq, ar = getattr(loc, "q", None), getattr(loc, "r", None)
+    if aq is None or ar is None:
         return None
     s = getattr(loc, "s", None)
-    return (int(q), int(r), int(s if s is not None else -q - r))
+    return (int(aq), int(ar), int(s if s is not None else -aq - ar))
 
 
 def _dist(a: Any, b: Any) -> int:

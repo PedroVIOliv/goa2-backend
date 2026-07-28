@@ -105,8 +105,10 @@ become the net heads.
   Round-1-specific prior is wanted.
 - No ML infra until Rung 2 evidence justifies it.
 
-## Known issues (pre-existing, out of scope)
+## Known issues
 
-- `heuristic_agent.py:45` (`_qrs`) mypy `assignment` error — predates this work.
-- ruff `__all__`/import-sort nits in `agents/__init__.py` and some older
-  `tests/ai/*` files.
+- None outstanding. The previously-noted pre-existing nits are fixed: the
+  `heuristic_agent.py` `_qrs` mypy `assignment` error (disambiguated the dict vs
+  object-attr locals) and the ruff `__all__`/import-sort issues in
+  `agents/__init__.py` and older `tests/ai/*` files. `mypy src/automata` and
+  `ruff check src/automata tests/ai` are clean.
