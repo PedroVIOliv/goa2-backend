@@ -95,6 +95,13 @@ This gives a clean, engine-agnostic `Agent.choose(view, request, legal_options)`
   shares the static board geometry and copies only the mutable tiles/state →
   **~1.4 ms** (~700/s), verified independent (playing a clone forward leaves the
   original's positions + occupancy intact). This is the MCTS clone.
+- **Playout cost dominates, not clone**: one `advance()` (one decision) ≈
+  **2.3 ms**; a full playout to terminal ≈ **2–3 s** (~800 advances) → only
+  ~0.3 full playouts/sec. Classic MCTS with full random rollouts is therefore
+  infeasible. **Design: MCTS with per-node stored states + `evaluate_state`
+  leaf evaluation instead of rollouts.** Iteration ≈ clone(1.7) + advance(2.3) +
+  eval ≈ ~4.5 ms → ~220 it/s → ~500–1000 iterations in a 2–5 s/move budget.
+  (Optionally add short truncated rollouts if the value function is too shallow.)
 - **Input contract** (verified in `automata/`): `advance({"selection": <raw>})`;
   raw value comes from `InputOption.metadata` (`hex`/`raw`) else the option id.
   `UPGRADE_PHASE` is special: `player_id="simultaneous"`, per-hero options in
