@@ -1,8 +1,7 @@
 """Greedy heuristic agent.
 
 Picks locally-best decisions from the engine's enumerated legal options using
-fast static scoring (no per-option simulation — clone is ~3.4 ms, too slow to
-apply-and-evaluate at eval scale; simulation-based lookahead is for MCTS).
+fast static scoring.
 
 Priorities, roughly:
 - Play impactful cards (attack when a target is reachable, else advance).

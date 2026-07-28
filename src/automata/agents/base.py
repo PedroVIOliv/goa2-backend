@@ -1,7 +1,7 @@
 """Agent interface.
 
 An Agent makes two kinds of decisions, matching the engine's two decision
-points (see ENGINE_INTEGRATION.md):
+points:
 
 1. PLANNING: pick which card to commit from a hero's hand (or pass).
 2. RESOLUTION: answer an `InputRequest` by choosing one of its enumerated
