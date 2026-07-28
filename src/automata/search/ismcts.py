@@ -21,7 +21,7 @@ import math
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from goa2.domain.input import InputRequest, InputResponse
 from goa2.domain.models import GamePhase, TeamColor
@@ -32,7 +32,7 @@ from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession, SessionResultType
 
 from ..agents.base import Agent, option_selection_value
-from ..evaluation.features import evaluate_state
+from ..evaluation.value import HeuristicValue, ValueFn
 from ..runtime.determinize import determinize
 from .config import SearchConfig
 from .node import Key, Node, action_key
@@ -52,6 +52,25 @@ class Decision:
     @property
     def is_terminal(self) -> bool:
         return self.kind == "OVER"
+
+
+class _PolicyResultLike(Protocol):
+    """Structural view of a policy result: a best-first key ordering."""
+
+    @property
+    def order(self) -> list[Key]: ...
+
+
+class PolicyLike(Protocol):
+    """A policy ranks a decision's legal keys (see ``search.prior.Policy``).
+
+    Declared structurally here to avoid a circular import with ``prior`` (which
+    imports ``Decision`` from this module). The search consumes only ``.order``.
+    """
+
+    def __call__(
+        self, state: GameState, decision: Decision, legal: list[Key]
+    ) -> _PolicyResultLike: ...
 
 
 def _enemy(team: TeamColor) -> TeamColor:
@@ -215,7 +234,9 @@ def _squash(score: float, scale: float) -> float:
     return 0.5 * (1.0 + math.tanh(score / scale))
 
 
-def _rollout(sim: _Simulator, decision: Decision, cfg: SearchConfig) -> float:
+def _rollout(
+    sim: _Simulator, decision: Decision, cfg: SearchConfig, value_fn: ValueFn
+) -> float:
     """Default-policy playout from `decision` until the round-count cutoff."""
     start_round = sim.state.round
     while not decision.is_terminal and (sim.state.round - start_round) < cfg.cutoff_rounds:
@@ -231,7 +252,7 @@ def _rollout(sim: _Simulator, decision: Decision, cfg: SearchConfig) -> float:
             decision = sim.advance(InputResponse(request_id=request.id, selection=selection))
     if decision.is_terminal:
         return _terminal_value(decision.winner, sim.our_team)
-    return _squash(evaluate_state(sim.state, sim.our_team), cfg.value_scale)
+    return _squash(value_fn(sim.state, sim.our_team), cfg.value_scale)
 
 
 # --------------------------------------------------------------------------- #
@@ -247,6 +268,8 @@ def _simulate(
     default_policy: Agent,
     cfg: SearchConfig,
     rng: random.Random,
+    value_fn: ValueFn,
+    prior: PolicyLike | None = None,
 ) -> None:
     """One ISMCTS iteration on a fresh determinized clone (mutated in place)."""
     world = determinize(root_state, our_team, rng)
@@ -265,12 +288,13 @@ def _simulate(
             continue
 
         if node.should_expand(legal, cfg.widening_c, cfg.widening_alpha):
-            key = node.expand(legal, rng)
+            order = prior(sim.state, decision, legal).order if prior is not None else None
+            key = node.expand(legal, rng, order)
             child = node.children[key]
             node = child
             path.append(child)
             decision = sim.apply_ours(decision, key)
-            value = _rollout(sim, decision, cfg)  # evaluate freshly expanded leaf
+            value = _rollout(sim, decision, cfg, value_fn)  # evaluate freshly expanded leaf
             break
 
         key = node.select(legal, cfg.uct_c, rng)
@@ -299,15 +323,20 @@ def search(
     root_legal: Sequence[Key],
     default_policy: Agent,
     cfg: SearchConfig,
+    prior: PolicyLike | None = None,
+    value_fn: ValueFn | None = None,
 ) -> SearchResult:
     """Run ISMCTS and return the most-visited root action (robust child)."""
     root = Node()
     if len(root_legal) <= 1:
         return SearchResult(root, root_legal[0] if root_legal else None)
 
+    value = value_fn if value_fn is not None else HeuristicValue()
     rng = random.Random(cfg.seed)
     for _ in range(cfg.iterations):
-        _simulate(root, state, root_decision_kind, our_team, default_policy, cfg, rng)
+        _simulate(
+            root, state, root_decision_kind, our_team, default_policy, cfg, rng, value, prior
+        )
 
     # Robust child: most-visited legal root action (ties -> highest Q).
     def rank(key: Key) -> tuple[int, float]:

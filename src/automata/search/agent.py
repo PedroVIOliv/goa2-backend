@@ -19,8 +19,10 @@ from goa2.domain.state import GameState
 
 from ..agents.base import Agent, option_selection_value
 from ..agents.heuristic_agent import HeuristicAgent
+from ..evaluation.value import HeuristicValue, ValueFn
 from .config import SearchConfig
 from .ismcts import _branchable, _input_raw_map, _team_of_player, search
+from .prior import HeuristicPrior
 
 
 class ISMCTSAgent:
@@ -31,11 +33,22 @@ class ISMCTSAgent:
         config: SearchConfig | None = None,
         *,
         default_policy: Agent | None = None,
+        value_fn: ValueFn | None = None,
     ) -> None:
         self._cfg = config or SearchConfig()
         # Default policy drives opponents and rollouts. Seeded off the search
         # seed for reproducibility.
         self._policy: Agent = default_policy or HeuristicAgent(self._cfg.seed)
+        # Leaf value estimate at the rollout cutoff. Swappable for a learned
+        # value model (Rung 2) without touching the search loop.
+        self._value: ValueFn = value_fn or HeuristicValue()
+        # Expansion prior reuses the heuristic scorers so widening surfaces
+        # promising moves first. Only used when the policy exposes the scorers.
+        self._prior = (
+            HeuristicPrior(self._policy)
+            if self._cfg.use_prior and isinstance(self._policy, HeuristicAgent)
+            else None
+        )
 
     # -- planning ----------------------------------------------------------- #
     def choose_card(self, state: GameState, hero: Hero) -> Card | None:
@@ -43,7 +56,7 @@ class ISMCTSAgent:
             return None
         our_team = hero.team or TeamColor.RED
         legal = [c.id for c in hero.hand]
-        result = search(state, our_team, "CARD", legal, self._policy, self._cfg)
+        result = search(state, our_team, "CARD", legal, self._policy, self._cfg, self._prior, self._value)
         if result.best_key is None:
             return None
         return next((c for c in hero.hand if c.id == result.best_key), None)
@@ -61,7 +74,7 @@ class ISMCTSAgent:
             return "SKIP" if request.can_skip else None
 
         our_team = _team_of_player(state, request.player_id) or TeamColor.RED
-        result = search(state, our_team, "INPUT", legal, self._policy, self._cfg)
+        result = search(state, our_team, "INPUT", legal, self._policy, self._cfg, self._prior, self._value)
         if result.best_key is None:
             return (
                 option_selection_value(request.options[0])
