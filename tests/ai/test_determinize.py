@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import random
 
-from automata.determinize import determinize
-from automata.effects import register_all_effects
-from automata.harness import DEFAULT_MAP
+from automata.runtime.determinize import determinize
+from automata.runtime.effects import register_all_effects
+from automata.runtime.harness import DEFAULT_MAP
 from goa2.domain.models import GamePhase, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID

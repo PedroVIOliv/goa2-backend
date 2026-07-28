@@ -14,7 +14,7 @@ from goa2.domain.models.card import Card
 from goa2.domain.models.unit import Hero
 from goa2.domain.state import GameState
 
-from .agent import option_selection_value
+from .base import option_selection_value
 
 
 class RandomAgent:

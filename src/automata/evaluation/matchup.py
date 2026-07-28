@@ -18,8 +18,8 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .agent import Agent
-from .harness import DEFAULT_MAP, run_game
+from ..agents.base import Agent
+from ..runtime.harness import DEFAULT_MAP, run_game
 
 AgentFactory = Callable[[int], Agent]
 
