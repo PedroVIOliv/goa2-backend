@@ -101,7 +101,16 @@ class CreateEffectStep(GameStep):
     named_color_key: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        from goa2.engine.steps.markers import TOKEN_TYPE_OVERRIDE_KEY
+
         if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        # A copied action that substitutes token types (NebKher's Mind Grip)
+        # never places the token this effect is anchored to, so the ongoing
+        # effect has no referent: an Illusion is not a Smoke bomb / Ice /
+        # Totem / Barrier. Drop it; the substituted token is still placed.
+        if self.is_token_effect and context.get(TOKEN_TYPE_OVERRIDE_KEY):
             return StepResult(is_finished=True)
 
         # Resolve source card ID (skip for token-bound effects)

@@ -165,7 +165,13 @@ class PlaceTokenStep(GameStep):
 
         if owner_id is not None:
             available.owner_id = HeroID(str(owner_id))
-        available.is_immune_to_enemy_actions = self.is_immune_to_enemy_actions
+        # Properties of the token this step was authored for don't carry over
+        # to a substituted one (Mind Grip): an Illusion standing in for a Totem
+        # is a plain Illusion.
+        substituted = token_type is not self.token_type
+        available.is_immune_to_enemy_actions = (
+            False if substituted else self.is_immune_to_enemy_actions
+        )
 
         state.place_entity(BoardEntityID(str(available.id)), dest_hex)
         if self.output_key:
