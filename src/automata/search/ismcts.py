@@ -55,10 +55,14 @@ class Decision:
 
 
 class _PolicyResultLike(Protocol):
-    """Structural view of a policy result: a best-first key ordering."""
+    """Structural view of a policy result: a best-first key ordering plus
+    optional per-key prior weights (for PUCT selection)."""
 
     @property
     def order(self) -> list[Key]: ...
+
+    @property
+    def weights(self) -> dict[Key, float] | None: ...
 
 
 class PolicyLike(Protocol):
@@ -234,6 +238,30 @@ def _squash(score: float, scale: float) -> float:
     return 0.5 * (1.0 + math.tanh(score / scale))
 
 
+def _normalize_weights(
+    weights: dict[Key, float] | None, legal: list[Key]
+) -> dict[Key, float] | None:
+    """Turn raw prior scores into a probability distribution over ``legal``.
+
+    Heuristic scores are unbounded and can be negative, so we softmax them
+    (shifted by the max for numerical stability) into P(a) that sums to 1 over
+    the legal keys. Missing keys get the minimum score. Returns ``None`` if
+    there is nothing usable, so the caller falls back to plain UCB1.
+    """
+    if not weights:
+        return None
+    vals = [weights[k] for k in legal if k in weights]
+    if not vals:
+        return None
+    lo = min(vals)
+    hi = max(weights.get(k, lo) for k in legal)
+    exps = {k: math.exp(weights.get(k, lo) - hi) for k in legal}
+    total = sum(exps.values())
+    if total <= 0.0:
+        return None
+    return {k: v / total for k, v in exps.items()}
+
+
 def _rollout(
     sim: _Simulator, decision: Decision, cfg: SearchConfig, value_fn: ValueFn
 ) -> float:
@@ -287,8 +315,12 @@ def _simulate(
             decision = sim.apply_ours(decision, None)
             continue
 
+        # One policy call per node visit: its ordering drives expansion, its
+        # (normalized) weights drive PUCT selection.
+        pol = prior(sim.state, decision, legal) if prior is not None else None
+
         if node.should_expand(legal, cfg.widening_c, cfg.widening_alpha):
-            order = prior(sim.state, decision, legal).order if prior is not None else None
+            order = pol.order if pol is not None else None
             key = node.expand(legal, rng, order)
             child = node.children[key]
             node = child
@@ -297,7 +329,8 @@ def _simulate(
             value = _rollout(sim, decision, cfg, value_fn)  # evaluate freshly expanded leaf
             break
 
-        key = node.select(legal, cfg.uct_c, rng)
+        priors = _normalize_weights(pol.weights, legal) if pol is not None else None
+        key = node.select(legal, cfg.uct_c, rng, priors, cfg.puct_c)
         child = node.children[key]
         node = child
         path.append(child)
