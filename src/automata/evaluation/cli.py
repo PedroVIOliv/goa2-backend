@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import argparse
 
-from .eval import evaluate
-from .random_agent import RandomAgent
+from .matchup import evaluate
+from ..agents.random_agent import RandomAgent
 
 # Quick-game recommended roster (2v2, single lane).
 RED = ["Wasp", "Xargatha"]

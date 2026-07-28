@@ -20,11 +20,11 @@ from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.setup import GameSetup
 
-from .agent import Agent
+from ..agents.base import Agent
 from .effects import register_all_effects
 
 DEFAULT_MAP = str(
-    Path(__file__).resolve().parents[1] / "goa2" / "data" / "maps" / "forgotten_island.json"
+    Path(__file__).resolve().parents[2] / "goa2" / "data" / "maps" / "forgotten_island.json"
 )
 
 

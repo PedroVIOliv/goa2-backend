@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from automata.clone import clone_state
-from automata.effects import register_all_effects
-from automata.harness import DEFAULT_MAP
-from automata.random_agent import RandomAgent
+from automata.runtime.clone import clone_state
+from automata.runtime.effects import register_all_effects
+from automata.runtime.harness import DEFAULT_MAP
+from automata.agents.random_agent import RandomAgent
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase, TeamColor
 from goa2.domain.state import GameState

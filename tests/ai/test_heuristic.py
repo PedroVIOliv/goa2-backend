@@ -9,12 +9,12 @@ non-trivial rollout policy and (b) exercising `evaluate_state`, which MCTS needs
 
 from __future__ import annotations
 
-from automata.effects import register_all_effects
-from automata.eval import evaluate
-from automata.features import evaluate_state
-from automata.harness import DEFAULT_MAP
-from automata.heuristic_agent import HeuristicAgent
-from automata.random_agent import RandomAgent
+from automata.runtime.effects import register_all_effects
+from automata.evaluation.matchup import evaluate
+from automata.evaluation.features import evaluate_state
+from automata.runtime.harness import DEFAULT_MAP
+from automata.agents.heuristic_agent import HeuristicAgent
+from automata.agents.random_agent import RandomAgent
 from goa2.domain.models import TeamColor
 from goa2.engine.setup import GameSetup
 
