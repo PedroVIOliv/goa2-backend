@@ -1,9 +1,27 @@
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import Hero, Team, TeamColor, Token, TokenType
+from goa2.domain.models import (
+    ActionType,
+    Card,
+    CardColor,
+    CardTier,
+    Hero,
+    Team,
+    TeamColor,
+    Token,
+    TokenType,
+)
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
 from goa2.domain.types import BoardEntityID, HeroID
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import MoveSequenceStep
 
@@ -107,6 +125,57 @@ def test_mine_path_choice_select_then_move():
     _ = process_stack(state).input_request
 
     assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=2, r=-1, s=-1)
+    assert BoardEntityID("mine_A") not in state.entity_locations
+
+
+def test_blast_mine_does_not_affect_hero_immune_to_its_owner():
+    state = _make_diamond_state()
+    spare = Card(
+        id="spare",
+        name="Spare",
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=1,
+        secondary_actions={},
+        effect_id="",
+        effect_text="",
+        is_facedown=False,
+    )
+    state.get_hero(HeroID("hero_a")).hand = [spare]
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_a",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(
+            shape=Shape.POINT,
+            origin_id="hero_a",
+            affects=AffectsFilter.SELF,
+        ),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+    push_steps(state, [MoveSequenceStep(range_val=3)])
+
+    request = process_stack(state).input_request
+    assert request["type"] == "SELECT_HEX"
+    state.execution_stack[-1].pending_input = {"selection": {"q": 2, "r": -1, "s": -1}}
+
+    request = process_stack(state).input_request
+    assert request["type"] == "SELECT_OPTION"
+    blast_path = next(
+        option["id"]
+        for option in request["options"]
+        if {"q": 1, "r": -1, "s": 0} in option["metadata"]["mine_hexes"]
+        and option["metadata"]["mine_count"] == 1
+    )
+    state.execution_stack[-1].pending_input = {"selection": blast_path}
+
+    result = process_stack(state)
+
+    assert result.input_request is None
+    assert [card.id for card in state.get_hero(HeroID("hero_a")).hand] == ["spare"]
     assert BoardEntityID("mine_A") not in state.entity_locations
 
 

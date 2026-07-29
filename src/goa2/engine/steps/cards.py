@@ -26,6 +26,7 @@ from goa2.domain.models import (
 from goa2.domain.models.enums import StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
+from goa2.engine import rules
 from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter, UnitTypeFilter
 from goa2.engine.stats import get_computed_stat
@@ -346,6 +347,7 @@ class ForceDiscardStep(GameStep):
     type: StepType = StepType.FORCE_DISCARD
     victim_key: str
     card_is_basic: bool | None = None
+    immunity_source_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
@@ -356,6 +358,15 @@ class ForceDiscardStep(GameStep):
 
         victim = state.get_hero(HeroID(str(victim_id)))
         if not victim:
+            return StepResult(is_finished=True)
+        if self.immunity_source_id and rules.is_immune_to_actor(
+            victim, state, actor_id=self.immunity_source_id
+        ):
+            logger.debug(
+                "   [EFFECT] %s is immune to forced discard from %s.",
+                victim_id,
+                self.immunity_source_id,
+            )
             return StepResult(is_finished=True)
 
         eligible_hand = [
@@ -482,6 +493,7 @@ class ForceDiscardOrDefeatStep(GameStep):
     victim_key: str
     killer_id: str | None = None  # Literal override for kill credit
     killer_key: str | None = None  # Context key override for kill credit
+    immunity_source_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import DefeatUnitStep
@@ -493,6 +505,15 @@ class ForceDiscardOrDefeatStep(GameStep):
 
         victim = state.get_hero(HeroID(str(victim_id)))
         if not victim:
+            return StepResult(is_finished=True)
+        if self.immunity_source_id and rules.is_immune_to_actor(
+            victim, state, actor_id=self.immunity_source_id
+        ):
+            logger.debug(
+                "   [EFFECT] %s is immune to discard-or-defeat from %s.",
+                victim_id,
+                self.immunity_source_id,
+            )
             return StepResult(is_finished=True)
 
         victim_entity_id = BoardEntityID(str(victim_id))

@@ -479,6 +479,7 @@ class TestParryEffect:
         assert len(steps) == 1
         assert steps[0].__class__.__name__ == "ForceDiscardStep"
         assert steps[0].victim_key == "attacker_id"
+        assert steps[0].immunity_source_id == "tigerclaw"
 
 
 # =============================================================================
@@ -525,6 +526,7 @@ class TestRiposteEffect:
         assert len(steps) == 1
         assert steps[0].__class__.__name__ == "ForceDiscardOrDefeatStep"
         assert steps[0].victim_key == "attacker_id"
+        assert steps[0].immunity_source_id == "tigerclaw"
 
 
 # =============================================================================

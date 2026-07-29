@@ -203,7 +203,10 @@ class ParryEffect(CardEffect):
         context: dict[str, Any],
     ) -> list[GameStep]:
         return [
-            ForceDiscardStep(victim_key="attacker_id"),
+            ForceDiscardStep(
+                victim_key="attacker_id",
+                immunity_source_id=str(defender.id),
+            ),
         ]
 
 
@@ -240,7 +243,10 @@ class RiposteEffect(CardEffect):
         context: dict[str, Any],
     ) -> list[GameStep]:
         return [
-            ForceDiscardOrDefeatStep(victim_key="attacker_id"),
+            ForceDiscardOrDefeatStep(
+                victim_key="attacker_id",
+                immunity_source_id=str(defender.id),
+            ),
         ]
 
 

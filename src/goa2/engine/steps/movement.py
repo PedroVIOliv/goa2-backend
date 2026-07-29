@@ -664,7 +664,7 @@ class TriggerMineStep(GameStep):
             return StepResult(is_finished=True)
 
         events: list[GameEvent] = []
-        blast_count = 0
+        blast_sources: list[str | None] = []
         for mine_id in mine_ids:
             token = state.get_entity(BoardEntityID(mine_id))
             from_hex, _ = _remove_token_from_board(state, mine_id)
@@ -672,7 +672,8 @@ class TriggerMineStep(GameStep):
                 token is not None and getattr(token, "token_type", None) == TokenType.MINE_BLAST
             )
             if is_blast:
-                blast_count += 1
+                owner_id = getattr(token, "owner_id", None)
+                blast_sources.append(str(owner_id) if owner_id else None)
             if from_hex and token:
                 events.append(
                     GameEvent(
@@ -693,9 +694,13 @@ class TriggerMineStep(GameStep):
         context["rollback_frozen"] = True
 
         # Each blast mine forces the moved hero to discard a card (if able)
-        new_steps: list[GameStep] = []
-        for _ in range(blast_count):
-            new_steps.append(ForceDiscardStep(victim_key=self.victim_key))
+        new_steps: list[GameStep] = [
+            ForceDiscardStep(
+                victim_key=self.victim_key,
+                immunity_source_id=source_id,
+            )
+            for source_id in blast_sources
+        ]
 
         return StepResult(is_finished=True, events=events, new_steps=new_steps)
 
