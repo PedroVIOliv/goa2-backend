@@ -6,6 +6,15 @@ from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import Token, TokenType
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.engine.effect_manager import EffectManager
+from goa2.engine.steps import OfferRockUltimateStep
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -865,6 +874,29 @@ def test_ultimate_makes_rock_adjacent_hero_discard_exactly_one() -> None:
     run.choose("boulder_rush").finish()
 
     assert len(arien.hand) == 1  # exactly one discarded, despite 3 adjacent rocks
+
+
+@pytest.mark.effect_contract
+def test_ultimate_does_not_affect_immune_adjacent_enemy_hero() -> None:
+    state = _stone_grip_at_level_8()
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_arien",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(
+            shape=Shape.POINT,
+            origin_id="hero_arien",
+            affects=AffectsFilter.SELF,
+        ),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+    context = {"rock_hex": Hex(q=3, r=0, s=-3)}
+
+    result = OfferRockUltimateStep(rock_hex_keys=["rock_hex"]).resolve(state, context)
+
+    assert result.new_steps == []
+    assert "_rock_ult_affected" not in context
 
 
 def test_ultimate_is_optional_and_can_be_declined() -> None:

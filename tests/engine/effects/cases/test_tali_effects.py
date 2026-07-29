@@ -87,6 +87,25 @@ def _add_tali_token_pool(state: GameState) -> None:
     state.token_pool[TokenType.TOTEM].append(token)
 
 
+def _add_smoke_blocker(state: GameState, *, owner_id: str, token_id: str, at: Hex) -> None:
+    token = Token(
+        id=token_id,
+        name="Smoke Bomb",
+        token_type=TokenType.SMOKE_BOMB,
+        owner_id=owner_id,
+    )
+    state.register_entity(token)
+    state.place_entity(token_id, at)
+    EffectManager.create_effect(
+        state=state,
+        source_id=owner_id,
+        effect_type=EffectType.LOS_BLOCKER,
+        scope=EffectScope(shape=Shape.POINT, origin_id=token_id),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+    )
+
+
 def _filler_card(card_id: str, color: CardColor, *, defense: int = 1) -> Card:
     tier = CardTier.UNTIERED if color in (CardColor.GOLD, CardColor.SILVER) else CardTier.I
     return Card(
@@ -425,6 +444,33 @@ def test_snowstorm_does_not_move_immune_enemy_units() -> None:
 
     assert state.entity_locations["heavy"] == Hex(q=1, r=0, s=-1)
     assert state.entity_locations["support"] == Hex(q=3, r=0, s=-3)
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("card_id", ["cold_snap", "snowstorm", "blizzard"])
+def test_directional_move_does_not_target_enemy_through_smoke(card_id: str) -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", card_id))
+        .blue_hero("hero_min", at=(4, 0, -4))
+        .blue_minion("blocked", at=(2, 0, -2))
+        .with_actor("hero_tali")
+        .build()
+    )
+    _add_smoke_blocker(
+        state,
+        owner_id="hero_min",
+        token_id="smoke",
+        at=Hex(q=1, r=0, s=-1),
+    )
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(0)
+    run.finish()
+
+    assert state.entity_locations["blocked"] == Hex(q=2, r=0, s=-2)
 
 
 @pytest.mark.effect_flow

@@ -13,7 +13,7 @@ from goa2.domain.input import InputOption, InputRequestType, create_input_reques
 from goa2.domain.models import RuneType, StepType, TargetType, Token, TokenType, Turret
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
-from goa2.domain.types import BoardEntityID, HeroID
+from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine import rules
 from goa2.engine.filters_base import (
     FilterCondition,
@@ -102,6 +102,7 @@ class PlaceTokenStep(GameStep):
     hex_key: str = "target_hex"
     owner_id_key: str | None = None
     output_key: str | None = None
+    existing_token_key: str | None = None
     overflow_selection_key: str = "overflow_token_to_remove"
     is_immune_to_enemy_actions: bool = False
 
@@ -122,6 +123,44 @@ class PlaceTokenStep(GameStep):
         owner_id = context.get(self.owner_id_key) if self.owner_id_key else None
         if owner_id is None:
             owner_id = state.current_actor_id
+
+        # Some effects re-place a particular token that is already on the
+        # board. Relocate that entity directly so effects whose source/origin
+        # is the token remain attached. The ordinary supply-overflow path
+        # removes a token first, which intentionally removes linked effects.
+        existing_token_id = (
+            context.get(self.existing_token_key) if self.existing_token_key else None
+        )
+        if existing_token_id:
+            existing = state.misc_entities.get(BoardEntityID(str(existing_token_id)))
+            from_hex = state.entity_locations.get(BoardEntityID(str(existing_token_id)))
+            if (
+                not isinstance(existing, Token)
+                or existing.token_type != token_type
+                or from_hex is None
+            ):
+                return StepResult(is_finished=True)
+            if from_hex == dest_hex:
+                if self.output_key:
+                    context[self.output_key] = str(existing.id)
+                return StepResult(is_finished=True)
+
+            state.place_entity(BoardEntityID(str(existing.id)), dest_hex)
+            if self.output_key:
+                context[self.output_key] = str(existing.id)
+            return StepResult(
+                is_finished=True,
+                events=[
+                    GameEvent(
+                        event_type=GameEventType.TOKEN_MOVED,
+                        actor_id=str(owner_id) if owner_id else None,
+                        target_id=str(existing.id),
+                        from_hex=_hex_dict(from_hex),
+                        to_hex=_hex_dict(dest_hex),
+                        metadata={"token_type": token_type.value, "replaced": True},
+                    )
+                ],
+            )
 
         pool = state.token_pool.get(token_type, [])
         available = next(
@@ -157,6 +196,7 @@ class PlaceTokenStep(GameStep):
                         hex_key=self.hex_key,
                         owner_id_key=self.owner_id_key,
                         output_key=self.output_key,
+                        existing_token_key=self.existing_token_key,
                         overflow_selection_key=self.overflow_selection_key,
                         is_immune_to_enemy_actions=self.is_immune_to_enemy_actions,
                     ),
@@ -670,6 +710,11 @@ class OfferRockUltimateStep(GameStep):
                     if hloc is None:
                         continue
                     if any(topology.distance(hloc, rh, state) == 1 for rh in hexes):
+                        unit = state.get_unit(UnitID(enemy_id))
+                        if unit is None or rules.is_immune_to_actor(
+                            unit, state, actor_id=str(actor.id)
+                        ):
+                            continue
                         affected.append(enemy_id)
 
         if not affected:

@@ -429,6 +429,7 @@ class CobraStanceEffect(CardEffect):
             PlaceTokenStep(
                 token_type=TokenType.SMOKE_BOMB,
                 hex_key="smoke_place_hex",
+                existing_token_key="swap_token_id",
                 active_if_key="smoke_place_hex",
                 is_mandatory=False,
             ),
@@ -539,6 +540,7 @@ def _smoke_bomb_swap_defense_steps(
                 PlaceTokenStep(
                     token_type=TokenType.SMOKE_BOMB,
                     hex_key="smoke_place_hex",
+                    existing_token_key="swap_token_id",
                     active_if_key="smoke_place_hex",
                     is_mandatory=False,
                 ),

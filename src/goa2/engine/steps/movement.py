@@ -1407,6 +1407,8 @@ class DirectionalMoveUnitsStep(GameStep):
                 continue
             if not immunity_filter.apply(unit_id, state, context):
                 continue
+            if not state.validator.can_be_targeted(state, origin_id, unit_id, context).allowed:
+                continue
 
             validation = state.validator.can_be_moved(
                 state=state,

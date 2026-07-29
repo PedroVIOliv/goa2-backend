@@ -564,7 +564,6 @@ class HurryUpEffect(CardEffect):
                 prompt="Select a hero whose unresolved card gets Initiative 11",
                 output_key="hurry_target",
                 is_mandatory=True,
-                skip_immunity_filter=True,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     RangeFilter(max_range=stats.range),
