@@ -134,3 +134,43 @@ def test_noble_blade_can_nudge_ally_under_magnetic_dagger() -> None:
     assert "ally_minion" in _option_set(
         run
     ), "Ally should be nudgeable: Magnetic Dagger blocks PLACE/SWAP, not MOVE"
+
+
+@pytest.mark.effect_flow
+def test_violent_torrent_repeat_cannot_fall_back_to_the_first_target() -> None:
+    """ "May repeat once on a different unit" — declining the second target must
+    end the card, not hand the attack an unrestricted target picker that offers
+    the unit Arien already hit.
+    """
+    from goa2.domain.models import ActionType, CardColor
+
+    from ..builders import skill_card
+
+    arena = [(q, r, -q - r) for q in range(-3, 4) for r in range(-3, 4) if abs(-q - r) <= 3]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(arena)
+        .red_hero("hero_arien", at=(0, 0, 0), current_card=hero_card("Arien", "violent_torrent"))
+        .blue_hero("first_target", at=(1, 0, -1))
+        .blue_hero("other_enemy", at=(0, 1, -1))
+        .with_actor("hero_arien")
+        .build()
+    )
+    shield = skill_card("big_shield", color=CardColor.BLUE)
+    shield.secondary_actions = {ActionType.DEFENSE: 20}
+    defender = state.get_hero("first_target")
+    assert defender is not None
+    defender.hand = [shield]
+
+    run = run_card(state, "hero_arien")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("first_target")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("YES")
+
+    # The restricted select correctly excludes the unit already targeted.
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"other_enemy"}
+
+    # Declining it ends the card — no generic "Select Attack Target" fallback.
+    run.skip().finish()
