@@ -674,16 +674,14 @@ class TestIsEnraged:
         from goa2.scripts.ursafar_effects import is_enraged
 
         hero = base_state.get_hero(HeroID("hero_ursafar"))
-        card = _make_cold_ire()
-        assert is_enraged(hero, card) is False
+        assert is_enraged(hero) is False
 
     def test_enraged_via_active_played_card(self, base_state):
         from goa2.scripts.ursafar_effects import is_enraged
 
         _make_enraged(base_state)
         hero = base_state.get_hero(HeroID("hero_ursafar"))
-        card = _make_cold_ire()
-        assert is_enraged(hero, card) is True
+        assert is_enraged(hero) is True
 
     def test_enraged_via_ultimate(self, base_state):
         from goa2.scripts.ursafar_effects import is_enraged
@@ -704,8 +702,7 @@ class TestIsEnraged:
         hero.ultimate_card = ultimate
         hero.level = 8
 
-        card = _make_cold_ire()
-        assert is_enraged(hero, card) is True
+        assert is_enraged(hero) is True
 
     def test_current_card_active_counts(self, base_state):
         """A card's own is_active counts for is_enraged check."""
@@ -718,4 +715,4 @@ class TestIsEnraged:
         hero.played_cards = [card]
 
         # The current card being active counts as enraged
-        assert is_enraged(hero, card) is True
+        assert is_enraged(hero) is True

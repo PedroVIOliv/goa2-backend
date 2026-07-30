@@ -656,8 +656,9 @@ def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat(
     run = run_card(state, "hero_tali")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
     run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
-    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
+    # Victim first, then the color to strip from them.
     run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
     run.expect_input(InputRequestType.SELECT_CARD).choose("enemy_green")
     run.finish()
 
@@ -729,8 +730,8 @@ def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minio
     # Protector discards a card to save (but not un-defeat) the minion.
     run.expect_input(InputRequestType.SELECT_CARD).choose("protector_silver")
     # Reign of Winter still fires on the defeated minion.
-    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
     run.expect_input(InputRequestType.SELECT_UNIT).choose("protector")
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
     run.expect_input(InputRequestType.SELECT_CARD).choose("protector_green")
     run.finish()
 
@@ -1016,3 +1017,88 @@ def test_reign_of_winter_passive_guards_reject_non_matching_contexts() -> None:
 
     # get_passive_steps only builds steps for AFTER_ATTACK.
     assert effect.get_passive_steps(state, tali, card, PassiveTrigger.BEFORE_ATTACK, base) == []
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("card_id", ["spirit_wolf", "spirit_bear"])
+def test_spirit_adjacent_branch_is_still_a_ranged_attack(card_id: str) -> None:
+    # is_ranged is a property of the card, not of the chosen branch: the
+    # "target a hero adjacent to you" mode of a ranged Spirit card is still a
+    # ranged attack, so projectile reactions (Wasp/Tigerclaw) engage.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", card_id))
+        .blue_hero("enemy", at=(1, 0, -1))
+        .with_actor("hero_tali")
+        .build()
+    )
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+
+    assert state.execution_context["attack_is_ranged"] is True
+
+
+def _reign_scenario(*, enemy_at: tuple[int, int, int]) -> GameState:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena(6))
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "ice_blast"))
+        .blue_minion("target_minion", at=(1, 0, -1))
+        .blue_hero("enemy", at=enemy_at)
+        .with_actor("hero_tali")
+        .build()
+    )
+    tali = state.get_hero("hero_tali")
+    enemy = state.get_hero("enemy")
+    assert tali is not None and enemy is not None
+    tali.level = 8
+    tali.ultimate_card = hero_card("Tali", "reign_of_winter")
+    tali.ultimate_card.state = CardState.PASSIVE
+    enemy.hand = [_filler_card("enemy_green", CardColor.GREEN)]
+    return state
+
+
+@pytest.mark.effect_flow
+def test_reign_of_winter_is_silent_and_does_not_abort_without_a_hero_in_radius() -> None:
+    # "…if able" is a no-op, not an aborted action: with no enemy hero in
+    # radius there must be no color prompt and the rest of the turn survives.
+    state = _reign_scenario(enemy_at=(6, 0, -6))
+    enemy = state.get_hero("enemy")
+    assert enemy is not None
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
+    run.finish()  # no color prompt, no abort
+
+    assert "target_minion" not in state.entity_locations
+    assert [c.id for c in enemy.hand] == ["enemy_green"]
+    assert not state.execution_stack
+
+
+@pytest.mark.effect_flow
+def test_reign_of_winter_radius_grows_with_a_radius_item() -> None:
+    # Tali's Winter Scepter grants a RADIUS item; the ultimate's radius must
+    # be the computed stat, not the printed 4.
+    state = _reign_scenario(enemy_at=(5, 0, -5))
+    tali = state.get_hero("hero_tali")
+    enemy = state.get_hero("enemy")
+    assert tali is not None and enemy is not None
+    tali.items[StatType.RADIUS] = 1
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"enemy"}  # radius 4 + 1 item reaches distance 5
+    run.choose("enemy")
+    run.expect_input(InputRequestType.SELECT_OPTION).choose("GREEN")
+    run.expect_input(InputRequestType.SELECT_CARD).choose("enemy_green")
+    run.finish()
+
+    assert enemy.hand == []

@@ -204,6 +204,7 @@ def _spirit_attack_steps(
     active_key: str,
     target_key: str,
     targets_key: str,
+    is_ranged: bool,
 ) -> list[GameStep]:
     if option == 1:
         filters = [
@@ -233,7 +234,9 @@ def _spirit_attack_steps(
         AttackSequenceStep(
             damage=damage,
             range_val=range_val if option == 1 else 1,
-            is_ranged=option == 1,
+            # is_ranged is a property of the card, not of the chosen branch:
+            # an adjacent attack made with a ranged Spirit card is still ranged.
+            is_ranged=is_ranged,
             target_id_key=target_key,
             active_if_key=target_key,
         ),
@@ -260,6 +263,7 @@ def _spirit_choice_steps(
     }
 
     targets_key = f"{card.id}_targets"
+    is_ranged = bool(card.is_ranged)
     steps: list[GameStep] = [
         SelectStep(
             target_type=TargetType.NUMBER,
@@ -287,6 +291,7 @@ def _spirit_choice_steps(
             active_key=f"{card.id}_range_first",
             target_key=f"{card.id}_range_target",
             targets_key=targets_key,
+            is_ranged=is_ranged,
         ),
         *_spirit_attack_steps(
             damage=damage,
@@ -295,6 +300,7 @@ def _spirit_choice_steps(
             active_key=f"{card.id}_adjacent_first",
             target_key=f"{card.id}_adjacent_target",
             targets_key=targets_key,
+            is_ranged=is_ranged,
         ),
     ]
 
@@ -324,6 +330,7 @@ def _spirit_choice_steps(
                             active_key=f"{card.id}_range_second",
                             target_key=f"{card.id}_range_second_target",
                             targets_key=targets_key,
+                            is_ranged=is_ranged,
                         ),
                         *_spirit_attack_steps(
                             damage=damage,
@@ -332,6 +339,7 @@ def _spirit_choice_steps(
                             active_key=f"{card.id}_adjacent_second",
                             target_key=f"{card.id}_adjacent_second_target",
                             targets_key=targets_key,
+                            is_ranged=is_ranged,
                         ),
                     ],
                 ),
@@ -659,20 +667,29 @@ class ReignOfWinterEffect(CardEffect):
     ) -> list[GameStep]:
         if trigger != PassiveTrigger.AFTER_ATTACK:
             return []
+        from goa2.engine.stats import compute_card_stats
+
+        radius = compute_card_stats(state, hero.id, card).radius or 0
         return [
-            ChooseCardColorStep(
-                output_key="reign_color",
-                prompt="Choose a color for Reign of Winter",
-            ),
+            # Victim first: naming a color is only meaningful once someone is
+            # in radius to discard. Optional because Reign is an ultimate's
+            # extra effect, not a printed clause Tali must execute — unlike
+            # e.g. Garrus's pilums, where the victim choice is obligatory.
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy hero in radius",
                 output_key="reign_victim",
+                is_mandatory=False,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=card.radius_value or 0),
+                    RangeFilter(max_range=radius),
                 ],
+            ),
+            ChooseCardColorStep(
+                output_key="reign_color",
+                prompt="Choose a color for Reign of Winter",
+                active_if_key="reign_victim",
             ),
             ForceDiscardByColorStep(
                 victim_key="reign_victim",

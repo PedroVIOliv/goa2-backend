@@ -398,8 +398,12 @@ class TestLeadAstrayIntegration:
         assert silver_state.entity_locations.get("enemy_hero") == drag_dest
         assert silver_state.entity_locations.get("hero_silverarrow") == dance_dest
 
-    def test_skip_drag_skips_self_move(self, silver_state):
-        """If player skips drag, self-move is skipped too."""
+    def test_drag_target_cannot_be_skipped(self, silver_state):
+        """ "Move an enemy unit adjacent to you" is imperative — no skip.
+
+        The optional half of the card is the trailing self-move ("move up to
+        that number of spaces"), not the drag itself.
+        """
         silver_state.move_unit("enemy_hero", Hex(q=1, r=0, s=-1))
 
         card = _card_by_id("lead_astray")
@@ -410,18 +414,9 @@ class TestLeadAstrayIntegration:
         steps = effect.get_steps(silver_state, hero, card)
         push_steps(silver_state, steps)
 
-        # Step 1: Skip the drag target selection
         req = process_stack(silver_state).input_request
         assert req is not None
-        silver_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
-
-        # Everything should resolve (no more input needed)
-        req = process_stack(silver_state).input_request
-        assert req is None
-
-        # Positions unchanged
-        assert silver_state.entity_locations.get("hero_silverarrow") == Hex(q=0, r=0, s=0)
-        assert silver_state.entity_locations.get("enemy_hero") == Hex(q=1, r=0, s=-1)
+        assert req.can_skip is False
 
 
 class TestDisorientIntegration:
@@ -502,10 +497,10 @@ class TestNaturesBlessing:
         assert gain_step.amount == 1
 
     def test_hero_selection_filters(self, silver_state):
-        """Hero select uses HERO + radius range, restricted to friendly heroes.
+        """Hero select uses HERO + radius range, with no team restriction.
 
-        The gift (retrieve + coins) is a benefit, so it cannot target an enemy
-        hero; the SelectStep includes a FRIENDLY TeamFilter.
+        "A hero in radius" is unqualified, so enemy heroes are legal
+        recipients; no TeamFilter is applied.
         """
         effect = CardEffectRegistry.get("natures_blessing")
         hero = silver_state.get_hero("hero_silverarrow")
@@ -515,9 +510,7 @@ class TestNaturesBlessing:
         filter_types = {type(f) for f in hero_select.filters}
         assert UnitTypeFilter in filter_types
         assert RangeFilter in filter_types
-        assert TeamFilter in filter_types
-        team_filter = next(f for f in hero_select.filters if isinstance(f, TeamFilter))
-        assert team_filter.relation == "FRIENDLY"
+        assert TeamFilter not in filter_types
 
 
 class TestNaturesBlessingIntegration:
@@ -558,29 +551,24 @@ class TestNaturesBlessingIntegration:
         assert any(c.id == "ally_discard_1" for c in ally.hand)
         assert ally.gold == initial_gold + 2
 
-    def test_skip_hero_selection(self, silver_state):
-        """Skipping hero selection skips everything."""
+    def test_hero_selection_cannot_be_skipped(self, silver_state):
+        """The recipient is named by Silverarrow, not declined by her.
+
+        "A hero in radius may retrieve a discarded card" — the "may" belongs
+        to the recipient, who exercises it by skipping the card selection
+        (see test_skip_card_selection). Naming the hero is not optional.
+        """
         card = _card_by_id("natures_blessing")
         hero = silver_state.get_hero("hero_silverarrow")
         hero.current_turn_card = card
-
-        ally = silver_state.get_hero("ally_hero")
-        initial_discard = len(ally.discard_pile)
 
         effect = CardEffectRegistry.get("natures_blessing")
         steps = effect.get_steps(silver_state, hero, card)
         push_steps(silver_state, steps)
 
-        # Skip hero selection
         req = process_stack(silver_state).input_request
         assert req is not None
-        silver_state.execution_stack[-1].pending_input = {"selection": "SKIP"}
-
-        req = process_stack(silver_state).input_request
-        assert req is None
-
-        # Nothing changed
-        assert len(ally.discard_pile) == initial_discard
+        assert req.can_skip is False
 
     def test_skip_card_selection(self, silver_state):
         """Selecting a hero but skipping card selection → no retrieval, no coins."""

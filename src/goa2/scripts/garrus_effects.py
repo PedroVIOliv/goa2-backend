@@ -452,7 +452,7 @@ class LightPilumEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
                 ],
-                is_mandatory=True,
+                is_mandatory=False,
             ),
             ForceDiscardStep(victim_key="pilum_victim"),
             SelectStep(
@@ -495,7 +495,7 @@ class HeavyPilumEffect(CardEffect):
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
                 ],
-                is_mandatory=True,
+                is_mandatory=False,
             ),
             ForceDiscardOrDefeatStep(victim_key="pilum_victim"),
             SelectStep(

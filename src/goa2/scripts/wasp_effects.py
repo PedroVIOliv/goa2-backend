@@ -39,6 +39,7 @@ from goa2.engine.steps import (
     GameStep,
     MayRepeatNTimesStep,
     MayRepeatOnceStep,
+    MoveUnitStep,
     MultiSelectStep,
     PlaceUnitStep,
     PushUnitStep,
@@ -395,11 +396,16 @@ class ThunderBoomerangEffect(CardEffect):
                             ExcludeIdentityFilter(exclude_keys=["thunder_target_1"]),
                         ],
                     ),
+                    # Guarded: without active_if_key an unset thunder_target_2
+                    # makes AttackSequenceStep fall back to spawning its own
+                    # target selection, which carries none of the filters above
+                    # (straight-line ban, first-target exclusion).
                     AttackSequenceStep(
                         damage=stats.primary_value,
                         range_val=stats.range or 0,
                         is_ranged=True,
                         target_id_key="thunder_target_2",
+                        active_if_key="thunder_target_2",
                     ),
                 ],
             ),
@@ -542,10 +548,14 @@ class LiftUpEffect(CardEffect):
                     ObstacleFilter(is_obstacle=False),
                 ],
             ),
-            # 3. Place unit at destination
-            PlaceUnitStep(
+            # 3. Move the unit (the card says "Move", not "Place": using
+            #    PlaceUnitStep would route through placement prevention and
+            #    emit UNIT_PLACED instead of a movement event).
+            MoveUnitStep(
                 unit_key="lift_target",
                 destination_key="lift_dest",
+                range_val=1,
+                is_movement_action=False,
             ),
         ]
 
@@ -601,10 +611,14 @@ class CenterOfMassEffect(LiftUpEffect):
                     ObstacleFilter(is_obstacle=False),
                 ],
             ),
-            # 3. Place unit at destination
-            PlaceUnitStep(
+            # 3. Move the unit (the card says "Move", not "Place": using
+            #    PlaceUnitStep would route through placement prevention and
+            #    emit UNIT_PLACED instead of a movement event).
+            MoveUnitStep(
                 unit_key="lift_target",
                 destination_key="lift_dest",
+                range_val=1,
+                is_movement_action=False,
             ),
         ]
 
@@ -841,11 +855,14 @@ class HighVoltageEffect(CardEffect):
         context: dict[str, Any],
     ) -> list[GameStep]:
         from goa2.domain.models.enums import PassiveTrigger
+        from goa2.engine.stats import compute_card_stats
 
         # Only respond to AFTER_BASIC_SKILL trigger
         if trigger != PassiveTrigger.AFTER_BASIC_SKILL:
             return []
 
+        # Computed, not printed: a RADIUS item must widen the ultimate too.
+        radius = compute_card_stats(state, hero.id, card).radius or 0
         return [
             # 1. Select enemy minion in radius to defeat (optional)
             SelectStep(
@@ -853,7 +870,7 @@ class HighVoltageEffect(CardEffect):
                 filters=[
                     UnitTypeFilter(unit_type="MINION"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=card.radius_value or 0),
+                    RangeFilter(max_range=radius),
                 ],
                 output_key="hv_minion",
                 is_mandatory=False,

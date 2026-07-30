@@ -153,7 +153,6 @@ class MightyPunchEffect(CardEffect):
                 target_type=TargetType.UNIT_OR_TOKEN,
                 prompt="Select adjacent enemy unit or token to push",
                 output_key="push_target_id",
-                is_mandatory=False,
                 filters=[
                     RangeFilter(max_range=1),
                     OrFilter(
@@ -176,7 +175,6 @@ class MightyPunchEffect(CardEffect):
                 target_key="push_target_id",
                 distance_key="push_distance",
                 active_if_key="push_target_id",
-                is_mandatory=False,
             ),
         ]
 
@@ -215,7 +213,6 @@ class SavageKickEffect(CardEffect):
                 target_type=TargetType.UNIT_OR_TOKEN,
                 prompt="Select adjacent enemy unit or token to push",
                 output_key="push_target_id",
-                is_mandatory=False,
                 filters=[
                     RangeFilter(max_range=1),
                     OrFilter(
@@ -238,7 +235,6 @@ class SavageKickEffect(CardEffect):
                 target_key="push_target_id",
                 distance_key="push_distance",
                 active_if_key="push_target_id",
-                is_mandatory=False,
             ),
         ]
 
