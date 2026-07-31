@@ -544,6 +544,44 @@ Request a fresh state update (available to both players and spectators):
 }
 ```
 
+#### `PING`
+
+Point at a board hex or a public card location on the tabletop. Pings are
+ephemeral communication: they do not mutate or persist game state, advance a
+clock, enter a replay, or produce a `STATE_UPDATE`. Only authenticated players
+may send them; players and spectators receive them. The server rate-limits each
+connection to one accepted ping every 450 ms.
+
+```json
+{
+  "type": "PING",
+  "target": {
+    "kind": "HEX",
+    "hex": {"q": 0, "r": -2, "s": 2}
+  }
+}
+```
+
+Card targets use their visible table location, never a card ID, so pointing at
+a facedown committed card cannot expose its private identity:
+
+```json
+{
+  "type": "PING",
+  "target": {
+    "kind": "CARD",
+    "hero_id": "hero_arien",
+    "zone": "PLAYED",
+    "index": 1
+  }
+}
+```
+
+`zone` is one of `CURRENT`, `EXTRA`, `PLAYED`, `DISCARD`, `ULTIMATE`, or
+`CAST`. `PLAYED`, `DISCARD`, and `CAST` require a zero-based `index`. The
+server validates that the referenced hex or card location is currently on the
+table and discards any client-supplied ping identity or card ID.
+
 #### `SET_READY`
 
 Timed matches only. Players may toggle readiness until the final player readies;
@@ -599,6 +637,24 @@ Give gold to a hero (cheats must be enabled and game must be in PLANNING phase):
 - `Amount must be a positive integer` — The amount must be > 0
 
 ### Server-to-client messages
+
+#### `PING`
+
+Broadcast immediately to every connected player and spectator after a valid
+player ping. `hero_id` is derived from the authenticated sender token, and the
+opaque `ping_id` lets clients animate overlapping/repeated pings independently.
+
+```json
+{
+  "type": "PING",
+  "ping_id": "3c64b4ccf0584ed2bd40df648c18a2fe",
+  "hero_id": "hero_arien",
+  "target": {
+    "kind": "HEX",
+    "hex": {"q": 0, "r": -2, "s": 2}
+  }
+}
+```
 
 #### `READY_UPDATED`
 
@@ -663,6 +719,10 @@ This means the acting player gets both messages, with the same recipient-safe ev
 direct response. A timeout discovered while processing a REST mutation is also
 broadcast before that REST request completes, even when the late request is
 rejected with `Decision already timed out`.
+
+`PING` is the exception to the mutation pattern: it is itself broadcast to all
+connections, including the sender, and has no direct acknowledgement or
+following `STATE_UPDATE`.
 
 ### Spectator restrictions
 
