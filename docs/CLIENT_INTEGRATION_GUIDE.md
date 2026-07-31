@@ -480,6 +480,10 @@ ws://host/games/{game_id}/ws?token=<bearer_token>
 
 On successful connection, the server sends an initial `STATE_UPDATE` message with the full game view.
 
+A player token owns one live WebSocket; reconnecting with that token supersedes
+the prior socket. The shared spectator token may be used by multiple concurrent
+WebSockets, and every connected spectator receives broadcasts.
+
 ### Client-to-server messages
 
 All messages are JSON with a `type` field:
@@ -1679,9 +1683,12 @@ ws://<host>/drafts/{draft_id}/ws?token=<bearer_token>
 ```
 
 Any token works (host, player, or spectator). The channel is **read-only** — you still perform
-every action through the REST endpoints. On connect, and after **every** REST mutation by any
-participant (join, team change, randomize, captain change, start, ban/pick, claim, and the final
-game creation), the server pushes a player-scoped `STATE_UPDATE`:
+every action through the REST endpoints. The shared spectator token may be used
+by multiple concurrent WebSockets, and every connected spectator receives the
+same public draft broadcasts. On connect, and after **every** REST mutation by
+any participant (join, team change, randomize, captain change, start, ban/pick,
+claim, and the final game creation), the server pushes a player-scoped
+`STATE_UPDATE`:
 
 ```json
 {

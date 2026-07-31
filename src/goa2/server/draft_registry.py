@@ -25,6 +25,7 @@ class ManagedDraft:
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
+    spectator_ws_connections: dict[int, WebSocket] = field(default_factory=dict)
 
 
 class DraftRegistry:

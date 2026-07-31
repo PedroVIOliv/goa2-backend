@@ -53,7 +53,7 @@ MUTATION_MESSAGE_TYPES = frozenset(
     }
 )
 
-CapturedBroadcast = list[tuple[str, WebSocket, dict[str, Any]]]
+CapturedBroadcast = list[tuple[str | None, WebSocket, dict[str, Any]]]
 
 
 def _normalize_ping_target(game: ManagedGame, data: dict[str, Any]) -> dict[str, Any]:
@@ -139,7 +139,13 @@ def _capture_ping(game: ManagedGame, hero_id: str, target: dict[str, Any]) -> Ca
         "hero_id": hero_id,
         "target": target,
     }
-    return [(token, ws, dict(message)) for token, ws in list(game.ws_connections.items())]
+    messages: CapturedBroadcast = [
+        (token, ws, dict(message)) for token, ws in list(game.ws_connections.items())
+    ]
+    messages.extend(
+        (None, ws, dict(message)) for ws in list(game.spectator_ws_connections.values())
+    )
+    return messages
 
 
 def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
@@ -185,6 +191,11 @@ def _capture_broadcast(
         if events:
             msg["events"] = events_for_viewer(events, game.session.state, hero_id)
         messages.append((token, ws, msg))
+    for ws in list(game.spectator_ws_connections.values()):
+        msg = _build_state_update(game, None)
+        if events:
+            msg["events"] = events_for_viewer(events, game.session.state, None)
+        messages.append((None, ws, msg))
     return messages
 
 
@@ -193,15 +204,21 @@ async def _send_captured_broadcast(
     messages: CapturedBroadcast,
 ) -> None:
     """Send already-materialized payloads and prune failed connections."""
-    dead_connections: list[tuple[str, WebSocket]] = []
+    dead_connections: list[tuple[str | None, WebSocket]] = []
     for token, ws, msg in messages:
         if not await _send_json(ws, msg):
             dead_connections.append((token, ws))
     for token, ws in dead_connections:
-        # A reconnect may have replaced this failed socket while the broadcast
-        # was awaiting I/O. Never remove the newer connection by token alone.
-        if game.ws_connections.get(token) is ws:
-            game.ws_connections.pop(token, None)
+        if token is None:
+            connection_id = id(ws)
+            if game.spectator_ws_connections.get(connection_id) is ws:
+                game.spectator_ws_connections.pop(connection_id, None)
+        else:
+            # A reconnect may have replaced this failed player socket while the
+            # broadcast was awaiting I/O. Never remove the newer connection by
+            # token alone.
+            if game.ws_connections.get(token) is ws:
+                game.ws_connections.pop(token, None)
 
 
 async def broadcast(
@@ -561,13 +578,19 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
 
     await websocket.accept()
 
-    # A player token owns one live connection. Register the new socket before
-    # closing its predecessor so the old handler's cleanup cannot leave a gap;
-    # identity-safe cleanup below ensures it cannot remove this replacement.
+    spectator_connection_id = id(websocket)
+
+    # Player tokens own one live connection; the shared spectator token may
+    # own any number of sockets. Register a replacement player socket before
+    # closing its predecessor so the old handler's cleanup cannot leave a gap.
     async with game.outbound_lock:
         async with game.lock:
-            previous_websocket = game.ws_connections.get(token)
-            game.ws_connections[token] = websocket
+            previous_websocket = None
+            if is_spectator:
+                game.spectator_ws_connections[spectator_connection_id] = websocket
+            else:
+                previous_websocket = game.ws_connections.get(token)
+                game.ws_connections[token] = websocket
             initial = _build_state_update(game, hero_id if not is_spectator else None)
         if previous_websocket is not None and previous_websocket is not websocket:
             await previous_websocket.close(
@@ -727,9 +750,13 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        # The same token may already belong to a newer reconnect. Only remove
-        # this handler's socket, never the replacement.
-        if game.ws_connections.get(token) is websocket:
-            game.ws_connections.pop(token, None)
+        if is_spectator:
+            if game.spectator_ws_connections.get(spectator_connection_id) is websocket:
+                game.spectator_ws_connections.pop(spectator_connection_id, None)
+        else:
+            # The same player token may already belong to a newer reconnect.
+            # Only remove this handler's socket, never the replacement.
+            if game.ws_connections.get(token) is websocket:
+                game.ws_connections.pop(token, None)
         if game.game_logger:
             game.game_logger.log_ws_disconnect(hero_id if not is_spectator else None, is_spectator)

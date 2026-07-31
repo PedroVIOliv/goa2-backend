@@ -80,6 +80,26 @@ def test_spectator_receives_public_state_without_you(client):
         assert msg["draft"]["status"] == "LOBBY"
 
 
+def test_shared_spectator_token_supports_multiple_live_connections(client):
+    d = _create(client)
+    url = f"/drafts/{d['draft_id']}/ws?token={d['spectator_token']}"
+
+    with (
+        client.websocket_connect(url) as spectator_one,
+        client.websocket_connect(url) as spectator_two,
+    ):
+        spectator_one.receive_json()
+        spectator_two.receive_json()
+
+        joined = client.post(f"/drafts/{d['draft_id']}/join", json={"display_name": "Bob"})
+        assert joined.status_code == 200
+
+        first_update = spectator_one.receive_json()
+        second_update = spectator_two.receive_json()
+        assert [p["id"] for p in first_update["draft"]["players"]] == ["p1", "p2"]
+        assert second_update["draft"] == first_update["draft"]
+
+
 def test_old_same_token_disconnect_does_not_unregister_replacement(client):
     d = _create(client)
     token = d["player_token"]

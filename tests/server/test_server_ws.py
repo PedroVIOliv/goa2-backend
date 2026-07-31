@@ -141,6 +141,33 @@ def test_new_connection_supersedes_old_connection(client, game_data):
             assert new_ws.receive_json()["type"] == "STATE_UPDATE"
 
 
+def test_shared_spectator_token_supports_multiple_live_connections(client, game_data):
+    game_id = game_data["game_id"]
+    player_token = _token_for(game_data, "hero_arien")
+    spectator_token = game_data["spectator_token"]
+
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={player_token}") as player_ws,
+        client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as spectator_one,
+        client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as spectator_two,
+    ):
+        player_view = player_ws.receive_json()
+        spectator_one.receive_json()
+        spectator_two.receive_json()
+        arien = next(
+            hero
+            for team in player_view["view"]["teams"].values()
+            for hero in team["heroes"]
+            if hero["id"] == "hero_arien"
+        )
+
+        player_ws.send_json({"type": "COMMIT_CARD", "card_id": arien["hand"][0]["id"]})
+        assert player_ws.receive_json()["type"] == "ACTION_RESULT"
+        assert player_ws.receive_json()["type"] == "STATE_UPDATE"
+        assert spectator_one.receive_json()["type"] == "STATE_UPDATE"
+        assert spectator_two.receive_json()["type"] == "STATE_UPDATE"
+
+
 # ---- GET_VIEW ----
 
 
@@ -570,15 +597,16 @@ def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_dat
     sockets = {
         _token_for(game_data, "hero_arien"): RecordingSocket(),
         _token_for(game_data, "hero_wasp"): RecordingSocket(),
-        game_data["spectator_token"]: RecordingSocket(),
     }
+    spectator_socket = RecordingSocket()
     game.ws_connections = sockets
+    game.spectator_ws_connections = {id(spectator_socket): spectator_socket}
 
     asyncio.run(broadcast(game, client.app.state.registry, events=[event]))
 
     arien_event = sockets[_token_for(game_data, "hero_arien")].message["events"][0]
     wasp_event = sockets[_token_for(game_data, "hero_wasp")].message["events"][0]
-    spectator_event = sockets[game_data["spectator_token"]].message["events"][0]
+    spectator_event = spectator_socket.message["events"][0]
     assert arien_event["metadata"]["token_type"] == "mine_blast"
     assert wasp_event["metadata"]["token_type"] == "mine"
     assert spectator_event["metadata"]["token_type"] == "mine"
