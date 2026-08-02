@@ -192,7 +192,7 @@
  * State shape:
  *   { mapName, zones: [{id,label,color}],
  *     hexes: Map<"q,r", {zoneId, tags: []}>,
- *     lanes: {laneId: [zoneId, ...]},      // ids internally, labels in JSON
+ *     lanes: {laneId: [zoneId, ...]},      // stable ids internally; labels on export
  *     battleZones: {laneId: zoneId},       // starting Battle Zone per lane
  *     calib }                              // map-image alignment, or null
  * ------------------------------------------------------------------ */
@@ -397,6 +397,22 @@ function labelToIdMap(st) {
   return m;
 }
 
+/* The JSON format uses human-readable zone ids, matching their labels. The
+ * editor still keeps stable opaque ids in memory so renaming a zone cannot
+ * accidentally invalidate painted hexes or lane entries. */
+function exportZoneIdMap(st) {
+  const ids = new Map();
+  const seen = new Set();
+  for (const zone of st.zones) {
+    const id = zone.label.trim();
+    if (!id) throw new Error(`Zone ${zone.id} must have a non-empty label.`);
+    if (seen.has(id)) throw new Error(`Zone labels must be unique: "${id}".`);
+    seen.add(id);
+    ids.set(zone.id, id);
+  }
+  return ids;
+}
+
 /* CSV text with q/r[/s] columns -> {state, warnings}. Throws on malformed input.
  * Loads geometry only: every row becomes an unpainted hex (zoneId=null, no tags),
  * ready to have zones painted, tags added, and lanes defined in the editor.
@@ -499,24 +515,34 @@ function parseImport(data) {
 }
 
 function buildExport(st) {
+  const exportedIds = exportZoneIdMap(st);
   const battleZones = {};
   for (const [laneId, zid] of Object.entries(st.battleZones)) {
     const zone = zoneById(st, zid);
     if (zone && st.lanes[laneId] && st.lanes[laneId].includes(zid)) {
-      battleZones[laneId] = zone.label;
+      battleZones[laneId] = exportedIds.get(zone.id);
     }
   }
   return {
     ...(Object.keys(battleZones).length ? { battle_zones: battleZones } : {}),
-    zone_definitions: st.zones.map((z) => ({ id: z.id, label: z.label, color: z.color })),
+    zone_definitions: st.zones.map((z) => {
+      const label = exportedIds.get(z.id);
+      return { id: label, label, color: z.color };
+    }),
     hex_map: [...st.hexes.entries()].map(([key, h]) => {
       const [q, r] = key.split(",").map(Number);
-      return { q, r, s: -q - r, zone_id: h.zoneId, tags: [...h.tags] };
+      return {
+        q,
+        r,
+        s: -q - r,
+        zone_id: h.zoneId == null ? null : (exportedIds.get(h.zoneId) ?? h.zoneId),
+        tags: [...h.tags],
+      };
     }),
     lanes: Object.fromEntries(
       Object.entries(st.lanes).map(([laneId, zids]) => [
         laneId,
-        zids.map((zid) => zoneById(st, zid)).filter(Boolean).map((z) => z.label),
+        zids.map((zid) => exportedIds.get(zid)).filter(Boolean),
       ])
     ),
   };
@@ -527,6 +553,14 @@ function validateExport(st) {
   const w = [];
   const counts = new Map();
   for (const h of st.hexes.values()) counts.set(h.zoneId, (counts.get(h.zoneId) || 0) + 1);
+
+  const labels = new Set();
+  for (const z of st.zones) {
+    const label = z.label.trim();
+    if (!label) w.push(`Zone "${z.id}" has no label.`);
+    else if (labels.has(label)) w.push(`Zone labels must be unique: "${label}".`);
+    else labels.add(label);
+  }
 
   const unpainted = counts.get(null) || 0;
   if (unpainted) w.push(`${unpainted} hex${unpainted === 1 ? " has" : "es have"} no zone assigned — paint them before use.`);
@@ -1557,7 +1591,13 @@ els.fileInput.addEventListener("change", () => {
 
 document.getElementById("exportBtn").addEventListener("click", () => {
   const warnings = validateExport(state);
-  const data = buildExport(state);
+  let data;
+  try {
+    data = buildExport(state);
+  } catch (err) {
+    setStatus([`Export failed: ${err.message}`], "err");
+    return;
+  }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
