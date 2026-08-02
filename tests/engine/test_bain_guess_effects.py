@@ -735,6 +735,44 @@ class TestGuessRevealReachesClients:
         assert len(final["attempts"]) == 1
         assert final["attempts"][0]["correct"] is True
 
+    def test_another_heros_guess_replaces_rather_than_merges(self, board):
+        """NebKher's Mind Grip can perform Bain's guess card on NebKher's turn.
+
+        PerformCardActionStep leaves current_actor_id on the performer, so the
+        guess is attributed to them and must not merge with a guess still on
+        screen from the card's owner.
+        """
+        others_guess = {
+            "guesser_id": "hero_nebkher",
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_blue",
+                    "guessed_color": "GREEN",
+                    "actual_color": "BLUE",
+                    "correct": False,
+                },
+                {
+                    "attempt": 2,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_blue",
+                    "guessed_color": "RED",
+                    "actual_color": "BLUE",
+                    "correct": False,
+                },
+            ],
+        }
+
+        state, snapshots = self._run_guess(
+            board, ["SKILL", "hero_enemy", "e_red", "RED"], seed_guess=others_guess
+        )
+
+        assert state.card_guess["guesser_id"] == "hero_bain"
+        assert [a["attempt"] for a in state.card_guess["attempts"]] == [1]
+        assert snapshots[-1]["guesser_id"] == "hero_bain"
+        assert len(snapshots[-1]["attempts"]) == 1
+
     def test_facedown_selection_is_public_before_the_guess(self, board):
         _, snapshots = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "RED"])
 
