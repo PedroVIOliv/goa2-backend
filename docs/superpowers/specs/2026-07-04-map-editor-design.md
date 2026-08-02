@@ -72,9 +72,11 @@ one warns.
 
 ### Panels / tools
 
-- **Zones**: create / rename / recolor / delete zones. Ids generated as
-  `zone_<timestamp>_<rand>` (matches existing maps). Selecting a zone makes
-  click/drag paint hexes into it. Eraser removes hexes from the map.
+- **Zones**: create / rename / recolor / delete zones. The editor uses
+  `zone_<timestamp>_<rand>` ids internally so renames remain safe while
+  editing; exported JSON uses each zone's label as its id, matching
+  `forgotten_island`. Labels must be unique. Selecting a zone makes click/drag
+  paint hexes into it. Eraser removes hexes from the map.
   Deleting a zone removes its hexes from the map.
 - **Tags**: pick a tag, click hexes to toggle it. Built-in tags: `Terrain`,
   `RedHeroSpawn`, `BlueHeroSpawn`, and `Red`/`Blue` × `Heavy`/`Melee`/`Ranged`
@@ -87,9 +89,11 @@ one warns.
   and maps with neither (lane panel starts empty). Malformed JSON → readable
   error, state untouched.
 - **Export**: downloads `<name>.json` with `zone_definitions`, `hex_map`,
-  `"lanes"`. Non-blocking warnings before download if: a lane references a
-  zone with no hexes or a label that no longer exists, a lane has fewer than
-  3 zones, or `RedHeroSpawn`/`BlueHeroSpawn` is missing.
+  `"lanes"`. Zone ids and labels are identical in the exported file, and
+  painted `hex_map.zone_id` references are rewritten to those exported ids.
+  Duplicate labels stop the export. Non-blocking warnings before download if:
+  a lane references a zone with no hexes or a label that no longer exists, a
+  lane has fewer than 3 zones, or `RedHeroSpawn`/`BlueHeroSpawn` is missing.
 - **Autosave**: editor state mirrored to localStorage on every change;
   restored on load. "New map" button clears it.
 

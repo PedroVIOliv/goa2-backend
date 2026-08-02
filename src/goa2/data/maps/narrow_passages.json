@@ -4,37 +4,37 @@
   },
   "zone_definitions": [
     {
-      "id": "zone_1783211142065_5qzqx",
+      "id": "BlueBase",
       "label": "BlueBase",
       "color": "#0002fa"
     },
     {
-      "id": "zone_1783211142716_t43wf",
+      "id": "BlueBeach",
       "label": "BlueBeach",
       "color": "#0096ee"
     },
     {
-      "id": "zone_1783211143163_h3cc8",
+      "id": "Mid",
       "label": "Mid",
       "color": "#ebcd00"
     },
     {
-      "id": "zone_1783211143866_snglg",
+      "id": "RedBeach",
       "label": "RedBeach",
       "color": "#ef8600"
     },
     {
-      "id": "zone_1783211144532_8cg52",
+      "id": "RedBase",
       "label": "RedBase",
       "color": "#eb0000"
     },
     {
-      "id": "zone_1783211144999_6f7kz",
+      "id": "BlueJungle",
       "label": "BlueJungle",
       "color": "#00c56e"
     },
     {
-      "id": "zone_1783211145634_nmqbq",
+      "id": "RedJungle",
       "label": "RedJungle",
       "color": "#74d800"
     }
@@ -44,14 +44,14 @@
       "q": -4,
       "r": 8,
       "s": -4,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -5,
       "r": 8,
       "s": -3,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": [
         "RedHeroSpawn"
       ]
@@ -60,7 +60,7 @@
       "q": -6,
       "r": 7,
       "s": -1,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": [
         "RedHeroSpawn"
       ]
@@ -69,28 +69,28 @@
       "q": -5,
       "r": 7,
       "s": -2,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -4,
       "r": 7,
       "s": -3,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -3,
       "r": 7,
       "s": -4,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -7,
       "r": 6,
       "s": 1,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": [
         "RedHeroSpawn"
       ]
@@ -99,49 +99,49 @@
       "q": -6,
       "r": 6,
       "s": 0,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -5,
       "r": 6,
       "s": -1,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -4,
       "r": 6,
       "s": -2,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -3,
       "r": 6,
       "s": -3,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -2,
       "r": 6,
       "s": -4,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -1,
       "r": 5,
       "s": -4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -2,
       "r": 5,
       "s": -3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -150,70 +150,70 @@
       "q": -3,
       "r": 5,
       "s": -2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": 5,
       "s": -1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -5,
       "r": 5,
       "s": 0,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -6,
       "r": 5,
       "s": 1,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -7,
       "r": 5,
       "s": 2,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -6,
       "r": 4,
       "s": 2,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -5,
       "r": 4,
       "s": 1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": 4,
       "s": 0,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -3,
       "r": 4,
       "s": -1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -2,
       "r": 4,
       "s": -2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -222,63 +222,63 @@
       "q": -1,
       "r": 4,
       "s": -3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 0,
       "r": 4,
       "s": -4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 3,
       "r": 4,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 4,
       "r": 4,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 5,
       "r": 3,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 4,
       "r": 3,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 2,
       "r": 3,
       "s": -5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": 3,
       "s": -4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 0,
       "r": 3,
       "s": -3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -287,7 +287,7 @@
       "q": -1,
       "r": 3,
       "s": -2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "BlueHeavySpawn"
       ]
@@ -296,49 +296,49 @@
       "q": -2,
       "r": 3,
       "s": -1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -3,
       "r": 3,
       "s": 0,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": 3,
       "s": 1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -5,
       "r": 3,
       "s": 2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -6,
       "r": 3,
       "s": 3,
-      "zone_id": "zone_1783211144532_8cg52",
+      "zone_id": "RedBase",
       "tags": []
     },
     {
       "q": -5,
       "r": 2,
       "s": 3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": 2,
       "s": 2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -347,7 +347,7 @@
       "q": -3,
       "r": 2,
       "s": 1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "RedHeavySpawn"
       ]
@@ -356,91 +356,91 @@
       "q": -1,
       "r": 2,
       "s": -1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 0,
       "r": 2,
       "s": -2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 1,
       "r": 2,
       "s": -3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 2,
       "r": 2,
       "s": -4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": 2,
       "s": -5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 5,
       "r": 2,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 6,
       "r": 2,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 7,
       "r": 1,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 6,
       "r": 1,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 4,
       "r": 1,
       "s": -5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": 1,
       "s": -4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": 1,
       "s": -3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": 1,
       "s": -2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -449,14 +449,14 @@
       "q": -1,
       "r": 1,
       "s": 0,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -2,
       "r": 1,
       "s": 1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -465,7 +465,7 @@
       "q": -3,
       "r": 1,
       "s": 2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -474,21 +474,21 @@
       "q": -4,
       "r": 1,
       "s": 3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": 0,
       "s": 4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -3,
       "r": 0,
       "s": 3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "BlueRangedSpawn"
       ]
@@ -497,42 +497,42 @@
       "q": -2,
       "r": 0,
       "s": 2,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -1,
       "r": 0,
       "s": 1,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": 0,
       "r": 0,
       "s": 0,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": 0,
       "s": -2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": 0,
       "s": -3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": 0,
       "s": -4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -541,28 +541,28 @@
       "q": 5,
       "r": 0,
       "s": -5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 7,
       "r": 0,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 6,
       "r": -1,
       "s": -5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 5,
       "r": -1,
       "s": -4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -571,7 +571,7 @@
       "q": 4,
       "r": -1,
       "s": -3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedHeavySpawn"
       ]
@@ -580,84 +580,84 @@
       "q": 3,
       "r": -1,
       "s": -2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": -1,
       "s": -1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 0,
       "r": -1,
       "s": 1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": -1,
       "r": -1,
       "s": 2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": -2,
       "r": -1,
       "s": 3,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -3,
       "r": -1,
       "s": 4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -4,
       "r": -1,
       "s": 5,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -4,
       "r": -2,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -3,
       "r": -2,
       "s": 5,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -2,
       "r": -2,
       "s": 4,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": []
     },
     {
       "q": -1,
       "r": -2,
       "s": 3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 0,
       "r": -2,
       "s": 2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -666,21 +666,21 @@
       "q": 1,
       "r": -2,
       "s": 1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": -2,
       "s": -2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 5,
       "r": -2,
       "s": -3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -689,49 +689,49 @@
       "q": 6,
       "r": -2,
       "s": -4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 7,
       "r": -3,
       "s": -4,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 6,
       "r": -3,
       "s": -3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 5,
       "r": -3,
       "s": -2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": -3,
       "s": 0,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": -3,
       "s": 1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": -3,
       "s": 2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueHeavySpawn"
       ]
@@ -740,7 +740,7 @@
       "q": 0,
       "r": -3,
       "s": 3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -749,49 +749,49 @@
       "q": -1,
       "r": -3,
       "s": 4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": -3,
       "r": -3,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -4,
       "r": -3,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -3,
       "r": -4,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -2,
       "r": -4,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 0,
       "r": -4,
       "s": 4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": -4,
       "s": 3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -800,21 +800,21 @@
       "q": 2,
       "r": -4,
       "s": 2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": -4,
       "s": 1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": -4,
       "s": 0,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueRangedSpawn"
       ]
@@ -823,28 +823,28 @@
       "q": 5,
       "r": -4,
       "s": -1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 6,
       "r": -4,
       "s": -2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 7,
       "r": -4,
       "s": -3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 8,
       "r": -4,
       "s": -4,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "RedRangedSpawn"
       ]
@@ -853,14 +853,14 @@
       "q": 9,
       "r": -5,
       "s": -4,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 8,
       "r": -5,
       "s": -3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -869,7 +869,7 @@
       "q": 7,
       "r": -5,
       "s": -2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -878,14 +878,14 @@
       "q": 6,
       "r": -5,
       "s": -1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 4,
       "r": -5,
       "s": 1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -894,98 +894,98 @@
       "q": 3,
       "r": -5,
       "s": 2,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": -5,
       "s": 3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": -5,
       "s": 4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": -1,
       "r": -5,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -2,
       "r": -5,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": -1,
       "r": -6,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 0,
       "r": -6,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 1,
       "r": -6,
       "s": 5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": -6,
       "s": 4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": -6,
       "s": 3,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": -6,
       "s": 2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 5,
       "r": -6,
       "s": 1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 6,
       "r": -6,
       "s": 0,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 7,
       "r": -6,
       "s": -1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -994,7 +994,7 @@
       "q": 8,
       "r": -6,
       "s": -2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "BlueHeavySpawn"
       ]
@@ -1003,7 +1003,7 @@
       "q": 9,
       "r": -6,
       "s": -3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -1012,42 +1012,42 @@
       "q": 10,
       "r": -6,
       "s": -4,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 10,
       "r": -7,
       "s": -3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 9,
       "r": -7,
       "s": -2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 8,
       "r": -7,
       "s": -1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 7,
       "r": -7,
       "s": 0,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 6,
       "r": -7,
       "s": 1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "RedHeavySpawn"
       ]
@@ -1056,7 +1056,7 @@
       "q": 5,
       "r": -7,
       "s": 2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "RedMeleeSpawn"
       ]
@@ -1065,56 +1065,56 @@
       "q": 4,
       "r": -7,
       "s": 3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 3,
       "r": -7,
       "s": 4,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 2,
       "r": -7,
       "s": 5,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 1,
       "r": -7,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 0,
       "r": -7,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 5,
       "r": -8,
       "s": 3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 6,
       "r": -8,
       "s": 2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 7,
       "r": -8,
       "s": 1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -1123,42 +1123,42 @@
       "q": 8,
       "r": -8,
       "s": 0,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 9,
       "r": -8,
       "s": -1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 10,
       "r": -8,
       "s": -2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 9,
       "r": -9,
       "s": 0,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 8,
       "r": -9,
       "s": 1,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 7,
       "r": -9,
       "s": 2,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -1167,98 +1167,98 @@
       "q": 6,
       "r": -9,
       "s": 3,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 1,
       "r": -8,
       "s": 7,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 2,
       "r": -8,
       "s": 6,
-      "zone_id": "zone_1783211145634_nmqbq",
+      "zone_id": "RedJungle",
       "tags": []
     },
     {
       "q": 1,
       "r": -1,
       "s": 0,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": -3,
       "s": -1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 3,
       "r": 3,
       "s": -6,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 4,
       "r": 2,
       "s": -6,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": []
     },
     {
       "q": 8,
       "r": -2,
       "s": -6,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 9,
       "r": -3,
       "s": -6,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 9,
       "r": -2,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 8,
       "r": -1,
       "s": -7,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 9,
       "r": -1,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 8,
       "r": 0,
       "s": -8,
-      "zone_id": "zone_1783211144999_6f7kz",
+      "zone_id": "BlueJungle",
       "tags": []
     },
     {
       "q": 1,
       "r": 0,
       "s": -1,
-      "zone_id": "zone_1783211143163_h3cc8",
+      "zone_id": "Mid",
       "tags": [
         "RedRangedSpawn"
       ]
@@ -1267,7 +1267,7 @@
       "q": -2,
       "r": 2,
       "s": 0,
-      "zone_id": "zone_1783211143866_snglg",
+      "zone_id": "RedBeach",
       "tags": [
         "BlueMeleeSpawn"
       ]
@@ -1276,56 +1276,56 @@
       "q": 7,
       "r": -2,
       "s": -5,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 8,
       "r": -3,
       "s": -5,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 9,
       "r": -4,
       "s": -5,
-      "zone_id": "zone_1783211142716_t43wf",
+      "zone_id": "BlueBeach",
       "tags": []
     },
     {
       "q": 11,
       "r": -7,
       "s": -4,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 11,
       "r": -8,
       "s": -3,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 11,
       "r": -9,
       "s": -2,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 12,
       "r": -9,
       "s": -3,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 12,
       "r": -10,
       "s": -2,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": [
         "BlueHeroSpawn"
       ]
@@ -1334,14 +1334,14 @@
       "q": 11,
       "r": -10,
       "s": -1,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 11,
       "r": -11,
       "s": 0,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": [
         "BlueHeroSpawn"
       ]
@@ -1350,14 +1350,14 @@
       "q": 10,
       "r": -11,
       "s": 1,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 10,
       "r": -12,
       "s": 2,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": [
         "BlueHeroSpawn"
       ]
@@ -1366,56 +1366,56 @@
       "q": 9,
       "r": -12,
       "s": 3,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 8,
       "r": -11,
       "s": 3,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 7,
       "r": -10,
       "s": 3,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 8,
       "r": -10,
       "s": 2,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 9,
       "r": -10,
       "s": 1,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 10,
       "r": -10,
       "s": 0,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 10,
       "r": -9,
       "s": -1,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     },
     {
       "q": 9,
       "r": -11,
       "s": 2,
-      "zone_id": "zone_1783211142065_5qzqx",
+      "zone_id": "BlueBase",
       "tags": []
     }
   ],
