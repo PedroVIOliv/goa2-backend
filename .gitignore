@@ -44,6 +44,7 @@ extracted_assets/images
 Guards of Atlantis II - 2nd Printing_web-2.pdf
 .gitignore
 .agent/
+.codex/
 
 # macOS
 .DS_Store
