@@ -122,3 +122,28 @@ def test_event_metadata_hides_private_card_ids_and_names():
     public_event = events_for_viewer([event], state, "hero_wasp")[0]
     assert public_event["metadata"]["incoming_card_id"] == card.id
     assert public_event["metadata"]["incoming_card_name"] == card.name
+
+
+def test_guessed_card_reveal_is_public_even_when_wrong_guess_leaves_it_in_hand():
+    state = _state()
+    arien = state.get_hero("hero_arien")
+    card = arien.hand[0]
+    event = GameEvent(
+        event_type=GameEventType.GUESSED_CARD_REVEALED,
+        actor_id="hero_wasp",
+        target_id="hero_arien",
+        metadata={
+            "attempt": 1,
+            "card_id": card.id,
+            "card_name": card.name,
+            "card_color": card.color.value,
+            "guessed_color": "SILVER",
+            "guess_correct": False,
+        },
+    ).model_dump()
+
+    for viewer in ("hero_arien", "hero_wasp", None):
+        revealed = events_for_viewer([event], state, viewer)[0]
+        assert revealed["metadata"]["card_id"] == card.id
+        assert revealed["metadata"]["card_name"] == card.name
+        assert revealed["metadata"]["card_color"] == card.color.value

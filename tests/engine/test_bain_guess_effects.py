@@ -5,6 +5,7 @@ import pytest
 
 import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
+from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
@@ -17,8 +18,9 @@ from goa2.domain.models import (
 )
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
+from goa2.domain.views import _build_revealed_card_view, build_view
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import ResolveCardStep
+from goa2.engine.steps import ConfirmResolutionStep, FinalizeHeroTurnStep, ResolveCardStep
 
 # ---------------------------------------------------------------------------
 # Card factories
@@ -297,6 +299,46 @@ class TestGuessCardColorStep:
         option_ids = {o["id"] for o in req["options"]}
         assert option_ids == {"BLUE", "GOLD", "GREEN", "RED", "SILVER"}
 
+    def test_announces_facedown_selection_once_without_card_identity(self, board):
+        from goa2.engine.steps import GuessCardColorStep
+
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card("test", "Test", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        state.execution_context.update({"guess_victim": "hero_enemy", "chosen_card": "e_red"})
+        push_steps(
+            state,
+            [
+                GuessCardColorStep(
+                    output_key="guessed_color",
+                    victim_key="guess_victim",
+                    card_key="chosen_card",
+                    attempt=2,
+                )
+            ],
+        )
+
+        result = process_stack(state)
+
+        assert result.input_request is not None
+        assert len(result.events) == 1
+        event = result.events[0]
+        assert event.event_type == GameEventType.CARD_SELECTED_FOR_GUESS
+        assert event.actor_id == "hero_bain"
+        assert event.target_id == "hero_enemy"
+        assert event.metadata == {"attempt": 2}
+        assert "e_red" not in str(event.model_dump())
+
+        # Re-reading the same pending prompt after a save/load must not
+        # rebroadcast the placement.
+        restored = GameState.model_validate(state.model_dump(mode="json"))
+        repeated = process_stack(restored)
+        assert repeated.input_request is not None
+        assert repeated.events == []
+
     def test_victim_restriction_offers_hand_colors(self, board):
         """With a victim and no hidden zones, options are the hand's colors."""
         from goa2.engine.steps import GuessCardColorStep
@@ -504,9 +546,202 @@ class TestRevealAndResolveGuessStep:
         )
         ctx["guess_victim"] = "hero_enemy"
 
-        _ = process_stack(state).input_request
+        result = process_stack(state)
         assert ctx.get("guess_correct") is True
         assert ctx.get("guess_wrong") is None
+        assert len(result.events) == 1
+        event = result.events[0]
+        assert event.event_type == GameEventType.GUESSED_CARD_REVEALED
+        assert event.actor_id == "hero_bain"
+        assert event.target_id == "hero_enemy"
+        assert event.metadata["card_id"] == "e_red"
+        assert event.metadata["card_color"] == "RED"
+        assert event.metadata["guessed_color"] == "RED"
+        assert event.metadata["guess_correct"] is True
+        assert event.metadata["card_name"] == "Filler"
+        # The card face lives in the view, not the event.
+        assert "card" not in event.metadata
+
+    def test_active_repeat_guess_is_recoverable_from_public_view(self, board):
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        bain_card = _make_skill_card(
+            "were_not_done_yet",
+            "We're Not Done Yet!",
+            "were_not_done_yet",
+            tier=CardTier.III,
+        )
+        state = _build_state(board, bain_card, enemy_hand)
+        state.card_guess = {
+            "guesser_id": "hero_bain",
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_red",
+                    "guessed_color": "BLUE",
+                    "actual_color": "RED",
+                    "correct": False,
+                },
+                {
+                    "attempt": 2,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_blue",
+                    "guessed_color": None,
+                    "actual_color": None,
+                    "correct": None,
+                },
+            ],
+        }
+
+        public_view = build_view(state)
+
+        assert public_view["teams"]["BLUE"]["heroes"][0]["hand"] == []
+        assert public_view["card_guess"] == {
+            "guesser_id": "hero_bain",
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "victim_id": "hero_enemy",
+                    "card": _build_revealed_card_view(enemy_hand[0]),
+                    "guessed_color": "BLUE",
+                    "actual_color": "RED",
+                    "correct": False,
+                },
+                {
+                    "attempt": 2,
+                    "victim_id": "hero_enemy",
+                    "card": None,
+                    "guessed_color": None,
+                    "actual_color": None,
+                    "correct": None,
+                },
+            ],
+        }
+
+
+class TestGuessRevealReachesClients:
+    """The reveal must survive to the broadcast that follows it.
+
+    The engine drains the reveal, the discard and FinalizeHeroTurnStep in a
+    single process_stack pass, and FinalizeHeroTurnStep clears
+    execution_context. Anything derived from that context is already gone by
+    the time the post-mutation view is built, so these tests drive the real
+    turn pipeline rather than seeding context by hand.
+    """
+
+    def _run_guess(self, board, answers, seed_guess=None):
+        """Drive a full A Game of Chance turn, snapshotting each broadcast."""
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card("aog", "A Game of Chance", "a_game_of_chance")
+        state = _build_state(board, card, enemy_hand)
+        if seed_guess is not None:
+            state.card_guess = seed_guess
+        push_steps(
+            state,
+            [
+                ResolveCardStep(hero_id="hero_bain"),
+                ConfirmResolutionStep(hero_id="hero_bain"),
+                FinalizeHeroTurnStep(hero_id="hero_bain"),
+            ],
+        )
+
+        snapshots = []
+        for answer in [*answers, None]:
+            request = process_stack(state).input_request
+            snapshots.append(build_view(state)["card_guess"])
+            if request is None or answer is None:
+                break
+            state.execution_stack[-1].pending_input = {"selection": answer}
+        return state, snapshots
+
+    def test_correct_guess_reveal_is_in_the_broadcast_view(self, board):
+        _, snapshots = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "RED"])
+
+        final = snapshots[-1]
+        assert final is not None, "reveal was cleared before the view was built"
+        attempt = final["attempts"][0]
+        assert attempt["correct"] is True
+        assert attempt["actual_color"] == "RED"
+        assert attempt["card"] is not None, "revealed card missing from the view"
+        assert attempt["card"]["id"] == "e_red"
+        assert attempt["card"]["is_facedown"] is False
+
+    def test_wrong_guess_reveal_is_in_the_broadcast_view(self, board):
+        _, snapshots = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "BLUE"])
+
+        final = snapshots[-1]
+        assert final is not None, "reveal was cleared before the view was built"
+        attempt = final["attempts"][0]
+        assert attempt["correct"] is False
+        assert attempt["guessed_color"] == "BLUE"
+        assert attempt["card"]["id"] == "e_red"
+
+    def test_guessers_own_turn_end_keeps_the_reveal(self, board):
+        """The guesser's FinalizeHeroTurnStep runs in the same pass as the
+        reveal, so clearing there would hide it from every client."""
+        state, snapshots = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "RED"])
+
+        assert snapshots[-1] is not None
+        assert state.card_guess is not None
+
+    def test_a_later_hero_turn_clears_the_reveal(self, board):
+        """Otherwise a completed reveal would sit in the view forever."""
+        state, _ = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "RED"])
+        assert state.card_guess is not None
+
+        push_steps(state, [FinalizeHeroTurnStep(hero_id="hero_enemy")])
+        process_stack(state)
+
+        assert state.card_guess is None
+        assert build_view(state)["card_guess"] is None
+
+    def test_new_guess_discards_a_previous_repeat_attempt(self, board):
+        """A guesser acting last in one round and first in the next sees no
+        other hero's turn end in between, so nothing clears the old guess."""
+        stale_repeat = {
+            "guesser_id": "hero_bain",
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_blue",
+                    "guessed_color": "RED",
+                    "actual_color": "BLUE",
+                    "correct": False,
+                },
+                {
+                    "attempt": 2,
+                    "victim_id": "hero_enemy",
+                    "card_id": "e_red",
+                    "guessed_color": "GREEN",
+                    "actual_color": "RED",
+                    "correct": False,
+                },
+            ],
+        }
+
+        state, snapshots = self._run_guess(
+            board, ["SKILL", "hero_enemy", "e_red", "RED"], seed_guess=stale_repeat
+        )
+
+        assert [a["attempt"] for a in state.card_guess["attempts"]] == [1]
+        final = snapshots[-1]
+        assert len(final["attempts"]) == 1
+        assert final["attempts"][0]["correct"] is True
+
+    def test_facedown_selection_is_public_before_the_guess(self, board):
+        _, snapshots = self._run_guess(board, ["SKILL", "hero_enemy", "e_red", "RED"])
+
+        # The broadcast that carries the colour prompt shows a facedown card.
+        pending = [s for s in snapshots if s and s["attempts"][0]["card"] is None]
+        assert pending, "facedown selection never reached the view"
+        assert pending[0]["attempts"][0]["correct"] is None
 
     def test_wrong_guess_sets_flag(self, board):
         from goa2.engine.steps import RevealAndResolveGuessStep

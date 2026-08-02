@@ -851,6 +851,30 @@ class ResolveTieBreakerStep(GameStep):
         return StepResult(is_finished=True, new_steps=new_steps)
 
 
+def _record_guess_attempt(state: GameState, attempt: int, **fields: Any) -> None:
+    """Upsert one attempt into the public guess state on GameState.
+
+    This lives on GameState rather than in execution_context because the
+    reveal, the discard and FinalizeHeroTurnStep all drain in a single
+    process_stack pass: FinalizeHeroTurnStep clears execution_context, so a
+    context-derived view would already be empty when the post-mutation view is
+    built and broadcast. Clients would then never see the flipped card.
+    """
+    guesser_id = str(state.current_actor_id) if state.current_actor_id else None
+    guess = state.card_guess
+    # Attempt 1 always starts a fresh guess. The stored state is only cleared
+    # when some *other* hero finishes a turn, so a guesser who acts last in one
+    # round and first in the next would otherwise inherit the previous guess's
+    # attempt 2 and render it alongside the new one.
+    if guess is None or guess.get("guesser_id") != guesser_id or attempt == 1:
+        guess = {"guesser_id": guesser_id, "attempts": []}
+    attempts = [a for a in guess["attempts"] if a["attempt"] != attempt]
+    existing: dict[str, Any] = next((a for a in guess["attempts"] if a["attempt"] == attempt), {})
+    attempts.append({**existing, "attempt": attempt, **fields})
+    attempts.sort(key=lambda a: a["attempt"])
+    state.card_guess = {"guesser_id": guesser_id, "attempts": attempts}
+
+
 class GuessCardColorStep(GameStep):
     """Prompts the actor to guess a card color.
 
@@ -864,8 +888,12 @@ class GuessCardColorStep(GameStep):
     VALID_COLORS: ClassVar[list[str]] = ["BLUE", "GOLD", "GREEN", "RED", "SILVER"]
 
     type: StepType = StepType.GUESS_CARD_COLOR
+    # See _record_guess_attempt for why this is state, not execution_context.
     output_key: str  # where to store the guessed color string
     victim_key: str = ""  # context key → hero ID whose hand restricts the options
+    card_key: str = ""  # context key → the facedown card selected for this guess
+    attempt: int = 1
+    selection_announced: bool = False
 
     def _valid_colors(self, state: GameState, context: dict[str, Any]) -> list[str]:
         """Colors that could be in the victim's hand, from the guesser's view.
@@ -917,6 +945,32 @@ class GuessCardColorStep(GameStep):
             else ""
         )
 
+        events: list[GameEvent] = []
+        victim_id = context.get(self.victim_key) if self.victim_key else None
+        selected_card_id = context.get(self.card_key) if self.card_key else None
+        if not self.selection_announced and victim_id and selected_card_id:
+            # Publish only the physical/public fact that a facedown card was
+            # placed for the guess. Its identity remains private until the
+            # RevealAndResolveGuessStep flips it.
+            _record_guess_attempt(
+                state,
+                self.attempt,
+                victim_id=str(victim_id),
+                card_id=str(selected_card_id),
+                guessed_color=None,
+                actual_color=None,
+                correct=None,
+            )
+            events.append(
+                GameEvent(
+                    event_type=GameEventType.CARD_SELECTED_FOR_GUESS,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(victim_id),
+                    metadata={"attempt": self.attempt},
+                )
+            )
+            self.selection_announced = True
+
         return StepResult(
             is_finished=False,
             requires_input=True,
@@ -926,6 +980,7 @@ class GuessCardColorStep(GameStep):
                 prompt="Guess the card's color",
                 options=options,
             ),
+            events=events,
         )
 
 
@@ -1054,6 +1109,7 @@ class RevealAndResolveGuessStep(GameStep):
     victim_key: str  # context key → victim hero ID
     correct_output_key: str
     wrong_output_key: str
+    attempt: int = 1
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -1091,13 +1147,28 @@ class RevealAndResolveGuessStep(GameStep):
         # would allow re-guessing with that knowledge (same rule as mines).
         context["rollback_frozen"] = True
 
+        # The flip is public, so this event names the card for every recipient.
+        # The card face itself stays in the view: a wrong guess leaves the card
+        # in an otherwise-private hand, and the view is what tracks that.
+        _record_guess_attempt(
+            state,
+            self.attempt,
+            victim_id=str(victim_id),
+            card_id=str(card_id),
+            guessed_color=guessed_color,
+            actual_color=actual_color,
+            correct=is_correct,
+        )
+
         return StepResult(
             is_finished=True,
             events=[
                 GameEvent(
-                    event_type=GameEventType.CARD_REVEALED,
-                    actor_id=str(victim_id),
+                    event_type=GameEventType.GUESSED_CARD_REVEALED,
+                    actor_id=str(state.current_actor_id) if state.current_actor_id else None,
+                    target_id=str(victim_id),
                     metadata={
+                        "attempt": self.attempt,
                         "card_id": card_id,
                         "card_name": target_card.name,
                         "card_color": actual_color,

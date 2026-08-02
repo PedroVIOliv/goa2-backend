@@ -808,6 +808,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "tokens": [ ... ],
   "board_entities": [ ... ],
   "hero_pieces": { ... },
+  "card_guess": null,
   "time_control": null,
   "clock": null
 }
@@ -846,6 +847,7 @@ ready check starts that pending shared turn with its normal fresh allowances.
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 | `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
+| `card_guess` | object/null | Public physical state while a card-color guess is active: `{guesser_id, attempts}`. Each attempt has `attempt`, `victim_id`, and either `card: null` while facedown or the complete revealed card plus `guessed_color`, `actual_color`, and `correct`. This is the authoritative source for rendering the guess — it survives reconnects and reveals a card only once it is flipped. A completed reveal stays in the view through the following hero's turn, then clears, so clients do not need to latch it from events. |
 | `time_control` | object/null | Immutable time-control values, or null for an untimed match |
 | `clock` | object/null | Public authoritative clock snapshot, or null for an untimed match |
 
@@ -1400,7 +1402,7 @@ request.
 
 ## Events
 
-Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative.
+Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative. `GUESSED_CARD_REVEALED` is an intentional exception: the guessed card's identity is public to every recipient because the effect explicitly flips it faceup.
 
 ### Event structure
 
@@ -1437,6 +1439,8 @@ Events describe what happened during a game action. They are meant for animation
 | `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
 | `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Card IDs/names are `null` for recipients who cannot see those cards. Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id`, `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
+| `CARD_SELECTED_FOR_GUESS` | The target placed one privately selected hand card facedown for a color guess. The event deliberately contains no card identity. | `actor_id` (guesser), `target_id` (hero choosing the card), `metadata.attempt` |
+| `GUESSED_CARD_REVEALED` | The selected guess card was flipped faceup for everyone. Log/animation metadata only — render the card itself from `view.card_guess`, which stays correct when a wrong guess returns the card to its hidden hand. | `actor_id` (guesser), `target_id` (card owner), `metadata.attempt`, `metadata.card_id`, `metadata.card_name`, `metadata.card_color`, `metadata.guessed_color`, `metadata.guess_correct` |
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |

@@ -580,6 +580,8 @@ def _build_guess_steps(
         GuessCardColorStep(
             output_key=f"{p}guessed_color",
             victim_key=f"{p}guess_victim",
+            card_key=f"{p}chosen_card",
+            attempt=2 if prefix else 1,
         ),
         # 4. Reveal and resolve
         RevealAndResolveGuessStep(
@@ -588,6 +590,7 @@ def _build_guess_steps(
             victim_key=f"{p}guess_victim",
             correct_output_key=f"{p}guess_correct",
             wrong_output_key=f"{p}guess_wrong",
+            attempt=2 if prefix else 1,
         ),
         # 5. If correct: discard that card
         DiscardCardStep(

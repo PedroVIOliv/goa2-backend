@@ -212,6 +212,17 @@ def events_for_viewer(
 
     for source in events:
         event = deepcopy(source)
+        event_type = str(event.get("event_type", ""))
+
+        if event_type == GameEventType.GUESSED_CARD_REVEALED.value:
+            # A guess reveal is a deliberate public flip of one hand card, so
+            # its identity is public here even though a wrong guess leaves the
+            # card in an otherwise-private hand. This exemption is scoped to an
+            # event type that only the guess step emits — do not widen it to a
+            # generic reveal, which would leak scoped reveals to every viewer.
+            projected.append(event)
+            continue
+
         event["metadata"] = _sanitize_card_values(
             event.get("metadata", {}),
             state=state,
@@ -219,7 +230,6 @@ def events_for_viewer(
             hidden_names=hidden_names,
         )
 
-        event_type = str(event.get("event_type", ""))
         target_id = event.get("target_id")
         token = (
             state.misc_entities.get(BoardEntityID(str(target_id)))
