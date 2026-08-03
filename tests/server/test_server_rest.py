@@ -52,6 +52,14 @@ def test_list_heroes(client):
     heroes = resp.json()
     assert isinstance(heroes, list)
     assert "Arien" in heroes
+    assert "Cordelia" not in heroes
+
+
+def test_list_heroes_can_include_playtest_heroes(client):
+    resp = client.get("/heroes", params={"include_playtest": True})
+
+    assert resp.status_code == 200
+    assert "Cordelia" in resp.json()
 
 
 def test_list_hero_metadata_includes_difficulty_stars(client):
@@ -93,6 +101,14 @@ def test_list_hero_metadata_includes_difficulty_stars(client):
         "Snorri": 4,
         "Takahide": 4,
     }
+
+
+def test_list_hero_metadata_can_include_playtest_heroes(client):
+    resp = client.get("/heroes/metadata", params={"include_playtest": True})
+
+    assert resp.status_code == 200
+    heroes = {hero["id"]: hero["difficulty_stars"] for hero in resp.json()}
+    assert heroes["Cordelia"] == 2
 
 
 # ---- POST /games ----

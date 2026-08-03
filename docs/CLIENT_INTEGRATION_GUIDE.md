@@ -134,17 +134,27 @@ Invalid tokens are rejected with WebSocket close code `4001`. Tokens that don't 
 
 ### `GET /heroes`
 
-List available hero IDs. No authentication required.
+List released hero IDs. No authentication required.
+
+Pass the optional `include_playtest=true` query parameter to include registered
+playtest heroes. Playtest heroes are excluded by default.
 
 **Response:** `200 OK`
 
 ```json
-["arien", "knight", "rogue"]
+["Arien", "Bain", "Brogan"]
 ```
+
+With `include_playtest=true`, the response also includes playtest hero IDs such
+as `"Cordelia"`.
 
 ### `GET /heroes/metadata`
 
-List available heroes with pre-game selection metadata. No authentication required.
+List released heroes with pre-game selection metadata. No authentication required.
+
+Pass the optional `include_playtest=true` query parameter to include registered
+playtest heroes. Release status and difficulty are independent: for example,
+Cordelia is a playtest hero with `difficulty_stars: 2`.
 
 `difficulty_stars` describes how difficult the hero is to play and is only relevant before game creation.
 
@@ -153,8 +163,14 @@ List available heroes with pre-game selection metadata. No authentication requir
 ```json
 [
   { "id": "Arien", "difficulty_stars": 1 },
-  { "id": "Knight", "difficulty_stars": 2 }
+  { "id": "Bain", "difficulty_stars": 2 }
 ]
+```
+
+With `include_playtest=true`, the response also includes:
+
+```json
+{ "id": "Cordelia", "difficulty_stars": 2 }
 ```
 
 ### `POST /games`

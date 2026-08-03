@@ -38,7 +38,7 @@ def main() -> int:
 
     failures: list[str] = []
     checked_count = 0
-    for hero_name in sorted(HeroRegistry.list_heroes()):
+    for hero_name in sorted(HeroRegistry.list_heroes(include_playtest=True)):
         if hero_name in SKIP_HERO_NAMES:
             print(f"SKIP {hero_name}")
             continue
