@@ -603,7 +603,6 @@ def test_phantasmal_sentry_attacks_hero_adjacent_to_illusion_in_range() -> None:
 
     run = run_card(state, NEB)
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
     run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
     run.finish()
@@ -614,7 +613,7 @@ def test_phantasmal_sentry_attacks_hero_adjacent_to_illusion_in_range() -> None:
 
 
 @pytest.mark.effect_flow
-def test_phantasmal_sentry_adjacent_bullet_is_ranged_attack() -> None:
+def test_phantasmal_sentry_adjacent_target_is_ranged_attack() -> None:
     from goa2.domain.models import Minion, TeamColor
 
     state = _grid_state("phantasmal_sentry")
@@ -624,7 +623,6 @@ def test_phantasmal_sentry_adjacent_bullet_is_ranged_attack() -> None:
 
     run = run_card(state, NEB)
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion")
     run.finish()
     assert state.execution_context["attack_is_ranged"] is True
@@ -640,6 +638,7 @@ def test_phantasmal_sentry_rejects_hero_when_adjacent_illusion_is_out_of_range()
         .with_hexes([(q, 0, -q) for q in range(7)])
         .red_hero(NEB, at=(0, 0, 0), current_card=hero_card("NebKher", "phantasmal_sentry"))
         .blue_hero("hero_enemy", at=(4, 0, -4))
+        .blue_minion("adjacent_minion", at=(1, 0, -1))
         .with_actor(NEB)
         .build()
     )
@@ -647,24 +646,29 @@ def test_phantasmal_sentry_rejects_hero_when_adjacent_illusion_is_out_of_range()
 
     run = run_card(state, NEB)
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
-    run.finish()
-
-    assert not any(e.event_type == GameEventType.COMBAT_RESOLVED for e in run.events)
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    option_ids = {option.id for option in run.latest_request.options}
+    assert "adjacent_minion" in option_ids
+    assert "hero_enemy" not in option_ids
 
 
 @pytest.mark.effect_flow
 def test_phantasmal_sentry_excludes_immune_targets() -> None:
+    from goa2.domain.models import Minion, TeamColor
+
     state = _grid_state("phantasmal_sentry")
     _add_illusion(state, "illusion_1", Hex(q=3, r=0, s=-3))
+    minion = Minion(id="adjacent_minion", name="M", team=TeamColor.BLUE, type=MinionType.MELEE)
+    state.teams[TeamColor.BLUE].minions.append(minion)
+    state.place_entity("adjacent_minion", Hex(q=2, r=1, s=-3))
     _make_immune_to_enemy_actions(state, "hero_enemy")
 
     run = run_card(state, NEB)
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
-    run.finish()
-
-    assert not any(e.event_type == GameEventType.COMBAT_RESOLVED for e in run.events)
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    option_ids = {option.id for option in run.latest_request.options}
+    assert "adjacent_minion" in option_ids
+    assert "hero_enemy" not in option_ids
 
 
 @pytest.mark.effect_flow
