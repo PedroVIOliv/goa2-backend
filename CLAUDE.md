@@ -114,6 +114,11 @@ Effect modules are discovered at startup by `server/app.py:register_all_effects(
 which globs `scripts/*_effects.py`. Registration is an import side effect of the
 `@register_effect` decorator.
 
+Engine code calls `get_steps()` / `get_steps_with_stats()` — never `build_steps()`
+directly, which skips the card binding these apply (`effects.bind_effect_cards`
+stamps `source_card_id` on the effect steps a card builds). A guardrail test in
+`tests/engine/test_effect_card_binding.py` enforces this.
+
 ## Writing Card Effects
 
 - [Effect Author Reference](docs/EFFECT_AUTHOR_REFERENCE.md) — Step/filter API and copy-paste patterns

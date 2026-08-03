@@ -11,7 +11,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import ActionType
+from goa2.domain.models.enums import ActionType, CardState
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -95,6 +95,8 @@ class EffectManager:
         hero's implicit (or self-referencing) origin resolves to the acting
         piece, because the owner hero ID has no board position once its turn
         ends and the effect would silently lose its anchor.
+
+        Card-bound effects are deduplicated: see ``_find_existing_instance``.
         """
         if scope.shape != Shape.GLOBAL and scope.origin_hex is None:
             origin_id = scope.origin_id or source_id
@@ -107,6 +109,19 @@ class EffectManager:
             board_barrier_origin = state.resolve_board_actor(str(barrier_origin))
             if board_barrier_origin != str(barrier_origin):
                 kwargs["barrier_origin_id"] = board_barrier_origin
+
+        existing = EffectManager._find_existing_instance(state, source_card_id, effect_type, scope)
+        if existing is not None:
+            return existing
+
+        card = state.get_card_by_id(source_card_id) if source_card_id else None
+        # Dormancy models "played, but not yet resolved": FinalizeHeroTurnStep
+        # activates a card's effects when it resolves. That hook only ever fires
+        # for a hero's current turn card, so an effect bound to a card that is
+        # not awaiting resolution — one re-performed after resolving, or an
+        # enemy's card driven by Mind Grip — would stay dormant forever.
+        if card is not None and card.state != CardState.UNRESOLVED:
+            is_active = True
 
         effect = ActiveEffect(
             id=f"eff_{state.create_entity_id('e')}",
@@ -124,11 +139,47 @@ class EffectManager:
             **kwargs,
         )
         state.add_effect(effect)
-        if source_card_id:
-            card = state.get_card_by_id(source_card_id)
-            if card:
-                card.is_active = True
+        if card is not None:
+            card.is_active = True
         return effect
+
+    @staticmethod
+    def _find_existing_instance(
+        state: GameState,
+        source_card_id: str | None,
+        effect_type: EffectType,
+        scope: EffectScope,
+    ) -> ActiveEffect | None:
+        """The card's live instance of this effect, if it already has one.
+
+        Game rule: only one instance of an active effect per card can be
+        active, and repeating an active effect does not duplicate it. Identity
+        is (card, effect_type, scope) — a card whose text needs several distinct
+        payloads (Brogan's Bulwark, Dodger's Enfeeblement) still gets one row
+        per payload, but performing that card again reuses them.
+
+        The match ignores ``is_active`` so a present-but-deactivated row still
+        blocks a duplicate, and callers must treat a hit as a pure no-op: no
+        payload or charge refresh, no new timestamps, and no ``card.is_active``
+        write, since a card deliberately turned facedown must not be
+        reactivated by a repeat.
+
+        Effects with no card (token-bound effects, engine-internal delayed
+        triggers) are never deduplicated — their lifecycle is the token's or
+        the schedule's, not a card's.
+        """
+        if not source_card_id:
+            return None
+        return next(
+            (
+                effect
+                for effect in state.active_effects
+                if effect.source_card_id == source_card_id
+                and effect.effect_type == effect_type
+                and effect.scope == scope
+            ),
+            None,
+        )
 
     @staticmethod
     def _update_card_active_status(state: GameState, card_id: str):

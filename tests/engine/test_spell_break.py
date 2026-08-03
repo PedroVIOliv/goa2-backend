@@ -5,6 +5,7 @@ from goa2.domain.models import (
     ActionType,
     Card,
     CardColor,
+    CardState,
     CardTier,
     EffectType,
     Hero,
@@ -57,6 +58,10 @@ def test_spell_break_prevention(empty_state: GameState):
 
     # Create the effect manually to simulate playing the card
     # (Or use the Effect class directly)
+    # Effects are dormant until their card resolves.
+    arien_card.state = CardState.RESOLVED
+    arien.played_cards.append(arien_card)
+
     effect_def = SpellBreakEffect()
     steps = effect_def.get_steps(state, arien, arien_card)
 

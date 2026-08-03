@@ -1798,7 +1798,7 @@ class PerformPrimaryActionStep(GameStep):
         # own state lags (it stays current_turn_card until FinalizeHeroTurnStep),
         # so build_steps can't rely on card.state alone.
         context["reperforming_card_id"] = card.id
-        steps = effect.build_steps(state, hero, card, stats)
+        steps = effect.get_steps_with_stats(state, hero, card, stats)
         if self.exclude_target_key:
             self._inject_exclusion_filter(steps, self.exclude_target_key)
 
@@ -2059,7 +2059,7 @@ class PerformCardActionStep(GameStep):
 
                 effect = CardEffectRegistry.get_for_card(card)
                 if effect:
-                    return effect.build_steps(state, performer, card, stats)
+                    return effect.get_steps_with_stats(state, performer, card, stats)
             # No registered effect — fall back to bare primitives.
             if act_type == ActionType.ATTACK:
                 return [AttackSequenceStep(damage=stats.primary_value, range_val=stats.range or 1)]

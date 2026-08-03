@@ -436,3 +436,100 @@ class TestCardActiveTracking:
         assert game_state.get_card_by_id("card_1") is card1
         assert game_state.get_card_by_id("card_2") is card2
         assert game_state.get_card_by_id("card_999") is None
+
+
+class TestOneInstancePerCard:
+    """Only one instance of an active effect per card can be active.
+
+    Repeating an active effect must not duplicate it (game rule). Identity is
+    (source_card_id, effect_type, scope): a card whose text needs several
+    distinct payloads still gets one row per payload, but performing that card
+    again creates nothing new.
+    """
+
+    def _create(self, state, **overrides):
+        params = dict(
+            state=state,
+            source_id="hero_1",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.RADIUS, range=2, affects=AffectsFilter.ENEMY_HEROES),
+            duration=DurationType.THIS_TURN,
+            source_card_id="card_1",
+        )
+        params.update(overrides)
+        return EffectManager.create_effect(**params)
+
+    def test_repeating_a_card_effect_reuses_the_existing_instance(self, game_state):
+        first = self._create(game_state)
+        second = self._create(game_state)
+
+        assert second is first
+        assert len(game_state.active_effects) == 1
+
+    def test_same_card_with_a_different_payload_creates_a_second_instance(self, game_state):
+        self._create(game_state, effect_type=EffectType.AREA_STAT_MODIFIER)
+        self._create(game_state, effect_type=EffectType.REPEAT_PREVENTION)
+
+        assert len(game_state.active_effects) == 2
+
+    def test_same_card_and_type_with_a_different_scope_creates_a_second_instance(self, game_state):
+        self._create(game_state, scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.SELF))
+        self._create(
+            game_state,
+            scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.FRIENDLY_UNITS),
+        )
+
+        assert len(game_state.active_effects) == 2
+
+    def test_different_cards_do_not_share_an_instance(self, game_state):
+        self._create(game_state, source_card_id="card_1")
+        self._create(game_state, source_card_id="card_2")
+
+        assert len(game_state.active_effects) == 2
+
+    def test_effects_without_a_card_never_dedup(self, game_state):
+        self._create(game_state, source_card_id=None)
+        self._create(game_state, source_card_id=None)
+
+        assert len(game_state.active_effects) == 2
+
+    def test_a_repeat_does_not_refresh_a_spent_effect(self, game_state):
+        first = self._create(
+            game_state,
+            effect_type=EffectType.MINION_DEFEAT_BOUNTY,
+            max_value=2,
+        )
+        first.max_value = 1
+        game_state.turn = 5
+
+        self._create(game_state, effect_type=EffectType.MINION_DEFEAT_BOUNTY, max_value=2)
+
+        assert len(game_state.active_effects) == 1
+        assert first.max_value == 1
+        assert first.created_at_turn == 1
+
+    def test_a_repeat_does_not_reactivate_a_deactivated_card(self, game_state):
+        hero = Hero(id="hero_1", name="Test Hero", team=TeamColor.RED, deck=[])
+        card = Card(
+            id="card_1",
+            name="Test Card",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=5,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            effect_id="test",
+            effect_text="test",
+        )
+        hero.played_cards.append(card)
+        game_state.teams[TeamColor.RED].heroes.append(hero)
+
+        effect = self._create(game_state)
+        EffectManager.deactivate_effects_by_card(game_state, "card_1")
+        card.is_active = False
+
+        self._create(game_state)
+
+        assert len(game_state.active_effects) == 1
+        assert effect.is_active is False
+        assert card.is_active is False

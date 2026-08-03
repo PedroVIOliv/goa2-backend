@@ -123,6 +123,22 @@ The four engine sites that currently reach past the public API and call
 After this, effects bind to the card whose text created them even when that card
 belongs to another hero (Mind Grip) or is already resolved (Bullet Time).
 
+### Dormancy for cards that will never resolve
+
+*(Added during implementation — not in the original design.)*
+
+Card-bound effects are dormant until their card resolves: `_is_effect_active`
+returns `False` while `effect.source_card_id and not effect.is_active`, and
+`FinalizeHeroTurnStep` flips them on via `activate_effects_by_card`. That hook
+only ever fires for a hero's **current turn card**.
+
+Binding a re-performance to the performed card therefore breaks it: an effect
+created from an already-resolved card (Bullet Time) or from an enemy's card
+(Mind Grip) would wait for an activation that never comes. `create_effect` now
+starts an effect active when its bound card is in any state other than
+`UNRESOLVED` — dormancy models "played, but not yet resolved", and everything
+else is already in force.
+
 ### Context inference becomes vestigial
 
 `CreateEffectStep.resolve` keeps its `current_card_id` fallback and the

@@ -56,7 +56,10 @@ class CreateEffectStep(GameStep):
     blocks_self: bool = False
     is_active: bool = False  # Override default dormant state if True
 
-    # Card linkage (for card-based effects)
+    # Card linkage (for card-based effects). Steps built through the CardEffect
+    # API get source_card_id stamped at build time by effects.bind_effect_cards,
+    # which is the only place that reliably knows the card being performed. The
+    # context fallback below survives for steps constructed outside that API.
     source_card_id: str | None = None  # Explicit card ID
     use_context_card: bool = True  # If True, infer the card performing the current action
 
@@ -118,14 +121,7 @@ class CreateEffectStep(GameStep):
         if not self.is_token_effect:
             card_id = self.source_card_id
             if card_id is None and self.use_context_card:
-                # Defense text runs inside the attacker's action context, so
-                # current_card_id still names the incoming attack.
-                context_key = (
-                    "defense_card_id"
-                    if context.get("current_action_type") == ActionType.DEFENSE
-                    else "current_card_id"
-                )
-                card_id = context.get(context_key)
+                card_id = context.get("current_card_id")
 
         # Resolve origin action type: use explicit value or fall back to context
         action_type = self.origin_action_type

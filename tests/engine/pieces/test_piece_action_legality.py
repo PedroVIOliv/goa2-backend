@@ -4,7 +4,7 @@ least one piece can legally perform it; a piece standing in the zone cannot be
 chosen to perform it."""
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import ActionType, Card, CardColor, CardTier
+from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier
 from goa2.domain.models.effect import (
     ActiveEffect,
     AffectsFilter,
@@ -55,6 +55,10 @@ def _cast_spell_break_from_knight(state, radius: int) -> None:
         effect_text="...",
         radius_value=radius,
     )
+    # Effects are dormant until their card resolves, so the card has to sit
+    # resolved in the knight's played area for the zone to be live.
+    card.state = CardState.RESOLVED
+    knight.played_cards.append(card)
     steps = SpellBreakEffect().get_steps(state, knight, card)
     saved = state.current_actor_id
     state.current_actor_id = "hero_knight"
