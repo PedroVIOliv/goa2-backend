@@ -393,15 +393,22 @@ class ResolveOnBlockEffectStep(GameStep):
 class ConfirmResolutionStep(GameStep):
     """
     Prompts the acting player to confirm their resolution or rollback.
-    Auto-confirms when rollback is frozen (e.g. mine exploded).
+    Auto-confirms when rollback is frozen by a hidden event, or when a
+    prior foreign input dropped the snapshot with no owner actionable
+    re-anchor (nothing to undo, nothing to choose).
     """
 
     type: StepType = StepType.CONFIRM_RESOLUTION
     hero_id: str
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        # Auto-confirm when rollback is frozen
+        # Hidden-event freeze: permanent for this resolution.
         if context.get("rollback_frozen"):
+            return StepResult(is_finished=True)
+        # Foreign segment boundary dropped the snapshot and no owner
+        # actionable prompt re-anchored: skip the bare "click Confirm"
+        # prompt. GameSession._manage_rollback sets/clears this flag.
+        if context.get("rollback_reanchor_pending"):
             return StepResult(is_finished=True)
 
         if self.pending_input:
