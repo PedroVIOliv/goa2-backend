@@ -244,15 +244,14 @@ def test_gifts_of_nature_removes_tree_and_retrieves() -> None:
 
 @pytest.mark.effect_flow
 def test_gifts_of_nature_requires_tree_in_radius() -> None:
-    # No tree in radius -> mandatory tree select aborts; nothing retrieved.
+    # No tree in radius means the skill is unavailable; nothing is retrieved.
     state = _wuk_at_origin("gifts_of_nature").build()
     wuk = state.get_hero("hero_wuk")
     discarded = hero_card("Wuk", "tree_slam")
     wuk.discard_pile = [discarded]
 
     run = run_card(state, "hero_wuk")
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
     assert discarded in wuk.discard_pile  # not retrieved (no tree to remove)
 

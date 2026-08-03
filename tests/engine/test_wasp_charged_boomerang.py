@@ -160,9 +160,9 @@ def test_charged_boomerang_valid_targets(wasp_boomerang_state):
     assert "enemy_diagonal2" in valid_options, "Second diagonal target should be valid"
 
     # Should NOT include: enemy_adjacent (adjacent = in straight line)
-    assert (
-        "enemy_adjacent" not in valid_options
-    ), "Adjacent targets should be excluded (in straight line)"
+    assert "enemy_adjacent" not in valid_options, (
+        "Adjacent targets should be excluded (in straight line)"
+    )
 
     # Should NOT include: enemy_straight (same q-axis = in straight line)
     assert "enemy_straight" not in valid_options, "Straight line targets should be excluded"
@@ -245,14 +245,7 @@ def test_charged_boomerang_no_valid_targets():
     step = ResolveCardStep(hero_id="wasp")
     push_steps(state, [step])
 
-    # Action Choice
+    # ATTACK is unavailable because every enemy is in a straight line.
     req = process_stack(state).input_request
-    state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-
-    # Should abort because no valid targets (mandatory attack with no options)
-    # The stack should be empty or the step should indicate abort
-    req = process_stack(state).input_request
-
-    # When mandatory selection fails, the action aborts
-    # This means we skip to finalization
-    assert len(state.execution_stack) == 0 or req is None
+    assert req is not None
+    assert "ATTACK" not in {option.id for option in req.options}

@@ -620,7 +620,8 @@ def test_runic_dagger_u3_no_adjacent_target_aborts_action():
         target_at=(2, 0, -2),
     )
 
-    _start_melee_attack(state).finish()
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     assert state.get_position("hero_knight") == Hex(q=2, r=0, s=-2)
 
@@ -934,7 +935,8 @@ def test_runecaster_h6_axe_uses_targeting_time_adjacency_after_target_defeat():
 def test_runecaster_u1_without_maximum_range_target_aborts():
     state = _runic_ranged_state("runecaster", target_at=(2, 0, -2))
 
-    _start_ranged_attack(state).finish()
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     assert state.get_position("blue_target") == Hex(q=2, r=0, s=-2)
 

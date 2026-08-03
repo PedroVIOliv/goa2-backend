@@ -190,8 +190,7 @@ def test_come_to_aid_u1_no_ally_in_range_fizzles():
     state = takahide_state("come_to_aid", allies=[], enemies=[(4, 0, -4)], hexes=board())
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
     assert state.get_position(TAKAHIDE) == Hex(q=0, r=0, s=0)
 
@@ -228,8 +227,7 @@ def test_come_to_aid_u4_ally_beyond_topology_range_is_not_selectable():
     give_hand(state, ALLY, _card("ally_a"))
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()  # mandatory ally select found nobody → action aborted
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
 
 @pytest.mark.effect_flow
@@ -602,8 +600,7 @@ def test_calculated_risk_u3_no_ally_in_radius_fizzles():
     state = takahide_state("calculated_risk", allies=[], enemies=[(4, 0, -4)], hexes=board())
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
 
 @pytest.mark.effect_flow

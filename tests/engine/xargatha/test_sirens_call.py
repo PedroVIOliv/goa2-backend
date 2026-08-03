@@ -285,13 +285,10 @@ class TestSirensCallEffect:
         step = ResolveCardStep(hero_id="xargatha")
         push_steps(state, [step])
 
-        # 1. CHOOSE_ACTION -> ATTACK
-        _ = process_stack(state).input_request
-        state.execution_stack[-1].pending_input = {"selection": "ATTACK"}
-
-        # 2. Mandatory selection fails (no enemy in range) -> action aborts
+        # ATTACK is unavailable because no enemy is in range.
         req = process_stack(state).input_request
-        assert req is None
+        assert req is not None
+        assert "ATTACK" not in {option.id for option in req.options}
 
         # Verify unit did not move
         assert state.entity_locations["distant_enemy"] == Hex(q=0, r=4, s=-4)

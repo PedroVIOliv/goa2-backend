@@ -511,7 +511,7 @@ class TestSniffOut:
         assert len(enraged_effects) == 0
 
     def test_enemy_out_of_range_no_target(self, base_state):
-        """Enraged but enemy out of range (>2): mandatory select fails, aborts."""
+        """Enraged but enemy out of range (>2): skill is unavailable."""
         from goa2.domain.types import UnitID
 
         _make_enraged(base_state)
@@ -522,12 +522,9 @@ class TestSniffOut:
         base_state.move_unit(UnitID("enemy"), Hex(q=3, r=0, s=-3))
 
         push_steps(base_state, [ResolveCardStep(hero_id="hero_ursafar")])
-        _drive_choose_action(base_state, "SKILL")
-
-        # Should abort since mandatory select has no valid targets
-        result = process_stack(base_state).input_request
-        while result is not None:
-            result = process_stack(base_state).input_request
+        request = process_stack(base_state).input_request
+        assert request is not None
+        assert "SKILL" not in {option.id for option in request.options}
 
         enemy = base_state.get_hero(HeroID("enemy"))
         assert len(enemy.hand) == 2  # No discard happened

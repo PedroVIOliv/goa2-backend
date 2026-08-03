@@ -217,14 +217,13 @@ def test_set_an_example_h4b_ally_may_decline_the_card_choice():
 
 
 @pytest.mark.effect_flow
-def test_set_an_example_u1_no_adjacent_target_aborts_before_the_rider():
+def test_set_an_example_u1_no_adjacent_target_hides_attack_before_the_rider():
     state = swap_state("set_an_example", enemy_at=(4, 0, -4))
     commit(state, ALLY, a_card("ally_turn"))
     give_hand(state, ALLY, a_card("ally_spare"))
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.finish()  # mandatory targeting fails → action aborts
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     assert state.get_hero(ALLY).current_turn_card.id == "ally_turn"
 
