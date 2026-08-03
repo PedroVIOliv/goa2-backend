@@ -112,6 +112,8 @@ class FinalizeHeroTurnStep(GameStep):
         # a view containing it. Clear once a *different* hero finishes a turn.
         if state.card_guess and state.card_guess.get("guesser_id") != str(self.hero_id):
             state.card_guess = None
+        if state.card_reveal and state.card_reveal.get("revealer_id") != str(self.hero_id):
+            state.card_reveal = None
 
         # Clear transient context for the next actor
         context.clear()

@@ -33,6 +33,9 @@ class EffectType(StrEnum):
     TARGET_PREVENTION = "target_prevention"  # Smoke Bomb (General)
     LOS_BLOCKER = "los_blocker"  # Physical obstacle for targeting
     AREA_STAT_MODIFIER = "area_stat_modifier"  # Aura effects
+    BASIC_ACTION_STAT_BONUS = (
+        "basic_action_stat_bonus"  # Cordelia Broom family: one bonus to all basic stats
+    )
     ATTACK_IMMUNITY = (
         "attack_immunity"  # Expert Duelist - immune to attacks except from specific attacker
     )
@@ -210,6 +213,10 @@ class ActiveEffect(BaseModel):
     non_basic_attacks_only: bool = False  # ATTACK_IMMUNITY ignores basic attacks when True
     stat_type: StatType | None = None  # For AREA_STAT_MODIFIER
     stat_value: int = 0  # Modifier amount
+    apply_stat_value_only_if_result_at_least: int | None = None
+    # Optional lower bound for applying stat_value. This does not clamp the
+    # final stat: if the candidate result is below the bound, the modifier is
+    # skipped and other effects remain untouched.
     max_value: int | None = None  # For movement caps
     limit_actions_only: bool = False  # If True, only caps explicit MOVEMENT actions
 

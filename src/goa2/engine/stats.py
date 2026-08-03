@@ -154,7 +154,11 @@ def is_unit_in_effect_scope(effect: ActiveEffect, unit_id: str, state: GameState
 
 
 def get_computed_stat(
-    state: GameState, unit_id: UnitID, stat_type: StatType, base_value: int = 0
+    state: GameState,
+    unit_id: UnitID,
+    stat_type: StatType,
+    base_value: int = 0,
+    performing_card: Card | None = None,
 ) -> int:
     """
     Calculates the final value of a stat for a unit.
@@ -215,6 +219,7 @@ def get_computed_stat(
     # 2. Add AREA_STAT_MODIFIER effects
     from goa2.engine.rules import unit_ignores_effect_due_to_immunity
 
+    conditional_stat_values: list[tuple[int, int]] = []
     for effect in state.active_effects:
         if effect.effect_type != EffectType.AREA_STAT_MODIFIER:
             continue
@@ -228,7 +233,36 @@ def get_computed_stat(
             for sid in scope_ids
         ):
             continue
-        total += effect.stat_value
+        if effect.apply_stat_value_only_if_result_at_least is None:
+            total += effect.stat_value
+        else:
+            conditional_stat_values.append(
+                (
+                    effect.stat_value,
+                    effect.apply_stat_value_only_if_result_at_least,
+                )
+            )
+
+    # 2b. Uniform bonuses to stats on basic actions (Cordelia's Broom
+    # family). The acted-upon card is passed explicitly for re-performed cards;
+    # ordinary turn actions fall back to GameState's performing-card resolver.
+    card_for_stats = performing_card or (
+        state.get_performing_card(str(hero_owner.id)) if hero_owner is not None else None
+    )
+    if (
+        hero_owner is not None
+        and card_for_stats is not None
+        and getattr(card_for_stats, "is_basic", False)
+        and stat_type in (StatType.MOVEMENT, StatType.INITIATIVE, StatType.ATTACK, StatType.DEFENSE)
+    ):
+        for effect in state.active_effects:
+            if effect.effect_type != EffectType.BASIC_ACTION_STAT_BONUS:
+                continue
+            if not _is_effect_active(effect, state):
+                continue
+            if not any(is_unit_in_effect_scope(effect, sid, state) for sid in scope_ids):
+                continue
+            total += effect.stat_value
 
     # 3. Add filter-based aura effects (for heroes with active auras)
     if hero_owner is not None:
@@ -240,7 +274,7 @@ def get_computed_stat(
                     continue
                 # Check conditional aura restrictions
                 if aura.basic_only or aura.action_type_only is not None:
-                    card = state.get_performing_card(str(hero_owner.id))
+                    card = card_for_stats
                     if not card:
                         continue
                     if aura.basic_only and not card.is_basic:
@@ -280,6 +314,15 @@ def get_computed_stat(
             for marker_stat_type, marker_value in marker.get_stat_effects():
                 if marker_stat_type == stat_type:
                     total += marker_value
+
+    # Conditional modifiers are evaluated against the value produced by every
+    # unconditional source. They may decline to modify that value, but never
+    # clamp or raise it. Multiple conditional modifiers are applied in active-
+    # effect order, each checking the result left by the previous one.
+    for stat_value, minimum_result in conditional_stat_values:
+        candidate = total + stat_value
+        if candidate >= minimum_result:
+            total = candidate
 
     return total
 
@@ -415,24 +458,34 @@ def compute_card_stats(state: GameState, hero_id: UnitID, card: Card) -> CardSta
     base_value = card.current_primary_action_value or 0
 
     if card.current_primary_action == ActionType.ATTACK:
-        result.primary_value = get_computed_stat(state, hero_id, StatType.ATTACK, base_value)
+        result.primary_value = get_computed_stat(
+            state, hero_id, StatType.ATTACK, base_value, performing_card=card
+        )
     elif card.current_primary_action == ActionType.MOVEMENT:
-        result.primary_value = get_computed_stat(state, hero_id, StatType.MOVEMENT, base_value)
+        result.primary_value = get_computed_stat(
+            state, hero_id, StatType.MOVEMENT, base_value, performing_card=card
+        )
     elif card.current_primary_action in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL):
-        result.primary_value = get_computed_stat(state, hero_id, StatType.DEFENSE, base_value)
+        result.primary_value = get_computed_stat(
+            state, hero_id, StatType.DEFENSE, base_value, performing_card=card
+        )
     else:
         # SKILL or other action types have no numeric primary value
         result.primary_value = 0
 
     # 2. Compute range (only if card is ranged, otherwise fixed at 1)
     if card.is_ranged and card.range_value is not None:
-        result.range = get_computed_stat(state, hero_id, StatType.RANGE, card.range_value)
+        result.range = get_computed_stat(
+            state, hero_id, StatType.RANGE, card.range_value, performing_card=card
+        )
     else:
         result.range = 1  # Adjacent, not buffable
 
     # 3. Compute radius (only if card has radius_value)
     if card.radius_value is not None:
-        result.radius = get_computed_stat(state, hero_id, StatType.RADIUS, card.radius_value)
+        result.radius = get_computed_stat(
+            state, hero_id, StatType.RADIUS, card.radius_value, performing_card=card
+        )
     else:
         result.radius = None
 

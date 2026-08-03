@@ -13,7 +13,7 @@ from typing import Any
 
 from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
-from goa2.domain.models.enums import GamePhase, StatType
+from goa2.domain.models.enums import CardState, GamePhase, StatType
 from goa2.domain.models.spell import SpellCard
 from goa2.domain.models.unit import Hero, HeroPiece, Minion
 from goa2.domain.state import GameState
@@ -104,6 +104,9 @@ def build_view(
         # is resolving. This is the authoritative source for the guess tray:
         # it survives reconnects and exposes a card only once it is flipped.
         "card_guess": _build_card_guess_view(state),
+        # Direct public hand-card reveal (Cordelia). As with card_guess, the
+        # state-backed face survives reconnects and execution-context cleanup.
+        "card_reveal": _build_card_reveal_view(state),
     }
     view["time_control"] = (
         state.time_control.model_dump(mode="json") if state.time_control is not None else None
@@ -422,6 +425,40 @@ def _build_card_guess_view(state: GameState) -> dict[str, Any] | None:
         )
 
     return {"guesser_id": guess["guesser_id"], "attempts": attempts}
+
+
+def _build_card_reveal_view(state: GameState) -> dict[str, Any] | None:
+    """Complete public face for an intentionally revealed hand card."""
+    reveal = state.card_reveal
+    if not reveal:
+        return None
+
+    owner = state.get_hero(HeroID(str(reveal["owner_id"])))
+    if owner is None:
+        return None
+    card = next(
+        (
+            candidate
+            for candidate in [
+                *owner.hand,
+                *owner.discard_pile,
+                *[played for played in owner.played_cards if played is not None],
+            ]
+            if candidate.id == reveal["card_id"]
+        ),
+        None,
+    )
+    if card is None:
+        return None
+
+    return {
+        "revealer_id": reveal["revealer_id"],
+        "target_unit_id": reveal["target_unit_id"],
+        "owner_id": reveal["owner_id"],
+        "card": _build_revealed_card_view(card),
+        "tier_value": reveal["tier_value"],
+        "discarded": card.state == CardState.DISCARD,
+    }
 
 
 def _build_board_view(state: GameState) -> dict[str, Any]:

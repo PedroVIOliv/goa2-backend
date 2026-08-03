@@ -48,6 +48,7 @@ class CreateEffectStep(GameStep):
     non_basic_attacks_only: bool = False
     stat_type: StatType | None = None
     stat_value: int = 0
+    apply_stat_value_only_if_result_at_least: int | None = None
     max_value: int | None = None
     limit_actions_only: bool = False
 
@@ -191,6 +192,9 @@ class CreateEffectStep(GameStep):
             non_basic_attacks_only=self.non_basic_attacks_only,
             stat_type=self.stat_type,
             stat_value=self.stat_value,
+            apply_stat_value_only_if_result_at_least=(
+                self.apply_stat_value_only_if_result_at_least
+            ),
             max_value=self.max_value,
             limit_actions_only=self.limit_actions_only,
             blocks_enemy_actors=self.blocks_enemy_actors,

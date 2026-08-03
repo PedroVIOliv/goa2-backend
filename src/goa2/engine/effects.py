@@ -245,6 +245,23 @@ class CardEffect:
         """Return movement rule modifications. Default: none."""
         return None
 
+    def get_action_prevention_reason(
+        self,
+        state: GameState,
+        source_hero: Hero,
+        source_card: Card,
+        actor_id: str,
+        action_type: ActionType,
+        action_card: Card | None,
+    ) -> str | None:
+        """Return a reason when this active card effect forbids an action.
+
+        This hook is evaluated while action choices are built, before any
+        BEFORE_ACTION/BEFORE_ATTACK passives. Most card effects do not restrict
+        action availability and inherit the default ``None`` result.
+        """
+        return None
+
     # -------------------------------------------------------------------------
     # Passive ability methods (unchanged)
     # -------------------------------------------------------------------------
