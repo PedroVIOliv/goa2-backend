@@ -192,3 +192,37 @@ stay and must still pass.
   `card.is_active` can be set on a card sitting in the discard or hand (e.g.
   Tigerclaw performing a basic card). This already happens today for
   re-performed played cards; the change makes it correct rather than new.
+
+## Follow-up: audit of every CreateEffectStep (same day)
+
+An audit of all 57 `CreateEffectStep` sites plus the 4 engine-level
+`create_effect` calls confirmed card binding is correct everywhere it is
+applied, and produced these decisions:
+
+- **Snorri's Oath and Passage immunity** (`snorri_effects.py:200`, `:622`) carried
+  a stale `use_context_card=False` from before b79abef — a workaround for defense
+  attribution that build-time binding makes unnecessary. Flags removed; the
+  immunity is card-bound like Arien's Duelist.
+- **Hanu's Journey** (`ScheduleJourneyReturnStep`) now binds both halves — the
+  displaced hero's immunity and the end-of-turn swap-back — to the Journey card.
+  `bind_effect_cards` was generalised to stamp any step declaring a
+  `source_card_id` field, not just `CreateEffectStep`.
+- **A defeated hero's cards stop applying.** `expire_by_source` now also drops
+  effects whose `source_card_id` belongs to a card of the defeated hero. The
+  Journey immunity names the *displaced* hero as its source (that is how
+  `is_immune_to_actor` identifies who it protects), so the card link is the only
+  thing tying it back to Hanu — without this, a defeated Hanu kept protecting the
+  hero he swapped with.
+- **Hurry Up!'s initiative restore and the Ultimate Trick's action control stay
+  unbound.** The restore is cleanup for a mutation on someone else's card and must
+  always run; control is guarded by `controlled_card_id` and THIS_ROUND.
+- **Gydion's hand-rolled `already_exists` guards** (`gydion_effects.py`) were
+  deleted in favour of the generic dedup.
+
+### Dedup key gained the source
+
+Gydion's guard matched on `(card, caster)`. Dropping it exposed that a card can
+be performed by someone else — a copied spell must protect the copier, not reuse
+the original caster's row. `_find_existing_instance` now keys on
+`(source_id, source_card_id, effect_type, scope)`. Repeats by the same actor
+still collapse, which is what the rule requires.

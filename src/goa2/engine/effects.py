@@ -81,6 +81,8 @@ def bind_effect_cards(steps: list[GameStep], card_id: str) -> list[GameStep]:
     the one-instance-per-card rule keyed on it. Build time is the only point
     that reliably knows the card, so the CardEffect API stamps it here.
 
+    Any step declaring a ``source_card_id`` field is stamped — ``CreateEffectStep``
+    and the steps that create effects directly (Hanu's ``ScheduleJourneyReturnStep``).
     Steps that already name a card are left alone, and token-bound effects stay
     unbound on purpose: their lifecycle follows the token, not a card.
 
@@ -88,15 +90,15 @@ def bind_effect_cards(steps: list[GameStep], card_id: str) -> list[GameStep]:
     types, so nested step containers (``steps_template``, ``finishing_steps``,
     ``new_steps``, and any added later) are covered without maintenance.
     """
-    from goa2.engine.steps.effects import CreateEffectStep
-
     for step in steps:
+        # Duck-typed: any step declaring source_card_id opts into binding.
+        bindable: Any = step
         if (
-            isinstance(step, CreateEffectStep)
-            and step.source_card_id is None
-            and not step.is_token_effect
+            "source_card_id" in type(step).model_fields
+            and bindable.source_card_id is None
+            and not getattr(step, "is_token_effect", False)
         ):
-            step.source_card_id = card_id
+            bindable.source_card_id = card_id
         for field_name in type(step).model_fields:
             bind_effect_cards(_nested_steps(getattr(step, field_name, None)), card_id)
     return steps

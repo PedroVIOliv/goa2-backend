@@ -481,6 +481,13 @@ class TestOneInstancePerCard:
 
         assert len(game_state.active_effects) == 2
 
+    def test_a_different_source_does_not_share_an_instance(self, game_state):
+        """A copied card protects the copier, not just the original caster."""
+        self._create(game_state, source_id="hero_1")
+        self._create(game_state, source_id="hero_2")
+
+        assert len(game_state.active_effects) == 2
+
     def test_different_cards_do_not_share_an_instance(self, game_state):
         self._create(game_state, source_card_id="card_1")
         self._create(game_state, source_card_id="card_2")

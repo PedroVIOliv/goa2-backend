@@ -204,7 +204,6 @@ class OathEffect(CardEffect):
                 ),
                 duration=DurationType.THIS_TURN,
                 is_active=True,
-                use_context_card=False,
             )
         ]
 
@@ -626,7 +625,6 @@ class PassageEffect(CardEffect):
                     ),
                     duration=DurationType.THIS_TURN,
                     is_active=True,
-                    use_context_card=False,
                 )
             )
         return steps

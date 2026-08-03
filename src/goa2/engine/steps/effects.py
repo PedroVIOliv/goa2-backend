@@ -254,6 +254,12 @@ class ScheduleJourneyReturnStep(GameStep):
     type: StepType = StepType.SCHEDULE_JOURNEY_RETURN
     enemy_key: str
     move_after: bool = False
+    # Stamped by effects.bind_effect_cards. Both halves belong to the Journey
+    # card: the immunity is registered against the *displaced* hero (that is how
+    # is_immune_to_actor identifies who it protects), so the card is the only
+    # thing tying it back to Hanu — and it is what ends the immunity when Hanu
+    # is defeated.
+    source_card_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -272,6 +278,7 @@ class ScheduleJourneyReturnStep(GameStep):
         EffectManager.create_effect(
             state=state,
             source_id=enemy_id,
+            source_card_id=self.source_card_id,
             effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
             scope=EffectScope(shape=Shape.GLOBAL),
             duration=DurationType.THIS_TURN,
@@ -312,6 +319,7 @@ class ScheduleJourneyReturnStep(GameStep):
         EffectManager.create_effect(
             state=state,
             source_id=actor_id,
+            source_card_id=self.source_card_id,
             effect_type=EffectType.DELAYED_TRIGGER,
             scope=EffectScope(shape=Shape.GLOBAL),
             duration=DurationType.THIS_TURN,

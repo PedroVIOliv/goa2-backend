@@ -331,7 +331,10 @@ def test_invulnerability_does_not_duplicate_its_round_effect() -> None:
     push_steps(state, _effect_steps(state, spell))
     process_stack(state)
 
-    assert _effect_steps(state, spell) == []
+    # Recasting reuses the card's existing instance rather than stacking.
+    push_steps(state, _effect_steps(state, spell))
+    process_stack(state)
+
     assert len(state.active_effects) == 1
 
 
@@ -467,3 +470,26 @@ def test_polymorph_respects_swap_prevention() -> None:
     assert state.get_position(enemy.id) == Hex(q=2, r=0, s=-2)
     assert state.get_position(token.id) == Hex(q=3, r=0, s=-3)
     assert not any(event.event_type == GameEventType.UNITS_SWAPPED for event in result.events)
+
+
+@pytest.mark.effect_contract
+def test_a_copied_invulnerability_protects_the_copier_too() -> None:
+    """One instance per card is per caster: a copy is a separate instance.
+
+    Gydion's spells can be performed by another hero, and that hero needs their
+    own immunity — reusing the original caster's row would leave the copier
+    unprotected.
+    """
+    state, spell = _state("invulnerability")
+    push_steps(state, _effect_steps(state, spell))
+    process_stack(state)
+
+    copier = _add_hero(state, "hero_copier", TeamColor.RED, (1, 0, -1))
+    state.current_actor_id = copier.id
+    effect = CardEffectRegistry.get_for_card(spell)
+    assert effect is not None
+    push_steps(state, effect.get_steps(state, copier, spell))
+    process_stack(state)
+
+    protected = {e.source_id for e in state.active_effects}
+    assert protected == {"hero_caster", "hero_copier"}

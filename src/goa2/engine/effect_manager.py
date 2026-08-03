@@ -110,7 +110,9 @@ class EffectManager:
             if board_barrier_origin != str(barrier_origin):
                 kwargs["barrier_origin_id"] = board_barrier_origin
 
-        existing = EffectManager._find_existing_instance(state, source_card_id, effect_type, scope)
+        existing = EffectManager._find_existing_instance(
+            state, source_id, source_card_id, effect_type, scope
+        )
         if existing is not None:
             return existing
 
@@ -146,17 +148,22 @@ class EffectManager:
     @staticmethod
     def _find_existing_instance(
         state: GameState,
+        source_id: str,
         source_card_id: str | None,
         effect_type: EffectType,
         scope: EffectScope,
     ) -> ActiveEffect | None:
-        """The card's live instance of this effect, if it already has one.
+        """This source's live instance of this card effect, if it has one.
 
         Game rule: only one instance of an active effect per card can be
         active, and repeating an active effect does not duplicate it. Identity
-        is (card, effect_type, scope) — a card whose text needs several distinct
-        payloads (Brogan's Bulwark, Dodger's Enfeeblement) still gets one row
-        per payload, but performing that card again reuses them.
+        is (source, card, effect_type, scope) — a card whose text needs several
+        distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still gets
+        one row per payload, but performing that card again reuses them.
+
+        The source is part of the key because a card can be performed by someone
+        else (Gydion's spells, NebKher's Mind Grip): the copier needs their own
+        instance, not the original caster's.
 
         The match ignores ``is_active`` so a present-but-deactivated row still
         blocks a duplicate, and callers must treat a hit as a pure no-op: no
@@ -175,6 +182,7 @@ class EffectManager:
                 effect
                 for effect in state.active_effects
                 if effect.source_card_id == source_card_id
+                and effect.source_id == source_id
                 and effect.effect_type == effect_type
                 and effect.scope == scope
             ),
@@ -273,13 +281,28 @@ class EffectManager:
         payload must not run — per game rules a delayed trigger whose owner is
         gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
         physical leftovers (tokens) are reclaimed by the normal round-end sweep.
+
+        Effects created by this hero's *cards* end too, even when registered
+        against someone else. Hanu's Journey immunity names the displaced hero as
+        its source (that is how ``is_immune_to_actor`` identifies who it
+        protects), so the card link is the only thing tying it back to Hanu — and
+        a defeated Hanu must not keep protecting the hero he swapped with.
         """
+
+        def belongs_to_source(effect: ActiveEffect) -> bool:
+            if effect.source_id == source_id:
+                return True
+            return bool(
+                effect.source_card_id
+                and state.get_card_for_hero(source_id, effect.source_card_id) is not None
+            )
+
         affected_card_ids = {
             e.source_card_id
             for e in state.active_effects
-            if e.source_id == source_id and e.source_card_id
+            if belongs_to_source(e) and e.source_card_id
         }
-        state.active_effects = [e for e in state.active_effects if e.source_id != source_id]
+        state.active_effects = [e for e in state.active_effects if not belongs_to_source(e)]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
 

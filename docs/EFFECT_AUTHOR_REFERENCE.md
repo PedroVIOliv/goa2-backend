@@ -398,8 +398,10 @@ Formula: `bonus = max(0, count - subtract) * multiplier`
 
 Effects belong to the card whose text created them. `engine/effects.py`'s
 `bind_effect_cards` stamps `source_card_id` onto every `CreateEffectStep` your
-`build_steps` returns (including nested `steps_template` / `finishing_steps`),
-so leave the field unset — that is what makes a re-performance (Bullet Time,
+`build_steps` returns — and onto any other step declaring a `source_card_id`
+field, such as Hanu's `ScheduleJourneyReturnStep`, which creates its effects
+directly (including nested `steps_template` / `finishing_steps`) — so leave the
+field unset — that is what makes a re-performance (Bullet Time,
 Reload, Mind Grip) attribute the effect to the card being performed rather than
 the card that granted the re-performance.
 
@@ -407,10 +409,12 @@ Two consequences to write against:
 
 - **Repeats do not stack.** Per the rules, only one instance of an active effect
   per card can be active. `EffectManager.create_effect` reuses an existing row
-  matching `(source_card_id, effect_type, scope)` and returns it untouched — no
-  refreshed charges, no restarted duration. A card that needs several distinct
-  payloads (Brogan's Bulwark, Dodger's Enfeeblement) still emits one
-  `CreateEffectStep` per payload; those differ in type or scope, so they coexist.
+  matching `(source_id, source_card_id, effect_type, scope)` and returns it
+  untouched — no refreshed charges, no restarted duration. A card that needs
+  several distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still emits
+  one `CreateEffectStep` per payload; those differ in type or scope, so they
+  coexist. The source is in the key so a card performed by someone else (Gydion's
+  spells, Mind Grip) gives the copier their own instance.
 - **Token effects opt out.** `is_token_effect=True` skips binding entirely: the
   effect's lifecycle follows the token, and several identical tokens each get
   their own row.
