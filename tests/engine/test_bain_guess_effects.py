@@ -7,6 +7,7 @@ import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputResponse
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -20,6 +21,7 @@ from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.domain.views import _build_revealed_card_view, build_view
 from goa2.engine.handler import process_stack, push_steps
+from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.steps import ConfirmResolutionStep, FinalizeHeroTurnStep, ResolveCardStep
 
 # ---------------------------------------------------------------------------
@@ -812,16 +814,17 @@ class TestGuessRevealReachesClients:
         assert ctx.get("guess_correct") is None
         assert ctx.get("guess_wrong") is True
 
-    def test_reveal_freezes_rollback_on_correct_guess(self, board):
-        """Revealing the chosen card leaks hidden info, so the actor must not
-        be able to rollback to the guess prompt afterwards."""
+    @pytest.mark.parametrize("guessed_color", ["RED", "BLUE"])
+    def test_reveal_marks_reanchor_boundary(self, board, guessed_color):
+        """Reveal is a segment boundary (invalidates pre-reveal snapshot).
+        Same shape for correct or wrong guess."""
         from goa2.engine.steps import RevealAndResolveGuessStep
 
         card = _make_skill_card("test", "Test", "a_game_of_chance")
         state = _build_state(board, card, [])
         ctx = state.execution_context
         ctx["chosen_card"] = "e_red"
-        ctx["guessed_color"] = "RED"
+        ctx["guessed_color"] = guessed_color
         ctx["guess_victim"] = "hero_enemy"
 
         enemy = state.get_hero(HeroID("hero_enemy"))
@@ -841,36 +844,8 @@ class TestGuessRevealReachesClients:
         )
 
         _ = process_stack(state).input_request
-        assert ctx.get("rollback_frozen") is True
-
-    def test_reveal_freezes_rollback_on_wrong_guess(self, board):
-        from goa2.engine.steps import RevealAndResolveGuessStep
-
-        card = _make_skill_card("test", "Test", "a_game_of_chance")
-        state = _build_state(board, card, [])
-        ctx = state.execution_context
-        ctx["chosen_card"] = "e_red"
-        ctx["guessed_color"] = "BLUE"
-        ctx["guess_victim"] = "hero_enemy"
-
-        enemy = state.get_hero(HeroID("hero_enemy"))
-        enemy.hand = [_make_filler_card("e_red", color=CardColor.RED)]
-
-        push_steps(
-            state,
-            [
-                RevealAndResolveGuessStep(
-                    card_key="chosen_card",
-                    guess_key="guessed_color",
-                    victim_key="guess_victim",
-                    correct_output_key="guess_correct",
-                    wrong_output_key="guess_wrong",
-                ),
-            ],
-        )
-
-        _ = process_stack(state).input_request
-        assert ctx.get("rollback_frozen") is True
+        assert ctx.get("rollback_reanchor_pending") is True
+        assert ctx.get("rollback_frozen") is not True
 
     def test_noop_reveal_does_not_freeze_rollback(self, board):
         """If nothing was revealed (no chosen card in context), rollback must
@@ -897,6 +872,7 @@ class TestGuessRevealReachesClients:
 
         _ = process_stack(state).input_request
         assert ctx.get("rollback_frozen") is not True
+        assert ctx.get("rollback_reanchor_pending") is not True
 
 
 # ===========================================================================
@@ -1175,3 +1151,106 @@ class TestWereNotDoneYet:
         assert any(c.id == "e_blue" for c in enemy.discard_pile)
         bain = state.get_hero(HeroID("hero_bain"))
         assert bain.gold == 0  # No coins on correct repeat
+
+
+# ===========================================================================
+# Card-color reveal is a segment boundary, not a hard freeze
+# ===========================================================================
+
+
+def _respond(session, result, selection):
+    return session.advance(InputResponse(request_id=result.input_request.id, selection=selection))
+
+
+class TestBainRevealPartialRollback:
+    """Guess-card-color reveal is a segment boundary. WNDY's repeat-vs-coins
+    prompt re-anchors; A Game of Chance / Dead Man's Hand have no post-reveal
+    choice so confirm auto-completes."""
+
+    @staticmethod
+    def _push_full_flow(state):
+        push_steps(
+            state,
+            [
+                ResolveCardStep(hero_id="hero_bain"),
+                ConfirmResolutionStep(hero_id="hero_bain"),
+            ],
+        )
+
+    @staticmethod
+    def _drive_to_reveal(session, guess):
+        """CHOOSE_ACTION → SKILL → target enemy → enemy picks e_red → guess.
+        Returns the SessionResult after the reveal fires."""
+        res = session.advance()
+        res = _respond(session, res, "SKILL")
+        res = _respond(session, res, "hero_enemy")
+        res = _respond(session, res, "e_red")
+        return _respond(session, res, guess)
+
+    def test_wrong_guess_repeat_vs_coins_reanchors_and_rollback_preserves_reveal(self, board):
+        """WNDY wrong guess → SELECT_NUMBER(repeat|coins) re-anchors; rollback
+        from confirm returns to that choice, preserving the reveal."""
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card(
+            "were_not_done_yet",
+            "We're Not Done Yet!",
+            "were_not_done_yet",
+            tier=CardTier.III,
+            radius=3,
+        )
+        state = _build_state(board, card, enemy_hand)
+        self._push_full_flow(state)
+        session = GameSession(state)
+
+        res = self._drive_to_reveal(session, "BLUE")
+        assert res.input_request["type"] == "SELECT_NUMBER"
+        assert res.input_request.player_id == "hero_bain"
+        assert state.execution_context.get("rollback_frozen") is not True
+        assert state.execution_context.get("guess_wrong") is True
+        assert res.input_request.can_rollback is True
+        bain = state.get_hero(HeroID("hero_bain"))
+        assert bain.gold == 0
+
+        # Choose coins (2); confirm inherits the anchor.
+        res = _respond(session, res, 2)
+        assert bain.gold == 2
+        assert res.input_request.can_rollback is True
+
+        # Rollback returns to SELECT_NUMBER; reveal preserved, coins refunded.
+        res_rb = session.rollback()
+        assert res_rb.input_request["type"] == "SELECT_NUMBER"
+        assert res_rb.input_request.can_rollback is True
+        assert session.state.execution_context.get("guess_wrong") is True
+        assert session.state.get_hero(HeroID("hero_bain")).gold == 0
+
+    @pytest.mark.parametrize(
+        "card_id,card_name,card_kwargs",
+        [
+            ("a_game_of_chance", "A Game of Chance", {}),
+            ("dead_mans_hand", "Dead Man's Hand", {"tier": CardTier.II, "radius": 3}),
+        ],
+    )
+    def test_no_post_reveal_choice_auto_completes_confirm(
+        self, board, card_id, card_name, card_kwargs
+    ):
+        """A Game of Chance / Dead Man's Hand: no post-reveal actionable
+        choice → confirm auto-completes silently, rollback rejects."""
+        enemy_hand = [
+            _make_filler_card("e_red", color=CardColor.RED),
+            _make_filler_card("e_blue", color=CardColor.BLUE),
+        ]
+        card = _make_skill_card(card_id, card_name, card_id, **card_kwargs)
+        state = _build_state(board, card, enemy_hand)
+        self._push_full_flow(state)
+        session = GameSession(state)
+
+        res = self._drive_to_reveal(session, "BLUE")
+
+        assert res.input_request is None
+        assert res.result_type == SessionResultType.ACTION_COMPLETE
+        assert state.execution_context.get("rollback_frozen") is not True
+        with pytest.raises(ValueError, match="No rollback snapshot"):
+            session.rollback()

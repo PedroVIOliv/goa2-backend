@@ -96,16 +96,9 @@ def load_game(file_path: str) -> dict[str, Any]:
     if state.execution_stack:
         stack_result = process_stack(state)
         if stack_result.input_request:
-            # process_stack re-emits the request with can_rollback defaulted to
-            # False; re-assert it when the restored snapshot belongs to the
-            # actor the request targets (mirrors GameSession._manage_rollback).
-            actor_id = str(state.current_actor_id) if state.current_actor_id is not None else None
-            if (
-                session._rollback_snapshot is not None
-                and actor_id is not None
-                and stack_result.input_request.player_id == actor_id
-            ):
-                stack_result.input_request.can_rollback = True
+            # Delegate can_rollback re-assertion to the session so this path
+            # can't drift from GameSession._manage_rollback.
+            session.reapply_rollback_flag(stack_result.input_request)
         last_result = session._build_result(stack_result.input_request, events=stack_result.events)
     elif state.phase == GamePhase.GAME_OVER:
         # Completed games have an empty execution stack, but clients still
