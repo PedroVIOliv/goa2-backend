@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from goa2.domain.events import GameEvent, GameEventType
+from goa2.domain.hex import Hex
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
 from goa2.domain.types import HeroID
@@ -34,6 +37,9 @@ from goa2.server.visibility import events_for_viewer, input_request_for_viewer
 
 router = APIRouter()
 
+PING_MIN_INTERVAL_SECONDS = 0.45
+PING_CARD_ZONES = frozenset({"CURRENT", "EXTRA", "PLAYED", "DISCARD", "ULTIMATE", "CAST"})
+
 MUTATION_MESSAGE_TYPES = frozenset(
     {
         "SUBMIT_INPUT",
@@ -47,7 +53,99 @@ MUTATION_MESSAGE_TYPES = frozenset(
     }
 )
 
-CapturedBroadcast = list[tuple[str, WebSocket, dict[str, Any]]]
+CapturedBroadcast = list[tuple[str | None, WebSocket, dict[str, Any]]]
+
+
+def _normalize_ping_target(game: ManagedGame, data: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalize an ephemeral table-ping target.
+
+    Card pings deliberately use a public table location rather than a card ID.
+    A facedown committed card can therefore be pointed at without revealing its
+    private identity to opponents or spectators.
+    """
+    target = data.get("target")
+    if not isinstance(target, dict):
+        raise ValueError("PING target must be an object")
+
+    kind = target.get("kind")
+    state = game.session.state
+    if kind == "HEX":
+        raw_hex = target.get("hex")
+        if not isinstance(raw_hex, dict):
+            raise ValueError("PING hex target must include hex coordinates")
+        q = raw_hex.get("q")
+        r = raw_hex.get("r")
+        s = raw_hex.get("s")
+        if type(q) is not int or type(r) is not int or type(s) is not int:
+            raise ValueError("PING hex coordinates must be integers")
+        ping_hex = Hex(q=q, r=r, s=s)
+        if ping_hex not in state.board.tiles:
+            raise ValueError("PING hex is not on the board")
+        return {
+            "kind": "HEX",
+            "hex": {"q": ping_hex.q, "r": ping_hex.r, "s": ping_hex.s},
+        }
+
+    if kind != "CARD":
+        raise ValueError("PING target kind must be HEX or CARD")
+
+    hero_id = target.get("hero_id")
+    zone = target.get("zone")
+    if not isinstance(hero_id, str) or not hero_id or len(hero_id) > 100:
+        raise ValueError("PING card target must include a valid hero_id")
+    if zone not in PING_CARD_ZONES:
+        raise ValueError("PING card target has an invalid zone")
+
+    hero = state.get_hero(HeroID(hero_id))
+    if hero is None:
+        raise ValueError("PING card target hero was not found")
+
+    normalized: dict[str, Any] = {
+        "kind": "CARD",
+        "hero_id": str(hero.id),
+        "zone": zone,
+    }
+    if zone == "CURRENT":
+        exists = hero.current_turn_card is not None
+    elif zone == "EXTRA":
+        extra_card = hero.extra_turn_card
+        if state.phase == GamePhase.PLANNING and hero.id in state.pending_second_cards:
+            extra_card = state.pending_inputs.get(hero.id)
+        exists = extra_card is not None
+    elif zone == "ULTIMATE":
+        exists = hero.ultimate_card is not None and hero.level >= 8
+    else:
+        index = target.get("index")
+        if type(index) is not int or index < 0:
+            raise ValueError("PING card target zone requires a non-negative index")
+        normalized["index"] = index
+        if zone == "PLAYED":
+            exists = index < len(hero.played_cards) and hero.played_cards[index] is not None
+        elif zone == "DISCARD":
+            exists = index < len(hero.discard_pile)
+        else:  # CAST
+            exists = index < len(hero.cast_spells)
+
+    if not exists:
+        raise ValueError("PING card target is not currently on the table")
+    return normalized
+
+
+def _capture_ping(game: ManagedGame, hero_id: str, target: dict[str, Any]) -> CapturedBroadcast:
+    """Capture one immutable ping broadcast for every current connection."""
+    message = {
+        "type": "PING",
+        "ping_id": uuid4().hex,
+        "hero_id": hero_id,
+        "target": target,
+    }
+    messages: CapturedBroadcast = [
+        (token, ws, dict(message)) for token, ws in list(game.ws_connections.items())
+    ]
+    messages.extend(
+        (None, ws, dict(message)) for ws in list(game.spectator_ws_connections.values())
+    )
+    return messages
 
 
 def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
@@ -93,6 +191,11 @@ def _capture_broadcast(
         if events:
             msg["events"] = events_for_viewer(events, game.session.state, hero_id)
         messages.append((token, ws, msg))
+    for ws in list(game.spectator_ws_connections.values()):
+        msg = _build_state_update(game, None)
+        if events:
+            msg["events"] = events_for_viewer(events, game.session.state, None)
+        messages.append((None, ws, msg))
     return messages
 
 
@@ -101,15 +204,21 @@ async def _send_captured_broadcast(
     messages: CapturedBroadcast,
 ) -> None:
     """Send already-materialized payloads and prune failed connections."""
-    dead_connections: list[tuple[str, WebSocket]] = []
+    dead_connections: list[tuple[str | None, WebSocket]] = []
     for token, ws, msg in messages:
         if not await _send_json(ws, msg):
             dead_connections.append((token, ws))
     for token, ws in dead_connections:
-        # A reconnect may have replaced this failed socket while the broadcast
-        # was awaiting I/O. Never remove the newer connection by token alone.
-        if game.ws_connections.get(token) is ws:
-            game.ws_connections.pop(token, None)
+        if token is None:
+            connection_id = id(ws)
+            if game.spectator_ws_connections.get(connection_id) is ws:
+                game.spectator_ws_connections.pop(connection_id, None)
+        else:
+            # A reconnect may have replaced this failed player socket while the
+            # broadcast was awaiting I/O. Never remove the newer connection by
+            # token alone.
+            if game.ws_connections.get(token) is ws:
+                game.ws_connections.pop(token, None)
 
 
 async def broadcast(
@@ -469,13 +578,19 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
 
     await websocket.accept()
 
-    # A player token owns one live connection. Register the new socket before
-    # closing its predecessor so the old handler's cleanup cannot leave a gap;
-    # identity-safe cleanup below ensures it cannot remove this replacement.
+    spectator_connection_id = id(websocket)
+
+    # Player tokens own one live connection; the shared spectator token may
+    # own any number of sockets. Register a replacement player socket before
+    # closing its predecessor so the old handler's cleanup cannot leave a gap.
     async with game.outbound_lock:
         async with game.lock:
-            previous_websocket = game.ws_connections.get(token)
-            game.ws_connections[token] = websocket
+            previous_websocket = None
+            if is_spectator:
+                game.spectator_ws_connections[spectator_connection_id] = websocket
+            else:
+                previous_websocket = game.ws_connections.get(token)
+                game.ws_connections[token] = websocket
             initial = _build_state_update(game, hero_id if not is_spectator else None)
         if previous_websocket is not None and previous_websocket is not websocket:
             await previous_websocket.close(
@@ -487,6 +602,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     if game.game_logger:
         game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
 
+    last_ping_at = 0.0
     try:
         while True:
             raw = await websocket.receive_text()
@@ -505,6 +621,25 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     await websocket.send_json(
                         {"type": "ERROR", "detail": "Spectators can only GET_VIEW"}
                     )
+                continue
+
+            # Table pings are authenticated, ordered ephemeral messages. They
+            # do not mutate the game and therefore never touch clocks, saves,
+            # replays, logs, SessionResult, or STATE_UPDATE broadcasts.
+            if msg_type == "PING":
+                ping_at = time.monotonic()
+                if ping_at - last_ping_at < PING_MIN_INTERVAL_SECONDS:
+                    continue
+                last_ping_at = ping_at
+                try:
+                    async with game.outbound_lock:
+                        async with game.lock:
+                            target = _normalize_ping_target(game, data)
+                            ping_messages = _capture_ping(game, hero_id, target)
+                        await _send_captured_broadcast(game, ping_messages)
+                except ValueError as exc:
+                    async with game.outbound_lock:
+                        await websocket.send_json({"type": "ERROR", "detail": str(exc)})
                 continue
 
             try:
@@ -615,9 +750,13 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        # The same token may already belong to a newer reconnect. Only remove
-        # this handler's socket, never the replacement.
-        if game.ws_connections.get(token) is websocket:
-            game.ws_connections.pop(token, None)
+        if is_spectator:
+            if game.spectator_ws_connections.get(spectator_connection_id) is websocket:
+                game.spectator_ws_connections.pop(spectator_connection_id, None)
+        else:
+            # The same player token may already belong to a newer reconnect.
+            # Only remove this handler's socket, never the replacement.
+            if game.ws_connections.get(token) is websocket:
+                game.ws_connections.pop(token, None)
         if game.game_logger:
             game.game_logger.log_ws_disconnect(hero_id if not is_spectator else None, is_spectator)

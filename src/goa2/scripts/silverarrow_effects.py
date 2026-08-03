@@ -285,7 +285,7 @@ def _sentinel_finishing_steps(hero_id: str, radius: int, defeat_on_fail: bool) -
             target_type=TargetType.UNIT,
             prompt="End of turn — select an enemy hero in radius",
             output_key="sentinel_victim",
-            is_mandatory=True,
+            is_mandatory=False,
             filters=[
                 UnitTypeFilter(unit_type="HERO"),
                 TeamFilter(relation="ENEMY"),
@@ -361,12 +361,13 @@ def _drag_and_dance_steps(hero_id: str, max_drag_distance: int) -> list[GameStep
     6. Self-move in a straight line up to that distance (effect-side nudge).
     """
     return [
-        # 1. Select adjacent enemy
+        # 1. Select adjacent enemy — "Move an enemy unit adjacent to you" is
+        #    imperative, so neither the unit nor its destination is skippable
+        #    (matches Disorient, which shares the wording).
         SelectStep(
             target_type=TargetType.UNIT,
             prompt="Select an adjacent enemy unit to move",
             output_key="drag_target",
-            is_mandatory=False,
             filters=[
                 TeamFilter(relation="ENEMY"),
                 RangeFilter(max_range=1),
@@ -383,7 +384,6 @@ def _drag_and_dance_steps(hero_id: str, max_drag_distance: int) -> list[GameStep
             target_type=TargetType.HEX,
             prompt="Select destination for the enemy unit",
             output_key="drag_dest",
-            is_mandatory=False,
             active_if_key="drag_target",
             filters=[
                 RangeFilter(
@@ -538,6 +538,10 @@ class _GiftRetrieveEffect(CardEffect):
     """
     "A hero in radius may retrieve a discarded card;
     if they do, that hero gains N coins."
+
+    "A hero" is unqualified: enemy heroes are legal recipients too. Only
+    Silverarrow herself is excluded, per the standing "a hero excludes the
+    actor unless stated" convention (SelectStep adds that filter itself).
     """
 
     coins: int = 0
@@ -550,16 +554,13 @@ class _GiftRetrieveEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Select a friendly hero in radius (the gift is a benefit, so it
-            #    cannot be given to an enemy hero)
+            # 1. Select any hero in radius — friendly or enemy
             SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select a friendly hero in radius to gift a card retrieval",
+                prompt="Select a hero in radius to gift a card retrieval",
                 output_key="gift_hero",
-                is_mandatory=False,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
-                    TeamFilter(relation="FRIENDLY"),
                     RangeFilter(max_range=stats.radius or 0),
                 ],
             ),
@@ -705,10 +706,12 @@ class WildHuntEffect(CardEffect):
                 output_key="wild_hunt_dest",
                 is_mandatory=False,
                 filters=[
-                    RangeFilter(max_range=2, origin_id=hero_id),
+                    # "move 2 spaces", not "up to 2": exactly 2, and never the
+                    # hex Silverarrow already stands on.
+                    RangeFilter(min_range=2, max_range=2, origin_id=hero_id),
                     InStraightLineFilter(origin_id=hero_id),
                     StraightLinePathFilter(origin_id=hero_id),
-                    ObstacleFilter(is_obstacle=False, exclude_id=hero_id),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             MoveUnitStep(

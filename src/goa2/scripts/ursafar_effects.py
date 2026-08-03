@@ -67,12 +67,11 @@ def _has_ultimate(hero: Hero) -> bool:
     return hero.ultimate_card is not None and hero.level >= 8
 
 
-def is_enraged(hero: Hero, current_card: Card) -> bool:
+def is_enraged(hero: Hero) -> bool:
     """Check if this hero is currently enraged.
 
     A hero is enraged if:
-    - Any previously played card this round has is_active=True
-      (excluding the current card being resolved)
+    - Any of their played cards this round has is_active=True
     - OR the ultimate card is in passive play
     """
     if _has_ultimate(hero):
@@ -112,7 +111,7 @@ class ColdIreEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        bonus = 1 if is_enraged(hero, card) else 0
+        bonus = 1 if is_enraged(hero) else 0
         return [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value + bonus),
             _enraged_effect_step(),
@@ -128,7 +127,7 @@ class EyesOfFlameEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        bonus = 2 if is_enraged(hero, card) else 0
+        bonus = 2 if is_enraged(hero) else 0
         return [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value + bonus),
             _enraged_effect_step(),
@@ -149,7 +148,7 @@ class RipEffect(CardEffect):
         steps: list[GameStep] = [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SetContextFlagStep(key="self_hero", value=hero.id),
@@ -169,14 +168,14 @@ class SniffOutEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        if not is_enraged(hero, card):
+        if not is_enraged(hero):
             return []
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy hero in range to discard a card",
                 output_key="victim_id",
-                is_mandatory=True,
+                is_mandatory=False,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
@@ -206,14 +205,14 @@ class ApexPredatorEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        if not is_enraged(hero, card):
+        if not is_enraged(hero):
             return []
         return [
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select an enemy hero in range",
                 output_key="victim_id",
-                is_mandatory=True,
+                is_mandatory=False,
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
@@ -244,7 +243,7 @@ class PreyDriveEffect(CardEffect):
         steps: list[GameStep] = [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     CheckUnitOnBoardStep(
@@ -298,7 +297,7 @@ class FeedingFrenzyEffect(CardEffect):
         steps: list[GameStep] = [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     CheckUnitOnBoardStep(
@@ -350,7 +349,7 @@ class ProwlingBruteEffect(CardEffect):
         steps: list[GameStep] = [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SelectStep(
@@ -383,7 +382,7 @@ class RampagingBeastEffect(CardEffect):
         steps: list[GameStep] = [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SelectStep(
@@ -422,7 +421,7 @@ class UnstoppableForceEffect(CardEffect):
         steps: list[GameStep] = [
             MoveSequenceStep(unit_id=hero.id, range_val=stats.primary_value),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SelectStep(
@@ -464,7 +463,7 @@ class ClawsThatCatchEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         steps: list[GameStep] = []
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SelectStep(
@@ -514,7 +513,7 @@ class TearEffect(CardEffect):
         steps: list[GameStep] = [
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             steps.extend(
                 [
                     SetContextFlagStep(key="self_hero", value=hero.id),
@@ -583,7 +582,7 @@ class AngryRoarEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         steps: list[GameStep] = []
-        if is_enraged(hero, card):
+        if is_enraged(hero):
             valid_card_ids = self._get_active_effect_card_ids(state, hero, card)
             if valid_card_ids:
                 steps.extend(
@@ -618,7 +617,7 @@ class InstinctiveReactionEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        if not is_enraged(hero, card):
+        if not is_enraged(hero):
             return []
         return [
             SelectStep(
@@ -685,28 +684,75 @@ class EvolutionaryResponseEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        if not is_enraged(hero, card):
+        if not is_enraged(hero):
             return []
+
+        # "Choose one, or both" leaves the order to the player: performing a
+        # discarded card's primary action can change what is in the discard,
+        # so retrieve-then-perform is a materially different line from
+        # perform-then-retrieve. Both orders are offered explicitly.
+        def _retrieve_steps(slot: str, gate: str) -> list[GameStep]:
+            card_key = f"er_retrieve_card_{slot}"
+            return [
+                SelectStep(
+                    target_type=TargetType.CARD,
+                    card_container=CardContainerType.DISCARD,
+                    prompt="Select a discarded card to retrieve.",
+                    output_key=card_key,
+                    is_mandatory=False,
+                    active_if_key=gate,
+                ),
+                RetrieveCardStep(card_key=card_key, active_if_key=card_key),
+            ]
+
         return [
             SelectStep(
                 target_type=TargetType.NUMBER,
                 prompt="Choose one, or both",
                 output_key="er_choice",
-                number_options=[1, 2, 3],
+                number_options=[1, 2, 3, 4],
                 number_labels={
                     1: "Perform the primary action of a discarded card",
                     2: "Retrieve a discarded card",
-                    3: "Both",
+                    3: "Both — perform first, then retrieve",
+                    4: "Both — retrieve first, then perform",
                 },
                 is_mandatory=True,
             ),
-            # Branch 1 / Branch 3 part A: Perform primary action
+            # Perform on 1, 3 and 4 (i.e. everything except retrieve-only).
             CheckContextConditionStep(
                 input_key="er_choice",
                 operator="!=",
                 threshold=2,
                 output_key="do_perform",
             ),
+            # Retrieve before the perform only on 4.
+            CheckContextConditionStep(
+                input_key="er_choice",
+                operator="==",
+                threshold=4,
+                output_key="er_retrieve_first",
+            ),
+            # Retrieve after the perform on 2 and 3 (2 <= choice <= 3).
+            CheckContextConditionStep(
+                input_key="er_choice",
+                operator=">=",
+                threshold=2,
+                output_key="_er_ge_2",
+            ),
+            CheckContextConditionStep(
+                input_key="er_choice",
+                operator="<=",
+                threshold=3,
+                output_key="_er_le_3",
+            ),
+            CombineBooleanContextStep(
+                key_a="_er_ge_2",
+                key_b="_er_le_3",
+                output_key="er_retrieve_last",
+                operation="AND",
+            ),
+            *_retrieve_steps("first", "er_retrieve_first"),
             SelectStep(
                 target_type=TargetType.CARD,
                 card_container=CardContainerType.DISCARD,
@@ -720,25 +766,7 @@ class EvolutionaryResponseEffect(CardEffect):
                 hero_id=hero.id,
                 active_if_key="do_perform",
             ),
-            # Branch 2 / Branch 3 part B: Retrieve
-            CheckContextConditionStep(
-                input_key="er_choice",
-                operator="!=",
-                threshold=1,
-                output_key="do_retrieve",
-            ),
-            SelectStep(
-                target_type=TargetType.CARD,
-                card_container=CardContainerType.DISCARD,
-                prompt="Select a discarded card to retrieve.",
-                output_key="retrieve_card",
-                is_mandatory=False,
-                active_if_key="do_retrieve",
-            ),
-            RetrieveCardStep(
-                card_key="retrieve_card",
-                active_if_key="retrieve_card",
-            ),
+            *_retrieve_steps("last", "er_retrieve_last"),
         ]
 
 

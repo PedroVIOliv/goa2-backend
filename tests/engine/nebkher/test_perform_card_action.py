@@ -31,17 +31,25 @@ from goa2.domain.models import (
     TeamColor,
     TokenType,
 )
+from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
 from goa2.domain.models.enums import StatType
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.handler import process_stack, push_steps, submit_input
 from goa2.engine.setup import GameSetup
-from goa2.engine.steps import PerformCardActionStep, PlaceMarkerStep, PlaceTokenStep
+from goa2.engine.steps import (
+    CreateEffectStep,
+    PerformCardActionStep,
+    PlaceMarkerStep,
+    PlaceTokenStep,
+)
 from goa2.engine.steps.utility import SetContextFlagStep
 
 TOKEN_EFFECT_ID = "test_pca_token_effect"
 MARKER_EFFECT_ID = "test_pca_marker_effect"
+BOUND_EFFECT_ID = "test_pca_token_bound_effect"
+IMMUNE_TOKEN_EFFECT_ID = "test_pca_immune_token_effect"
 
 
 @register_effect(TOKEN_EFFECT_ID)
@@ -50,6 +58,42 @@ class _TokenPlacingEffect(CardEffect):
 
     def build_steps(self, state, hero, card, stats):
         return [PlaceTokenStep(token_type=TokenType.TREE, hex_key="pca_tree_hex")]
+
+
+@register_effect(BOUND_EFFECT_ID)
+class _TokenBoundEffect(CardEffect):
+    """Places a token and anchors an ongoing effect to it (Smoke Bomb shape)."""
+
+    def build_steps(self, state, hero, card, stats):
+        return [
+            PlaceTokenStep(
+                token_type=TokenType.TREE,
+                hex_key="pca_tree_hex",
+                output_key="pca_bound_token",
+            ),
+            CreateEffectStep(
+                effect_type=EffectType.LOS_BLOCKER,
+                scope=EffectScope(shape=Shape.POINT),
+                origin_id_key="pca_bound_token",
+                is_token_effect=True,
+                duration=DurationType.PASSIVE,
+            ),
+        ]
+
+
+@register_effect(IMMUNE_TOKEN_EFFECT_ID)
+class _ImmuneTokenPlacingEffect(CardEffect):
+    """Places a token immune to enemy actions (Tali's Totem shape)."""
+
+    def build_steps(self, state, hero, card, stats):
+        return [
+            PlaceTokenStep(
+                token_type=TokenType.TREE,
+                hex_key="pca_tree_hex",
+                output_key="pca_bound_token",
+                is_immune_to_enemy_actions=True,
+            )
+        ]
 
 
 @register_effect(MARKER_EFFECT_ID)
@@ -249,6 +293,65 @@ def test_skip_markers_skips_marker_and_continues() -> None:
 
     assert state.markers.get(MarkerType.VENOM) is None
     assert state.execution_context.get("pca_after_marker") is True
+
+
+def _run_token_card(state: GameState, effect_id: str, card_id: str, **step_kwargs) -> None:
+    """Resolve a token-placing card's primary through PerformCardActionStep."""
+    state.execution_context["pca_tree_hex"] = Hex(q=1, r=1, s=-2)
+    card = _card(card_id, primary=ActionType.SKILL, primary_value=None, effect_id=effect_id)
+    _run_perform(state, card, **step_kwargs)
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
+    process_stack(state)
+
+
+def _placed_token(state: GameState):
+    tile = state.board.get_tile(Hex(q=1, r=1, s=-2))
+    assert tile is not None and tile.occupant_id is not None
+    return state.get_entity(tile.occupant_id)
+
+
+def test_token_bound_effect_dropped_when_tokens_are_substituted() -> None:
+    """Mind Grip substitutes Illusions for placed tokens; an ongoing effect
+    anchored to the original token (Smoke Bomb's LOS blocker, Tali's Ice aura,
+    the Totem's minion protection) has no referent and must not be created."""
+    state = _state()
+    _run_token_card(
+        state, BOUND_EFFECT_ID, "enemy_bound_card", token_type_override=TokenType.ILLUSION
+    )
+
+    assert _placed_token(state).token_type == TokenType.ILLUSION
+    assert [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER] == []
+
+
+def test_token_bound_effect_still_created_without_substitution() -> None:
+    state = _state()
+    _run_token_card(state, BOUND_EFFECT_ID, "enemy_bound_card2")
+
+    token = _placed_token(state)
+    assert token.token_type == TokenType.TREE
+    los = [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER]
+    assert len(los) == 1
+    assert los[0].scope.origin_id == str(token.id)
+
+
+def test_substituted_token_is_not_immune_to_enemy_actions() -> None:
+    """A copied Totem places a plain Illusion, not one carrying the Totem's
+    immunity."""
+    state = _state()
+    _run_token_card(
+        state, IMMUNE_TOKEN_EFFECT_ID, "enemy_immune_card", token_type_override=TokenType.ILLUSION
+    )
+
+    token = _placed_token(state)
+    assert token.token_type == TokenType.ILLUSION
+    assert token.is_immune_to_enemy_actions is False
+
+
+def test_token_immunity_preserved_without_substitution() -> None:
+    state = _state()
+    _run_token_card(state, IMMUNE_TOKEN_EFFECT_ID, "enemy_immune_card2")
+
+    assert _placed_token(state).is_immune_to_enemy_actions is True
 
 
 def test_markers_still_given_without_skip() -> None:

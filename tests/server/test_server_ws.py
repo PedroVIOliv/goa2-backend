@@ -141,6 +141,33 @@ def test_new_connection_supersedes_old_connection(client, game_data):
             assert new_ws.receive_json()["type"] == "STATE_UPDATE"
 
 
+def test_shared_spectator_token_supports_multiple_live_connections(client, game_data):
+    game_id = game_data["game_id"]
+    player_token = _token_for(game_data, "hero_arien")
+    spectator_token = game_data["spectator_token"]
+
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={player_token}") as player_ws,
+        client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as spectator_one,
+        client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as spectator_two,
+    ):
+        player_view = player_ws.receive_json()
+        spectator_one.receive_json()
+        spectator_two.receive_json()
+        arien = next(
+            hero
+            for team in player_view["view"]["teams"].values()
+            for hero in team["heroes"]
+            if hero["id"] == "hero_arien"
+        )
+
+        player_ws.send_json({"type": "COMMIT_CARD", "card_id": arien["hand"][0]["id"]})
+        assert player_ws.receive_json()["type"] == "ACTION_RESULT"
+        assert player_ws.receive_json()["type"] == "STATE_UPDATE"
+        assert spectator_one.receive_json()["type"] == "STATE_UPDATE"
+        assert spectator_two.receive_json()["type"] == "STATE_UPDATE"
+
+
 # ---- GET_VIEW ----
 
 
@@ -152,6 +179,100 @@ def test_ws_get_view(client, game_data):
         ws.send_json({"type": "GET_VIEW"})
         msg = ws.receive_json()
         assert msg["type"] == "STATE_UPDATE"
+
+
+# ---- Ephemeral table pings ----
+
+
+def test_ws_ping_broadcasts_authenticated_identity_to_players_and_spectators(client, game_data):
+    game_id = game_data["game_id"]
+    arien_token = _token_for(game_data, "hero_arien")
+    wasp_token = _token_for(game_data, "hero_wasp")
+    spectator_token = game_data["spectator_token"]
+
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws_a,
+        client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws_w,
+        client.websocket_connect(f"/games/{game_id}/ws?token={spectator_token}") as ws_s,
+    ):
+        initial = ws_a.receive_json()
+        ws_w.receive_json()
+        ws_s.receive_json()
+        ping_hex = next(iter(initial["view"]["board"]["tiles"].values()))["hex"]
+
+        # Clients cannot spoof who pinged; identity comes from the token.
+        ws_a.send_json(
+            {
+                "type": "PING",
+                "hero_id": "hero_wasp",
+                "target": {"kind": "HEX", "hex": ping_hex},
+            }
+        )
+
+        messages = [ws_a.receive_json(), ws_w.receive_json(), ws_s.receive_json()]
+        assert all(message["type"] == "PING" for message in messages)
+        assert all(message["hero_id"] == "hero_arien" for message in messages)
+        assert all(message["target"] == {"kind": "HEX", "hex": ping_hex} for message in messages)
+        assert len({message["ping_id"] for message in messages}) == 1
+
+
+def test_ws_ping_card_uses_public_table_location_without_card_identity(client, game_data):
+    game_id = game_data["game_id"]
+    arien_token = _token_for(game_data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
+        initial = ws.receive_json()
+        arien = next(
+            hero
+            for team in initial["view"]["teams"].values()
+            for hero in team["heroes"]
+            if hero["id"] == "hero_arien"
+        )
+        ws.send_json({"type": "COMMIT_CARD", "card_id": arien["hand"][0]["id"]})
+        assert ws.receive_json()["type"] == "ACTION_RESULT"
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+
+        ws.send_json(
+            {
+                "type": "PING",
+                "target": {
+                    "kind": "CARD",
+                    "hero_id": "hero_arien",
+                    "zone": "CURRENT",
+                    # Even if a hostile client supplies it, the server strips it.
+                    "card_id": arien["hand"][0]["id"],
+                },
+            }
+        )
+        message = ws.receive_json()
+
+        assert message["type"] == "PING"
+        assert message["target"] == {
+            "kind": "CARD",
+            "hero_id": "hero_arien",
+            "zone": "CURRENT",
+        }
+
+
+@pytest.mark.parametrize(
+    "target, detail",
+    [
+        ({"kind": "HEX", "hex": {"q": 999, "r": -999, "s": 0}}, "not on the board"),
+        (
+            {"kind": "CARD", "hero_id": "hero_arien", "zone": "DISCARD", "index": 0},
+            "not currently on the table",
+        ),
+    ],
+)
+def test_ws_ping_rejects_targets_that_are_not_on_the_table(client, game_data, target, detail):
+    token = _token_for(game_data, "hero_arien")
+    game_id = game_data["game_id"]
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "PING", "target": target})
+        message = ws.receive_json()
+        assert message["type"] == "ERROR"
+        assert detail in message["detail"]
 
 
 # ---- Invalid JSON ----
@@ -476,15 +597,16 @@ def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_dat
     sockets = {
         _token_for(game_data, "hero_arien"): RecordingSocket(),
         _token_for(game_data, "hero_wasp"): RecordingSocket(),
-        game_data["spectator_token"]: RecordingSocket(),
     }
+    spectator_socket = RecordingSocket()
     game.ws_connections = sockets
+    game.spectator_ws_connections = {id(spectator_socket): spectator_socket}
 
     asyncio.run(broadcast(game, client.app.state.registry, events=[event]))
 
     arien_event = sockets[_token_for(game_data, "hero_arien")].message["events"][0]
     wasp_event = sockets[_token_for(game_data, "hero_wasp")].message["events"][0]
-    spectator_event = sockets[game_data["spectator_token"]].message["events"][0]
+    spectator_event = spectator_socket.message["events"][0]
     assert arien_event["metadata"]["token_type"] == "mine_blast"
     assert wasp_event["metadata"]["token_type"] == "mine"
     assert spectator_event["metadata"]["token_type"] == "mine"

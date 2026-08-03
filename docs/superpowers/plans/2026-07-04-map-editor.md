@@ -259,7 +259,7 @@ Interaction (all listeners on the `<svg>` root — event delegation):
 
 - [x] **Step 3: Zones panel + paint/erase tools**
 
-- "Add zone" → `{id: `zone_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, label: "Zone N", color: <next of 10-color palette>}`.
+- "Add zone" → `{id: `zone_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, label: "Zone N", color: <next of 10-color palette>}`. The generated id is internal; export uses the zone label as both `id` and `label`.
 - Each zone row: color swatch (native `<input type="color">`), label text
   input, hex count, delete button (×). Clicking a row selects it as the
   active zone and sets `mode = {kind: "paint"}`.
@@ -299,6 +299,11 @@ in a status bar and leave state untouched. On success build fresh state:
 Then re-render everything and autosave.
 
 Export ("Export JSON" button):
+
+Exported zone ids are the trimmed zone labels. The exporter rewrites each
+painted hex's internal zone id to the matching exported label id and rejects
+duplicate labels, so `zone_definitions.id`, `zone_definitions.label`, and
+`hex_map.zone_id` remain consistent.
 
 ```js
 function buildExport() {

@@ -239,6 +239,39 @@ test("configToTs emits a pasteable MapConfig", () => {
   assert.match(ts, /check: \{ hex: \{ q: 6, r: -11, s: 5 \}, u: 0\.841234, v: 0\.193777 \},/);
 });
 
+test("export uses zone labels as ids and rewrites painted hex references", () => {
+  const imported = E.parseImport({
+    zone_definitions: [
+      { id: "zone_random_a", label: "RedBase", color: "#ff0000" },
+      { id: "zone_random_b", label: "Mid", color: "#ff9800" },
+      { id: "zone_random_c", label: "BlueBase", color: "#0000ff" },
+    ],
+    hex_map: [
+      { q: 0, r: 0, s: 0, zone_id: "zone_random_a", tags: [] },
+      { q: 1, r: 0, s: -1, zone_id: "zone_random_b", tags: ["Terrain"] },
+      { q: 2, r: 0, s: -2, zone_id: "zone_random_c", tags: [] },
+    ],
+    lanes: { lane_1: ["RedBase", "Mid", "BlueBase"] },
+    battle_zones: { lane_1: "Mid" },
+  }).state;
+
+  const out = E.buildExport(imported);
+  assert.deepEqual([...out.zone_definitions.map((z) => z.id)], ["RedBase", "Mid", "BlueBase"]);
+  assert.deepEqual([...out.zone_definitions.map((z) => z.id === z.label)], [true, true, true]);
+  assert.deepEqual([...out.hex_map.map((h) => h.zone_id)], ["RedBase", "Mid", "BlueBase"]);
+  assert.equal(JSON.stringify(out.lanes), JSON.stringify({ lane_1: ["RedBase", "Mid", "BlueBase"] }));
+  assert.equal(JSON.stringify(out.battle_zones), JSON.stringify({ lane_1: "Mid" }));
+});
+
+test("export rejects duplicate zone labels", () => {
+  const st = E.makeState();
+  st.zones = [
+    { id: "a", label: "Mid", color: "#000000" },
+    { id: "b", label: "Mid", color: "#ffffff" },
+  ];
+  assert.throws(() => E.buildExport(st), /Zone labels must be unique/);
+});
+
 test("rounding the emitted literals stays well inside the frontend's tolerance", () => {
   const cfg = { ...SHIPPED[2] };
   const checkHex = hex(1, -10);

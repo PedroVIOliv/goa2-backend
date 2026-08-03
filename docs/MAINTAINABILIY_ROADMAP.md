@@ -351,7 +351,7 @@ Each entry: **Problem · Evidence (verified file:line) · Fix · Effort**. Re-op
   `*_IMPLEMENTATION_PLAN.md`, `CLIENT_READINESS_ROADMAP.md`, `effect-system-implementation-checklist.md`,
   `state_synchronization_issue.md`) into `docs/archive/` with a "superseded" header; add `docs/README.md`
   index distinguishing current vs archived. (`CLIENT_READINESS_ROADMAP.md:5,25` still frames shipped work as open.)
-- **FI2** Document undocumented enum values in the guide: events `CARD_RETRIEVED`/`CARD_REVEALED`/
+- **FI2** Document undocumented enum values in the guide: events `CARD_RETRIEVED`/
   `ITEM_GAINED`/`MINION_PROTECTED` (`events.py:44–47`), inputs `SELECT_NUMBER`/`SELECT_UNIT_OR_TOKEN`
   (`input.py:36,39`), the `team:COLOR` player_id format, and the `"SKIP"` sentinel. Better: generate the
   guide's enum tables from the `StrEnum`s and fail CI on a missing value.

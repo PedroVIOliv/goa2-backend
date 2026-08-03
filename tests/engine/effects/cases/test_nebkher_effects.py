@@ -953,6 +953,37 @@ def test_mind_grip_substitutes_illusion_for_find_familiar_nested_spell_token() -
 
 
 @pytest.mark.effect_flow
+def test_mind_grip_copying_smoke_bomb_does_not_grant_the_illusion_its_effect() -> None:
+    """Copying Min's Smoke Bomb places an Illusion, but the Illusion is not a
+    Smoke bomb: the LOS blocker anchored to the placed token is not created."""
+    import goa2.scripts.min_effects  # noqa: F401
+
+    state = _mind_grip_state()
+    _add_illusion_pool(state)
+
+    enemy = state.get_hero("hero_enemy")
+    prev = _resolved_card("enemy_smoke_bomb")
+    prev.effect_id = "smoke_bomb"
+    prev.radius_value = 3
+    enemy.played_cards = [prev]
+    enemy.resolved_turn_count = 1
+
+    destination = Hex(q=3, r=1, s=-4)
+    run = run_card(state, NEB)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(destination.model_dump())
+    run.finish()
+
+    tile = state.board.get_tile(destination)
+    assert tile is not None and tile.occupant_id is not None
+    assert state.get_entity(tile.occupant_id).token_type == TokenType.ILLUSION
+    assert [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER] == []
+
+
+@pytest.mark.effect_flow
 def test_mind_grip_defeat_bullet_removes_adjacent_minion() -> None:
     state = _mind_grip_state()
     builder_minion_hex = Hex(q=2, r=1, s=-3)

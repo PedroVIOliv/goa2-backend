@@ -4,6 +4,14 @@ import pytest
 
 from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequestType
+from goa2.domain.models.effect import (
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.engine.effect_manager import EffectManager
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -913,6 +921,43 @@ def test_hurry_up_targets_any_hero_but_not_self() -> None:
     assert "blue_enemy" in options  # enemy allowed
     assert "hero_hanu" not in options  # self excluded
     assert "blue_far" not in options  # out of range 4
+
+
+@pytest.mark.effect_flow
+def test_hurry_up_excludes_immune_enemy_hero() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_hanu", at=(0, 0, 0), current_card=hero_card("Hanu", "hurry_up"))
+        .red_hero("red_ally", at=(0, 2, -2), current_card=hero_card("Hanu", "monkey_trick"))
+        .blue_hero(
+            "blue_immune",
+            at=(2, 0, -2),
+            current_card=hero_card("Hanu", "monkey_trick"),
+        )
+        .with_actor("hero_hanu")
+        .build()
+    )
+    EffectManager.create_effect(
+        state=state,
+        source_id="blue_immune",
+        effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+        scope=EffectScope(
+            shape=Shape.POINT,
+            origin_id="blue_immune",
+            affects=AffectsFilter.SELF,
+        ),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    options = _option_set(run)
+    assert "red_ally" in options
+    assert "blue_immune" not in options
 
 
 @pytest.mark.effect_flow

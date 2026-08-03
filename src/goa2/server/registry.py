@@ -32,6 +32,7 @@ class ManagedGame:
     outbound_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_result: SessionResult | None = None
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
+    spectator_ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None
     replay_recorder: ReplayRecorder | None = None
     timer_task: asyncio.Task[None] | None = None

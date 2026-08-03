@@ -633,7 +633,7 @@ class TestLiftUpEffect:
         assert len(steps) == 4
         assert steps[0].__class__.__name__ == "SelectStep"  # Select Unit
         assert steps[1].__class__.__name__ == "SelectStep"  # Select Hex
-        assert steps[2].__class__.__name__ == "PlaceUnitStep"  # Place
+        assert steps[2].__class__.__name__ == "MoveUnitStep"  # Move
         assert steps[3].__class__.__name__ == "MayRepeatOnceStep"  # Repeat
 
         # Verify initial target selection filters
@@ -661,7 +661,7 @@ class TestLiftUpEffect:
         template = repeat_step.steps_template
         assert len(template) == 2
         assert template[0].__class__.__name__ == "SelectStep"
-        assert template[1].__class__.__name__ == "PlaceUnitStep"
+        assert template[1].__class__.__name__ == "MoveUnitStep"
 
         # Verify keys are consistent
         assert template[0].output_key == "lift_dest"
@@ -716,7 +716,7 @@ class TestControlGravityEffect:
         assert len(steps) == 4
         assert steps[0].__class__.__name__ == "SelectStep"
         assert steps[1].__class__.__name__ == "SelectStep"
-        assert steps[2].__class__.__name__ == "PlaceUnitStep"
+        assert steps[2].__class__.__name__ == "MoveUnitStep"
         assert steps[3].__class__.__name__ == "MayRepeatOnceStep"
 
 
@@ -766,7 +766,7 @@ class TestCenterOfMassEffect:
         # Verify step types
         assert steps[0].__class__.__name__ == "SelectStep"  # Select Unit
         assert steps[1].__class__.__name__ == "SelectStep"  # Select Hex
-        assert steps[2].__class__.__name__ == "PlaceUnitStep"  # Place
+        assert steps[2].__class__.__name__ == "MoveUnitStep"  # Move
         assert steps[3].__class__.__name__ == "MayRepeatNTimesStep"  # Repeat
 
         # Verify repeat template only contains orbit steps (2 steps)
@@ -774,7 +774,7 @@ class TestCenterOfMassEffect:
         template = repeat_step.steps_template
         assert len(template) == 2
         assert template[0].__class__.__name__ == "SelectStep"
-        assert template[1].__class__.__name__ == "PlaceUnitStep"
+        assert template[1].__class__.__name__ == "MoveUnitStep"
 
     def test_center_of_mass_uses_card_radius(self, wasp_state):
         """Test that center_of_mass uses the card's radius value (3)."""

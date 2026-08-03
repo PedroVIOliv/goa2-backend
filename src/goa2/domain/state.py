@@ -104,6 +104,14 @@ class GameState(BaseModel):
     )  # Card IDs each hero discarded THIS TURN (any source); cleared at end_turn.
     # Read by "retrieve all cards discarded this turn" effects (Emmitt).
 
+    card_guess: dict[str, Any] | None = Field(
+        default=None
+    )  # Public table state for a card-color guess: the facedown card placed for
+    # each attempt and, once flipped, its result. Deliberately NOT in
+    # execution_context: the reveal, the discard and FinalizeHeroTurnStep all
+    # drain in one process_stack pass, so context is already cleared when the
+    # post-mutation view is built. Cleared when the next hero turn begins.
+
     last_turn_positions: dict[BoardEntityID, Hex] = Field(
         default_factory=dict
     )  # Entity positions at the turn boundary, recorded wherever the phase

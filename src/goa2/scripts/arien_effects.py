@@ -371,8 +371,14 @@ class ViolentTorrentEffect(CardEffect):
             ForceDiscardOrDefeatStep(
                 victim_key="backstab_victim_id_2",
             ),
+            # Guarded: an unset victim_id_2 would make AttackSequenceStep spawn
+            # its own target picker, which carries neither the "different unit"
+            # exclusion nor anything else from the select above.
             AttackSequenceStep(
-                damage=stats.primary_value, target_id_key="victim_id_2", range_val=1
+                damage=stats.primary_value,
+                target_id_key="victim_id_2",
+                range_val=1,
+                active_if_key="victim_id_2",
             ),
         ]
 

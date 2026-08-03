@@ -100,6 +100,10 @@ def build_view(
         "tokens": tokens_view,
         "board_entities": board_entities_view,
         "hero_pieces": hero_pieces_view,
+        # Physically placed guess cards are public table state while the effect
+        # is resolving. This is the authoritative source for the guess tray:
+        # it survives reconnects and exposes a card only once it is flipped.
+        "card_guess": _build_card_guess_view(state),
     }
     view["time_control"] = (
         state.time_control.model_dump(mode="json") if state.time_control is not None else None
@@ -362,6 +366,62 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
             "item": None,
             "is_active": card.is_active,
         }
+
+
+def _build_revealed_card_view(card: Card) -> dict[str, Any]:
+    """Build the complete public face of a card revealed by an effect.
+
+    This does not mutate the card's real zone or face state. It is deliberately
+    separate from normal player-scoped views: a color guess briefly makes one
+    otherwise-hidden hand card public, while the rest of that hand stays
+    private.
+    """
+    card_view = _build_card_view(card, is_own_hero=True)
+    if card_view is None:  # pragma: no cover - Card is non-optional here
+        raise ValueError("Cannot reveal a missing card")
+    return {**card_view, "is_facedown": False}
+
+
+def _build_card_guess_view(state: GameState) -> dict[str, Any] | None:
+    """Public table state for a card-color guess, or None.
+
+    Reads ``state.card_guess``, which the guess steps maintain and which
+    outlives the turn's execution_context, so the final reveal is still here
+    when the post-mutation view is built. The card face is resolved at view
+    time rather than snapshotted, so it stays accurate whether a wrong guess
+    left the card in hand or a correct one moved it to the discard pile.
+    """
+    guess = state.card_guess
+    if not guess or not guess.get("attempts"):
+        return None
+
+    attempts: list[dict[str, Any]] = []
+    for entry in guess["attempts"]:
+        revealed = entry.get("correct") is not None
+        card = None
+        if revealed:
+            victim = state.get_hero(HeroID(str(entry["victim_id"])))
+            if victim is not None:
+                card = next(
+                    (
+                        candidate
+                        for candidate in [*victim.hand, *victim.discard_pile]
+                        if candidate.id == entry["card_id"]
+                    ),
+                    None,
+                )
+        attempts.append(
+            {
+                "attempt": entry["attempt"],
+                "victim_id": entry["victim_id"],
+                "card": _build_revealed_card_view(card) if card else None,
+                "guessed_color": entry.get("guessed_color"),
+                "actual_color": entry.get("actual_color"),
+                "correct": entry.get("correct"),
+            }
+        )
+
+    return {"guesser_id": guess["guesser_id"], "attempts": attempts}
 
 
 def _build_board_view(state: GameState) -> dict[str, Any]:

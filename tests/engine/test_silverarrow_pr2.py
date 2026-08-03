@@ -234,7 +234,8 @@ class TestSentinel:
         assert len(create.finishing_steps) == 2
         select_step, discard_step = create.finishing_steps
         assert isinstance(select_step, SelectStep)
-        assert select_step.is_mandatory is True
+        # "An enemy hero in radius discards…, if able" — victim choice is optional.
+        assert select_step.is_mandatory is False
         assert select_step.output_key == "sentinel_victim"
         assert any(
             isinstance(f, UnitTypeFilter) and f.unit_type == "HERO" for f in select_step.filters

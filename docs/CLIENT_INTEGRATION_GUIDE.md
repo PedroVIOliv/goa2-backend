@@ -480,6 +480,10 @@ ws://host/games/{game_id}/ws?token=<bearer_token>
 
 On successful connection, the server sends an initial `STATE_UPDATE` message with the full game view.
 
+A player token owns one live WebSocket; reconnecting with that token supersedes
+the prior socket. The shared spectator token may be used by multiple concurrent
+WebSockets, and every connected spectator receives broadcasts.
+
 ### Client-to-server messages
 
 All messages are JSON with a `type` field:
@@ -544,6 +548,44 @@ Request a fresh state update (available to both players and spectators):
 }
 ```
 
+#### `PING`
+
+Point at a board hex or a public card location on the tabletop. Pings are
+ephemeral communication: they do not mutate or persist game state, advance a
+clock, enter a replay, or produce a `STATE_UPDATE`. Only authenticated players
+may send them; players and spectators receive them. The server rate-limits each
+connection to one accepted ping every 450 ms.
+
+```json
+{
+  "type": "PING",
+  "target": {
+    "kind": "HEX",
+    "hex": {"q": 0, "r": -2, "s": 2}
+  }
+}
+```
+
+Card targets use their visible table location, never a card ID, so pointing at
+a facedown committed card cannot expose its private identity:
+
+```json
+{
+  "type": "PING",
+  "target": {
+    "kind": "CARD",
+    "hero_id": "hero_arien",
+    "zone": "PLAYED",
+    "index": 1
+  }
+}
+```
+
+`zone` is one of `CURRENT`, `EXTRA`, `PLAYED`, `DISCARD`, `ULTIMATE`, or
+`CAST`. `PLAYED`, `DISCARD`, and `CAST` require a zero-based `index`. The
+server validates that the referenced hex or card location is currently on the
+table and discards any client-supplied ping identity or card ID.
+
 #### `SET_READY`
 
 Timed matches only. Players may toggle readiness until the final player readies;
@@ -599,6 +641,24 @@ Give gold to a hero (cheats must be enabled and game must be in PLANNING phase):
 - `Amount must be a positive integer` — The amount must be > 0
 
 ### Server-to-client messages
+
+#### `PING`
+
+Broadcast immediately to every connected player and spectator after a valid
+player ping. `hero_id` is derived from the authenticated sender token, and the
+opaque `ping_id` lets clients animate overlapping/repeated pings independently.
+
+```json
+{
+  "type": "PING",
+  "ping_id": "3c64b4ccf0584ed2bd40df648c18a2fe",
+  "hero_id": "hero_arien",
+  "target": {
+    "kind": "HEX",
+    "hex": {"q": 0, "r": -2, "s": 2}
+  }
+}
+```
 
 #### `READY_UPDATED`
 
@@ -663,6 +723,10 @@ This means the acting player gets both messages, with the same recipient-safe ev
 direct response. A timeout discovered while processing a REST mutation is also
 broadcast before that REST request completes, even when the late request is
 rejected with `Decision already timed out`.
+
+`PING` is the exception to the mutation pattern: it is itself broadcast to all
+connections, including the sender, and has no direct acknowledgement or
+following `STATE_UPDATE`.
 
 ### Spectator restrictions
 
@@ -744,6 +808,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "tokens": [ ... ],
   "board_entities": [ ... ],
   "hero_pieces": { ... },
+  "card_guess": null,
   "time_control": null,
   "clock": null
 }
@@ -782,6 +847,7 @@ ready check starts that pending shared turn with its normal fresh allowances.
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 | `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
+| `card_guess` | object/null | Public physical state while a card-color guess is active: `{guesser_id, attempts}`. Each attempt has `attempt`, `victim_id`, and either `card: null` while facedown or the complete revealed card plus `guessed_color`, `actual_color`, and `correct`. This is the authoritative source for rendering the guess — it survives reconnects and reveals a card only once it is flipped. A completed reveal stays in the view through the following hero's turn, then clears, so clients do not need to latch it from events. |
 | `time_control` | object/null | Immutable time-control values, or null for an untimed match |
 | `clock` | object/null | Public authoritative clock snapshot, or null for an untimed match |
 
@@ -1336,7 +1402,7 @@ request.
 
 ## Events
 
-Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative.
+Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative. `GUESSED_CARD_REVEALED` is an intentional exception: the guessed card's identity is public to every recipient because the effect explicitly flips it faceup.
 
 ### Event structure
 
@@ -1373,6 +1439,8 @@ Events describe what happened during a game action. They are meant for animation
 | `HERO_LAUGHED` | A hero laughed diabolically as part of an action (NebKher) | `actor_id` |
 | `RESOLVED_CARDS_SWAPPED` | Two resolved cards traded turn slots without canceling active effects (NebKher) | `actor_id`, `target_id` (card owner), `metadata.card_a_id`, `metadata.card_b_id` |
 | `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Card IDs/names are `null` for recipients who cannot see those cards. Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id`, `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
+| `CARD_SELECTED_FOR_GUESS` | The target placed one privately selected hand card facedown for a color guess. The event deliberately contains no card identity. | `actor_id` (guesser), `target_id` (hero choosing the card), `metadata.attempt` |
+| `GUESSED_CARD_REVEALED` | The selected guess card was flipped faceup for everyone. Log/animation metadata only — render the card itself from `view.card_guess`, which stays correct when a wrong guess returns the card to its hidden hand. | `actor_id` (guesser), `target_id` (card owner), `metadata.attempt`, `metadata.card_id`, `metadata.card_name`, `metadata.card_color`, `metadata.guessed_color`, `metadata.guess_correct` |
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |
@@ -1619,9 +1687,12 @@ ws://<host>/drafts/{draft_id}/ws?token=<bearer_token>
 ```
 
 Any token works (host, player, or spectator). The channel is **read-only** — you still perform
-every action through the REST endpoints. On connect, and after **every** REST mutation by any
-participant (join, team change, randomize, captain change, start, ban/pick, claim, and the final
-game creation), the server pushes a player-scoped `STATE_UPDATE`:
+every action through the REST endpoints. The shared spectator token may be used
+by multiple concurrent WebSockets, and every connected spectator receives the
+same public draft broadcasts. On connect, and after **every** REST mutation by
+any participant (join, team change, randomize, captain change, start, ban/pick,
+claim, and the final game creation), the server pushes a player-scoped
+`STATE_UPDATE`:
 
 ```json
 {
