@@ -29,12 +29,14 @@ from goa2.domain.models.enums import PassiveTrigger, TargetType
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters import (
     AdjacentToTokenFilter,
+    AndFilter,
     CountMatchFilter,
     ExcludeIdentityFilter,
     HasPreviousSlotCardFilter,
     ImmunityFilter,
     MovementPathFilter,
     ObstacleFilter,
+    OrFilter,
     RangeFilter,
     TeamFilter,
     TokenTypeFilter,
@@ -657,31 +659,26 @@ class PhantasmalSentryEffect(CardEffect):
     ) -> list[GameStep]:
         return [
             SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Phantasmal Sentry — choose one",
-                output_key="ps_choice",
-                number_options=[1, 2],
-                number_labels={
-                    1: "Target a hero adjacent to an Illusion token",
-                    2: "Target adjacent unit",
-                },
-                is_mandatory=True,
-            ),
-            CheckContextConditionStep(
-                input_key="ps_choice", operator="==", threshold=1, output_key="ps_bullet1"
-            ),
-            SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select target hero adjacent to an Illusion token",
-                output_key="ps_target_1",
+                prompt="Select an adjacent unit or qualifying hero in range",
+                output_key="ps_target",
                 is_mandatory=True,
-                active_if_key="ps_bullet1",
                 filters=[
-                    UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=stats.range or 0),
-                    AdjacentToTokenFilter(
-                        token_type=TokenType.ILLUSION, max_range=stats.range or 0
+                    OrFilter(
+                        filters=[
+                            RangeFilter(max_range=1),
+                            AndFilter(
+                                filters=[
+                                    UnitTypeFilter(unit_type="HERO"),
+                                    RangeFilter(max_range=stats.range or 0),
+                                    AdjacentToTokenFilter(
+                                        token_type=TokenType.ILLUSION,
+                                        max_range=stats.range or 0,
+                                    ),
+                                ]
+                            ),
+                        ]
                     ),
                 ],
             ),
@@ -689,29 +686,7 @@ class PhantasmalSentryEffect(CardEffect):
                 damage=stats.primary_value,
                 range_val=stats.range or 0,
                 is_ranged=True,
-                target_id_key="ps_target_1",
-                active_if_key="ps_target_1",
-            ),
-            CheckContextConditionStep(
-                input_key="ps_choice", operator="==", threshold=2, output_key="ps_bullet2"
-            ),
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select adjacent unit to target",
-                output_key="ps_target_2",
-                is_mandatory=True,
-                active_if_key="ps_bullet2",
-                filters=[
-                    TeamFilter(relation="ENEMY"),
-                    RangeFilter(max_range=1),
-                ],
-            ),
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=1,
-                is_ranged=True,
-                target_id_key="ps_target_2",
-                active_if_key="ps_target_2",
+                target_id_key="ps_target",
             ),
         ]
 

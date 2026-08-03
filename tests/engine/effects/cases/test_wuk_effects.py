@@ -301,14 +301,13 @@ def test_abundance_retrieves_both_self_and_friendly() -> None:
 
 
 @pytest.mark.effect_flow
-def test_natures_protector_mode2_targets_unit_adjacent_to_tree() -> None:
+def test_natures_protector_targets_unit_adjacent_to_tree() -> None:
     # Enemy minion at range 2, with a tree adjacent to it (not adjacent to Wuk-as-melee).
     state = _wuk_at_origin("natures_protector").blue_minion("victim", at=(2, 0, -2)).build()
     _add_tree(state, "tree_1", Hex(q=3, r=0, s=-3))  # adjacent to victim
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("victim")
     run.finish()
 
@@ -317,25 +316,28 @@ def test_natures_protector_mode2_targets_unit_adjacent_to_tree() -> None:
 
 
 @pytest.mark.effect_flow
-def test_natures_protector_mode2_requires_tree_adjacent() -> None:
-    # Same enemy at range 2 but NO tree adjacent -> not a valid mode-2 target.
-    state = _wuk_at_origin("natures_protector").blue_minion("victim", at=(2, 0, -2)).build()
+def test_natures_protector_requires_tree_for_nonadjacent_unit() -> None:
+    state = (
+        _wuk_at_origin("natures_protector")
+        .blue_minion("victim", at=(2, 0, -2))
+        .blue_hero("adjacent_hero", at=(1, 0, -1))
+        .build()
+    )
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
-    # mandatory select with no valid target -> aborts; victim survives
-    run.finish()
-    assert state.entity_locations.get("victim") == Hex(q=2, r=0, s=-2)
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    option_ids = {option.id for option in run.latest_request.options}
+    assert "adjacent_hero" in option_ids
+    assert "victim" not in option_ids
 
 
 @pytest.mark.effect_flow
-def test_natures_protector_mode1_targets_adjacent_hero() -> None:
+def test_natures_protector_targets_adjacent_hero() -> None:
     state = _wuk_at_origin("natures_protector").blue_hero("enemy", at=(1, 0, -1)).build()
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
     run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
     run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
     run.finish()
