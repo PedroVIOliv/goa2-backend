@@ -632,6 +632,24 @@ def test_phantasmal_sentry_adjacent_target_is_ranged_attack() -> None:
 
 
 @pytest.mark.effect_flow
+def test_phantasmal_sentry_offers_both_target_categories_together() -> None:
+    from goa2.domain.models import Minion, TeamColor
+
+    state = _grid_state("phantasmal_sentry")
+    _add_illusion(state, "illusion_1", Hex(q=3, r=0, s=-3))
+    minion = Minion(id="adjacent_minion", name="M", team=TeamColor.BLUE, type=MinionType.MELEE)
+    state.teams[TeamColor.BLUE].minions.append(minion)
+    state.place_entity("adjacent_minion", Hex(q=2, r=1, s=-3))
+
+    run = run_card(state, NEB)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    option_ids = {option.id for option in run.latest_request.options}
+    assert {"adjacent_minion", "hero_enemy"} <= option_ids
+
+
+@pytest.mark.effect_flow
 def test_phantasmal_sentry_rejects_hero_when_adjacent_illusion_is_out_of_range() -> None:
     state = (
         EffectScenarioBuilder()

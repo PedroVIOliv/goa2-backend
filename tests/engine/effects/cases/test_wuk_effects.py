@@ -347,6 +347,24 @@ def test_natures_protector_targets_adjacent_hero() -> None:
 
 
 @pytest.mark.effect_flow
+def test_natures_protector_offers_both_target_categories_together() -> None:
+    state = (
+        _wuk_at_origin("natures_protector")
+        .blue_hero("adjacent_hero", at=(1, 0, -1))
+        .blue_minion("tree_target", at=(2, 0, -2))
+        .build()
+    )
+    _add_tree(state, "tree_1", Hex(q=3, r=0, s=-3))
+
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    option_ids = {option.id for option in run.latest_request.options}
+    assert {"adjacent_hero", "tree_target"} <= option_ids
+
+
+@pytest.mark.effect_flow
 def test_natures_champion_attacks_both_targets() -> None:
     state = (
         _wuk_at_origin("natures_champion")

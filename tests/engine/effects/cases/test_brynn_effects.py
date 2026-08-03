@@ -795,6 +795,26 @@ def test_familiar_ground_attacks_qualifying_hero_in_range() -> None:
 
 
 @pytest.mark.effect_flow
+def test_familiar_ground_offers_both_target_categories_together() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_radius_board(4))
+        .red_hero("hero_brynn", at=(0, 0, 0), current_card=hero_card("Brynn", "familiar_ground"))
+        .blue_minion("adjacent_minion", at=(1, 0, -1))
+        .blue_hero("qualifying_hero", at=(3, 0, -3))
+        .with_actor("hero_brynn")
+        .build()
+    )
+    _make_terrain(state, (3, -1, -2), (2, 1, -3), (3, 1, -4))
+
+    run = run_card(state, "hero_brynn")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    assert {"adjacent_minion", "qualifying_hero"} <= _option_set(run)
+
+
+@pytest.mark.effect_flow
 def test_familiar_ground_open_hero_in_range_not_targetable() -> None:
     state = (
         EffectScenarioBuilder()
