@@ -1782,6 +1782,18 @@ class TestUnstableTimelineDefense:
         assert state.get_position("hero_emmitt") == Hex(q=3, r=0, s=-3)
         assert state.get_position("glitch_1") == Hex(q=0, r=0, s=0)
         assert len(_glitch_on_board(state)) == 3
+        cleanup = next(
+            effect
+            for effect in state.active_effects
+            if effect.effect_type == EffectType.DELAYED_TRIGGER
+        )
+        assert cleanup.source_card_id == "unstable_timeline"
+        attacker = state.get_hero("hero_enemy")
+        emmitt = state.get_hero("hero_emmitt")
+        assert attacker is not None and attacker.current_turn_card is not None
+        assert emmitt is not None
+        assert attacker.current_turn_card.is_active is False
+        assert emmitt.discard_pile[0].is_active is True
 
     def test_defense_infeasible_still_blocks_with_value_six(self):
         """U1 (defense): text stops but the defense value 6 still counts."""
