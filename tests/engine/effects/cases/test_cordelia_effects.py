@@ -139,6 +139,85 @@ def test_broom_bonus_applies_to_basic_actions_only_after_the_attack(
 
 
 @pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    ("attacker_hero", "attack_card_id", "requires_mode"),
+    [
+        pytest.param("Garrus", "angry_strike", False, id="basic-attack"),
+        pytest.param(
+            "Cordelia",
+            "collateral_misfortune",
+            True,
+            id="non-basic-attack",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("defense_card_id", "expected_defense"),
+    [
+        pytest.param("bewitch", 2, id="gold-defense"),
+        pytest.param("jinx", 3, id="silver-defense"),
+        pytest.param("fungal_favor", 5, id="non-basic-defense"),
+    ],
+)
+def test_broom_defense_bonus_depends_on_defense_card_not_attack_card(
+    attacker_hero: str,
+    attack_card_id: str,
+    requires_mode: bool,
+    defense_card_id: str,
+    expected_defense: int,
+) -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero(
+            "hero_cordelia",
+            at=(0, 0, 0),
+            current_card=hero_card("Cordelia", "broom_for_improvement"),
+        )
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .blue_hero("enemy", at=(2, 0, -2))
+        .with_actor("hero_cordelia")
+        .build()
+    )
+
+    broom_run = run_card(state, "hero_cordelia")
+    broom_run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    broom_run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion").finish()
+
+    defense_cards = {
+        card_id: _put_card(state, "hero_cordelia", card_id, "hand")
+        for card_id in ("bewitch", "jinx", "fungal_favor")
+    }
+    state.move_unit("enemy", Hex(q=1, r=0, s=-1))
+    state.get_hero("enemy").current_turn_card = hero_card(attacker_hero, attack_card_id)
+    state.current_actor_id = "enemy"
+
+    attack_run = run_card(state, "enemy")
+    attack_run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    if requires_mode:
+        attack_run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    attack_run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_cordelia")
+    attack_run.expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+
+    defense_values = {
+        option.id: option.metadata.get("defense_value")
+        for option in attack_run.latest_request.options
+        if option.id != "PASS"
+    }
+    assert defense_values == {
+        defense_cards["bewitch"].id: 2,
+        defense_cards["jinx"].id: 3,
+        defense_cards["fungal_favor"].id: 5,
+    }
+
+    attack_run.choose(defense_cards[defense_card_id].id).finish()
+    combat = [
+        event for event in attack_run.events if event.event_type == GameEventType.COMBAT_RESOLVED
+    ]
+    assert combat[-1].metadata["defense_value"] == expected_defense
+
+
+@pytest.mark.effect_flow
 def test_collateral_uses_numbered_mode_before_target_selection() -> None:
     state = (
         EffectScenarioBuilder()
