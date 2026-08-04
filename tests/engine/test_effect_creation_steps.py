@@ -65,6 +65,41 @@ def test_create_effect_step_basic(game_state):
     assert effect.source_card_id == "card_2"
 
 
+def test_create_effect_step_uses_defense_card_as_source_during_defense(game_state):
+    step = CreateEffectStep(
+        effect_type=EffectType.ATTACK_IMMUNITY,
+        scope=EffectScope(shape=Shape.POINT, origin_id="hero_1"),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+    )
+    context = {
+        "current_action_type": ActionType.DEFENSE,
+        "current_card_id": "incoming_attack",
+        "defense_card_id": "defense_card",
+    }
+
+    step.resolve(game_state, context)
+
+    assert game_state.active_effects[0].source_card_id == "defense_card"
+
+
+def test_create_effect_step_does_not_fall_back_to_attack_card_during_defense(game_state):
+    step = CreateEffectStep(
+        effect_type=EffectType.ATTACK_IMMUNITY,
+        scope=EffectScope(shape=Shape.POINT, origin_id="hero_1"),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+    )
+    context = {
+        "current_action_type": ActionType.DEFENSE,
+        "current_card_id": "incoming_attack",
+    }
+
+    step.resolve(game_state, context)
+
+    assert game_state.active_effects[0].source_card_id is None
+
+
 def test_resolve_card_sets_current_card_id(game_state):
     """ResolveCardTextStep should set current_card_id in context."""
     # Setup hero with a card in current_turn_card
