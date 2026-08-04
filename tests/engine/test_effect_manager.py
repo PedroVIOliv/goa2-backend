@@ -3,6 +3,7 @@
 import pytest
 
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -625,3 +626,58 @@ class TestSubjectId:
         )
 
         assert effect.protected_unit_id == "hero_2"
+
+
+class TestTokenBoundEffects:
+    """A token-bound effect's lifecycle is the token's and nothing else's.
+
+    The token stays on the board when its placer is defeated, has no card to
+    leave play, and is reclaimed on its own schedule — so only removing the
+    token ends the effect it projects.
+    """
+
+    def _token_effect(self, game_state, duration=DurationType.PASSIVE):
+        return EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            token_id="ice_1",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.ADJACENT, origin_id="ice_1"),
+            duration=duration,
+            is_active=True,
+        )
+
+    def test_survives_the_defeat_of_the_hero_who_placed_it(self, game_state):
+        self._token_effect(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_1")
+
+        assert len(game_state.active_effects) == 1
+
+    def test_survives_a_turn_expiry_sweep(self, game_state):
+        self._token_effect(game_state, duration=DurationType.THIS_TURN)
+
+        EffectManager.expire_active_turn_effects(game_state)
+
+        assert len(game_state.active_effects) == 1
+
+    def test_survives_a_round_expiry_sweep(self, game_state):
+        self._token_effect(game_state, duration=DurationType.THIS_ROUND)
+
+        EffectManager.expire_effects(game_state, DurationType.THIS_ROUND)
+
+        assert len(game_state.active_effects) == 1
+
+    def test_ends_when_its_token_leaves_the_board(self, game_state):
+        from goa2.domain.models import Token, TokenType
+        from goa2.domain.types import BoardEntityID
+        from goa2.engine.steps.markers import _remove_token_from_board
+
+        token = Token(id="ice_1", name="Ice", token_type=TokenType.ICE)
+        game_state.register_entity(token)
+        game_state.entity_locations[BoardEntityID("ice_1")] = Hex(q=0, r=0, s=0)
+        self._token_effect(game_state)
+
+        _remove_token_from_board(game_state, "ice_1")
+
+        assert game_state.active_effects == []

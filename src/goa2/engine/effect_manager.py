@@ -190,6 +190,21 @@ class EffectManager:
         )
 
     @staticmethod
+    def _is_token_bound(effect: ActiveEffect) -> bool:
+        """Whether this effect's lifecycle belongs entirely to a token.
+
+        Tali's Ice and Totem, Min's Smoke bomb and Trinkets' turret aura are
+        projected by a physical token, not by their placer or by the card that
+        placed them. The token stays on the board when its hero is defeated or
+        the card leaves play, so the effect must stay with it — the only thing
+        that ends it is ``_remove_token_from_board``.
+
+        Legacy rows created before ``token_id`` existed are recognised by their
+        anchor: no card, and a scope origin naming a token entity.
+        """
+        return effect.token_id is not None
+
+    @staticmethod
     def _update_card_active_status(state: GameState, card_id: str):
         """
         Set card.is_active based on whether any effects reference it.
@@ -227,6 +242,8 @@ class EffectManager:
         """
 
         def is_expiring_this_turn(e: ActiveEffect) -> bool:
+            if EffectManager._is_token_bound(e):
+                return False
             if e.duration == DurationType.THIS_TURN:
                 return True
             if e.duration == DurationType.NEXT_TURN:
@@ -255,16 +272,22 @@ class EffectManager:
         """Remove all effects matching duration type.
 
         Returns [(source_id, finishing_steps)] for expired effects that carry
-        finishing steps (used by DELAYED_TRIGGER effects).
+        finishing steps (used by DELAYED_TRIGGER effects). Token-bound effects
+        have no duration lifecycle — they end with their token.
         """
-        expiring = [e for e in state.active_effects if e.duration == duration]
+        expiring = [
+            e
+            for e in state.active_effects
+            if e.duration == duration and not EffectManager._is_token_bound(e)
+        ]
         finishing: list[tuple[str, list]] = [
             (e.source_id, e.finishing_steps)
             for e in expiring
             if e.finishing_steps and e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
         ]
         affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
-        state.active_effects = [e for e in state.active_effects if e.duration != duration]
+        expiring_ids = {e.id for e in expiring}
+        state.active_effects = [e for e in state.active_effects if e.id not in expiring_ids]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
         return finishing
@@ -287,13 +310,18 @@ class EffectManager:
         (NebKher's Mind Grip), and that effect belongs to the performer. Effects
         registered against another unit (Hanu's Journey immunity) carry that unit
         in ``subject_id``, so they still end with their creator.
+
+        Token-bound effects are exempt: the token outlives its placer, so its
+        effect does too (see ``_is_token_bound``).
         """
+
+        def is_expiring(effect: ActiveEffect) -> bool:
+            return effect.source_id == source_id and not EffectManager._is_token_bound(effect)
+
         affected_card_ids = {
-            e.source_card_id
-            for e in state.active_effects
-            if e.source_id == source_id and e.source_card_id
+            e.source_card_id for e in state.active_effects if is_expiring(e) and e.source_card_id
         }
-        state.active_effects = [e for e in state.active_effects if e.source_id != source_id]
+        state.active_effects = [e for e in state.active_effects if not is_expiring(e)]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
 

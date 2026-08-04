@@ -231,3 +231,25 @@ be performed by someone else — a copied spell must protect the copier, not reu
 the original caster's row. `_find_existing_instance` now keys on
 `(source_id, source_card_id, effect_type, scope)`. Repeats by the same actor
 still collapse, which is what the rule requires.
+
+## Follow-up: token-bound effects belong to their token
+
+A token-bound effect (`is_token_effect=True` — Tali's Ice and Totem, Min's Smoke
+bomb, Trinkets' turret aura) is projected by a physical token, not by the hero
+who placed it or the card that placed it. Its `source_card_id` was already
+`None`, so no card lifecycle reached it, but `source_id` named the placing hero
+— so `expire_by_source` deleted it when that hero was defeated, while the token
+sat on the board still blocking line of sight or projecting its aura.
+
+`ActiveEffect` gained `token_id`, stamped by `CreateEffectStep` from the
+resolved scope origin. `EffectManager._is_token_bound` reads it, and every
+lifecycle path now excludes those effects:
+
+- `expire_by_source` — survives its placer's defeat
+- `expire_active_turn_effects` and `expire_effects` — no duration lifecycle
+- card paths (`expire_by_card`, activation/deactivation) never matched anyway
+
+`_remove_token_from_board` is the single thing that ends them, matching
+`token_id` alongside the existing `source_id` / `scope.origin_id` checks. Tokens
+are reclaimed by the end-of-round sweep, so a token effect still cannot outlive
+its round.

@@ -172,10 +172,19 @@ class CreateEffectStep(GameStep):
             if color_val:
                 named_color = CardColor(str(color_val))
 
+        # A token-bound effect belongs to the token it is anchored to, so record
+        # that token: it is the effect's whole lifecycle.
+        token_id = (
+            str(resolved_scope.origin_id)
+            if self.is_token_effect and resolved_scope.origin_id
+            else None
+        )
+
         EffectManager.create_effect(
             state=state,
             source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
             source_card_id=card_id,
+            token_id=token_id,
             effect_type=self.effect_type,
             scope=resolved_scope,
             duration=self.duration,

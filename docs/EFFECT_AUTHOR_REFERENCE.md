@@ -415,9 +415,12 @@ Two consequences to write against:
   one `CreateEffectStep` per payload; those differ in type or scope, so they
   coexist. The source is in the key so a card performed by someone else (Gydion's
   spells, Mind Grip) gives the copier their own instance.
-- **Token effects opt out.** `is_token_effect=True` skips binding entirely: the
-  effect's lifecycle follows the token, and several identical tokens each get
-  their own row.
+- **Token effects opt out.** `is_token_effect=True` skips card binding entirely
+  and records the anchor token in `ActiveEffect.token_id`. That token *is* the
+  effect's whole lifecycle: it survives its placer's defeat, has no card to
+  leave play, is skipped by every duration sweep, and ends only when the token
+  leaves the board (`_remove_token_from_board`). Several identical tokens each
+  get their own row.
 
 Engine code must never call `build_steps()` directly — use `get_steps()` or
 `get_steps_with_stats()`, which apply the binding. A guardrail test enforces

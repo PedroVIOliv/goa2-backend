@@ -191,6 +191,12 @@ class ActiveEffect(BaseModel):
     # performs a card sitting in an enemy's turn slot, and the effect is his.
     source_id: str
     source_card_id: str | None = None  # Card ID (if card-based effect)
+    # Token this effect is bound to (Tali's Ice, Min's Smoke bomb, Trinkets'
+    # turret aura). A token-bound effect's lifecycle is the token's and nothing
+    # else's: it survives its creator's defeat, has no card to leave play, is
+    # skipped by every duration sweep, and ends only when the token is removed
+    # from the board.
+    token_id: str | None = None
     # The unit the effect is registered against, when that is not its creator.
     # Unit-bound immunity protects its subject; Hanu's Journey is the case that
     # needs the two to differ (Hanu creates it, the displaced hero is protected).
