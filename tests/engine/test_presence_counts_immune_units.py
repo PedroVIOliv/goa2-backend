@@ -20,8 +20,11 @@ from goa2.domain.models import (
     MinionType,
     Team,
     TeamColor,
+    Token,
+    TokenType,
 )
 from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID
 from goa2.engine import rules
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.handler import process_stack, push_steps
@@ -90,6 +93,28 @@ def test_charge_may_land_adjacent_to_an_immune_enemy(dash_state):
 
     assert req is not None
     assert req["type"] == "SELECT_HEX"
+    assert Hex(q=2, r=0, s=-2).model_dump() in req["valid_options"]
+
+
+def test_mad_dash_may_cross_passable_mine(dash_state):
+    mine = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id="m_heavy",
+        is_passable=True,
+    )
+    dash_state.token_pool[TokenType.MINE_DUD] = [mine]
+    dash_state.misc_entities[mine.id] = mine
+    dash_state.place_entity(mine.id, Hex(q=1, r=0, s=-1))
+
+    effect = CardEffectRegistry.get("mad_dash")
+    brogan = dash_state.get_hero("brogan")
+    push_steps(dash_state, effect.get_steps(dash_state, brogan, brogan.current_turn_card))
+
+    req = process_stack(dash_state).input_request
+
+    assert req is not None
     assert Hex(q=2, r=0, s=-2).model_dump() in req["valid_options"]
 
 
