@@ -589,7 +589,9 @@ def _build_effect_steps(state, hero_id, card_id):
     card = hero_card("Hanu", card_id)
     effect = CardEffectRegistry.get(card_id)
     stats = compute_card_stats(state, hero.id, card)
-    return effect.build_steps(state, hero, card, stats)
+    # get_steps_with_stats, not build_steps: the public API is what binds the
+    # card onto the effect-creating steps.
+    return effect.get_steps_with_stats(state, hero, card, stats)
 
 
 def _journey_state(card_id, radius_disk=4):
@@ -641,7 +643,9 @@ def test_unexpected_journey_swaps_and_grants_immunity_to_everyone() -> None:
     # Displaced enemy is immune (heavy-style) to Hanu's team this turn.
     imm = _immunity_effects(state)
     assert len(imm) == 1
-    assert imm[0].source_id == "blue_enemy"
+    # Hanu owns it; the displaced hero is its subject.
+    assert imm[0].source_id == "hero_hanu"
+    assert imm[0].protected_unit_id == "blue_enemy"
     state.current_actor_id = "red_ally"
     assert is_immune(state.get_unit("blue_enemy"), state) is True
 
@@ -1234,3 +1238,45 @@ def test_control_expires_at_end_of_round() -> None:
 
     EffectManager.expire_effects(state, DurationType.THIS_ROUND)
     assert not [e for e in state.active_effects if e.effect_type == EffectType.CONTROL_NEXT_ACTION]
+
+
+@pytest.mark.effect_contract
+def test_journey_effects_belong_to_the_journey_card() -> None:
+    """Both halves of the Journey are the card's active effect.
+
+    Card binding is what lets Hanu's defeat end the immunity: the immunity is
+    registered against the *displaced* hero (that is how is_immune_to_actor
+    identifies who is protected), so nothing else ties it back to Hanu.
+    """
+    from goa2.engine.handler import process_stack, push_steps
+
+    state = _journey_state("unexpected_journey")
+    push_steps(state, _build_effect_steps(state, "hero_hanu", "unexpected_journey"))
+    process_stack(state)
+    state.execution_stack[-1].pending_input = {"selection": "blue_enemy"}
+    process_stack(state)
+
+    assert _immunity_effects(state)[0].source_card_id == "unexpected_journey"
+    assert _delayed_effects(state)[0].source_card_id == "unexpected_journey"
+
+
+@pytest.mark.effect_contract
+def test_hanu_defeat_ends_the_journey_immunity() -> None:
+    """A defeated hero's card stops protecting the hero it displaced."""
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.rules import is_immune
+    from goa2.engine.steps import DefeatUnitStep
+
+    state = _journey_state("unexpected_journey")
+    push_steps(state, _build_effect_steps(state, "hero_hanu", "unexpected_journey"))
+    process_stack(state)
+    state.execution_stack[-1].pending_input = {"selection": "blue_enemy"}
+    process_stack(state)
+    assert _immunity_effects(state)
+
+    push_steps(state, [DefeatUnitStep(victim_id="hero_hanu", killer_id="blue_enemy")])
+    process_stack(state)
+
+    assert _immunity_effects(state) == []
+    state.current_actor_id = "red_ally"
+    assert is_immune(state.get_unit("blue_enemy"), state) is False

@@ -57,7 +57,10 @@ class CreateEffectStep(GameStep):
     blocks_self: bool = False
     is_active: bool = False  # Override default dormant state if True
 
-    # Card linkage (for card-based effects)
+    # Card linkage (for card-based effects). Steps built through the CardEffect
+    # API get source_card_id stamped at build time by effects.bind_effect_cards,
+    # which is the only place that reliably knows the card being performed. The
+    # context fallback below survives for steps constructed outside that API.
     source_card_id: str | None = None  # Explicit card ID
     use_context_card: bool = True  # If True, infer the card performing the current action
 
@@ -119,14 +122,7 @@ class CreateEffectStep(GameStep):
         if not self.is_token_effect:
             card_id = self.source_card_id
             if card_id is None and self.use_context_card:
-                # Defense text runs inside the attacker's action context, so
-                # current_card_id still names the incoming attack.
-                context_key = (
-                    "defense_card_id"
-                    if context.get("current_action_type") == ActionType.DEFENSE
-                    else "current_card_id"
-                )
-                card_id = context.get(context_key)
+                card_id = context.get("current_card_id")
 
         # Resolve origin action type: use explicit value or fall back to context
         action_type = self.origin_action_type
@@ -177,10 +173,19 @@ class CreateEffectStep(GameStep):
             if color_val:
                 named_color = CardColor(str(color_val))
 
+        # A token-bound effect belongs to the token it is anchored to, so record
+        # that token: it is the effect's whole lifecycle.
+        token_id = (
+            str(resolved_scope.origin_id)
+            if self.is_token_effect and resolved_scope.origin_id
+            else None
+        )
+
         EffectManager.create_effect(
             state=state,
             source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
             source_card_id=card_id,
+            token_id=token_id,
             effect_type=self.effect_type,
             scope=resolved_scope,
             duration=self.duration,
@@ -257,11 +262,19 @@ class ScheduleJourneyReturnStep(GameStep):
 
     Both hero ids are baked into the finishing steps as literals so the
     end-of-turn payload does not depend on the (by-then cleared) turn context.
+
+    Hanu owns both effects (``source_id``); the displaced hero is the immunity's
+    ``subject_id``. That split is what lets his defeat end the protection he
+    granted — the swap-back fizzles then too, so the displaced hero keeps the
+    position.
     """
 
     type: StepType = StepType.SCHEDULE_JOURNEY_RETURN
     enemy_key: str
     move_after: bool = False
+    # Stamped by effects.bind_effect_cards: both halves are the Journey card's
+    # active effect, so they end if the card leaves play.
+    source_card_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -277,9 +290,13 @@ class ScheduleJourneyReturnStep(GameStep):
 
         # (1) Displaced hero becomes immune to EVERYONE this turn (heavy-style):
         # blocks_friendly_actors so even its own allies cannot affect it.
+        # Hanu owns it (source_id) so his defeat ends it; the displaced hero is
+        # its subject, which is who it protects.
         EffectManager.create_effect(
             state=state,
-            source_id=enemy_id,
+            source_id=actor_id,
+            subject_id=enemy_id,
+            source_card_id=self.source_card_id,
             effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
             scope=EffectScope(shape=Shape.GLOBAL),
             duration=DurationType.THIS_TURN,
@@ -320,6 +337,7 @@ class ScheduleJourneyReturnStep(GameStep):
         EffectManager.create_effect(
             state=state,
             source_id=actor_id,
+            source_card_id=self.source_card_id,
             effect_type=EffectType.DELAYED_TRIGGER,
             scope=EffectScope(shape=Shape.GLOBAL),
             duration=DurationType.THIS_TURN,

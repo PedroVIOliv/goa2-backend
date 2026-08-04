@@ -781,9 +781,14 @@ def _apply_spell_break(state, arien_id: str = "hero_arien") -> None:
 
     arien = state.get_hero(arien_id)
     assert arien is not None
+    # The card sits resolved in Arien's played area: effects are dormant until
+    # their card resolves, so an unattached card would create a dormant effect.
+    card = hero_card("Arien", "spell_break")
+    card.state = CardState.RESOLVED
+    arien.played_cards.append(card)
     previous_actor = state.current_actor_id
     state.current_actor_id = arien_id
-    for step in SpellBreakEffect().get_steps(state, arien, hero_card("Arien", "spell_break")):
+    for step in SpellBreakEffect().get_steps(state, arien, card):
         step.resolve(state, {})
     state.current_actor_id = previous_actor
 

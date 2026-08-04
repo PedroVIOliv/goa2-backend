@@ -362,14 +362,8 @@ class ShieldEffect(CardEffect):
         card: Card,
         stats: CardStats,
     ) -> list[GameStep]:
-        already_exists = any(
-            effect.effect_type == EffectType.ATTACK_IMMUNITY
-            and effect.source_id == str(hero.id)
-            and effect.source_card_id == card.id
-            for effect in state.active_effects
-        )
-        if already_exists:
-            return []
+        # Recasting is idempotent: EffectManager.create_effect reuses the
+        # existing (card, effect_type, scope) instance.
         return [
             CreateEffectStep(
                 effect_type=EffectType.ATTACK_IMMUNITY,
@@ -758,14 +752,8 @@ class InvulnerabilityEffect(CardEffect):
         card: Card,
         stats: CardStats,
     ) -> list[GameStep]:
-        already_exists = any(
-            effect.effect_type == EffectType.ATTACK_IMMUNITY
-            and effect.source_id == str(hero.id)
-            and effect.source_card_id == card.id
-            for effect in state.active_effects
-        )
-        if already_exists:
-            return []
+        # Recasting is idempotent: EffectManager.create_effect reuses the
+        # existing (card, effect_type, scope) instance.
         return [
             CreateEffectStep(
                 effect_type=EffectType.ATTACK_IMMUNITY,

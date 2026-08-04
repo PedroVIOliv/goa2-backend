@@ -999,7 +999,7 @@ class ApplyAfterAttackCardTextStep(GameStep):
         if effect is None:
             return StepResult(is_finished=True)
 
-        red_steps = effect.build_steps(
+        red_steps = effect.get_steps_with_stats(
             state, hero, red_card, compute_card_stats(state, hero.id, red_card)
         )
 

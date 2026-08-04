@@ -1102,3 +1102,55 @@ def test_reign_of_winter_radius_grows_with_a_radius_item() -> None:
     run.finish()
 
     assert enemy.hand == []
+
+
+@pytest.mark.effect_contract
+def test_ice_aura_outlives_talis_defeat() -> None:
+    """A token-bound effect belongs to the token, not to the hero who placed it.
+
+    The Ice token stays on the board when Tali is defeated, so the initiative
+    penalty it projects has to stay with it.
+    """
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "glacial_barrier"))
+        .with_actor("hero_tali")
+        .build()
+    )
+    _add_tali_token_pool(state)
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=1, r=-1, s=0))
+    run.finish()
+    assert len(state.active_effects) == 1
+
+    EffectManager.expire_by_source(state, "hero_tali")
+
+    assert len(state.active_effects) == 1
+
+
+@pytest.mark.effect_contract
+def test_ice_aura_ends_with_its_token() -> None:
+    """Removing the token is the one thing that ends its effect."""
+    from goa2.engine.steps.markers import _remove_token_from_board
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "glacial_barrier"))
+        .with_actor("hero_tali")
+        .build()
+    )
+    _add_tali_token_pool(state)
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=1, r=-1, s=0))
+    run.finish()
+    token_id = state.active_effects[0].scope.origin_id
+
+    _remove_token_from_board(state, token_id)
+
+    assert state.active_effects == []

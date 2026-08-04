@@ -3,6 +3,7 @@
 import pytest
 
 from goa2.domain.board import Board
+from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -436,3 +437,247 @@ class TestCardActiveTracking:
         assert game_state.get_card_by_id("card_1") is card1
         assert game_state.get_card_by_id("card_2") is card2
         assert game_state.get_card_by_id("card_999") is None
+
+
+class TestOneInstancePerCard:
+    """Only one instance of an active effect per card can be active.
+
+    Repeating an active effect must not duplicate it (game rule). Identity is
+    (source_card_id, effect_type, scope): a card whose text needs several
+    distinct payloads still gets one row per payload, but performing that card
+    again creates nothing new.
+    """
+
+    def _create(self, state, **overrides):
+        params = dict(
+            state=state,
+            source_id="hero_1",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.RADIUS, range=2, affects=AffectsFilter.ENEMY_HEROES),
+            duration=DurationType.THIS_TURN,
+            source_card_id="card_1",
+        )
+        params.update(overrides)
+        return EffectManager.create_effect(**params)
+
+    def test_repeating_a_card_effect_reuses_the_existing_instance(self, game_state):
+        first = self._create(game_state)
+        second = self._create(game_state)
+
+        assert second is first
+        assert len(game_state.active_effects) == 1
+
+    def test_same_card_with_a_different_payload_creates_a_second_instance(self, game_state):
+        self._create(game_state, effect_type=EffectType.AREA_STAT_MODIFIER)
+        self._create(game_state, effect_type=EffectType.REPEAT_PREVENTION)
+
+        assert len(game_state.active_effects) == 2
+
+    def test_same_card_and_type_with_a_different_scope_creates_a_second_instance(self, game_state):
+        self._create(game_state, scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.SELF))
+        self._create(
+            game_state,
+            scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.FRIENDLY_UNITS),
+        )
+
+        assert len(game_state.active_effects) == 2
+
+    def test_a_different_source_does_not_share_an_instance(self, game_state):
+        """A copied card protects the copier, not just the original caster."""
+        self._create(game_state, source_id="hero_1")
+        self._create(game_state, source_id="hero_2")
+
+        assert len(game_state.active_effects) == 2
+
+    def test_different_cards_do_not_share_an_instance(self, game_state):
+        self._create(game_state, source_card_id="card_1")
+        self._create(game_state, source_card_id="card_2")
+
+        assert len(game_state.active_effects) == 2
+
+    def test_effects_without_a_card_never_dedup(self, game_state):
+        self._create(game_state, source_card_id=None)
+        self._create(game_state, source_card_id=None)
+
+        assert len(game_state.active_effects) == 2
+
+    def test_a_repeat_does_not_refresh_a_spent_effect(self, game_state):
+        first = self._create(
+            game_state,
+            effect_type=EffectType.MINION_DEFEAT_BOUNTY,
+            max_value=2,
+        )
+        first.max_value = 1
+        game_state.turn = 5
+
+        self._create(game_state, effect_type=EffectType.MINION_DEFEAT_BOUNTY, max_value=2)
+
+        assert len(game_state.active_effects) == 1
+        assert first.max_value == 1
+        assert first.created_at_turn == 1
+
+    def test_a_repeat_does_not_reactivate_a_deactivated_card(self, game_state):
+        hero = Hero(id="hero_1", name="Test Hero", team=TeamColor.RED, deck=[])
+        card = Card(
+            id="card_1",
+            name="Test Card",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=5,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            effect_id="test",
+            effect_text="test",
+        )
+        hero.played_cards.append(card)
+        game_state.teams[TeamColor.RED].heroes.append(hero)
+
+        effect = self._create(game_state)
+        EffectManager.deactivate_effects_by_card(game_state, "card_1")
+        card.is_active = False
+
+        self._create(game_state)
+
+        assert len(game_state.active_effects) == 1
+        assert effect.is_active is False
+        assert card.is_active is False
+
+
+class TestEffectOwnership:
+    """``source_id`` is the hero who created the effect — not the card's owner.
+
+    A card can be performed by someone else (NebKher's Mind Grip performs a card
+    in an enemy's turn slot). The effect belongs to the performer, so it ends
+    with the performer, not with the hero whose card carried the text.
+    """
+
+    def _state_with_performed_card(self, game_state):
+        owner = Hero(id="hero_owner", name="Owner", team=TeamColor.BLUE, deck=[])
+        card = Card(
+            id="card_1",
+            name="Test Card",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=5,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            effect_id="test",
+            effect_text="test",
+        )
+        owner.played_cards.append(card)
+        performer = Hero(id="hero_performer", name="Performer", team=TeamColor.RED, deck=[])
+        game_state.teams[TeamColor.BLUE].heroes.append(owner)
+        game_state.teams[TeamColor.RED].heroes.append(performer)
+        EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_performer",
+            source_card_id="card_1",
+            effect_type=EffectType.TARGET_PREVENTION,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+    def test_defeating_the_card_owner_leaves_the_performers_effect(self, game_state):
+        self._state_with_performed_card(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_owner")
+
+        assert len(game_state.active_effects) == 1
+
+    def test_defeating_the_performer_ends_the_effect(self, game_state):
+        self._state_with_performed_card(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_performer")
+
+        assert game_state.active_effects == []
+
+
+class TestSubjectId:
+    """``subject_id`` names the unit an effect is registered against.
+
+    Unit-bound immunity protects its subject; when unset the subject is the
+    creator, which is true of every self-targeting effect (Death Seeker,
+    Snorri's Oath). Hanu's Journey is the case that needs them to differ: Hanu
+    creates it, the displaced hero is protected by it.
+    """
+
+    def test_subject_defaults_to_the_source(self, game_state):
+        effect = EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+        assert effect.protected_unit_id == "hero_1"
+
+    def test_subject_overrides_the_source(self, game_state):
+        effect = EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            subject_id="hero_2",
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+        assert effect.protected_unit_id == "hero_2"
+
+
+class TestTokenBoundEffects:
+    """A token-bound effect's lifecycle is the token's and nothing else's.
+
+    The token stays on the board when its placer is defeated, has no card to
+    leave play, and is reclaimed on its own schedule — so only removing the
+    token ends the effect it projects.
+    """
+
+    def _token_effect(self, game_state, duration=DurationType.PASSIVE):
+        return EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            token_id="ice_1",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.ADJACENT, origin_id="ice_1"),
+            duration=duration,
+            is_active=True,
+        )
+
+    def test_survives_the_defeat_of_the_hero_who_placed_it(self, game_state):
+        self._token_effect(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_1")
+
+        assert len(game_state.active_effects) == 1
+
+    def test_survives_a_turn_expiry_sweep(self, game_state):
+        self._token_effect(game_state, duration=DurationType.THIS_TURN)
+
+        EffectManager.expire_active_turn_effects(game_state)
+
+        assert len(game_state.active_effects) == 1
+
+    def test_survives_a_round_expiry_sweep(self, game_state):
+        self._token_effect(game_state, duration=DurationType.THIS_ROUND)
+
+        EffectManager.expire_effects(game_state, DurationType.THIS_ROUND)
+
+        assert len(game_state.active_effects) == 1
+
+    def test_ends_when_its_token_leaves_the_board(self, game_state):
+        from goa2.domain.models import Token, TokenType
+        from goa2.domain.types import BoardEntityID
+        from goa2.engine.steps.markers import _remove_token_from_board
+
+        token = Token(id="ice_1", name="Ice", token_type=TokenType.ICE)
+        game_state.register_entity(token)
+        game_state.entity_locations[BoardEntityID("ice_1")] = Hex(q=0, r=0, s=0)
+        self._token_effect(game_state)
+
+        _remove_token_from_board(game_state, "ice_1")
+
+        assert game_state.active_effects == []

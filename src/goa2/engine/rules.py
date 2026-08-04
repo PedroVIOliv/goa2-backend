@@ -245,7 +245,8 @@ def is_immune_to_actor(target: Unit, state: GameState, actor_id: str | None = No
     # (Hanu's Journey line) grants full heavy-style immunity — the target's own
     # allies cannot affect it either. You are never immune to your own actions.
     # Two binding forms:
-    #  - unit-bound: source_id == target (Death Seeker, Hanu's Journey)
+    #  - unit-bound: protected_unit_id == target (Death Seeker, Hanu's Journey —
+    #    the subject, which is the creator unless the effect names another unit)
     #  - radius aura: scope RADIUS + affects filter, evaluated from the
     #    origin's CURRENT position at check time (Emmitt's Future Proof —
     #    entering the radius gains protection, leaving loses it)
@@ -273,7 +274,7 @@ def is_immune_to_actor(target: Unit, state: GameState, actor_id: str | None = No
                         effect, str(target.id), target_hex, state
                     ):
                         return True
-                elif effect.source_id == str(target.id):
+                elif effect.protected_unit_id == str(target.id):
                     return True
 
     return False
