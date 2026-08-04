@@ -207,12 +207,17 @@ applied, and produced these decisions:
   displaced hero's immunity and the end-of-turn swap-back — to the Journey card.
   `bind_effect_cards` was generalised to stamp any step declaring a
   `source_card_id` field, not just `CreateEffectStep`.
-- **A defeated hero's cards stop applying.** `expire_by_source` now also drops
-  effects whose `source_card_id` belongs to a card of the defeated hero. The
-  Journey immunity names the *displaced* hero as its source (that is how
-  `is_immune_to_actor` identifies who it protects), so the card link is the only
-  thing tying it back to Hanu — without this, a defeated Hanu kept protecting the
-  hero he swapped with.
+- **Owner and subject are separate fields.** `source_id` is now strictly the
+  hero who *created* an effect; the new `subject_id` names the unit it is
+  registered against, read through `ActiveEffect.protected_unit_id` (which falls
+  back to `source_id`, true of every self-targeting effect). Hanu's Journey sets
+  `source_id=Hanu`, `subject_id=displaced hero`, so his defeat ends the
+  protection through plain `expire_by_source` matching — no special case.
+
+  A first attempt keyed defeat cleanup on *card ownership* instead. That is
+  backwards for a copied action: NebKher Mind Gripping Arien's Spell Break
+  creates an effect on Arien's card that belongs to NebKher, and defeating Arien
+  wiped it. Reproduced, then reverted.
 - **Hurry Up!'s initiative restore and the Ultimate Trick's action control stay
   unbound.** The restore is cleanup for a mutation on someone else's card and must
   always run; control is guarded by `controlled_card_id` and THIS_ROUND.

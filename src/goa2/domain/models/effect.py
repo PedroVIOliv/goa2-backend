@@ -186,8 +186,16 @@ class ActiveEffect(BaseModel):
     """
 
     id: str
-    source_id: str  # Hero ID that created this
+    # The hero who created the effect — its owner. Defeating them ends it. This
+    # is the performer, which is not always the card's owner: NebKher's Mind Grip
+    # performs a card sitting in an enemy's turn slot, and the effect is his.
+    source_id: str
     source_card_id: str | None = None  # Card ID (if card-based effect)
+    # The unit the effect is registered against, when that is not its creator.
+    # Unit-bound immunity protects its subject; Hanu's Journey is the case that
+    # needs the two to differ (Hanu creates it, the displaced hero is protected).
+    # Read through ``protected_unit_id``, never directly.
+    subject_id: str | None = None
     effect_type: EffectType
 
     # Spatial scope
@@ -277,3 +285,13 @@ class ActiveEffect(BaseModel):
     # CONTROL_NEXT_ACTION: id of the unresolved card whose resolution is
     # controlled. Guards the remap so control fizzles if the card changes.
     controlled_card_id: str | None = None
+
+    @property
+    def protected_unit_id(self) -> str:
+        """Unit this effect is registered against — its subject, else its creator.
+
+        Unit-bound forms (immunity, minion-defeat bounty) identify their subject
+        this way. Every self-targeting effect leaves ``subject_id`` unset, so the
+        creator is the subject.
+        """
+        return self.subject_id or self.source_id

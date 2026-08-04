@@ -643,7 +643,9 @@ def test_unexpected_journey_swaps_and_grants_immunity_to_everyone() -> None:
     # Displaced enemy is immune (heavy-style) to Hanu's team this turn.
     imm = _immunity_effects(state)
     assert len(imm) == 1
-    assert imm[0].source_id == "blue_enemy"
+    # Hanu owns it; the displaced hero is its subject.
+    assert imm[0].source_id == "hero_hanu"
+    assert imm[0].protected_unit_id == "blue_enemy"
     state.current_actor_id = "red_ally"
     assert is_immune(state.get_unit("blue_enemy"), state) is True
 

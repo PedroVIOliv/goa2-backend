@@ -540,3 +540,88 @@ class TestOneInstancePerCard:
         assert len(game_state.active_effects) == 1
         assert effect.is_active is False
         assert card.is_active is False
+
+
+class TestEffectOwnership:
+    """``source_id`` is the hero who created the effect — not the card's owner.
+
+    A card can be performed by someone else (NebKher's Mind Grip performs a card
+    in an enemy's turn slot). The effect belongs to the performer, so it ends
+    with the performer, not with the hero whose card carried the text.
+    """
+
+    def _state_with_performed_card(self, game_state):
+        owner = Hero(id="hero_owner", name="Owner", team=TeamColor.BLUE, deck=[])
+        card = Card(
+            id="card_1",
+            name="Test Card",
+            tier=CardTier.I,
+            color=CardColor.RED,
+            initiative=5,
+            primary_action=ActionType.ATTACK,
+            primary_action_value=2,
+            effect_id="test",
+            effect_text="test",
+        )
+        owner.played_cards.append(card)
+        performer = Hero(id="hero_performer", name="Performer", team=TeamColor.RED, deck=[])
+        game_state.teams[TeamColor.BLUE].heroes.append(owner)
+        game_state.teams[TeamColor.RED].heroes.append(performer)
+        EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_performer",
+            source_card_id="card_1",
+            effect_type=EffectType.TARGET_PREVENTION,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+    def test_defeating_the_card_owner_leaves_the_performers_effect(self, game_state):
+        self._state_with_performed_card(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_owner")
+
+        assert len(game_state.active_effects) == 1
+
+    def test_defeating_the_performer_ends_the_effect(self, game_state):
+        self._state_with_performed_card(game_state)
+
+        EffectManager.expire_by_source(game_state, "hero_performer")
+
+        assert game_state.active_effects == []
+
+
+class TestSubjectId:
+    """``subject_id`` names the unit an effect is registered against.
+
+    Unit-bound immunity protects its subject; when unset the subject is the
+    creator, which is true of every self-targeting effect (Death Seeker,
+    Snorri's Oath). Hanu's Journey is the case that needs them to differ: Hanu
+    creates it, the displaced hero is protected by it.
+    """
+
+    def test_subject_defaults_to_the_source(self, game_state):
+        effect = EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+        assert effect.protected_unit_id == "hero_1"
+
+    def test_subject_overrides_the_source(self, game_state):
+        effect = EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            subject_id="hero_2",
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+        assert effect.protected_unit_id == "hero_2"

@@ -249,16 +249,18 @@ class ScheduleJourneyReturnStep(GameStep):
 
     Both hero ids are baked into the finishing steps as literals so the
     end-of-turn payload does not depend on the (by-then cleared) turn context.
+
+    Hanu owns both effects (``source_id``); the displaced hero is the immunity's
+    ``subject_id``. That split is what lets his defeat end the protection he
+    granted — the swap-back fizzles then too, so the displaced hero keeps the
+    position.
     """
 
     type: StepType = StepType.SCHEDULE_JOURNEY_RETURN
     enemy_key: str
     move_after: bool = False
-    # Stamped by effects.bind_effect_cards. Both halves belong to the Journey
-    # card: the immunity is registered against the *displaced* hero (that is how
-    # is_immune_to_actor identifies who it protects), so the card is the only
-    # thing tying it back to Hanu — and it is what ends the immunity when Hanu
-    # is defeated.
+    # Stamped by effects.bind_effect_cards: both halves are the Journey card's
+    # active effect, so they end if the card leaves play.
     source_card_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -275,9 +277,12 @@ class ScheduleJourneyReturnStep(GameStep):
 
         # (1) Displaced hero becomes immune to EVERYONE this turn (heavy-style):
         # blocks_friendly_actors so even its own allies cannot affect it.
+        # Hanu owns it (source_id) so his defeat ends it; the displaced hero is
+        # its subject, which is who it protects.
         EffectManager.create_effect(
             state=state,
-            source_id=enemy_id,
+            source_id=actor_id,
+            subject_id=enemy_id,
             source_card_id=self.source_card_id,
             effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
             scope=EffectScope(shape=Shape.GLOBAL),

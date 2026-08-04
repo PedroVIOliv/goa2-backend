@@ -51,13 +51,13 @@ class EffectManager:
                 continue
             if (effect.max_value or 0) <= 0:
                 continue
-            beneficiary = state.get_hero(HeroID(effect.source_id))
+            beneficiary = state.get_hero(HeroID(effect.protected_unit_id))
             if beneficiary is None:
                 continue
             # Only enemy minions of the beneficiary count.
             if getattr(minion, "team", None) == beneficiary.team:
                 continue
-            bene_hex = state.get_position(effect.source_id)
+            bene_hex = state.get_position(effect.protected_unit_id)
             if bene_hex is None:
                 continue
             if topology_distance(bene_hex, minion_hex, state) > (effect.scope.range or 0):
@@ -68,7 +68,7 @@ class EffectManager:
             events.append(
                 GameEvent(
                     event_type=GameEventType.GOLD_GAINED,
-                    actor_id=effect.source_id,
+                    actor_id=effect.protected_unit_id,
                     target_id=minion_id,
                     metadata={"amount": 1, "reason": "minion_defeat_bounty"},
                 )
@@ -282,27 +282,18 @@ class EffectManager:
         gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
         physical leftovers (tokens) are reclaimed by the normal round-end sweep.
 
-        Effects created by this hero's *cards* end too, even when registered
-        against someone else. Hanu's Journey immunity names the displaced hero as
-        its source (that is how ``is_immune_to_actor`` identifies who it
-        protects), so the card link is the only thing tying it back to Hanu — and
-        a defeated Hanu must not keep protecting the hero he swapped with.
+        Ownership is ``source_id`` — the hero who created the effect, never the
+        owner of the card it came from. A card can be performed by someone else
+        (NebKher's Mind Grip), and that effect belongs to the performer. Effects
+        registered against another unit (Hanu's Journey immunity) carry that unit
+        in ``subject_id``, so they still end with their creator.
         """
-
-        def belongs_to_source(effect: ActiveEffect) -> bool:
-            if effect.source_id == source_id:
-                return True
-            return bool(
-                effect.source_card_id
-                and state.get_card_for_hero(source_id, effect.source_card_id) is not None
-            )
-
         affected_card_ids = {
             e.source_card_id
             for e in state.active_effects
-            if belongs_to_source(e) and e.source_card_id
+            if e.source_id == source_id and e.source_card_id
         }
-        state.active_effects = [e for e in state.active_effects if not belongs_to_source(e)]
+        state.active_effects = [e for e in state.active_effects if e.source_id != source_id]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
 
