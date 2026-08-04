@@ -244,6 +244,13 @@ class ActiveEffect(BaseModel):
     # This prevents accidental re-activation and allows explicit reactivation.
     is_active: bool = False
 
+    # Some ongoing card effects also provide a triggered passive for their
+    # creator. Keeping that provider on the ActiveEffect preserves the correct
+    # performer when another hero performs the source card (NebKher copying
+    # Jinx), while reusing the effect's existing duration and cleanup rules.
+    granted_passive_effect_id: str | None = None
+    passive_uses_this_turn: int = 0
+
     # Actor restriction: whose actions are blocked?
     blocks_enemy_actors: bool = True  # True = enemy actions blocked
     blocks_friendly_actors: bool = False  # True = friendly actions blocked

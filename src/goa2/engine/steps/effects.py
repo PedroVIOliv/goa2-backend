@@ -56,6 +56,7 @@ class CreateEffectStep(GameStep):
     blocks_friendly_actors: bool = False
     blocks_self: bool = False
     is_active: bool = False  # Override default dormant state if True
+    granted_passive_effect_id: str | None = None
 
     # Card linkage (for card-based effects). Steps built through the CardEffect
     # API get source_card_id stamped at build time by effects.bind_effect_cards,
@@ -206,6 +207,7 @@ class CreateEffectStep(GameStep):
             blocks_friendly_actors=self.blocks_friendly_actors,
             blocks_self=self.blocks_self,
             is_active=self.is_active,
+            granted_passive_effect_id=self.granted_passive_effect_id,
             origin_action_type=action_type,
             barrier_radius=self.barrier_radius,
             barrier_origin_id=self.barrier_origin_id,
@@ -541,9 +543,10 @@ class CheckPassiveAbilitiesStep(GameStep):
     Checks for passive abilities that trigger at the specified point.
     For each eligible passive, spawns an OfferPassiveStep.
 
-    Scans two sources:
+    Scans three sources:
     1. Regular cards in played_cards (RESOLVED + face-up)
     2. Ultimate card (if hero.level >= 8)
+    3. Active effects that explicitly grant their creator a passive
     """
 
     type: StepType = StepType.CHECK_PASSIVE_ABILITIES
@@ -562,12 +565,23 @@ class CheckPassiveAbilitiesStep(GameStep):
         trigger_enum = PassiveTrigger(self.trigger)
         offer_steps: list[GameStep] = []
 
-        def check_card_for_passive(card: Card) -> None:
+        seen_card_ids: set[str] = set()
+
+        def check_card_for_passive(
+            card: Card,
+            *,
+            provider_effect: ActiveEffect | None = None,
+        ) -> None:
             """Helper to check a card for matching passive ability."""
-            if not card.current_effect_id:
+            effect_id = (
+                provider_effect.granted_passive_effect_id
+                if provider_effect is not None
+                else card.current_effect_id
+            )
+            if not effect_id:
                 return
 
-            effect = CardEffectRegistry.get(card.current_effect_id)
+            effect = CardEffectRegistry.get(effect_id)
             if not effect:
                 return
 
@@ -576,10 +590,15 @@ class CheckPassiveAbilitiesStep(GameStep):
                     continue
 
                 # Check usage limit
-                if config.uses_per_turn > 0 and card.passive_uses_this_turn >= config.uses_per_turn:
+                uses_this_turn = (
+                    provider_effect.passive_uses_this_turn
+                    if provider_effect is not None
+                    else card.passive_uses_this_turn
+                )
+                if config.uses_per_turn > 0 and uses_this_turn >= config.uses_per_turn:
                     logger.debug(
                         f"   [PASSIVE] {card.name} already used "
-                        f"{card.passive_uses_this_turn}/{config.uses_per_turn} times this turn"
+                        f"{uses_this_turn}/{config.uses_per_turn} times this turn"
                     )
                     continue
 
@@ -595,17 +614,43 @@ class CheckPassiveAbilitiesStep(GameStep):
                         is_optional=config.is_optional,
                         prompt=config.prompt or f"Use {card.name} passive ability?",
                         hero_id=str(hero.id) if self.hero_id else None,
+                        active_effect_id=(
+                            provider_effect.id if provider_effect is not None else None
+                        ),
                     )
                 )
 
         # 1. Check regular cards: must be RESOLVED and face-up
         for card in hero.played_cards:
             if card and card.state == CardState.RESOLVED and not card.is_facedown:
+                seen_card_ids.add(str(card.id))
                 check_card_for_passive(card)
 
         # 2. Check ultimate card: active if level >= 8
         if hero.level >= 8 and hero.ultimate_card:
+            seen_card_ids.add(str(hero.ultimate_card.id))
             check_card_for_passive(hero.ultimate_card)
+
+        # 3. An active effect can explicitly grant its passive to the hero who
+        # created it. This is distinct from card ownership: Mind Grip performs
+        # an enemy card, but any ongoing effect and its "you" clauses belong to
+        # NebKher. Cards already scanned above win, preventing duplicate offers
+        # for an ordinarily played card such as Cordelia's own Jinx.
+        for provider_effect in state.active_effects:
+            card_id = provider_effect.source_card_id
+            if (
+                str(provider_effect.source_id) != str(hero.id)
+                or not provider_effect.is_active
+                or not provider_effect.granted_passive_effect_id
+                or not card_id
+                or card_id in seen_card_ids
+            ):
+                continue
+            card = state.get_card_by_id(card_id)
+            if card is None:
+                continue
+            seen_card_ids.add(card_id)
+            check_card_for_passive(card, provider_effect=provider_effect)
 
         if offer_steps:
             logger.debug(
@@ -627,6 +672,7 @@ class OfferPassiveStep(GameStep):
     is_optional: bool = True
     prompt: str = ""
     hero_id: str | None = None  # Override: whose passive this is (default: current actor)
+    active_effect_id: str | None = None  # Effect-backed provider for copied ongoing text
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.domain.models.enums import PassiveTrigger
@@ -637,19 +683,37 @@ class OfferPassiveStep(GameStep):
         if not hero:
             return StepResult(is_finished=True)
 
-        # Find the card (could be in played_cards or ultimate_card)
-        card = next((c for c in hero.played_cards if c and c.id == self.card_id), None)
-        if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
-            card = hero.ultimate_card
+        provider_effect = None
+        if self.active_effect_id is not None:
+            provider_effect = next(
+                (
+                    active
+                    for active in state.active_effects
+                    if active.id == self.active_effect_id
+                    and active.is_active
+                    and str(active.source_id) == str(hero.id)
+                    and active.source_card_id == self.card_id
+                    and active.granted_passive_effect_id
+                ),
+                None,
+            )
+            card = state.get_card_by_id(self.card_id) if provider_effect else None
+            effect_id = provider_effect.granted_passive_effect_id if provider_effect else None
+        else:
+            # Find the card (could be in played_cards or ultimate_card)
+            card = next((c for c in hero.played_cards if c and c.id == self.card_id), None)
+            if not card and hero.ultimate_card and hero.ultimate_card.id == self.card_id:
+                card = hero.ultimate_card
+            effect_id = card.current_effect_id if card else None
 
         if not card:
             logger.debug(f"   [PASSIVE] Card {self.card_id} not found")
             return StepResult(is_finished=True)
 
-        if card.current_effect_id is None:
+        if effect_id is None:
             return StepResult(is_finished=True)
 
-        effect = CardEffectRegistry.get(card.current_effect_id)
+        effect = CardEffectRegistry.get(effect_id)
         if not effect:
             return StepResult(is_finished=True)
 
@@ -663,7 +727,13 @@ class OfferPassiveStep(GameStep):
                 # Add MarkPassiveUsedStep after the passive steps
                 return StepResult(
                     is_finished=True,
-                    new_steps=[*passive_steps, MarkPassiveUsedStep(card_id=self.card_id)],
+                    new_steps=[
+                        *passive_steps,
+                        MarkPassiveUsedStep(
+                            card_id=self.card_id,
+                            active_effect_id=self.active_effect_id,
+                        ),
+                    ],
                 )
             return StepResult(is_finished=True)
 
@@ -757,8 +827,22 @@ class MarkPassiveUsedStep(GameStep):
 
     type: StepType = StepType.MARK_PASSIVE_USED
     card_id: str
+    active_effect_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.active_effect_id is not None:
+            provider_effect = next(
+                (
+                    effect
+                    for effect in state.active_effects
+                    if effect.id == self.active_effect_id and effect.source_card_id == self.card_id
+                ),
+                None,
+            )
+            if provider_effect:
+                provider_effect.passive_uses_this_turn += 1
+            return StepResult(is_finished=True)
+
         hero = state.get_hero(HeroID(str(state.current_actor_id)))
         if not hero:
             return StepResult(is_finished=True)

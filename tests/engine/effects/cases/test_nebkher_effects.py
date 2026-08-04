@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+import goa2.scripts.cordelia_effects
 import goa2.scripts.gydion_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
@@ -28,10 +29,16 @@ from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, E
 from goa2.domain.models.token import Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import calculate_minion_defense_modifier
-from goa2.engine.steps import EndPhaseCleanupStep, PlaceTokenStep
+from goa2.engine.steps import (
+    DiscardCardStep,
+    EndPhaseCleanupStep,
+    FinalizeHeroTurnStep,
+    PlaceTokenStep,
+)
 from goa2.engine.topology import are_connected
 
 from ..builders import EffectScenarioBuilder, hero_card, skill_card
@@ -981,6 +988,124 @@ def test_mind_grip_copying_smoke_bomb_does_not_grant_the_illusion_its_effect() -
     assert tile is not None and tile.occupant_id is not None
     assert state.get_entity(tile.occupant_id).token_type == TokenType.ILLUSION
     assert [e for e in state.active_effects if e.effect_type == EffectType.LOS_BLOCKER] == []
+
+
+def _state_after_mind_grip_copies_jinx() -> tuple[GameState, Card]:
+    state = _mind_grip_state()
+    enemy = state.get_hero("hero_enemy")
+    jinx = hero_card("Cordelia", "jinx")
+    jinx.state = CardState.RESOLVED
+    jinx.is_facedown = False
+    enemy.played_cards = [jinx]
+    enemy.resolved_turn_count = 1
+
+    run = run_card(state, NEB)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.finish()
+    return state, jinx
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_copying_jinx_offers_nebkher_its_discard_move() -> None:
+    state, jinx = _state_after_mind_grip_copies_jinx()
+
+    copied_effect = next(
+        effect
+        for effect in state.active_effects
+        if effect.source_card_id == jinx.id and effect.source_id == NEB
+    )
+    assert copied_effect.is_active
+
+    discarded = hero_card("NebKher", "diabolical_laughter")
+    discarded.state = CardState.HAND
+    discarded.is_facedown = False
+    state.get_hero(NEB).hand.append(discarded)
+    push_steps(state, [DiscardCardStep(card_id=discarded.id, hero_id=NEB)])
+
+    request = _expect_stack_input(state, InputRequestType.CONFIRM_PASSIVE)
+    assert request.player_id == NEB
+    assert request.context["card_id"] == jinx.id
+    _answer_stack_input(state, "YES")
+
+    request = _expect_stack_input(state, InputRequestType.SELECT_HEX)
+    destinations = {option.metadata["raw"] for option in request.options}
+    assert Hex(q=3, r=0, s=-3) in destinations
+    _answer_stack_input(state, {"q": 3, "r": 0, "s": -3})
+
+    result = process_stack(state)
+    assert result.input_request is None
+    assert state.get_position(NEB) == Hex(q=3, r=0, s=-3)
+    assert copied_effect.passive_uses_this_turn == 1
+
+    FinalizeHeroTurnStep(hero_id=NEB).resolve(state, state.execution_context)
+    assert copied_effect.passive_uses_this_turn == 0
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_copied_jinx_does_not_trigger_for_the_card_owner() -> None:
+    state, _jinx = _state_after_mind_grip_copies_jinx()
+    discarded = hero_card("Cordelia", "bewitch")
+    discarded.state = CardState.HAND
+    discarded.is_facedown = False
+    state.get_hero("hero_enemy").hand.append(discarded)
+
+    push_steps(
+        state,
+        [DiscardCardStep(card_id=discarded.id, hero_id="hero_enemy")],
+    )
+    result = process_stack(state)
+
+    assert result.input_request is None
+    assert state.get_position("hero_enemy") == Hex(q=4, r=0, s=-4)
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_copied_jinx_passive_survives_state_round_trip() -> None:
+    state, jinx = _state_after_mind_grip_copies_jinx()
+    restored = GameState.model_validate_json(state.model_dump_json())
+    provider = next(
+        effect
+        for effect in restored.active_effects
+        if effect.source_card_id == jinx.id and effect.source_id == NEB
+    )
+    assert provider.granted_passive_effect_id == "jinx"
+
+    discarded = hero_card("NebKher", "diabolical_laughter")
+    discarded.state = CardState.HAND
+    discarded.is_facedown = False
+    restored.get_hero(NEB).hand.append(discarded)
+    push_steps(restored, [DiscardCardStep(card_id=discarded.id, hero_id=NEB)])
+
+    request = _expect_stack_input(restored, InputRequestType.CONFIRM_PASSIVE)
+    assert request.player_id == NEB
+
+    paused = GameState.model_validate_json(restored.model_dump_json())
+    assert paused.execution_stack[-1].active_effect_id == provider.id
+    _answer_stack_input(paused, "YES")
+    request = _expect_stack_input(paused, InputRequestType.SELECT_HEX)
+    assert request.player_id == NEB
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_copied_jinx_passive_expires_with_its_turn_effect() -> None:
+    state, jinx = _state_after_mind_grip_copies_jinx()
+    EffectManager.expire_active_turn_effects(state)
+    assert all(
+        effect.source_card_id != jinx.id or effect.source_id != NEB
+        for effect in state.active_effects
+    )
+
+    discarded = hero_card("NebKher", "diabolical_laughter")
+    discarded.state = CardState.HAND
+    discarded.is_facedown = False
+    state.get_hero(NEB).hand.append(discarded)
+    push_steps(state, [DiscardCardStep(card_id=discarded.id, hero_id=NEB)])
+
+    result = process_stack(state)
+    assert result.input_request is None
 
 
 @pytest.mark.effect_flow

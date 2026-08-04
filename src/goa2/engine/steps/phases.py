@@ -105,6 +105,9 @@ class FinalizeHeroTurnStep(GameStep):
             # Also reset ultimate card if present
             if hero.ultimate_card and hero.ultimate_card.passive_uses_this_turn > 0:
                 hero.ultimate_card.passive_uses_this_turn = 0
+            for effect in state.active_effects:
+                if str(effect.source_id) == str(hero.id) and effect.passive_uses_this_turn > 0:
+                    effect.passive_uses_this_turn = 0
 
         # A revealed guess card stays on the table until play moves past it.
         # Clearing on the guesser's own turn end is too early: that runs in the

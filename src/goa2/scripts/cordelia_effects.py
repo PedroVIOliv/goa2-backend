@@ -612,6 +612,7 @@ class JinxEffect(CardEffect):
                 stat_type=StatType.ATTACK,
                 stat_value=-10,
                 is_active=True,
+                granted_passive_effect_id="jinx",
             )
         ]
 
@@ -634,7 +635,12 @@ class JinxEffect(CardEffect):
         is_active_own_discard = (
             trigger == PassiveTrigger.AFTER_CARD_DISCARD
             and context.get("discarded_card_owner_id") == str(hero.id)
-            and any(effect.source_card_id == card.id for effect in state.active_effects)
+            and any(
+                effect.source_card_id == card.id
+                and str(effect.source_id) == str(hero.id)
+                and effect.is_active
+                for effect in state.active_effects
+            )
         )
         if not is_active_own_discard:
             return False
