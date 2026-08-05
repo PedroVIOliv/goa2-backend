@@ -310,11 +310,16 @@ label reads "Wasp committed a card" until that card is public. Spectators get
 the fully-masked form. The omniscient variant already exists for the offline
 replay debugger (`reveal_all`) and must never be reachable from this endpoint.
 
-Rewind targets are also **clamped to the current round** by default. Rewinding
-past a round boundary un-reveals cards that every player has already seen, which
-the engine cannot un-know and the players certainly cannot. A deeper rewind
-stays possible but is a distinct, explicitly-labelled proposal so nobody
-approves one by accident.
+**Rewind depth is unrestricted.** Rewinding past a round boundary restores a
+state in which cards are hidden again, though every player has already seen
+them. This is deliberately not the engine's problem: the override passed a vote,
+and a table that agrees to go back that far has accepted the consequence. The
+engine does not second-guess an agreed decision, and no clamp or warning gate
+applies.
+
+Note the interaction with majority rule: a deep rewind can carry on a 3-2 vote,
+over the objection of players who preferred the original outcome. That is a
+property of majority consensus generally, not of rewind specifically.
 
 ### 3. Proposal payloads
 
