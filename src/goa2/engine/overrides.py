@@ -569,3 +569,126 @@ _register(
         summary_template="Remove effect {effect_id}",
     )
 )
+
+
+# ---------------------------------------------------------------------------
+# Unstick ops — repair control flow, not values
+# ---------------------------------------------------------------------------
+
+
+class NoArgs(BaseModel):
+    pass
+
+
+def _pending_step(state: GameState) -> Any:
+    if state.execution_stack:
+        top = state.execution_stack[-1]
+        if top.pending_request_id is not None:
+            return top
+    return None
+
+
+def _apply_skip_input(session: GameSession, args: NoArgs) -> None:
+    from goa2.engine.handler import submit_input
+
+    step = _pending_step(session.state)
+    if step is None:
+        raise OverrideRejectedError("No pending input request to skip", code="nothing_pending")
+    # The existing "SKIP" sentinel; the shared epilogue's advance() processes it.
+    submit_input(session.state, {"selection": "SKIP"})
+
+
+_register(
+    OverrideOp(
+        name="skip_input",
+        family="unstick",
+        label="Skip the pending input",
+        description="Answer the wedged input request with the SKIP sentinel.",
+        args_model=NoArgs,
+        apply=_apply_skip_input,
+        summary_template="Skip the pending input request",
+    )
+)
+
+
+def _apply_abort_action(session: GameSession, args: NoArgs) -> None:
+    from goa2.engine.handler import _clear_after_abort
+
+    state = session.state
+    step = _pending_step(state)
+    if step is not None:
+        # _clear_after_abort assumes the failing step was already popped.
+        state.execution_stack.pop()
+    _clear_after_abort(state)
+
+
+_register(
+    OverrideOp(
+        name="abort_action",
+        family="unstick",
+        label="Abort the current action",
+        description=(
+            "Unwind the wedged action through the normal abort path "
+            "(defense/reaction sequences unwind correctly)."
+        ),
+        args_model=NoArgs,
+        apply=_apply_abort_action,
+        summary_template="Abort the current action",
+    )
+)
+
+
+def _apply_end_turn(session: GameSession, args: NoArgs) -> None:
+    from goa2.engine.steps.phases import FinalizeHeroTurnStep, FindNextActorStep
+
+    state = session.state
+    if state.phase != GamePhase.RESOLUTION:
+        raise OverrideRejectedError(
+            f"end_turn only applies during RESOLUTION (phase is {state.phase})",
+            code="wrong_phase",
+        )
+    actor = state.current_actor_id
+    state.execution_stack.clear()
+    if actor is not None:
+        # FinalizeHeroTurnStep clears context and chains FindNextActorStep itself.
+        state.execution_stack.append(FinalizeHeroTurnStep(hero_id=str(actor)))
+    else:
+        state.execution_context.clear()
+        state.execution_stack.append(FindNextActorStep())
+
+
+_register(
+    OverrideOp(
+        name="end_turn",
+        family="unstick",
+        label="Force end of hero turn",
+        description="Discard the wedged stack and finalize the current hero's turn.",
+        args_model=NoArgs,
+        apply=_apply_end_turn,
+        summary_template="Force the current hero turn to end",
+    )
+)
+
+
+class ForceActorArgs(BaseModel):
+    hero_id: str
+
+
+def _apply_force_actor(session: GameSession, args: ForceActorArgs) -> None:
+    state = session.state
+    _require_hero(state, args.hero_id)
+    state.current_actor_id = HeroID(args.hero_id)
+    state.resolution_owner_id = HeroID(args.hero_id)
+
+
+_register(
+    OverrideOp(
+        name="force_actor",
+        family="unstick",
+        label="Fix the current actor",
+        description="Set current_actor_id when turn order itself went wrong.",
+        args_model=ForceActorArgs,
+        apply=_apply_force_actor,
+        summary_template="Set the current actor to {hero_id}",
+    )
+)
