@@ -122,6 +122,13 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
         finish_game_clock(clock, at_ms)
         return
 
+    if game.pending_override is not None:
+        # A 120s override negotiation is not the active player's doing:
+        # pause every personal clock while the proposal is open. Deliberate
+        # departure from the rollback() precedent of never refunding time.
+        activate_clocks(clock, None, request_id=None, now_ms=at_ms)
+        return
+
     if (clock.turn_round, clock.turn_number) != (state.round, state.turn):
         completed_automatically = not clock.human_action_seen_this_turn
         clock.consecutive_automatic_turns = (
