@@ -338,12 +338,13 @@ def test_healing_spores_retrieval_then_one_enemy_loses_one_coin() -> None:
 
 
 @pytest.mark.effect_flow
-def test_healing_spores_does_nothing_without_an_eligible_friendly_hero() -> None:
+def test_healing_spores_is_pruned_without_an_eligible_friendly_hero() -> None:
     state, _discarded = _healing_state()
     state.get_hero("friendly").discard_pile.clear()
 
     run = run_card(state, "hero_cordelia")
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL").finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
+    run.choose("HOLD").finish()
 
     assert state.get_hero("enemy_a").gold == 3
     assert state.get_hero("enemy_b").gold == 3
@@ -693,11 +694,13 @@ def test_jinx_does_not_offer_move_when_cordelia_has_no_legal_space() -> None:
 
 def _witching_state(*, enemy_at=(2, 0, -2), attack_item: int = 0):
     attack_card = hero_card("Cordelia", "bewitch")
+    target_at = (enemy_at[0] + 1, enemy_at[1], enemy_at[2] - 1)
     state = (
         EffectScenarioBuilder()
         .with_hexes(_hex_disk(6))
         .red_hero("hero_cordelia", at=(0, 0, 0))
         .blue_hero("enemy", at=enemy_at, current_card=attack_card)
+        .red_minion("attack_target", at=target_at)
         .with_actor("enemy")
         .build()
     )
