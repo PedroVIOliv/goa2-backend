@@ -269,11 +269,80 @@ position of its own, only its pieces do.
   including `phase` leaving `GAME_OVER`.
 - **Atomicity**: an op producing an invalid state commits nothing.
 - **Multi-piece**: `move_entity` on `hero_razzle` behaves correctly.
+- **Schema completeness**: every registered op appears in
+  `GET /overrides/schema` with a valid arg schema.
+- **History masking**: a player requesting the decision history never sees an
+  opponent's facedown committed card id; spectators see the fully-masked form.
+
+## Client discoverability
+
+A client must be able to build any valid override request without hardcoding
+the catalogue. `build_view()` already supplies most argument *values* — board,
+units, life counters, effects, markers, scoped cards. Three gaps remain.
+
+### 1. The op catalogue — `GET /overrides/schema` (static)
+
+Auto-derived from the `engine/overrides.py` registry via `model_json_schema()`
+on each op's Pydantic arg model. Returns op names, arg schemas, the family
+(`patch` / `unstick`), and a human-readable label and description per op.
+
+Auto-derivation is the point: a hand-written catalogue in the guide drifts the
+first time an op is added. A test asserts every registered op appears in the
+endpoint output.
+
+Static and game-independent, so clients fetch it once and cache it.
+
+### 2. Rewind history — `GET /games/{game_id}/overrides/history`
+
+"Rewind to any decision index" is unusable unless the client can show what the
+indices *mean*. The backend owns the replay format, so it renders the list:
+decision index, round, turn, acting hero, kind, and a human label
+("Arien committed Liquid Leap", "Wasp attacked minion_4"), plus a flag marking
+records superseded by an earlier rewind so the viewer can grey them out.
+
+**This endpoint leaks hidden information if built naively, and must not be.**
+Replay `commit` records contain card ids — including cards committed facedown
+that opponents are not entitled to see. A raw decision list handed to a player
+is a direct violation of the facedown-card visibility rule. The endpoint is
+therefore player-scoped like every other client-facing surface: card identity is
+masked using the same `current_*` / identity-hidden guard the view uses, so a
+label reads "Wasp committed a card" until that card is public. Spectators get
+the fully-masked form. The omniscient variant already exists for the offline
+replay debugger (`reveal_all`) and must never be reachable from this endpoint.
+
+Rewind targets are also **clamped to the current round** by default. Rewinding
+past a round boundary un-reveals cards that every player has already seen, which
+the engine cannot un-know and the players certainly cannot. A deeper rewind
+stays possible but is a distinct, explicitly-labelled proposal so nobody
+approves one by accident.
+
+### 3. Proposal payloads
+
+`OVERRIDE_PROPOSED` carries everything needed to render a vote prompt without a
+follow-up fetch: proposal id, proposer hero id, family, op, args, a
+server-rendered human summary of the effect, the snapshotted eligible-voter
+list, the threshold, the current tally, and an absolute expiry timestamp
+(so clients render a countdown without clock-skew guesswork).
+
+`OVERRIDE_UPDATED` carries proposal id and updated tally.
+`OVERRIDE_RESOLVED` carries proposal id, outcome
+(`applied` / `rejected` / `expired` / `cancelled`), the final tally, and on
+failure a structured reason — machine-readable code plus message — so a client
+can distinguish "validation rejected this patch" from "you were outvoted".
+
+Spectators receive all three broadcasts (they can watch the negotiation) but
+`VOTE_OVERRIDE` from a spectator is rejected, consistent with the existing
+spectator guard in `ws.py:619`.
 
 ## Client contract impact
 
 New WebSocket message types (`PROPOSE_OVERRIDE`, `VOTE_OVERRIDE`,
 `CANCEL_OVERRIDE`, `OVERRIDE_PROPOSED`, `OVERRIDE_UPDATED`, `OVERRIDE_RESOLVED`)
 and their payload shapes must be documented in
-`docs/CLIENT_INTEGRATION_GUIDE.md`. No changes to `server/models.py`,
-`domain/input.py`, or `build_view()` output.
+`docs/CLIENT_INTEGRATION_GUIDE.md`, along with the two new REST endpoints
+(`GET /overrides/schema`, `GET /games/{game_id}/overrides/history`).
+
+Response models for both endpoints are added to `server/models.py`. No changes
+to `domain/input.py` or `build_view()` output — override state deliberately
+stays off the view, since proposals are rare and adding them would inflate every
+state broadcast in every game that never uses the feature.
