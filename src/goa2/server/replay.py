@@ -22,6 +22,16 @@ Format: one JSON object per line (JSONL).
     {"type":"rollback","r":3,"t":2,"hero":"hero_arien","ts":1718900012.5}
     {"type":"cheat_gold","r":1,"t":1,"hero":"hero_arien","amount":5,"ts":1718900000.9}
 
+  consensus overrides (see engine/overrides.py; ``voters`` is audit-only):
+    {"type":"ov_patch","r":3,"t":2,"hero":"hero_arien","op":"move_entity","args":{"entity":"minion_4","hex":{"q":1,"r":-2,"s":1}},"voters":["hero_arien","hero_wasp"]}
+    {"type":"ov_unstick","r":3,"t":2,"hero":"hero_arien","op":"abort_action","args":{},"voters":["hero_arien"]}
+    {"type":"ov_rewind","r":3,"t":2,"hero":"hero_arien","to":47,"voters":["hero_arien"]}
+
+``ov_rewind`` never truncates the log — it is a cursor move meaning "the game
+continues from the state after the first N decisions". Reconstruction resolves
+it by rebuilding from the seed; the superseded segment stays in the file as
+evidence of the bug that caused the rewind.
+
 Every state-changing client operation is recorded: commits, passes, input
 responses, rollbacks (restore the current actor's turn-start snapshot), and the
 gold cheat. Bare ``advance`` is not recorded — it only drives deterministic
@@ -214,6 +224,16 @@ class ReplayRecorder:
             record["eligible_heroes"] = list(eligible_hero_ids or [])
         self._append(record)
 
+    def record_override(self, record: dict[str, Any]) -> None:
+        """Append a consensus-override decision (ov_patch / ov_unstick / ov_rewind).
+
+        The caller builds the full record (type, r, t, hero, op/args or to,
+        voters). ``voters`` is auditability only; reconstruction ignores it.
+        """
+        if record.get("type") not in {"ov_patch", "ov_unstick", "ov_rewind"}:
+            raise ValueError(f"Not an override record: {record.get('type')!r}")
+        self._append(record)
+
 
 def create_replay_recorder(game_id: str, replay_dir: str | None = None) -> ReplayRecorder:
     """Create a ReplayRecorder using GOA2_REPLAY_DIR (or the default) when unset."""
@@ -270,6 +290,32 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
     return GameSession(state)
 
 
+def effective_indices(decisions: list[dict[str, Any]], upto: int | None = None) -> list[int]:
+    """Raw indices of decisions still live after resolving ov_rewind records.
+
+    An ov_rewind at raw index i with to=N replaces the live list with the
+    effective resolution of the first N raw records (N < i, so this recursion
+    terminates). Rewind records themselves are never live — they are cursor
+    moves, not decisions.
+    """
+    end = len(decisions) if upto is None else upto
+    live: list[int] = []
+    for i in range(end):
+        d = decisions[i]
+        if d.get("type") == "ov_rewind":
+            live = effective_indices(decisions, int(d["to"]))
+        else:
+            live.append(i)
+    return live
+
+
+def effective_decisions(
+    decisions: list[dict[str, Any]], upto: int | None = None
+) -> list[dict[str, Any]]:
+    """The linear decision list actually in force after resolving rewinds."""
+    return [decisions[i] for i in effective_indices(decisions, upto)]
+
+
 def replay_game(
     path: str,
     *,
@@ -299,8 +345,30 @@ def replay_game(
         # the session positioned at the start of that moment.
         if _decision_at_or_after(decision, until_round, until_turn):
             break
-        _apply_decision(session, decision)
+        if decision.get("type") == "ov_rewind":
+            # A rewind is a cursor move: rebuild from the seed and re-apply the
+            # effective prefix, then continue forward from the next record.
+            session = build_session_from_setup(setup)
+            for d in effective_decisions(decisions, int(decision["to"])):
+                _apply_decision(session, d)
+        else:
+            _apply_decision(session, decision)
 
+    return session
+
+
+def rebuild_session_for_rewind(path: str, target_index: int) -> GameSession:
+    """Reconstruct a session positioned after ``target_index`` raw decisions.
+
+    Used by the live rewind apply path: the returned session REPLACES
+    ManagedGame.session. Prior ov_rewind records inside the prefix are honored.
+    """
+    setup, decisions = load_replay(path)
+    if not 0 <= target_index <= len(decisions):
+        raise ValueError(f"Rewind target {target_index} out of range 0..{len(decisions)}")
+    session = build_session_from_setup(setup)
+    for d in effective_decisions(decisions, target_index):
+        _apply_decision(session, d)
     return session
 
 
@@ -347,7 +415,15 @@ class ReplayCursor:
             self.session = build_session_from_setup(self.setup)
             self.cursor = 0
         while self.cursor < target:
-            _apply_decision(self.session, self.decisions[self.cursor])
+            decision = self.decisions[self.cursor]
+            if decision.get("type") == "ov_rewind":
+                # Rewind = cursor move: rebuild from the seed and re-apply the
+                # effective prefix, then continue forward.
+                self.session = build_session_from_setup(self.setup)
+                for d in effective_decisions(self.decisions, int(decision["to"])):
+                    _apply_decision(self.session, d)
+            else:
+                _apply_decision(self.session, decision)
             self.cursor += 1
         return self.session
 
@@ -410,10 +486,19 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         # while applying the preceding inputs, so this reproduces it faithfully.
         session.rollback()
     elif kind == "cheat_gold":
+        # Legacy record kept so old replays load; set_gold supersedes it.
         hero = session.state.get_hero(hero_id)
         if hero is None:
             raise ValueError(f"Replay: hero {hero_id} not found for cheat_gold")
         hero.gold += int(decision["amount"])
+    elif kind in ("ov_patch", "ov_unstick"):
+        from goa2.engine.overrides import apply_override_decision
+
+        apply_override_decision(session, decision["op"], decision.get("args", {}))
+    elif kind == "ov_rewind":
+        # A rewind changes the *cursor*, not the session; the driving loop
+        # (ReplayCursor.seek / replay_game) owns the cursor and must handle it.
+        raise ValueError("ov_rewind must be handled by the replay driving loop")
     else:
         raise ValueError(f"Replay: unknown decision type {kind!r}")
 
