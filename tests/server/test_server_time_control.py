@@ -515,14 +515,13 @@ def test_planning_timeout_commits_one_random_card_and_locks_takeback() -> None:
 
     assert game.replay_recorder is not None
     replay_record = json.loads(game.replay_recorder.path.read_text().splitlines()[-1])
-    assert replay_record == {
-        "type": "timer_timeout",
-        "action": "commit",
-        "r": 1,
-        "t": 1,
-        "hero": "hero_arien",
-        "card": committed.id,
-    }
+    assert replay_record["type"] == "timer_timeout"
+    assert replay_record["action"] == "commit"
+    assert replay_record["r"] == 1
+    assert replay_record["t"] == 1
+    assert replay_record["hero"] == "hero_arien"
+    assert replay_record["card"] == committed.id
+    assert isinstance(replay_record["ts"], float)
 
 
 def test_emmitt_timeout_keeps_an_existing_first_commit_and_finishes_planning() -> None:

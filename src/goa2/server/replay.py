@@ -13,19 +13,25 @@ Format: one JSON object per line (JSONL).
      "red":["Arien"],"blue":["Wasp"],"game_type":"QUICK","cheats":false,
      "seed":1234,"engine":"<git sha>","created_at":1718900000.0}
 
-  line N  one decision (in applied order), tagged with round/turn:
-    {"type":"commit","r":1,"t":1,"hero":"hero_arien","card":"arien_basic_1"}
-    {"type":"uncommit","r":1,"t":1,"hero":"hero_arien"}
-    {"type":"pass","r":1,"t":1,"hero":"hero_wasp"}
-    {"type":"input","r":3,"t":2,"hero":"hero_arien","sel":"minion_4"}
-    {"type":"rollback","r":3,"t":2,"hero":"hero_arien"}
-    {"type":"cheat_gold","r":1,"t":1,"hero":"hero_arien","amount":5}
+  line N  one decision (in applied order), tagged with round/turn and a
+  wall-clock receipt timestamp ``ts`` (epoch seconds, UTC):
+    {"type":"commit","r":1,"t":1,"hero":"hero_arien","card":"arien_basic_1","ts":1718900001.2}
+    {"type":"uncommit","r":1,"t":1,"hero":"hero_arien","ts":1718900001.3}
+    {"type":"pass","r":1,"t":1,"hero":"hero_wasp","ts":1718900001.4}
+    {"type":"input","r":3,"t":2,"hero":"hero_arien","sel":"minion_4","ts":1718900010.0}
+    {"type":"rollback","r":3,"t":2,"hero":"hero_arien","ts":1718900012.5}
+    {"type":"cheat_gold","r":1,"t":1,"hero":"hero_arien","amount":5,"ts":1718900000.9}
 
 Every state-changing client operation is recorded: commits, passes, input
 responses, rollbacks (restore the current actor's turn-start snapshot), and the
 gold cheat. Bare ``advance`` is not recorded — it only drives deterministic
 engine processing between decisions. Records are written *after* the engine
 accepts the operation, so a rejected one never leaves a phantom in the log.
+
+The ``ts`` field is wall-clock receipt time captured when the operation was
+accepted and logged. It is not part of the deterministic reconstruction (the
+replayer ignores it), but it lets analytics measure how long players took to
+make each decision.
 
 Replays are durable: they live in their own directory with their own
 retention (default 30 days) and are NOT deleted when a game's save is removed.
@@ -107,6 +113,9 @@ class ReplayRecorder:
         return self.path.exists() and self.path.stat().st_size > 0
 
     def _append(self, record: dict[str, Any]) -> None:
+        # Wall-clock receipt time for data/analytics; not part of the
+        # deterministic reconstruction (the replayer ignores it).
+        record["ts"] = time.time()
         try:
             with open(self.path, "a") as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
