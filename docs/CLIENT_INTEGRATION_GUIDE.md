@@ -14,7 +14,8 @@ This guide covers everything a frontend developer needs to connect to the GoA2 b
 8. [Events](#events)
 9. [Persistence & Reconnection](#persistence--reconnection)
 10. [Character Draft Lobby](#character-draft-lobby)
-11. [Error Handling](#error-handling)
+11. [Consensus Overrides](#consensus-overrides)
+12. [Error Handling](#error-handling)
 
 ---
 
@@ -1746,6 +1747,154 @@ In addition to the standard error shape (`{"detail": "..."}`), draft endpoints c
 | `404` | Unknown `draft_id` or `player_id` |
 | `409` | Lobby full; wrong draft phase; hero already banned/picked; hero not claimable |
 | `400` | Invalid team; unsupported player count; unknown map or draft mode |
+
+---
+
+## Consensus Overrides
+
+When the engine gets something wrong — refuses a legal move, resolves a defeat
+that should not have happened, wedges mid-action — the table can force the game
+into the state it should be in, by majority vote. Three families of override
+exist:
+
+- **patch** — correct a wrong value (position, defeat, gold, life counters, …)
+- **unstick** — escape a wedged control flow (skip the pending input, abort the
+  action, force the turn to end, fix the actor)
+- **rewind** — return the whole game to an earlier decision index
+
+Overrides are recorded as replay decisions and survive reconstruction; the
+negotiation itself (proposals, votes) is transient — it is **not** part of
+`build_view()` output and does not survive a server restart (re-propose).
+
+### Consensus rules
+
+- Eligible voters are the players **connected at proposal time** (snapshotted).
+  Spectators never vote. The proposer automatically counts as a yes.
+- The threshold is a strict majority of the snapshot. In a 2-player game both
+  players must agree.
+- One open proposal at a time.
+- Proposals expire after 120 seconds (server-configurable via
+  `GOA2_OVERRIDE_TIMEOUT_SECONDS`); expiry is a **rejection**.
+- The turn clock is paused while a proposal is open and resumes on resolution.
+- Propose/vote/cancel are WebSocket-only; there are no REST equivalents.
+
+### WebSocket messages
+
+Client → server:
+
+```json
+{"type": "PROPOSE_OVERRIDE", "family": "patch", "op": "move_entity",
+ "args": {"entity_id": "minion_4", "hex": {"q": 1, "r": -2, "s": 1}}}
+
+{"type": "PROPOSE_OVERRIDE", "family": "rewind", "to": 47}
+
+{"type": "VOTE_OVERRIDE", "proposal_id": "abc123", "approve": true}
+
+{"type": "CANCEL_OVERRIDE", "proposal_id": "abc123"}
+```
+
+Only the proposer may cancel. A spectator sending any of these gets an
+`ERROR` (spectators can only `GET_VIEW`).
+
+Server → all connections (players and spectators):
+
+```json
+{"type": "OVERRIDE_PROPOSED",
+ "proposal_id": "abc123",
+ "proposer_hero_id": "hero_arien",
+ "family": "patch",
+ "op": "move_entity",
+ "args": {"entity_id": "minion_4", "hex": {"q": 1, "r": -2, "s": 1}},
+ "to": null,
+ "summary": "Move minion_4 to {'q': 1, 'r': -2, 's': 1}",
+ "eligible_voters": ["hero_arien", "hero_wasp"],
+ "threshold": 2,
+ "tally": {"yes": ["hero_arien"], "no": []},
+ "expires_at": 1718900123.4}
+```
+
+`expires_at` is an absolute epoch timestamp so clients can render a countdown
+without clock-skew guesswork. `summary` is a server-rendered human summary for
+the vote prompt — no follow-up fetch needed.
+
+```json
+{"type": "OVERRIDE_UPDATED", "proposal_id": "abc123",
+ "tally": {"yes": ["hero_arien"], "no": ["hero_wasp"]}}
+
+{"type": "OVERRIDE_RESOLVED", "proposal_id": "abc123",
+ "outcome": "applied",
+ "tally": {"yes": ["hero_arien", "hero_wasp"], "no": []}}
+```
+
+`outcome` is one of `applied` / `rejected` / `expired` / `cancelled`. When an
+*approved* override fails validation at apply time (e.g. the target hex became
+occupied), the outcome is `rejected` **with** a structured `reason`:
+
+```json
+{"type": "OVERRIDE_RESOLVED", "proposal_id": "abc123",
+ "outcome": "rejected",
+ "tally": {"yes": ["hero_arien", "hero_wasp"], "no": []},
+ "reason": {"code": "not_on_board", "message": "minion_999 is not on the board"}}
+```
+
+No `reason` field means the proposal was outvoted, cancelled, or expired.
+
+On `applied`, every connection receives the `OVERRIDE_RESOLVED` message first,
+immediately followed by a fresh `STATE_UPDATE`.
+
+**After an applied patch, any in-flight `SUBMIT_INPUT` may be rejected** with a
+request-id mismatch error: the pending input request is re-derived against the
+patched board and gets a **new** request id. Read the fresh `input_request`
+from the broadcast and re-render.
+
+### `GET /overrides/schema`
+
+Static, unauthenticated, game-independent — fetch once and cache. Returns the
+full op catalogue with a JSON Schema per op, so clients never hardcode the op
+list:
+
+```json
+{"ops": [
+  {"name": "move_entity", "family": "patch", "label": "Move entity",
+   "description": "Move a unit, hero piece, or token to a hex (fixes a refused legal move).",
+   "args_schema": {"type": "object", "properties": {"entity_id": {"type": "string"},
+                    "hex": {"$ref": "#/$defs/HexArg"}}, "required": ["entity_id", "hex"]}}
+]}
+```
+
+Patch ops: `move_entity`, `remove_entity`, `place_entity`, `set_life_counters`,
+`set_gold`, `set_level`, `add_marker`, `remove_marker`, `add_effect`,
+`remove_effect`, `move_card`, `set_wave_counter`, `set_tie_breaker_team`.
+Unstick ops: `skip_input`, `abort_action`, `end_turn`, `force_actor`.
+(The endpoint output is authoritative; this list is illustrative.)
+
+### `GET /games/{game_id}/overrides/history`
+
+Bearer-authenticated (player or spectator token). Renders the game's decision
+list so a rewind target index means something to the table:
+
+```json
+{"total": 3, "decisions": [
+  {"index": 0, "type": "commit", "round": 1, "turn": 1,
+   "hero_id": "hero_arien", "label": "hero_arien committed a card",
+   "superseded": true},
+  {"index": 1, "type": "ov_rewind", "round": 1, "turn": 1,
+   "hero_id": "hero_arien", "label": "The table rewound the game to decision 0",
+   "superseded": false},
+  {"index": 2, "type": "pass", "round": 1, "turn": 1,
+   "hero_id": "hero_arien", "label": "hero_arien passed", "superseded": false}
+]}
+```
+
+- Card identity in labels is player-scoped with the same visibility rule as the
+  view: an opponent's facedown commit reads "a card" until the card is public;
+  spectators get the fully-masked form.
+- `superseded: true` marks records behind a rewind (dead segments). Render
+  `ov_rewind` rows as visible markers and grey out superseded rows rather than
+  hiding them.
+- `PROPOSE_OVERRIDE` with `family: "rewind"` takes `to` in this `index` space.
+  Rewind depth is unrestricted by design — a table that votes to go back past a
+  round boundary has accepted that already-seen cards become hidden again.
 
 ---
 
