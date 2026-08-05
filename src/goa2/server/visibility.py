@@ -223,6 +223,13 @@ def events_for_viewer(
             projected.append(event)
             continue
 
+        if event_type == GameEventType.CARD_REVEALED.value:
+            # An explicit public reveal is another narrow exception to normal
+            # hand masking. Only RevealHandCardStep emits this event; unrelated
+            # hand cards and ordinary metadata remain recipient-scoped.
+            projected.append(event)
+            continue
+
         event["metadata"] = _sanitize_card_values(
             event.get("metadata", {}),
             state=state,

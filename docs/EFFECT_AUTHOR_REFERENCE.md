@@ -378,8 +378,8 @@ Formula: `bonus = max(0, count - subtract) * multiplier`
 | `blocks_friendly_actors` | `bool` | `False` | Effect blocks friendly actors |
 | `blocks_self` | `bool` | `False` | Effect blocks self |
 | `is_active` | `bool` | `False` | If `True`, effect is immediately active (use for defense effects) |
-| `source_card_id` | `str \| None` | `None` | Explicit card ID |
-| `use_context_card` | `bool` | `True` | If `True`, reads `current_card_id` from context |
+| `source_card_id` | `str \| None` | `None` | Explicit card ID. Leave unset: the card you are writing is stamped in automatically (see below) |
+| `use_context_card` | `bool` | `True` | Legacy fallback — reads `current_card_id` from context when no card was stamped |
 | `origin_action_type` | `ActionType \| None` | `None` | Whether effect came from SKILL or ATTACK |
 | `barrier_radius` | `int` | `0` | For `STATIC_BARRIER` — radius boundary |
 | `barrier_origin_id` | `str \| None` | `None` | For `STATIC_BARRIER` — entity for radius calc |
@@ -393,6 +393,38 @@ Formula: `bonus = max(0, count - subtract) * multiplier`
 **Context Read:** `current_card_id`, `current_action_type`, `{except_attacker_key}`
 
 **Events:** `EFFECT_CREATED`
+
+**Card binding and one instance per card**
+
+Effects belong to the card whose text created them. `engine/effects.py`'s
+`bind_effect_cards` stamps `source_card_id` onto every `CreateEffectStep` your
+`build_steps` returns — and onto any other step declaring a `source_card_id`
+field, such as Hanu's `ScheduleJourneyReturnStep`, which creates its effects
+directly (including nested `steps_template` / `finishing_steps`) — so leave the
+field unset — that is what makes a re-performance (Bullet Time,
+Reload, Mind Grip) attribute the effect to the card being performed rather than
+the card that granted the re-performance.
+
+Two consequences to write against:
+
+- **Repeats do not stack.** Per the rules, only one instance of an active effect
+  per card can be active. `EffectManager.create_effect` reuses an existing row
+  matching `(source_id, source_card_id, effect_type, scope)` and returns it
+  untouched — no refreshed charges, no restarted duration. A card that needs
+  several distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still emits
+  one `CreateEffectStep` per payload; those differ in type or scope, so they
+  coexist. The source is in the key so a card performed by someone else (Gydion's
+  spells, Mind Grip) gives the copier their own instance.
+- **Token effects opt out.** `is_token_effect=True` skips card binding entirely
+  and records the anchor token in `ActiveEffect.token_id`. That token *is* the
+  effect's whole lifecycle: it survives its placer's defeat, has no card to
+  leave play, is skipped by every duration sweep, and ends only when the token
+  leaves the board (`_remove_token_from_board`). Several identical tokens each
+  get their own row.
+
+Engine code must never call `build_steps()` directly — use `get_steps()` or
+`get_steps_with_stats()`, which apply the binding. A guardrail test enforces
+this.
 
 ---
 

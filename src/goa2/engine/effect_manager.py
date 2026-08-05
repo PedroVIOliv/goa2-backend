@@ -11,7 +11,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.models.enums import ActionType
+from goa2.domain.models.enums import ActionType, CardState
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -51,13 +51,13 @@ class EffectManager:
                 continue
             if (effect.max_value or 0) <= 0:
                 continue
-            beneficiary = state.get_hero(HeroID(effect.source_id))
+            beneficiary = state.get_hero(HeroID(effect.protected_unit_id))
             if beneficiary is None:
                 continue
             # Only enemy minions of the beneficiary count.
             if getattr(minion, "team", None) == beneficiary.team:
                 continue
-            bene_hex = state.get_position(effect.source_id)
+            bene_hex = state.get_position(effect.protected_unit_id)
             if bene_hex is None:
                 continue
             if topology_distance(bene_hex, minion_hex, state) > (effect.scope.range or 0):
@@ -68,7 +68,7 @@ class EffectManager:
             events.append(
                 GameEvent(
                     event_type=GameEventType.GOLD_GAINED,
-                    actor_id=effect.source_id,
+                    actor_id=effect.protected_unit_id,
                     target_id=minion_id,
                     metadata={"amount": 1, "reason": "minion_defeat_bounty"},
                 )
@@ -95,6 +95,8 @@ class EffectManager:
         hero's implicit (or self-referencing) origin resolves to the acting
         piece, because the owner hero ID has no board position once its turn
         ends and the effect would silently lose its anchor.
+
+        Card-bound effects are deduplicated: see ``_find_existing_instance``.
         """
         if scope.shape != Shape.GLOBAL and scope.origin_hex is None:
             origin_id = scope.origin_id or source_id
@@ -107,6 +109,21 @@ class EffectManager:
             board_barrier_origin = state.resolve_board_actor(str(barrier_origin))
             if board_barrier_origin != str(barrier_origin):
                 kwargs["barrier_origin_id"] = board_barrier_origin
+
+        existing = EffectManager._find_existing_instance(
+            state, source_id, source_card_id, effect_type, scope
+        )
+        if existing is not None:
+            return existing
+
+        card = state.get_card_by_id(source_card_id) if source_card_id else None
+        # Dormancy models "played, but not yet resolved": FinalizeHeroTurnStep
+        # activates a card's effects when it resolves. That hook only ever fires
+        # for a hero's current turn card, so an effect bound to a card that is
+        # not awaiting resolution — one re-performed after resolving, or an
+        # enemy's card driven by Mind Grip — would stay dormant forever.
+        if card is not None and card.state != CardState.UNRESOLVED:
+            is_active = True
 
         effect = ActiveEffect(
             id=f"eff_{state.create_entity_id('e')}",
@@ -124,11 +141,68 @@ class EffectManager:
             **kwargs,
         )
         state.add_effect(effect)
-        if source_card_id:
-            card = state.get_card_by_id(source_card_id)
-            if card:
-                card.is_active = True
+        if card is not None:
+            card.is_active = True
         return effect
+
+    @staticmethod
+    def _find_existing_instance(
+        state: GameState,
+        source_id: str,
+        source_card_id: str | None,
+        effect_type: EffectType,
+        scope: EffectScope,
+    ) -> ActiveEffect | None:
+        """This source's live instance of this card effect, if it has one.
+
+        Game rule: only one instance of an active effect per card can be
+        active, and repeating an active effect does not duplicate it. Identity
+        is (source, card, effect_type, scope) — a card whose text needs several
+        distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still gets
+        one row per payload, but performing that card again reuses them.
+
+        The source is part of the key because a card can be performed by someone
+        else (Gydion's spells, NebKher's Mind Grip): the copier needs their own
+        instance, not the original caster's.
+
+        The match ignores ``is_active`` so a present-but-deactivated row still
+        blocks a duplicate, and callers must treat a hit as a pure no-op: no
+        payload or charge refresh, no new timestamps, and no ``card.is_active``
+        write, since a card deliberately turned facedown must not be
+        reactivated by a repeat.
+
+        Effects with no card (token-bound effects, engine-internal delayed
+        triggers) are never deduplicated — their lifecycle is the token's or
+        the schedule's, not a card's.
+        """
+        if not source_card_id:
+            return None
+        return next(
+            (
+                effect
+                for effect in state.active_effects
+                if effect.source_card_id == source_card_id
+                and effect.source_id == source_id
+                and effect.effect_type == effect_type
+                and effect.scope == scope
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _is_token_bound(effect: ActiveEffect) -> bool:
+        """Whether this effect's lifecycle belongs entirely to a token.
+
+        Tali's Ice and Totem, Min's Smoke bomb and Trinkets' turret aura are
+        projected by a physical token, not by their placer or by the card that
+        placed them. The token stays on the board when its hero is defeated or
+        the card leaves play, so the effect must stay with it — the only thing
+        that ends it is ``_remove_token_from_board``.
+
+        Legacy rows created before ``token_id`` existed are recognised by their
+        anchor: no card, and a scope origin naming a token entity.
+        """
+        return effect.token_id is not None
 
     @staticmethod
     def _update_card_active_status(state: GameState, card_id: str):
@@ -168,6 +242,8 @@ class EffectManager:
         """
 
         def is_expiring_this_turn(e: ActiveEffect) -> bool:
+            if EffectManager._is_token_bound(e):
+                return False
             if e.duration == DurationType.THIS_TURN:
                 return True
             if e.duration == DurationType.NEXT_TURN:
@@ -196,16 +272,22 @@ class EffectManager:
         """Remove all effects matching duration type.
 
         Returns [(source_id, finishing_steps)] for expired effects that carry
-        finishing steps (used by DELAYED_TRIGGER effects).
+        finishing steps (used by DELAYED_TRIGGER effects). Token-bound effects
+        have no duration lifecycle — they end with their token.
         """
-        expiring = [e for e in state.active_effects if e.duration == duration]
+        expiring = [
+            e
+            for e in state.active_effects
+            if e.duration == duration and not EffectManager._is_token_bound(e)
+        ]
         finishing: list[tuple[str, list]] = [
             (e.source_id, e.finishing_steps)
             for e in expiring
             if e.finishing_steps and e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
         ]
         affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
-        state.active_effects = [e for e in state.active_effects if e.duration != duration]
+        expiring_ids = {e.id for e in expiring}
+        state.active_effects = [e for e in state.active_effects if e.id not in expiring_ids]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
         return finishing
@@ -222,13 +304,24 @@ class EffectManager:
         payload must not run — per game rules a delayed trigger whose owner is
         gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
         physical leftovers (tokens) are reclaimed by the normal round-end sweep.
+
+        Ownership is ``source_id`` — the hero who created the effect, never the
+        owner of the card it came from. A card can be performed by someone else
+        (NebKher's Mind Grip), and that effect belongs to the performer. Effects
+        registered against another unit (Hanu's Journey immunity) carry that unit
+        in ``subject_id``, so they still end with their creator.
+
+        Token-bound effects are exempt: the token outlives its placer, so its
+        effect does too (see ``_is_token_bound``).
         """
+
+        def is_expiring(effect: ActiveEffect) -> bool:
+            return effect.source_id == source_id and not EffectManager._is_token_bound(effect)
+
         affected_card_ids = {
-            e.source_card_id
-            for e in state.active_effects
-            if e.source_id == source_id and e.source_card_id
+            e.source_card_id for e in state.active_effects if is_expiring(e) and e.source_card_id
         }
-        state.active_effects = [e for e in state.active_effects if e.source_id != source_id]
+        state.active_effects = [e for e in state.active_effects if not is_expiring(e)]
         for card_id in affected_card_ids:
             EffectManager._update_card_active_status(state, card_id)
 

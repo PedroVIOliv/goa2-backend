@@ -1817,3 +1817,20 @@ def test_rune_mastery_u2_is_inert_below_level_eight():
     _start_passage(state).expect_input(InputRequestType.SELECT_HEX).choose(
         {"q": 3, "r": 0, "s": -3}
     ).finish()
+
+
+@pytest.mark.effect_contract
+def test_oath_immunity_belongs_to_the_oath_card():  # one instance per card
+    """The Oath's immunity is that card's active effect, like Arien's Duelist."""
+    state = _oath_state(
+        "oath_of_endurance", runes={1: RuneType.HORN}, attack_color=CardColor.SILVER
+    )
+
+    _run_oath_attack(state).finish()
+
+    immunity = next(
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.IMMUNITY_ENEMY_ACTIONS
+    )
+    assert immunity.source_card_id == "oath_of_endurance"

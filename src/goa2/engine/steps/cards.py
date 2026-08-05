@@ -1595,6 +1595,118 @@ class GainCoinsStep(GameStep):
         )
 
 
+class LoseCoinsStep(GameStep):
+    """Removes coins from a hero without transferring them to the actor."""
+
+    type: StepType = StepType.LOSE_COINS
+    victim_key: str  # context key -> hero or hero-piece ID
+    amount: int = 1
+    amount_key: str = ""
+    output_key: str = ""  # actual amount lost, when requested
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        victim_unit_id = context.get(self.victim_key)
+        if not victim_unit_id:
+            return StepResult(is_finished=True)
+        victim = state.get_hero(HeroID(str(victim_unit_id)))
+        if victim is None:
+            return StepResult(is_finished=True)
+
+        requested = context.get(self.amount_key, self.amount) if self.amount_key else self.amount
+        actual = min(max(int(requested), 0), victim.gold)
+        victim.gold -= actual
+        if self.output_key:
+            context[self.output_key] = actual
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.GOLD_LOST,
+                    actor_id=(str(state.current_actor_id) if state.current_actor_id else None),
+                    target_id=str(victim_unit_id),
+                    metadata={
+                        "amount": actual,
+                        "owner_id": str(victim.id),
+                        "reason": "effect",
+                    },
+                )
+            ],
+        )
+
+
+class RevealHandCardStep(GameStep):
+    """Publicly reveal one selected hand card and expose its numeric tier.
+
+    The real card remains in its private hand until later steps move it. The
+    public table snapshot survives turn finalization/reconnects, while normal
+    player-scoped hand masking continues to hide every other card.
+    """
+
+    type: StepType = StepType.REVEAL_HAND_CARD
+    owner_key: str  # context key -> selected hero or hero-piece ID
+    card_key: str  # context key -> selected hand card ID
+    tier_value_key: str = "revealed_tier_value"
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        target_unit_id = context.get(self.owner_key)
+        card_id = context.get(self.card_key)
+        if not target_unit_id or not card_id:
+            return StepResult(is_finished=True)
+
+        owner = state.get_hero(HeroID(str(target_unit_id)))
+        if owner is None:
+            return StepResult(is_finished=True)
+        target_card = next((candidate for candidate in owner.hand if candidate.id == card_id), None)
+        if target_card is None:
+            return StepResult(is_finished=True)
+
+        tier_values = {
+            CardTier.UNTIERED: 0,
+            CardTier.I: 1,
+            CardTier.II: 2,
+            CardTier.III: 3,
+            CardTier.IV: 4,
+        }
+        tier_value = tier_values[target_card.tier]
+        context[self.tier_value_key] = tier_value
+        context["rollback_frozen"] = True
+
+        revealer_id = str(state.current_actor_id) if state.current_actor_id else None
+        state.card_reveal = {
+            "revealer_id": revealer_id,
+            "target_unit_id": str(target_unit_id),
+            "owner_id": str(owner.id),
+            "card_id": target_card.id,
+            "tier_value": tier_value,
+        }
+
+        return StepResult(
+            is_finished=True,
+            events=[
+                GameEvent(
+                    event_type=GameEventType.CARD_REVEALED,
+                    actor_id=revealer_id,
+                    target_id=str(target_unit_id),
+                    metadata={
+                        "owner_id": str(owner.id),
+                        "card_id": target_card.id,
+                        "card_name": target_card.name,
+                        "card_color": target_card.color.value if target_card.color else None,
+                        "card_tier": target_card.tier.value,
+                        "tier_value": tier_value,
+                    },
+                )
+            ],
+        )
+
+
 class CheckSoloWinStep(GameStep):
     """Resolve Cutter's alternate victory after A Fistful of Coins gains coins."""
 
@@ -1798,7 +1910,7 @@ class PerformPrimaryActionStep(GameStep):
         # own state lags (it stays current_turn_card until FinalizeHeroTurnStep),
         # so build_steps can't rely on card.state alone.
         context["reperforming_card_id"] = card.id
-        steps = effect.build_steps(state, hero, card, stats)
+        steps = effect.get_steps_with_stats(state, hero, card, stats)
         if self.exclude_target_key:
             self._inject_exclusion_filter(steps, self.exclude_target_key)
 
@@ -2059,7 +2171,7 @@ class PerformCardActionStep(GameStep):
 
                 effect = CardEffectRegistry.get_for_card(card)
                 if effect:
-                    return effect.build_steps(state, performer, card, stats)
+                    return effect.get_steps_with_stats(state, performer, card, stats)
             # No registered effect — fall back to bare primitives.
             if act_type == ActionType.ATTACK:
                 return [AttackSequenceStep(damage=stats.primary_value, range_val=stats.range or 1)]

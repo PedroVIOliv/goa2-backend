@@ -1822,7 +1822,7 @@ class ForceDefenseCardMovementStep(GameStep):
             return []
 
         stats = compute_card_stats(state, hero.id, card)
-        steps = effect.build_steps(state, hero, card, stats)
+        steps = effect.get_steps_with_stats(state, hero, card, stats)
 
         # Inject force_straight_line + force_full_distance into any MoveSequenceStep
         for step in steps:

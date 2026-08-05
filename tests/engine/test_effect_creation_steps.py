@@ -65,39 +65,28 @@ def test_create_effect_step_basic(game_state):
     assert effect.source_card_id == "card_2"
 
 
-def test_create_effect_step_uses_defense_card_as_source_during_defense(game_state):
+def test_create_effect_step_prefers_its_bound_card_over_the_context(game_state):
+    """Defense text resolves inside the attacker's action context.
+
+    The defense card's steps are bound at build time by
+    engine.effects.bind_effect_cards, so the attacker's card named by
+    current_card_id must never win.
+    """
     step = CreateEffectStep(
         effect_type=EffectType.ATTACK_IMMUNITY,
         scope=EffectScope(shape=Shape.POINT, origin_id="hero_1"),
         duration=DurationType.THIS_ROUND,
         is_active=True,
+        source_card_id="defense_card",
     )
     context = {
         "current_action_type": ActionType.DEFENSE,
         "current_card_id": "incoming_attack",
-        "defense_card_id": "defense_card",
     }
 
     step.resolve(game_state, context)
 
     assert game_state.active_effects[0].source_card_id == "defense_card"
-
-
-def test_create_effect_step_does_not_fall_back_to_attack_card_during_defense(game_state):
-    step = CreateEffectStep(
-        effect_type=EffectType.ATTACK_IMMUNITY,
-        scope=EffectScope(shape=Shape.POINT, origin_id="hero_1"),
-        duration=DurationType.THIS_ROUND,
-        is_active=True,
-    )
-    context = {
-        "current_action_type": ActionType.DEFENSE,
-        "current_card_id": "incoming_attack",
-    }
-
-    step.resolve(game_state, context)
-
-    assert game_state.active_effects[0].source_card_id is None
 
 
 def test_resolve_card_sets_current_card_id(game_state):

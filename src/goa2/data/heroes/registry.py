@@ -20,6 +20,7 @@ HERO_DIFFICULTY_STARS = {
     "Misa": 2,
     "Garrus": 2,
     "Silverarrow": 2,
+    "Cordelia": 2,
     # 3 Stars
     "Mortimer": 3,
     "Widget": 3,
@@ -53,16 +54,18 @@ class HeroRegistry:
     """
 
     _heroes: ClassVar[dict[str, Hero]] = {}
+    _playtest_heroes: ClassVar[set[str]] = set()
 
     @classmethod
-    def register(cls, hero: Hero) -> None:
+    def register(cls, hero: Hero, *, is_playtest: bool = False) -> None:
         """Register a hero definition while enforcing global card-ID uniqueness.
 
         Several engine and visibility lifecycles intentionally use a bare card
         ID as their key, so definitions cannot safely reuse an ID across heroes,
         spells, or ultimate cards. Re-registering the same hero remains allowed
         for tests and development reloads; its previous definition is excluded
-        from the collision check.
+        from the collision check. Playtest status only controls default listings;
+        it does not prevent direct lookup or game creation.
         """
         cards = cls._cards(hero)
         incoming_ids: set[str] = set()
@@ -88,6 +91,10 @@ class HeroRegistry:
                 )
 
         cls._heroes[hero.name] = hero
+        if is_playtest:
+            cls._playtest_heroes.add(hero.name)
+        else:
+            cls._playtest_heroes.discard(hero.name)
 
     @staticmethod
     def _cards(hero: Hero) -> list[Card]:
@@ -104,16 +111,31 @@ class HeroRegistry:
         return None
 
     @classmethod
-    def list_heroes(cls) -> list[str]:
-        return list(cls._heroes.keys())
+    def list_heroes(cls, *, include_playtest: bool = False) -> list[str]:
+        return [
+            hero_name
+            for hero_name in cls._heroes
+            if include_playtest or hero_name not in cls._playtest_heroes
+        ]
 
     @classmethod
-    def list_hero_metadata(cls) -> list[dict]:
+    def list_hero_metadata(cls, *, include_playtest: bool = False) -> list[dict]:
+        hero_names = [
+            hero_name
+            for hero_name in HERO_DIFFICULTY_STARS
+            if hero_name in cls._heroes
+            and (include_playtest or hero_name not in cls._playtest_heroes)
+        ]
+        if include_playtest:
+            hero_names.extend(
+                hero_name
+                for hero_name in cls._heroes
+                if hero_name in cls._playtest_heroes and hero_name not in hero_names
+            )
         return [
             {
                 "id": hero_name,
                 "difficulty_stars": get_hero_difficulty_stars(hero_name),
             }
-            for hero_name in HERO_DIFFICULTY_STARS
-            if hero_name in cls._heroes
+            for hero_name in hero_names
         ]

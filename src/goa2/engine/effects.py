@@ -60,6 +60,50 @@ class PassiveConfig(BaseModel):
     prompt: str = ""
 
 
+def _nested_steps(value: Any) -> list[GameStep]:
+    """Steps reachable from a model field value (steps, or lists of them)."""
+    from goa2.engine.steps import GameStep
+
+    if isinstance(value, GameStep):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [step for item in value for step in _nested_steps(item)]
+    return []
+
+
+def bind_effect_cards(steps: list[GameStep], card_id: str) -> list[GameStep]:
+    """Attribute every effect these steps create to the card that built them.
+
+    Card linkage cannot be inferred from the execution context: a card that
+    re-performs another card's action (Bullet Time, Reload, NebKher's Mind Grip)
+    resolves that card's text while the turn context still names the granting
+    card, so the effects would bind to the wrong card — and repeats would evade
+    the one-instance-per-card rule keyed on it. Build time is the only point
+    that reliably knows the card, so the CardEffect API stamps it here.
+
+    Any step declaring a ``source_card_id`` field is stamped — ``CreateEffectStep``
+    and the steps that create effects directly (Hanu's ``ScheduleJourneyReturnStep``).
+    Steps that already name a card are left alone, and token-bound effects stay
+    unbound on purpose: their lifecycle follows the token, not a card.
+
+    The walk is generic over ``model_fields`` rather than a fixed list of step
+    types, so nested step containers (``steps_template``, ``finishing_steps``,
+    ``new_steps``, and any added later) are covered without maintenance.
+    """
+    for step in steps:
+        # Duck-typed: any step declaring source_card_id opts into binding.
+        bindable: Any = step
+        if (
+            "source_card_id" in type(step).model_fields
+            and bindable.source_card_id is None
+            and not getattr(step, "is_token_effect", False)
+        ):
+            bindable.source_card_id = card_id
+        for field_name in type(step).model_fields:
+            bind_effect_cards(_nested_steps(getattr(step, field_name, None)), card_id)
+    return steps
+
+
 def _defense_stats_unit_id(state: GameState, defender: Hero, context: dict[str, Any]):
     """Board unit whose position drives defense stats.
 
@@ -112,7 +156,23 @@ class CardEffect:
         from goa2.engine.stats import compute_card_stats
 
         stats = compute_card_stats(state, hero.id, card)
-        return self.build_steps(state, hero, card, stats)
+        return self.get_steps_with_stats(state, hero, card, stats)
+
+    def get_steps_with_stats(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        stats: CardStats,
+    ) -> list[GameStep]:
+        """
+        Returns steps for the card's primary action, with stats already computed.
+
+        For engine callers that need to compute or adjust stats themselves
+        (re-performances, primary movement). Prefer get_steps() otherwise.
+        Never call build_steps() directly — it skips the card binding.
+        """
+        return bind_effect_cards(self.build_steps(state, hero, card, stats), card.id)
 
     def get_defense_steps(
         self,
@@ -133,7 +193,8 @@ class CardEffect:
         from goa2.engine.stats import compute_card_stats
 
         stats = compute_card_stats(state, _defense_stats_unit_id(state, defender, context), card)
-        return self.build_defense_steps(state, defender, card, stats, context)
+        steps = self.build_defense_steps(state, defender, card, stats, context)
+        return None if steps is None else bind_effect_cards(steps, card.id)
 
     def get_on_block_steps(
         self,
@@ -151,7 +212,9 @@ class CardEffect:
         from goa2.engine.stats import compute_card_stats
 
         stats = compute_card_stats(state, _defense_stats_unit_id(state, defender, context), card)
-        return self.build_on_block_steps(state, defender, card, stats, context)
+        return bind_effect_cards(
+            self.build_on_block_steps(state, defender, card, stats, context), card.id
+        )
 
     # -------------------------------------------------------------------------
     # Override these in subclasses - stats are pre-computed
@@ -243,6 +306,23 @@ class CardEffect:
 
     def get_movement_aura(self) -> MovementAura | None:
         """Return movement rule modifications. Default: none."""
+        return None
+
+    def get_action_prevention_reason(
+        self,
+        state: GameState,
+        source_hero: Hero,
+        source_card: Card,
+        actor_id: str,
+        action_type: ActionType,
+        action_card: Card | None,
+    ) -> str | None:
+        """Return a reason when this active card effect forbids an action.
+
+        This hook is evaluated while action choices are built, before any
+        BEFORE_ACTION/BEFORE_ATTACK passives. Most card effects do not restrict
+        action availability and inherit the default ``None`` result.
+        """
         return None
 
     # -------------------------------------------------------------------------

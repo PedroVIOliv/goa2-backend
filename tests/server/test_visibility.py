@@ -147,3 +147,28 @@ def test_guessed_card_reveal_is_public_even_when_wrong_guess_leaves_it_in_hand()
         assert revealed["metadata"]["card_id"] == card.id
         assert revealed["metadata"]["card_name"] == card.name
         assert revealed["metadata"]["card_color"] == card.color.value
+
+
+def test_direct_card_reveal_is_public_to_every_recipient():
+    state = _state()
+    arien = state.get_hero("hero_arien")
+    card = arien.hand[0]
+    event = GameEvent(
+        event_type=GameEventType.CARD_REVEALED,
+        actor_id="hero_wasp",
+        target_id="hero_arien",
+        metadata={
+            "owner_id": "hero_arien",
+            "card_id": card.id,
+            "card_name": card.name,
+            "card_color": card.color.value,
+            "card_tier": card.tier.value,
+            "tier_value": 1,
+        },
+    ).model_dump()
+
+    for viewer in ("hero_arien", "hero_wasp", None):
+        revealed = events_for_viewer([event], state, viewer)[0]
+        assert revealed["metadata"]["card_id"] == card.id
+        assert revealed["metadata"]["card_name"] == card.name
+        assert revealed["metadata"]["card_color"] == card.color.value

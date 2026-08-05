@@ -112,6 +112,13 @@ class GameState(BaseModel):
     # drain in one process_stack pass, so context is already cleared when the
     # post-mutation view is built. Cleared when the next hero turn begins.
 
+    card_reveal: dict[str, Any] | None = Field(
+        default=None
+    )  # Public table state for an intentionally revealed hand card (Cordelia).
+    # Kept outside execution_context so the direct faceup reveal survives the
+    # resolving turn's finalization and reconnects. Cleared after another hero
+    # finishes a turn, matching card_guess's tabletop presentation lifetime.
+
     last_turn_positions: dict[BoardEntityID, Hex] = Field(
         default_factory=dict
     )  # Entity positions at the turn boundary, recorded wherever the phase

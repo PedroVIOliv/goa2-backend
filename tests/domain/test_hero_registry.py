@@ -28,7 +28,7 @@ def _hero(name: str, *card_ids: str) -> Hero:
 def test_registered_card_ids_are_globally_unique() -> None:
     owners: dict[str, str] = {}
 
-    for hero_name in HeroRegistry.list_heroes():
+    for hero_name in HeroRegistry.list_heroes(include_playtest=True):
         hero = HeroRegistry.get(hero_name)
         assert hero is not None
         cards = [*hero.deck, *hero.spells]
@@ -61,3 +61,16 @@ def test_registry_rejects_duplicate_card_id_within_one_hero(monkeypatch) -> None
         match="Card ID collision: 'repeated_card' is defined more than once by 'First'",
     ):
         HeroRegistry.register(_hero("First", "repeated_card", "repeated_card"))
+
+
+def test_registry_excludes_playtest_heroes_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(HeroRegistry, "_heroes", {})
+    monkeypatch.setattr(HeroRegistry, "_playtest_heroes", set())
+    HeroRegistry.register(_hero("Released", "released_card"))
+    HeroRegistry.register(_hero("Experimental", "experimental_card"), is_playtest=True)
+
+    assert HeroRegistry.list_heroes() == ["Released"]
+    assert HeroRegistry.list_heroes(include_playtest=True) == [
+        "Released",
+        "Experimental",
+    ]

@@ -2,10 +2,11 @@ import pytest
 
 import goa2.scripts.dodger_effects  # noqa: F401
 from goa2.domain.input import InputRequestType
+from goa2.domain.models.effect import EffectType
 from goa2.domain.models.enums import StatType
 from goa2.domain.types import BoardEntityID
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import AttackSequenceStep
+from goa2.engine.steps import AttackSequenceStep, PerformPrimaryActionStep
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -146,3 +147,56 @@ def test_defense_bonus_needs_the_clause_without_tide_of_darkness() -> None:
     unconditionally rather than because Tide satisfied the clause.
     """
     assert not _block_five_damage(_defending_dodger(with_ultimate=False))
+
+
+@pytest.mark.effect_contract
+def test_enfeeblement_creates_one_instance_per_payload() -> None:
+    """The card's two clauses are two payloads of a single active effect."""
+    state = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero(
+            "hero_dodger",
+            at=(0, 0, 0),
+            current_card=hero_card("Dodger", "enfeeblement"),
+        )
+        .with_actor("hero_dodger")
+        .build()
+    )
+
+    run_card(state, "hero_dodger").expect_input(InputRequestType.CHOOSE_ACTION).choose(
+        "SKILL"
+    ).finish()
+
+    bound = [e for e in state.active_effects if e.source_card_id == "enfeeblement"]
+    assert {e.effect_type for e in bound} == {
+        EffectType.AREA_STAT_MODIFIER,
+        EffectType.REPEAT_PREVENTION,
+    }
+
+
+@pytest.mark.effect_contract
+def test_repeating_enfeeblement_does_not_duplicate_its_effect() -> None:
+    """Only one instance of an active effect per card can be active."""
+    state = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero(
+            "hero_dodger",
+            at=(0, 0, 0),
+            current_card=hero_card("Dodger", "enfeeblement"),
+        )
+        .with_actor("hero_dodger")
+        .build()
+    )
+
+    run_card(state, "hero_dodger").expect_input(InputRequestType.CHOOSE_ACTION).choose(
+        "SKILL"
+    ).finish()
+    before = [e.id for e in state.active_effects]
+
+    state.execution_context["selected_card"] = "enfeeblement"
+    push_steps(state, [PerformPrimaryActionStep(hero_id="hero_dodger")])
+    process_stack(state)
+
+    assert [e.id for e in state.active_effects] == before

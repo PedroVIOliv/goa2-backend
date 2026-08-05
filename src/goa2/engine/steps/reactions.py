@@ -118,7 +118,13 @@ class ReactionWindowStep(GameStep):
         options = []
         for card in valid_defense_cards:
             base_def = card.get_base_stat_value(block_stat)
-            total_def = get_computed_stat(state, target_id, block_stat, base_def)
+            total_def = get_computed_stat(
+                state,
+                target_id,
+                block_stat,
+                base_def,
+                performing_card=card,
+            )
             options.append(
                 InputOption(
                     id=card.id,
@@ -157,7 +163,13 @@ class ReactionWindowStep(GameStep):
                 def_val = selected_card.get_base_stat_value(block_stat)
 
                 # Compute Total Defense (Base + Items + Modifiers)
-                total_def = get_computed_stat(state, target_id, block_stat, def_val)
+                total_def = get_computed_stat(
+                    state,
+                    target_id,
+                    block_stat,
+                    def_val,
+                    performing_card=selected_card,
+                )
 
                 # Determine if primary defense (triggers effect text)
                 # block_primary_defense forces all cards to secondary-only

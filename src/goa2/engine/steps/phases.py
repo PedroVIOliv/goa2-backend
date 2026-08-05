@@ -105,6 +105,9 @@ class FinalizeHeroTurnStep(GameStep):
             # Also reset ultimate card if present
             if hero.ultimate_card and hero.ultimate_card.passive_uses_this_turn > 0:
                 hero.ultimate_card.passive_uses_this_turn = 0
+            for effect in state.active_effects:
+                if str(effect.source_id) == str(hero.id) and effect.passive_uses_this_turn > 0:
+                    effect.passive_uses_this_turn = 0
 
         # A revealed guess card stays on the table until play moves past it.
         # Clearing on the guesser's own turn end is too early: that runs in the
@@ -112,6 +115,8 @@ class FinalizeHeroTurnStep(GameStep):
         # a view containing it. Clear once a *different* hero finishes a turn.
         if state.card_guess and state.card_guess.get("guesser_id") != str(self.hero_id):
             state.card_guess = None
+        if state.card_reveal and state.card_reveal.get("revealer_id") != str(self.hero_id):
+            state.card_reveal = None
 
         # Clear transient context for the next actor
         context.clear()

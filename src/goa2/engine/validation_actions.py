@@ -44,12 +44,13 @@ class ActionValidationMixin:
         """
         context = context or {}
 
+        card_obj = context.get("card")
+
         # Helper to check exceptions
         def matches_exception(exceptions: list[CardColor]) -> bool:
             if not exceptions:
                 return False
             # Check context for card
-            card_obj = context.get("card")
             if card_obj and isinstance(card_obj, Card):
                 return card_obj.current_color in exceptions
             return False
@@ -74,16 +75,51 @@ class ActionValidationMixin:
                     return effect
             return None
 
-        # Check Active Effects (Zones/Auras) that restrict actions.
-        actor_loc = state.get_position(actor_id)
-        if actor_loc:
-            blocked = blocking_effect(actor_id, actor_loc)
-            if blocked:
+        def card_effect_blocker(check_id: str) -> tuple[str, str] | None:
+            """Check always-on card effects which gate action availability.
+
+            Unlike ActiveEffect restrictions, these effects (currently
+            Cordelia's ultimate) exist by virtue of an unlocked ultimate or a
+            resolved face-up card, so they are discovered through the card
+            effect registry rather than ``state.active_effects``.
+            """
+            from goa2.engine.effects import get_active_aura_effects
+
+            for team in state.teams.values():
+                for source_hero in team.heroes:
+                    for source_card, card_effect in get_active_aura_effects(state, source_hero):
+                        reason = card_effect.get_action_prevention_reason(
+                            state,
+                            source_hero,
+                            source_card,
+                            check_id,
+                            action_type,
+                            card_obj if isinstance(card_obj, Card) else None,
+                        )
+                        if reason:
+                            return reason, str(source_hero.id)
+            return None
+
+        def blocking_result(check_id: str, check_hex: Hex) -> ValidationResult | None:
+            blocked = blocking_effect(check_id, check_hex)
+            if blocked is not None:
                 return ValidationResult.deny(
                     reason=f"Action prevented by effect: {blocked.effect_type.value}",
                     effect_ids=[blocked.id],
                     source=blocked.source_id,
                 )
+            card_block = card_effect_blocker(check_id)
+            if card_block is not None:
+                reason, source_id = card_block
+                return ValidationResult.deny(reason=reason, source=source_id)
+            return None
+
+        # Check Active Effects (Zones/Auras) that restrict actions.
+        actor_loc = state.get_position(actor_id)
+        if actor_loc:
+            blocked = blocking_result(actor_id, actor_loc)
+            if blocked is not None:
+                return blocked
             return ValidationResult.allow()
 
         # Unbound multi-piece hero: each piece is an independent actor. The hero
@@ -91,23 +127,19 @@ class ActionValidationMixin:
         # piece is blocked (the acting piece is chosen later, per-piece).
         hero = state.get_hero(HeroID(actor_id))
         if hero is not None and hero.is_multi_piece:
-            last_blocked: ActiveEffect | None = None
+            last_blocked: ValidationResult | None = None
             has_piece = False
             for pid in state.get_piece_ids(actor_id):
                 piece_loc = state.get_position(pid)
                 if piece_loc is None:
                     continue
                 has_piece = True
-                blocked = blocking_effect(pid, piece_loc)
+                blocked = blocking_result(pid, piece_loc)
                 if blocked is None:
                     return ValidationResult.allow()
                 last_blocked = blocked
             if has_piece and last_blocked is not None:
-                return ValidationResult.deny(
-                    reason=f"Action prevented by effect: {last_blocked.effect_type.value}",
-                    effect_ids=[last_blocked.id],
-                    source=last_blocked.source_id,
-                )
+                return last_blocked
 
         return ValidationResult.allow()
 

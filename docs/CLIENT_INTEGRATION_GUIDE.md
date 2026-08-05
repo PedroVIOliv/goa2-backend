@@ -134,17 +134,27 @@ Invalid tokens are rejected with WebSocket close code `4001`. Tokens that don't 
 
 ### `GET /heroes`
 
-List available hero IDs. No authentication required.
+List released hero IDs. No authentication required.
+
+Pass the optional `include_playtest=true` query parameter to include registered
+playtest heroes. Playtest heroes are excluded by default.
 
 **Response:** `200 OK`
 
 ```json
-["arien", "knight", "rogue"]
+["Arien", "Bain", "Brogan"]
 ```
+
+With `include_playtest=true`, the response also includes playtest hero IDs such
+as `"Cordelia"`.
 
 ### `GET /heroes/metadata`
 
-List available heroes with pre-game selection metadata. No authentication required.
+List released heroes with pre-game selection metadata. No authentication required.
+
+Pass the optional `include_playtest=true` query parameter to include registered
+playtest heroes. Release status and difficulty are independent: for example,
+Cordelia is a playtest hero with `difficulty_stars: 2`.
 
 `difficulty_stars` describes how difficult the hero is to play and is only relevant before game creation.
 
@@ -153,8 +163,14 @@ List available heroes with pre-game selection metadata. No authentication requir
 ```json
 [
   { "id": "Arien", "difficulty_stars": 1 },
-  { "id": "Knight", "difficulty_stars": 2 }
+  { "id": "Bain", "difficulty_stars": 2 }
 ]
+```
+
+With `include_playtest=true`, the response also includes:
+
+```json
+{ "id": "Cordelia", "difficulty_stars": 2 }
 ```
 
 ### `POST /games`
@@ -809,6 +825,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
   "board_entities": [ ... ],
   "hero_pieces": { ... },
   "card_guess": null,
+  "card_reveal": null,
   "time_control": null,
   "clock": null
 }
@@ -848,6 +865,7 @@ ready check starts that pending shared turn with its normal fresh allowances.
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 | `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
 | `card_guess` | object/null | Public physical state while a card-color guess is active: `{guesser_id, attempts}`. Each attempt has `attempt`, `victim_id`, and either `card: null` while facedown or the complete revealed card plus `guessed_color`, `actual_color`, and `correct`. This is the authoritative source for rendering the guess — it survives reconnects and reveals a card only once it is flipped. A completed reveal stays in the view through the following hero's turn, then clears, so clients do not need to latch it from events. |
+| `card_reveal` | object/null | Public direct faceup reveal state: `{revealer_id, target_unit_id, owner_id, card, tier_value, discarded}`. Tier values are Gold/Silver/untiered = 0, I = 1, II = 2, III = 3, IV = 4. `card` is the complete public card face even when the retained card has returned to an otherwise-hidden hand. The state survives reconnects, stays through the following hero's turn, then clears. |
 | `time_control` | object/null | Immutable time-control values, or null for an untimed match |
 | `clock` | object/null | Public authoritative clock snapshot, or null for an untimed match |
 
@@ -1402,7 +1420,7 @@ request.
 
 ## Events
 
-Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative. `GUESSED_CARD_REVEALED` is an intentional exception: the guessed card's identity is public to every recipient because the effect explicitly flips it faceup.
+Events describe what happened during a game action. They are meant for animation and logs — they don't change what's displayed (the view does that), but they tell you *how* it changed. Live REST and WebSocket events are recipient-scoped: metadata that would identify a card or facedown token hidden from the receiver is masked. Clients must tolerate nullable private metadata fields and must treat the view as authoritative. `GUESSED_CARD_REVEALED` and `CARD_REVEALED` are intentional exceptions: the named card's identity is public to every recipient because the effect explicitly flips it faceup.
 
 ### Event structure
 
@@ -1441,6 +1459,7 @@ Events describe what happened during a game action. They are meant for animation
 | `DECK_CARD_SWAPPED` | A card in play traded places with a card in its owner's deck (Takahide's gold cycle / Bushido). Card IDs/names are `null` for recipients who cannot see those cards. Takahide's ultimate also emits it for the silver card it retires to the deck, with `metadata.incoming_card_id: null` and `metadata.source: "ready_for_war"` | `actor_id` (card owner), `metadata.outgoing_card_id`, `metadata.incoming_card_id`, `metadata.incoming_card_state`, `metadata.incoming_is_facedown` |
 | `CARD_SELECTED_FOR_GUESS` | The target placed one privately selected hand card facedown for a color guess. The event deliberately contains no card identity. | `actor_id` (guesser), `target_id` (hero choosing the card), `metadata.attempt` |
 | `GUESSED_CARD_REVEALED` | The selected guess card was flipped faceup for everyone. Log/animation metadata only — render the card itself from `view.card_guess`, which stays correct when a wrong guess returns the card to its hidden hand. | `actor_id` (guesser), `target_id` (card owner), `metadata.attempt`, `metadata.card_id`, `metadata.card_name`, `metadata.card_color`, `metadata.guessed_color`, `metadata.guess_correct` |
+| `CARD_REVEALED` | A selected hand card was directly revealed faceup to everyone. Render the persistent face from `view.card_reveal`; the event is the animation/log cue. | `actor_id` (revealer), `target_id` (selected hero unit), `metadata.owner_id`, `metadata.card_id`, `metadata.card_name`, `metadata.card_color`, `metadata.card_tier`, `metadata.tier_value` |
 | `SPELL_CAST` | A prepared spell was spent and revealed before its action choice | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELL_REMOVED_FROM_SPELLBOOK` | A prepared spell was revealed and removed without being cast | `actor_id` (caster), `metadata.spell_id`, `metadata.owner_id`, `metadata.caster_id` |
 | `SPELLBOOK_PREPARED` | Outside spells returned facedown to their owner's spellbook | `actor_id`, `metadata.returned_spell_ids`, `metadata.spellbook_count` |
@@ -1448,6 +1467,7 @@ Events describe what happened during a game action. They are meant for animation
 | `MARKER_PLACED` | A marker was placed on a unit | `target_id`, `metadata` |
 | `MARKER_REMOVED` | A marker was removed | `target_id`, `metadata` |
 | `GOLD_GAINED` | A hero gained gold | `actor_id`, `metadata.amount` |
+| `GOLD_LOST` | A hero lost coins without transferring them | `actor_id` (effect source), `target_id` (affected hero unit), `metadata.owner_id`, `metadata.amount` |
 | `LIFE_COUNTER_CHANGED` | A team's life counter changed | `metadata.team`, `metadata.amount` |
 | `TURN_ENDED` | A hero's turn ended | `actor_id` |
 | `TIMER_EXPIRED` | A match clock expired and the server applied an automatic legal decision. Hidden card IDs remain recipient-scoped. | `actor_id`, `metadata.clock_kind`, `metadata.automatic_action`; optional `metadata.request_id`, `metadata.selection`, `metadata.card_id`, `metadata.team`, `metadata.eligible_hero_ids` |

@@ -36,9 +36,13 @@ def _remove_token_from_board(state: GameState, token_id: str) -> tuple[Hex | Non
 
     state.remove_entity(BoardEntityID(token_id))
 
+    # The token's own effects end here — this is the only thing that ends a
+    # token-bound effect (EffectManager._is_token_bound).
     initial_count = len(state.active_effects)
     state.active_effects = [
-        e for e in state.active_effects if e.source_id != token_id and e.scope.origin_id != token_id
+        e
+        for e in state.active_effects
+        if e.token_id != token_id and e.source_id != token_id and e.scope.origin_id != token_id
     ]
     removed_effects = initial_count - len(state.active_effects)
 

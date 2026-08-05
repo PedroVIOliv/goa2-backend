@@ -11,10 +11,10 @@ router = APIRouter(tags=["heroes"])
 
 
 @router.get("/heroes", response_model=list[str])
-async def list_heroes() -> list[str]:
-    return HeroRegistry.list_heroes()
+async def list_heroes(include_playtest: bool = False) -> list[str]:
+    return HeroRegistry.list_heroes(include_playtest=include_playtest)
 
 
 @router.get("/heroes/metadata", response_model=list[HeroMetadata])
-async def list_hero_metadata() -> list[dict]:
-    return HeroRegistry.list_hero_metadata()
+async def list_hero_metadata(include_playtest: bool = False) -> list[dict]:
+    return HeroRegistry.list_hero_metadata(include_playtest=include_playtest)
