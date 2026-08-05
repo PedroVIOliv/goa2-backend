@@ -327,6 +327,8 @@ class SelectStep(GameStep):
         if self.auto_select_if_one and len(valid_candidates) == 1 and self.is_mandatory:
             choice = valid_candidates[0]
             context[self.output_key] = choice
+            self.pending_input = None
+            self.pending_request_id = None
             if self.target_type == TargetType.CARD:
                 self._store_selected_card_metadata(
                     str(choice),
@@ -343,6 +345,8 @@ class SelectStep(GameStep):
 
             if selection == SKIP and not self.is_mandatory:
                 logger.debug("   [SKIP] Player chose to skip optional selection.")
+                self.pending_input = None
+                self.pending_request_id = None
                 return StepResult(is_finished=True)
 
             # Type Conversion for Hex/Number. A malformed client value (a hex
@@ -365,6 +369,8 @@ class SelectStep(GameStep):
 
             if not coercion_failed and selection in valid_candidates:
                 context[self.output_key] = selection
+                self.pending_input = None
+                self.pending_request_id = None
                 if self.target_type == TargetType.CARD:
                     self._store_selected_card_metadata(
                         str(selection),

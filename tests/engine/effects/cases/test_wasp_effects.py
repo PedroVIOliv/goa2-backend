@@ -60,3 +60,46 @@ def test_magnetic_dagger_allows_allies_to_swap_enemy_units():
     # An enemy actor is blocked from swapping the same units.
     assert not v.can_be_swapped(state, "hero_enemy", "enemy_minion").allowed
     assert not v.can_be_swapped(state, "enemy_minion", "hero_enemy").allowed
+
+
+@pytest.mark.effect_flow
+def test_center_of_mass_prompts_for_a_destination_on_both_repeats():
+    """Center of Mass must not reuse a prior destination on its second repeat."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(
+            [
+                (0, 0, 0),
+                (2, 0, -2),
+                (1, 1, -2),
+                (0, 2, -2),
+                (-1, 2, -1),
+                (1, 0, -1),
+                (0, 1, -1),
+                (2, 1, -3),
+                (1, 2, -3),
+                (0, 3, -3),
+                (-1, 3, -2),
+            ]
+        )
+        .red_hero(
+            "hero_wasp",
+            at=(0, 0, 0),
+            current_card=hero_card("Wasp", "center_of_mass"),
+        )
+        .blue_hero("hero_target", at=(2, 0, -2))
+        .with_actor("hero_wasp")
+        .build()
+    )
+
+    run = run_card(state, "hero_wasp")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("hero_target").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 1, "r": 1, "s": -2}).expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": 0, "r": 2, "s": -2}).expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": -1, "r": 2, "s": -1}).finish()
+
+    assert state.get_position("hero_target").model_dump() == {"q": -1, "r": 2, "s": -1}
