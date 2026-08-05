@@ -61,22 +61,24 @@ def _place_passable_mine(
     *,
     owner_id: str,
     mine_id: str = "mine_1",
+    token_type: TokenType = TokenType.MINE_DUD,
 ) -> None:
     """Put a passable mine on the board, owned by `owner_id` (a hero in state).
 
     Ownership decides only whether crossing it *detonates* the mine (enemy
     heroes trigger, friendly units don't) — traversal itself is
-    ownership-independent.
+    ownership-independent. MINE_BLAST additionally forces the victim to
+    discard; MINE_DUD just pops.
     """
     mine = Token(
         id=mine_id,
         name="Mine",
-        token_type=TokenType.MINE_DUD,
+        token_type=token_type,
         owner_id=owner_id,
         is_passable=True,
     )
     state.register_entity(mine, "token")
-    state.token_pool.setdefault(TokenType.MINE_DUD, []).append(mine)
+    state.token_pool.setdefault(token_type, []).append(mine)
     state.place_entity(mine_id, Hex(q=at[0], r=at[1], s=at[2]))
 
 
@@ -611,6 +613,86 @@ def test_this_way_crosses_passable_mines(mine_hexes, mine_owner: str, detonates:
         assert _mine_triggered_ids(run) == []
         for mid, mine_hex in zip(mine_ids, mine_hexes, strict=True):
             assert _pos(state, mid) == mine_hex
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    "mine_owner,detonates",
+    [("blue_mine_owner", True), ("red_mine_owner", False)],
+    ids=["enemy-mine", "friendly-mine"],
+)
+def test_this_way_blast_mines_make_each_crosser_discard(mine_owner: str, detonates: bool) -> None:
+    """One blast mine per mover: each victim discards from their OWN hand.
+
+    Guards the victim routing through `mine_victim_id`. That context slot is a
+    single shared string, and the steps that consume it (`ForceDiscardStep`,
+    its `SelectStep`, `DiscardCardStep`) hold only the key name and re-read it
+    when they resolve. It works because each mover's whole trigger→prompt→
+    discard chain is pushed on top of the *other* mover's still-pending
+    MoveUnitStep, so it drains before the second write lands.
+
+    If a refactor ever moves both units before resolving mines, the second
+    write clobbers the first and BOTH discards would target the second mover —
+    Hanu escapes free and the ally pays twice. No crash; just the wrong player
+    losing a card. This test is the only thing that would notice.
+    """
+    state = _this_way_mine_state(mine_owner, mine_hexes=())
+    _place_passable_mine(
+        state,
+        _TW_ANCHOR_PATH,
+        owner_id=mine_owner,
+        mine_id="blast_hanu",
+        token_type=TokenType.MINE_BLAST,
+    )
+    _place_passable_mine(
+        state,
+        _TW_PARTNER_PATH,
+        owner_id=mine_owner,
+        mine_id="blast_ally",
+        token_type=TokenType.MINE_BLAST,
+    )
+    state.get_hero("hero_hanu").hand = [hero_card("Hanu", "monkey_trick")]
+    state.get_hero("red_ally").hand = [hero_card("Hanu", "this_way")]
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("red_ally").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)
+    run.choose(Hex(q=2, r=0, s=-2))
+
+    if not detonates:
+        # Friendly blast mines are inert: no prompt, no discard, mines stay put.
+        run.finish()
+        assert _pos(state, "blast_hanu") == _TW_ANCHOR_PATH
+        assert _pos(state, "blast_ally") == _TW_PARTNER_PATH
+        assert state.get_hero("hero_hanu").discard_pile == []
+        assert state.get_hero("red_ally").discard_pile == []
+        return
+
+    # Hanu crosses first and is prompted for HIS hand...
+    run.expect_input(InputRequestType.SELECT_CARD)
+    assert run.latest_request.player_id == "hero_hanu"
+    assert _option_set(run) == {"monkey_trick"}
+    # ...while the ally has not moved yet. This is the ordering the routing
+    # depends on: Hanu's discard resolves before the ally's move rewrites
+    # mine_victim_id.
+    assert _pos(state, "red_ally") == (0, 1, -1)
+
+    # ...then the ally crosses and is prompted for THEIR hand.
+    run.choose("monkey_trick").expect_input(InputRequestType.SELECT_CARD)
+    assert run.latest_request.player_id == "red_ally"
+    assert _option_set(run) == {"this_way"}
+    assert _pos(state, "red_ally") == (2, 1, -3)
+
+    run.choose("this_way").finish()
+
+    assert _pos(state, "hero_hanu") == (2, 0, -2)
+    assert _pos(state, "red_ally") == (2, 1, -3)
+    assert sorted(_mine_triggered_ids(run)) == ["blast_ally", "blast_hanu"]
+    # Each hero lost exactly their own card — not two off one hand.
+    assert [c.id for c in state.get_hero("hero_hanu").discard_pile] == ["monkey_trick"]
+    assert [c.id for c in state.get_hero("red_ally").discard_pile] == ["this_way"]
 
 
 @pytest.mark.effect_flow
