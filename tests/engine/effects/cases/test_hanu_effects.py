@@ -3,7 +3,9 @@
 import pytest
 
 from goa2.domain.events import GameEventType
+from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
+from goa2.domain.models import Token, TokenType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -51,6 +53,35 @@ def _option_set(run) -> set:
 def _pos(state, uid) -> tuple:
     h = state.entity_locations.get(uid)
     return (h.q, h.r, h.s) if h is not None else None
+
+
+def _place_passable_mine(
+    state,
+    at: tuple[int, int, int],
+    *,
+    owner_id: str,
+    mine_id: str = "mine_1",
+) -> None:
+    """Put a passable mine on the board, owned by `owner_id` (a hero in state).
+
+    Ownership decides only whether crossing it *detonates* the mine (enemy
+    heroes trigger, friendly units don't) — traversal itself is
+    ownership-independent.
+    """
+    mine = Token(
+        id=mine_id,
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=owner_id,
+        is_passable=True,
+    )
+    state.register_entity(mine, "token")
+    state.token_pool.setdefault(TokenType.MINE_DUD, []).append(mine)
+    state.place_entity(mine_id, Hex(q=at[0], r=at[1], s=at[2]))
+
+
+def _mine_triggered_ids(run) -> list[str]:
+    return [e.target_id for e in run.events if e.event_type == GameEventType.MINE_TRIGGERED]
 
 
 # =============================================================================
@@ -491,6 +522,133 @@ def test_this_way_moves_both_in_same_direction() -> None:
 
     assert _pos(state, "hero_hanu") == (2, 0, -2)
     assert _pos(state, "red_ally") == (2, 1, -3)  # same +q offset
+
+
+# This Way! geometry, direction +q, distance 2. Hanu and the partner travel
+# parallel lines one row apart, so each mover's crossed hexes are disjoint and
+# a mine can be placed in front of either one independently.
+_TW_ANCHOR_PATH = (1, 0, -1)  # crossed by Hanu only
+_TW_PARTNER_PATH = (1, 1, -2)  # crossed by the friendly hero only
+
+
+def _this_way_mine_state(mine_owner: str, mine_hexes=(_TW_ANCHOR_PATH,)):
+    """Hanu at (0,0,0) → (2,0,-2); partner at (0,1,-1) → (2,1,-3).
+
+    A passable mine is placed on each hex in `mine_hexes`, all owned by
+    `mine_owner`. Mines are named mine_1, mine_2, … in the order given.
+    """
+    builder = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_hanu", at=(0, 0, 0), current_card=hero_card("Hanu", "this_way"))
+        .red_hero("red_ally", at=(0, 1, -1))
+        # Both owners sit outside Hanu's radius so neither is a partner option.
+        .blue_hero("blue_mine_owner", at=(0, 3, -3))
+        .red_hero("red_mine_owner", at=(0, 4, -4))
+    )
+    state = builder.with_actor("hero_hanu").build()
+    for idx, mine_hex in enumerate(mine_hexes, start=1):
+        _place_passable_mine(state, mine_hex, owner_id=mine_owner, mine_id=f"mine_{idx}")
+    return state
+
+
+@pytest.mark.effect_flow
+def test_this_way_pair_moves_with_no_mine() -> None:
+    """Control for the mine cases: same scenario, clear board."""
+    state = _this_way_mine_state("blue_mine_owner", mine_hexes=())
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("red_ally").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)
+
+    assert Hex(q=2, r=0, s=-2) in _option_set(run)
+    run.choose(Hex(q=2, r=0, s=-2)).finish()
+
+    assert _pos(state, "hero_hanu") == (2, 0, -2)
+    assert _pos(state, "red_ally") == (2, 1, -3)
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    "mine_hexes",
+    [(_TW_ANCHOR_PATH,), (_TW_PARTNER_PATH,), (_TW_ANCHOR_PATH, _TW_PARTNER_PATH)],
+    ids=["hanu-path", "partner-path", "both-paths"],
+)
+@pytest.mark.parametrize(
+    "mine_owner,detonates",
+    [("blue_mine_owner", True), ("red_mine_owner", False)],
+    ids=["enemy-mine", "friendly-mine"],
+)
+def test_this_way_crosses_passable_mines(mine_hexes, mine_owner: str, detonates: bool) -> None:
+    """Both movers may cross passable mines; each mover detonates enemy mines it crosses.
+
+    Hanu and the partner are both heroes, so a mine on *either* path is a live
+    trigger — the crossing mover is what matters, not just the card's actor.
+    """
+    hanu_destination = Hex(q=2, r=0, s=-2)
+    state = _this_way_mine_state(mine_owner, mine_hexes)
+    mine_ids = [f"mine_{i}" for i in range(1, len(mine_hexes) + 1)]
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("red_ally").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)
+
+    assert hanu_destination in _option_set(run)
+    run.choose(hanu_destination).finish()
+
+    # Both complete the full move regardless of who owns the mines.
+    assert _pos(state, "hero_hanu") == (2, 0, -2)
+    assert _pos(state, "red_ally") == (2, 1, -3)
+
+    if detonates:
+        assert sorted(_mine_triggered_ids(run)) == sorted(mine_ids)
+        assert all(_pos(state, mid) is None for mid in mine_ids)
+    else:
+        assert _mine_triggered_ids(run) == []
+        for mid, mine_hex in zip(mine_ids, mine_hexes, strict=True):
+            assert _pos(state, mid) == mine_hex
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("mine_owner", ["blue_mine_owner", "red_mine_owner"])
+def test_this_way_cannot_land_on_passable_mine(mine_owner: str) -> None:
+    """A mine is traversable but never a legal landing hex, whoever owns it."""
+    mine_hex = Hex(q=1, r=0, s=-1)
+    state = _this_way_mine_state(mine_owner)
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("red_ally").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_HEX)
+
+    options = _option_set(run)
+    assert mine_hex not in options
+    assert options, "other directions at distance 1 should still be offered"
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("mine_owner", ["blue_mine_owner", "red_mine_owner"])
+def test_this_way_rejects_direction_when_partner_would_land_on_mine(mine_owner: str) -> None:
+    """A mine on the PARTNER's landing hex kills the whole direction for both.
+
+    Hanu's own landing (2,0,-2) is clear, so this only fails if the partner's
+    mirrored landing is validated too.
+    """
+    partner_destination = (2, 1, -3)
+    state = _this_way_mine_state(mine_owner, mine_hexes=(partner_destination,))
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("red_ally").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)
+
+    assert Hex(q=2, r=0, s=-2) not in _option_set(run)
 
 
 @pytest.mark.effect_flow
