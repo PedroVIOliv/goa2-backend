@@ -24,6 +24,7 @@ from goa2.domain.models.enums import PassiveTrigger
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_composite import CountMatchFilter
 from goa2.engine.filters_geometry import (
+    ClearLineOfSightFilter,
     InStraightLineFilter,
     SameDirectionFromOriginFilter,
     StraightLinePathFilter,
@@ -353,8 +354,9 @@ class _BraceChargeEffect(CardEffect):
             MoveUnitStep(
                 unit_id=str(hero.id),
                 destination_key="charge_dest",
-                range_val=99,
+                range_val=self.max_dist,
                 pass_through_obstacles=True,
+                force_straight_line=True,
             ),
             # That hero discards (Cutter chooses which adjacent non-immune hero).
             SelectStep(
@@ -461,6 +463,7 @@ class _TumbleShotEffect(CardEffect):
                 unit_id=str(hero.id),
                 destination_key="retreat_dest",
                 range_val=self.retreat,
+                force_straight_line=True,
                 active_if_key="retreat_dest",
             ),
         ]
@@ -541,7 +544,8 @@ class _ChargeAttackEffect(CardEffect):
             MoveUnitStep(
                 unit_id=str(hero.id),
                 destination_key="charge_dest",
-                range_val=99,
+                range_val=self.max_charge,
+                force_straight_line=True,
                 active_if_key="charge_dest",
             ),
             # Optional: a hero adjacent and in the direction of the move (+2).
@@ -611,7 +615,10 @@ class GrapplingBoltEffect(CardEffect):
                 filters=[
                     RangeFilter(min_range=1, max_range=stats.range),
                     InStraightLineFilter(origin_id=str(hero.id)),
-                    StraightLinePathFilter(origin_id=str(hero.id)),
+                    ClearLineOfSightFilter(
+                        origin_id=str(hero.id),
+                        blocked_by_obstacles=True,
+                    ),
                     ObstacleFilter(is_obstacle=True),
                 ],
             ),

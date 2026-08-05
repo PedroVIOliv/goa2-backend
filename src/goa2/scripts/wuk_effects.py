@@ -696,10 +696,9 @@ class MarchOfNatureEffect(CardEffect):
 # each enemy hero you moved through discards a card, or is defeated; defeat up
 # to N minions you moved through."
 #
-# The move is a single zone-aware destination pick mixing normal and
-# straight-line-through-obstacle hexes (MoveSequenceStep flag). Through-effects
-# key off BetweenHexesFilter(origin -> dest), which is empty for any non-straight
-# move, so a normal move triggers nothing.
+# The player first chooses ordinary movement or the straight-line Trample mode.
+# This preserves ordinary path choice while making the direct Trample ray
+# explicit for obstacle crossing and crossed-unit effects.
 # ---------------------------------------------------------------------------
 def _crossed_filter() -> BetweenHexesFilter:
     return BetweenHexesFilter(from_hex_key="move_origin", to_hex_key="move_dest")
@@ -708,11 +707,39 @@ def _crossed_filter() -> BetweenHexesFilter:
 def _trample_steps(hero_id: str, move_range: int, max_minions: int) -> list[GameStep]:
     steps: list[GameStep] = [
         RecordHexStep(unit_id=hero_id, output_key="move_origin"),
+        SelectStep(
+            target_type=TargetType.NUMBER,
+            prompt="Choose how to move",
+            output_key="trample_mode",
+            number_options=[1, 2],
+            number_labels={1: "Normal movement", 2: "Straight-line Trample"},
+            is_mandatory=True,
+        ),
+        CheckContextConditionStep(
+            input_key="trample_mode",
+            operator="==",
+            threshold=1,
+            output_key="chose_normal_movement",
+        ),
+        CheckContextConditionStep(
+            input_key="trample_mode",
+            operator="==",
+            threshold=2,
+            output_key="chose_trample",
+        ),
         MoveSequenceStep(
             unit_id=hero_id,
             range_val=move_range,
             destination_key="move_dest",
-            allow_straight_line_through_obstacles=True,
+            active_if_key="chose_normal_movement",
+        ),
+        MoveSequenceStep(
+            unit_id=hero_id,
+            range_val=move_range,
+            destination_key="move_dest",
+            pass_through_obstacles=True,
+            force_straight_line=True,
+            active_if_key="chose_trample",
         ),
         # Each enemy hero moved through discards a card, or is defeated — this is
         # mandatory for ALL of them, not a player choice, so collect the whole
@@ -721,6 +748,7 @@ def _trample_steps(hero_id: str, move_range: int, max_minions: int) -> list[Game
         CollectUnitsStep(
             target_type=TargetType.UNIT,
             output_key="trample_heroes",
+            active_if_key="chose_trample",
             filters=[
                 _crossed_filter(),
                 TeamFilter(relation="ENEMY"),
@@ -745,6 +773,7 @@ def _trample_steps(hero_id: str, move_range: int, max_minions: int) -> list[Game
                 prompt="Defeat an enemy minion you moved through",
                 output_key=minion_key,
                 is_mandatory=False,
+                active_if_key="chose_trample",
                 filters=[
                     _crossed_filter(),
                     TeamFilter(relation="ENEMY"),

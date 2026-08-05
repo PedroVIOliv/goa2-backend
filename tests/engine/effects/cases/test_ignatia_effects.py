@@ -827,6 +827,91 @@ def test_path_of_ashes_blue_lays_a_magma_trail_origin_included_dest_excluded() -
 
 
 @pytest.mark.effect_flow
+def test_path_of_ashes_does_not_replace_crossed_mine_with_magma() -> None:
+    from goa2.domain.hex import Hex
+    from goa2.domain.models import Token, TokenType
+    from goa2.domain.types import BoardEntityID, HeroID
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero(
+            "hero_ignatia",
+            at=(0, 0, 0),
+            current_card=hero_card("Ignatia", "path_of_ashes"),
+        )
+        .blue_hero("mine_owner", at=(0, 3, -3))
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    _add_magma_pool(state)
+    _set_coin(state, "BLUE")
+    mine = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=HeroID("mine_owner"),
+        is_passable=True,
+    )
+    state.token_pool[TokenType.MINE_DUD] = [mine]
+    state.register_entity(mine, "token")
+    state.place_entity(mine.id, Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=2, r=0, s=-2))
+    run.finish()
+
+    assert _pos(state, "hero_ignatia") == (2, 0, -2)
+    assert state.get_position("mine_1") is None
+    assert _magma_at(state, (0, 0, 0))
+    assert not _magma_at(state, (1, 0, -1))
+
+
+@pytest.mark.effect_flow
+def test_path_of_ashes_places_no_trail_when_move_fails() -> None:
+    from goa2.domain.hex import Hex
+    from goa2.domain.models import Token, TokenType
+    from goa2.domain.types import BoardEntityID
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.steps import MoveUnitStep, PlaceTokenTrailStep
+
+    state = _path_state("path_of_ashes")
+    blocker = Token(
+        id=BoardEntityID("late_blocker"),
+        name="Late blocker",
+        token_type=TokenType.SMOKE_BOMB,
+    )
+    state.register_entity(blocker, "token")
+    state.place_entity(blocker.id, Hex(q=2, r=0, s=-2))
+    state.execution_context["origin"] = Hex(q=0, r=0, s=0)
+    state.execution_context["destination"] = Hex(q=2, r=0, s=-2)
+    push_steps(
+        state,
+        [
+            MoveUnitStep(
+                unit_id="hero_ignatia",
+                destination_key="destination",
+                range_val=2,
+                force_straight_line=True,
+                success_output_key="move_succeeded",
+            ),
+            PlaceTokenTrailStep(
+                token_type=TokenType.MAGMA,
+                origin_hex_key="origin",
+                dest_key="destination",
+                active_if_key="move_succeeded",
+            ),
+        ],
+    )
+    process_stack(state)
+
+    assert _pos(state, "hero_ignatia") == (0, 0, 0)
+    assert not _magma_at(state, (0, 0, 0))
+    assert not _magma_at(state, (1, 0, -1))
+
+
+@pytest.mark.effect_flow
 def test_path_of_ashes_blue_moving_zero_places_nothing() -> None:
     state = _path_state("path_of_ashes")
     _set_coin(state, "BLUE")

@@ -309,9 +309,9 @@ def _bounce_move_steps(hero: Hero) -> list[GameStep]:
             target_type=TargetType.HEX,
             prompt="Move 2 spaces in a straight line, ignoring obstacles",
             output_key="bounce_dest",
-            is_mandatory=False,
+            is_mandatory=True,
             filters=[
-                RangeFilter(min_range=1, max_range=2),
+                RangeFilter(min_range=2, max_range=2),
                 InStraightLineFilter(origin_id=str(hero.id)),
                 StraightLinePathFilter(origin_id=str(hero.id), pass_through_obstacles=True),
                 ObstacleFilter(is_obstacle=False),
@@ -320,8 +320,9 @@ def _bounce_move_steps(hero: Hero) -> list[GameStep]:
         MoveUnitStep(
             unit_id=str(hero.id),
             destination_key="bounce_dest",
-            range_val=99,
+            range_val=2,
             pass_through_obstacles=True,
+            force_straight_line=True,
             active_if_key="bounce_dest",
         ),
     ]

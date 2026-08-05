@@ -3,10 +3,14 @@ import pytest
 import goa2.data.heroes.misa
 import goa2.scripts.misa_effects  # noqa: F401 - register effects
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType
+from goa2.domain.models import Token, TokenType
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.handler import process_stack, push_steps
 
 from ..builders import EffectScenarioBuilder, hero_card
+from ..runner import run_card
 
 
 def _hex_distance(a: Hex, b: Hex) -> int:
@@ -29,6 +33,36 @@ def _push_option_hexes(request) -> list[Hex]:
         assert meta and "raw" in meta, f"hex option missing raw metadata: {option!r}"
         hexes.append(meta["raw"])
     return hexes
+
+
+@pytest.mark.effect_flow
+def test_dash_and_slash_uses_straight_path_through_mine() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hexes_within(5))
+        .red_hero("hero_misa", at=(0, 0, 0), current_card=hero_card("Misa", "dash_and_slash"))
+        .blue_hero("hero_enemy", at=(2, 0, -2))
+        .with_actor("hero_misa")
+        .build()
+    )
+    mine = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=HeroID("hero_enemy"),
+        is_passable=True,
+    )
+    state.token_pool[TokenType.MINE_DUD] = [mine]
+    state.register_entity(mine, "token")
+    state.place_entity(mine.id, Hex(q=1, r=0, s=-1))
+
+    run = run_card(state, "hero_misa")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+    assert state.get_position("hero_misa") == Hex(q=3, r=0, s=-3)
+    assert state.get_position("mine_1") is None
 
 
 @pytest.mark.effect_flow

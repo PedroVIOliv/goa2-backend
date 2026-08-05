@@ -237,7 +237,9 @@ class StraightLinePathFilter(FilterCondition):
             if self.pass_through_obstacles:
                 continue
 
-            if state.validator.is_obstacle_for_actor(state, hex_pos, actor_id, context):
+            if state.validator.is_obstacle_for_actor(
+                state, hex_pos, actor_id, context
+            ) and not state.validator.is_passable_token(state, hex_pos):
                 return False
 
         return True

@@ -537,6 +537,7 @@ class FightAndFlightEffect(CardEffect):
                 destination_key="ff_dest",
                 range_val=3,
                 is_movement_action=False,
+                force_straight_line=True,
                 active_if_key="ff_dest",
             ),
         ]

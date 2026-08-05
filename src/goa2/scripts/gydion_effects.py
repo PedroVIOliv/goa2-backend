@@ -349,6 +349,7 @@ class SuggestionEffect(CardEffect):
                 destination_key=destination_key,
                 range_val=3,
                 is_movement_action=False,
+                force_straight_line=True,
             ),
         ]
 
