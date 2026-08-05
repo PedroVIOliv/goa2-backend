@@ -139,3 +139,71 @@ def test_move_entity_multi_piece_hero_requires_piece_id():
 def test_summarize_op_is_human_readable():
     text = summarize_op("move_entity", {"entity_id": "minion_4", "hex": {"q": 1, "r": -2, "s": 1}})
     assert "minion_4" in text
+
+
+# ---------------------------------------------------------------------------
+# Resource / counter patch ops (Task 2)
+# ---------------------------------------------------------------------------
+
+from goa2.domain.models import GamePhase, TeamColor  # noqa: E402
+
+
+def test_set_gold_and_level(session):
+    apply_override_decision(session, "set_gold", {"hero_id": "hero_arien", "value": 7})
+    assert session.state.get_hero("hero_arien").gold == 7
+    apply_override_decision(session, "set_level", {"hero_id": "hero_arien", "value": 3})
+    assert session.state.get_hero("hero_arien").level == 3
+
+
+def test_set_gold_unknown_hero_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(session, "set_gold", {"hero_id": "hero_nobody", "value": 7})
+
+
+def test_set_wave_counter(session):
+    lane_id = next(iter(session.state.wave_counters))
+    apply_override_decision(session, "set_wave_counter", {"lane_id": lane_id, "value": 3})
+    assert session.state.wave_counters[lane_id] == 3
+
+
+def test_set_wave_counter_unknown_lane_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(session, "set_wave_counter", {"lane_id": "lane_zz", "value": 3})
+
+
+def test_set_tie_breaker_team(session):
+    apply_override_decision(session, "set_tie_breaker_team", {"team": "BLUE"})
+    assert session.state.tie_breaker_team == TeamColor.BLUE
+
+
+def test_set_life_counters_to_zero_ends_game(session):
+    apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": 0})
+    state = session.state
+    assert state.phase == GamePhase.GAME_OVER
+    assert state.teams[TeamColor.BLUE].life_counters == 0
+    assert state.winner == TeamColor.RED
+    assert state.victory_condition is not None
+
+
+def test_set_life_counters_resurrects_finished_game(session):
+    apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": 0})
+    assert session.state.phase == GamePhase.GAME_OVER
+    # Raise back above 0: the ONLY patch that un-ends a game.
+    apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": 2})
+    state = session.state
+    assert state.phase != GamePhase.GAME_OVER
+    assert state.winner is None
+    assert state.individual_winner_id is None
+    assert state.victory_condition is None
+    assert state.teams[TeamColor.BLUE].life_counters == 2
+
+
+def test_set_life_counters_negative_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": -1})
+
+
+def test_starting_life_counters_untouched(session):
+    before = session.state.teams[TeamColor.BLUE].starting_life_counters
+    apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": 1})
+    assert session.state.teams[TeamColor.BLUE].starting_life_counters == before

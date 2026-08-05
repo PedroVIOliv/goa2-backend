@@ -13,10 +13,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import GamePhase
+from goa2.domain.models import GamePhase, TeamColor
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.session import GameSession, SessionResult
@@ -217,5 +217,175 @@ _register(
         args_model=PlaceEntityArgs,
         apply=_apply_place_entity,
         summary_template="Place {entity_id} at {hex}",
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Resource / counter patch ops
+# ---------------------------------------------------------------------------
+
+
+def _require_hero(state: GameState, hero_id: str):
+    hero = state.get_hero(HeroID(hero_id))
+    if hero is None:
+        raise OverrideRejectedError(f"Unknown hero {hero_id!r}", code="unknown_hero")
+    return hero
+
+
+class SetGoldArgs(BaseModel):
+    hero_id: str
+    value: int = Field(ge=0)
+
+
+def _apply_set_gold(session: GameSession, args: SetGoldArgs) -> None:
+    _require_hero(session.state, args.hero_id).gold = args.value
+
+
+_register(
+    OverrideOp(
+        name="set_gold",
+        family="patch",
+        label="Set gold",
+        description="Set a hero's gold to an exact value (fixes a miscredited bounty).",
+        args_model=SetGoldArgs,
+        apply=_apply_set_gold,
+        summary_template="Set {hero_id} gold to {value}",
+    )
+)
+
+
+class SetLevelArgs(BaseModel):
+    hero_id: str
+    value: int = Field(ge=1, le=8)
+
+
+def _apply_set_level(session: GameSession, args: SetLevelArgs) -> None:
+    _require_hero(session.state, args.hero_id).level = args.value
+
+
+_register(
+    OverrideOp(
+        name="set_level",
+        family="patch",
+        label="Set level",
+        description="Set a hero's level to an exact value.",
+        args_model=SetLevelArgs,
+        apply=_apply_set_level,
+        summary_template="Set {hero_id} level to {value}",
+    )
+)
+
+
+class SetWaveCounterArgs(BaseModel):
+    lane_id: str
+    value: int = Field(ge=0)
+
+
+def _apply_set_wave_counter(session: GameSession, args: SetWaveCounterArgs) -> None:
+    state = session.state
+    if args.lane_id not in state.wave_counters:
+        raise OverrideRejectedError(
+            f"Unknown lane {args.lane_id!r} (lanes: {sorted(state.wave_counters)})",
+            code="unknown_lane",
+        )
+    state.wave_counters[args.lane_id] = args.value
+
+
+_register(
+    OverrideOp(
+        name="set_wave_counter",
+        family="patch",
+        label="Set wave counter",
+        description="Set a lane's wave counter (fixes a wrongly scored lane push).",
+        args_model=SetWaveCounterArgs,
+        apply=_apply_set_wave_counter,
+        summary_template="Set wave counter of {lane_id} to {value}",
+    )
+)
+
+
+class SetTieBreakerArgs(BaseModel):
+    team: TeamColor
+
+
+def _apply_set_tie_breaker(session: GameSession, args: SetTieBreakerArgs) -> None:
+    session.state.tie_breaker_team = args.team
+
+
+_register(
+    OverrideOp(
+        name="set_tie_breaker_team",
+        family="patch",
+        label="Set tie-breaker / coin face",
+        description="Set the tie-breaker team (also Ignatia's coin face).",
+        args_model=SetTieBreakerArgs,
+        apply=_apply_set_tie_breaker,
+        summary_template="Set tie-breaker team to {team}",
+    )
+)
+
+
+class SetLifeCountersArgs(BaseModel):
+    team: TeamColor
+    value: int = Field(ge=0)
+
+
+def _apply_set_life_counters(session: GameSession, args: SetLifeCountersArgs) -> None:
+    state = session.state
+    team = state.teams.get(args.team)
+    if team is None:
+        raise OverrideRejectedError(f"Unknown team {args.team}", code="unknown_team")
+    was_finished = state.phase == GamePhase.GAME_OVER
+    old_value = team.life_counters
+    team.life_counters = args.value
+    # starting_life_counters is setup data — never touched by override.
+
+    if args.value <= 0 and not was_finished:
+        # Re-run the endgame check: dropping a team to 0 must not leave a
+        # state where a team is dead but ``winner`` is unset.
+        from goa2.engine.steps.combat import TriggerGameOverStep
+
+        other = TeamColor.BLUE if args.team == TeamColor.RED else TeamColor.RED
+        state.execution_stack.append(
+            TriggerGameOverStep(winner=other, condition="override_life_counters")
+        )
+        if state.phase == GamePhase.PLANNING:
+            # advance() forbids PLANNING; resolve the game-over inline.
+            from goa2.engine.handler import process_stack
+
+            process_stack(state)
+        return
+
+    if was_finished and old_value <= 0 and args.value > 0:
+        # The one patch that resurrects a finished game. process_stack()
+        # returns immediately on GAME_OVER, so the phase must move off it
+        # or the game stays frozen regardless of the counter.
+        from goa2.engine.steps.phases import FinalizeHeroTurnStep, FindNextActorStep
+
+        state.winner = None
+        state.individual_winner_id = None
+        state.victory_condition = None
+        state.phase = GamePhase.RESOLUTION
+        # TriggerGameOverStep purged the stack; resume through the normal
+        # turn machinery rather than inventing state.
+        if state.current_actor_id is not None:
+            state.execution_stack.append(FinalizeHeroTurnStep(hero_id=str(state.current_actor_id)))
+        else:
+            state.execution_stack.append(FindNextActorStep())
+
+
+_register(
+    OverrideOp(
+        name="set_life_counters",
+        family="patch",
+        label="Set life counters",
+        description=(
+            "Set a team's life counters. 0 ends the game; raising a finished "
+            "game's losing team above 0 resurrects the game."
+        ),
+        args_model=SetLifeCountersArgs,
+        apply=_apply_set_life_counters,
+        summary_template="Set {team} life counters to {value}",
     )
 )
