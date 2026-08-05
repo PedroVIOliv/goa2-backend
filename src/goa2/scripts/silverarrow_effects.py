@@ -432,6 +432,7 @@ def _drag_and_dance_steps(hero_id: str, max_drag_distance: int) -> list[GameStep
             destination_key="dance_dest",
             range_val=max_drag_distance,
             is_movement_action=False,
+            force_straight_line=True,
             active_if_key="dance_dest",
         ),
     ]
@@ -719,6 +720,7 @@ class WildHuntEffect(CardEffect):
                 destination_key="wild_hunt_dest",
                 range_val=2,
                 is_movement_action=False,
+                force_straight_line=True,
                 active_if_key="wild_hunt_dest",
             ),
         ]

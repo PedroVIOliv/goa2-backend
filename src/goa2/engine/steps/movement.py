@@ -54,6 +54,9 @@ class MoveUnitStep(GameStep):
     range_val: int = 1
     is_movement_action: bool = False
     pass_through_obstacles: bool = False
+    force_straight_line: bool = False
+    crossed_obstacles_output_key: str | None = None
+    success_output_key: str | None = None
     # Set on the re-queued copy after MinePathChoiceStep has resolved which
     # mines this move triggers, so the re-run skips detection instead of
     # re-prompting. Scoped to this step (not the shared context) so it never
@@ -61,6 +64,8 @@ class MoveUnitStep(GameStep):
     mine_path_prechosen: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.success_output_key:
+            context.pop(self.success_output_key, None)
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
@@ -137,6 +142,20 @@ class MoveUnitStep(GameStep):
                 topology_unit_ids=[target_unit_id],
             )
 
+        use_straight_line = self.force_straight_line
+        if is_valid and use_straight_line:
+            from goa2.engine.filters_geometry import (
+                InStraightLineFilter,
+                StraightLinePathFilter,
+            )
+
+            is_valid = InStraightLineFilter(origin_id=target_unit_id).apply(
+                dest_hex, state, context
+            ) and StraightLinePathFilter(
+                origin_id=target_unit_id,
+                pass_through_obstacles=self.pass_through_obstacles,
+            ).apply(dest_hex, state, context)
+
         if not is_valid:
             logger.debug(
                 f"   [ERROR] Invalid move for {target_unit_id} to {dest_hex}. Path blocked or out of range."
@@ -162,43 +181,79 @@ class MoveUnitStep(GameStep):
                     if BoardEntityID(str(token.id)) in state.entity_locations
                 )
                 if has_enemy_mines:
-                    from goa2.engine.rules import find_reachable_with_mines
+                    if use_straight_line:
+                        for hex_pos in start_hex.line_to(dest_hex)[:-1]:
+                            if not state.validator.is_passable_token(state, hex_pos):
+                                continue
+                            tile = state.board.get_tile(hex_pos)
+                            token = (
+                                state.get_entity(BoardEntityID(str(tile.occupant_id)))
+                                if tile and tile.occupant_id
+                                else None
+                            )
+                            if isinstance(token, Token) and token.owner_id:
+                                owner = state.get_hero(token.owner_id)
+                                if owner and owner.team != moving_team:
+                                    triggered_mines.append(str(token.id))
+                    else:
+                        from goa2.engine.rules import find_reachable_with_mines
 
-                    current_actor = str(state.current_actor_id) if state.current_actor_id else None
-                    reachable = find_reachable_with_mines(
-                        board=state.board,
-                        start=start_hex,
-                        max_steps=self.range_val,
-                        state=state,
-                        actor_id=current_actor,
-                        moving_team=moving_team,
-                        topology_unit_ids=[target_unit_id],
-                    )
-
-                    mine_options = reachable.get(dest_hex, [])
-                    if len(mine_options) > 1:
-                        # Multiple paths — need player choice, re-queue. The copy
-                        # carries mine_path_prechosen so its re-run consumes the
-                        # chosen mines instead of re-detecting.
-                        return StepResult(
-                            is_finished=True,
-                            new_steps=[
-                                MinePathChoiceStep(
-                                    destination_key=self.destination_key,
-                                    range_val=self.range_val,
-                                    unit_id=target_unit_id,
-                                ),
-                                self.model_copy(update={"mine_path_prechosen": True}),
-                            ],
+                        current_actor = (
+                            str(state.current_actor_id) if state.current_actor_id else None
                         )
-                    triggered_mines = list(mine_options[0].mine_ids) if mine_options else []
+                        reachable = find_reachable_with_mines(
+                            board=state.board,
+                            start=start_hex,
+                            max_steps=self.range_val,
+                            state=state,
+                            actor_id=current_actor,
+                            moving_team=moving_team,
+                            topology_unit_ids=[target_unit_id],
+                        )
+
+                        mine_options = reachable.get(dest_hex, [])
+                        if len(mine_options) > 1:
+                            # Multiple paths — need player choice, re-queue. The copy
+                            # carries mine_path_prechosen so its re-run consumes the
+                            # chosen mines instead of re-detecting.
+                            return StepResult(
+                                is_finished=True,
+                                new_steps=[
+                                    MinePathChoiceStep(
+                                        destination_key=self.destination_key,
+                                        range_val=self.range_val,
+                                        unit_id=target_unit_id,
+                                    ),
+                                    self.model_copy(update={"mine_path_prechosen": True}),
+                                ],
+                            )
+                        triggered_mines = (
+                            list(mine_options[0].mine_ids) if mine_options else []
+                        )
 
         logger.debug(
             f"   [LOGIC] Moving {target_unit_id} from {start_hex} to {dest_hex} (Range {self.range_val})"
         )
+        if self.crossed_obstacles_output_key:
+            crossed_obstacles: list[dict[str, int]] = []
+            if use_straight_line:
+                crossed_obstacles = [
+                    hex_pos.model_dump()
+                    for hex_pos in start_hex.line_to(dest_hex)[:-1]
+                    if state.validator.is_obstacle_for_actor(
+                        state,
+                        hex_pos,
+                        str(actor_id),
+                        context,
+                    )
+                ]
+            context[self.crossed_obstacles_output_key] = crossed_obstacles
+
         from_hex_dict = _hex_dict(start_hex)
         to_hex_dict = _hex_dict(dest_hex)
         state.move_unit(UnitID(target_unit_id), dest_hex)
+        if self.success_output_key:
+            context[self.success_output_key] = True
 
         new_steps: list[GameStep] = []
         if triggered_mines:
@@ -272,6 +327,9 @@ class MoveSequenceStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
         base_actor_id = self.unit_id or state.current_actor_id
         actor_id = state.resolve_board_actor(str(base_actor_id)) if base_actor_id else None
         action_range = self.range_val
@@ -344,6 +402,7 @@ class MoveSequenceStep(GameStep):
                         is_mandatory=self.is_mandatory,
                         is_movement_action=True,
                         pass_through_obstacles=pass_through,
+                        force_straight_line=self.force_straight_line,
                     ),
                 ],
             )
@@ -410,7 +469,12 @@ class MoveSequenceStep(GameStep):
                 )
 
                 filters.append(InStraightLineFilter(origin_id=actor_id))
-                filters.append(StraightLinePathFilter(origin_id=actor_id))
+                filters.append(
+                    StraightLinePathFilter(
+                        origin_id=actor_id,
+                        pass_through_obstacles=pass_through,
+                    )
+                )
 
             # Force full distance: set min_range = max_range
             if self.force_full_distance:
@@ -440,6 +504,7 @@ class MoveSequenceStep(GameStep):
                     is_mandatory=self.is_mandatory,
                     is_movement_action=True,
                     pass_through_obstacles=pass_through,
+                    force_straight_line=self.force_straight_line,
                 ),
             ],
         )
@@ -1055,7 +1120,8 @@ class MoveTowardTargetStep(GameStep):
                 MoveUnitStep(
                     unit_id=str(mover_id),
                     destination_key="_toward_dest",
-                    range_val=99,
+                    range_val=origin.distance(dest),
+                    force_straight_line=True,
                 )
             ],
         )
@@ -1334,6 +1400,7 @@ class CoDirectionalDragStep(GameStep):
                 destination_key=self.anchor_dest_key,
                 range_val=distance,
                 pass_through_obstacles=self.ignore_path_obstacles,
+                force_straight_line=True,
             )
         else:
             anchor_move = MoveUnitStep(
@@ -1342,6 +1409,7 @@ class CoDirectionalDragStep(GameStep):
                 range_val=distance,
                 is_movement_action=False,
                 pass_through_obstacles=self.ignore_path_obstacles,
+                force_straight_line=True,
             )
         partner_move = MoveUnitStep(
             unit_key=self.partner_key,
@@ -1349,6 +1417,7 @@ class CoDirectionalDragStep(GameStep):
             range_val=distance,
             is_movement_action=False,
             pass_through_obstacles=self.ignore_path_obstacles,
+            force_straight_line=True,
         )
 
         anchor_path = anchor_hex.line_to(anchor_dest)

@@ -555,6 +555,7 @@ class _MoveHeroLineEffect(_IgnatiaBranchEffect):
                 filters=[
                     RangeFilter(min_range=self.min_dist, max_range=self.max_dist, origin_key=hkey),
                     StraightLinePathFilter(origin_key=hkey),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             MoveUnitStep(
@@ -562,6 +563,7 @@ class _MoveHeroLineEffect(_IgnatiaBranchEffect):
                 destination_key=dkey,
                 range_val=self.max_dist,
                 is_movement_action=False,
+                force_straight_line=True,
             ),
         ]
 
@@ -702,6 +704,8 @@ class _PathEffect(_IgnatiaBranchEffect):
     def _blue_steps(self, state, hero, card, stats, slot, exclude):
         origin = f"ign_{slot}_origin"
         dest = f"ign_{slot}_dest"
+        crossed_obstacles = f"ign_{slot}_crossed_obstacles"
+        move_succeeded = f"ign_{slot}_move_succeeded"
         return [
             RecordHexStep(unit_id=str(hero.id), output_key=origin),
             SelectStep(
@@ -712,6 +716,7 @@ class _PathEffect(_IgnatiaBranchEffect):
                 filters=[
                     RangeFilter(min_range=1, max_range=self.move_dist),
                     StraightLinePathFilter(),
+                    ObstacleFilter(is_obstacle=False),
                 ],
             ),
             MoveUnitStep(
@@ -719,13 +724,17 @@ class _PathEffect(_IgnatiaBranchEffect):
                 destination_key=dest,
                 range_val=self.move_dist,
                 is_movement_action=False,
+                force_straight_line=True,
+                crossed_obstacles_output_key=crossed_obstacles,
+                success_output_key=move_succeeded,
                 active_if_key=dest,
             ),
             PlaceTokenTrailStep(
                 token_type=TokenType.MAGMA,
                 origin_hex_key=origin,
                 dest_key=dest,
-                active_if_key=dest,
+                excluded_hexes_key=crossed_obstacles,
+                active_if_key=move_succeeded,
             ),
         ]
 

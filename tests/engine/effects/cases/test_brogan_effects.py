@@ -1,5 +1,6 @@
 import pytest
 
+import goa2.scripts.brogan_effects  # noqa: F401 - register effects
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import Token, TokenType
@@ -13,7 +14,7 @@ from ..runner import run_card
 def test_mad_dash_may_cross_passable_mine() -> None:
     state = (
         EffectScenarioBuilder()
-        .line_board(length=6)
+        .small_arena()
         .red_hero("hero_brogan", at=(0, 0, 0), current_card=hero_card("Brogan", "mad_dash"))
         .blue_minion("target", at=(3, 0, -3))
         .blue_hero("mine_owner", at=(5, 0, -5))
@@ -35,5 +36,12 @@ def test_mad_dash_may_cross_passable_mine() -> None:
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
     run.expect_input(InputRequestType.SELECT_HEX)
 
+    assert run.latest_request is not None
     destinations = {option.metadata["raw"] for option in run.latest_request.options}
-    assert Hex(q=2, r=0, s=-2) in destinations
+    destination = Hex(q=2, r=0, s=-2)
+    assert destination in destinations
+
+    run.choose(destination).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert state.get_position("hero_brogan") == destination
+    assert state.get_position("mine_1") is None

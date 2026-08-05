@@ -501,6 +501,7 @@ def test_trample_crosses_hero_and_minion() -> None:
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
     run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
     # crossed heroes are auto-affected (no player choice); only the optional
     # minion defeat prompts.
@@ -528,6 +529,7 @@ def test_trample_affects_all_crossed_heroes_without_choice() -> None:
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
     run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
     # no hero prompt, no minion candidates -> resolves with no further input
     run.finish()
@@ -552,6 +554,7 @@ def test_angry_stampede_defeats_support_then_heavy() -> None:
 
     run = run_card(state, "hero_wuk")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
     run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=3, r=0, s=-3))
     # no heroes crossed -> hero multi-select auto-finishes
     # minion 1: only the support is selectable (heavy is immune)
@@ -562,3 +565,24 @@ def test_angry_stampede_defeats_support_then_heavy() -> None:
 
     assert state.entity_locations.get("supp") is None
     assert state.entity_locations.get("hvy") is None
+
+
+@pytest.mark.effect_flow
+def test_trample_normal_mode_may_detour_to_aligned_destination() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .small_arena()
+        .red_hero("hero_wuk", at=(0, 0, 0), current_card=hero_card("Wuk", "trample"))
+        .with_actor("hero_wuk")
+        .blue_hero("eh", at=(1, 0, -1))
+        .build()
+    )
+
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=2, r=0, s=-2))
+    run.finish()
+
+    assert state.entity_locations.get("hero_wuk") == Hex(q=2, r=0, s=-2)
+    assert state.entity_locations.get("eh") == Hex(q=1, r=0, s=-1)
