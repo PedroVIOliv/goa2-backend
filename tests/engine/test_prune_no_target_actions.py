@@ -20,8 +20,13 @@ from goa2.domain.models import (
     MinionType,
     Team,
     TeamColor,
+    Token,
+    TokenType,
 )
+from goa2.domain.models.marker import Marker, MarkerType
+from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.state import GameState
+from goa2.domain.types import BoardEntityID
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import ResolveCardStep
 
@@ -212,3 +217,275 @@ def test_angry_roar_present_with_no_target(arena):
     hero.current_turn_card = _card("Ursafar", "angry_roar")
     arena.place_entity("hero_ursafar", Hex(q=0, r=0, s=0))
     assert "SKILL" in _menu_ids(arena, hero)
+
+
+# --- Flattened combined-target-gate cards ---------------------------------
+#
+# After the flattening pass, several ATTACK/SKILL effects still expose two
+# alternative target categories behind a leading NUMBER mode-choice select
+# (Bain Hand Crossbow, Dodger Littlefinger/Finger of Death, Tali Spirit Wolf,
+# Wuk Into the Canopy). The behavioural contract is a *combined* target gate:
+# the option belongs in the CHOOSE_ACTION menu iff at least one alternative —
+# adjacent OR the non-adjacent alternate category — has a legal target from
+# the current position; otherwise it must be pruned.
+#
+# The current pruning probe short-circuits on the leading NUMBER select and
+# leaves the option available regardless of downstream target validity. The
+# negative parametrized tests below fail on that gap. The positive tests
+# encode the other half of the contract in two shapes:
+#   1. adjacent enemy present -> action stays;
+#   2. NO adjacent enemy, but the non-adjacent alternate category has a
+#      valid target (bounty-marked ranged hero, ranged hero with a discarded
+#      card, ordinary ranged target) -> action must still stay.
+# Each case isolates target validation so failures reflect the pruning
+# contract, not setup drift.
+
+
+def _place_tree(state: GameState, at: Hex, tid: str = "tree_1") -> None:
+    tree = Token(id=BoardEntityID(tid), name="Tree", token_type=TokenType.TREE)
+    state.register_entity(tree, "token")
+    state.place_entity(tid, at)
+
+
+def _place_enemy_hero(state: GameState, at: Hex, hid: str = "hero_victim") -> Hero:
+    victim = Hero(id=hid, name="Victim", team=TeamColor.BLUE, deck=[])
+    state.teams[TeamColor.BLUE].heroes.append(victim)
+    state.place_entity(hid, at)
+    return victim
+
+
+def _give_hero_a_discarded_card(hero: Hero) -> None:
+    """Attach a real, validated Card to ``hero.discard_pile``. Copies a card
+    from an unrelated hero's registry deck so CardsInContainerFilter (which
+    counts entries in ``hero.discard_pile``) sees at least one card."""
+    donor = HeroRegistry.get("Brogan")
+    assert donor is not None and donor.deck, "Brogan deck required for donor card"
+    card = donor.deck[0].model_copy(deep=True)
+    card.state = CardState.DISCARD
+    hero.discard_pile.append(card)
+
+
+@pytest.mark.parametrize(
+    ("hero_name", "hero_id", "card_id", "action_id"),
+    [
+        # Bain Hand Crossbow: bounty-hero-in-range OR adjacent unit.
+        ("Bain", "hero_bain", "hand_crossbow", "ATTACK"),
+        # Dodger Finger family: adjacent unit OR hero-in-range-with-discard.
+        ("Dodger", "hero_dodger", "littlefinger_of_death", "ATTACK"),
+        ("Dodger", "hero_dodger", "finger_of_death", "ATTACK"),
+        # Tali Spirit Wolf: unit-in-range OR adjacent enemy hero.
+        ("Tali", "hero_tali", "spirit_wolf", "ATTACK"),
+    ],
+)
+def test_combined_target_attack_pruned_when_every_alternative_has_no_target(
+    arena, hero_name, hero_id, card_id, action_id
+):
+    """Empty board -> neither the adjacent nor the alternate branch has a
+    candidate -> action is a guaranteed no-op and must be pruned."""
+    hero = Hero(id=hero_id, name=hero_name, team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card(hero_name, card_id)
+    arena.place_entity(hero_id, Hex(q=0, r=0, s=0))
+
+    assert action_id not in _menu_ids(arena, hero)
+
+
+@pytest.mark.parametrize(
+    ("hero_name", "hero_id", "card_id", "action_id"),
+    [
+        ("Bain", "hero_bain", "hand_crossbow", "ATTACK"),
+        ("Dodger", "hero_dodger", "littlefinger_of_death", "ATTACK"),
+        ("Dodger", "hero_dodger", "finger_of_death", "ATTACK"),
+        ("Tali", "hero_tali", "spirit_wolf", "ATTACK"),
+    ],
+)
+def test_combined_target_attack_present_when_adjacent_branch_has_target(
+    arena, hero_name, hero_id, card_id, action_id
+):
+    """A single adjacent enemy satisfies the melee branch -> action stays."""
+    hero = Hero(id=hero_id, name=hero_name, team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card(hero_name, card_id)
+    arena.place_entity(hero_id, Hex(q=0, r=0, s=0))
+    _enemy(arena, Hex(q=1, r=0, s=-1))
+
+    assert action_id in _menu_ids(arena, hero)
+
+
+# The next three tests remove the adjacent branch entirely (no enemy at
+# range 1) and instead satisfy ONLY the alternate category for each card, so
+# a correct implementation must inspect BOTH sides of the combined gate.
+
+
+def test_hand_crossbow_present_when_only_bounty_hero_in_range(arena):
+    """Hand Crossbow: bounty-marked enemy hero at range with nothing adjacent
+    -> the melee branch is a no-op but the bounty branch is legal."""
+    hero = Hero(id="hero_bain", name="Bain", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Bain", "hand_crossbow")
+    arena.place_entity("hero_bain", Hex(q=0, r=0, s=0))
+    victim = _place_enemy_hero(arena, Hex(q=3, r=0, s=-3))
+    arena.markers[MarkerType.BOUNTY] = Marker(
+        type=MarkerType.BOUNTY,
+        target_id=str(victim.id),
+        value=1,
+        source_id="hero_bain",
+    )
+
+    assert "ATTACK" in _menu_ids(arena, hero)
+
+
+@pytest.mark.parametrize(
+    ("card_id", "victim_hex"),
+    [
+        # Finger of Death targets a hero in range with discard; range 3.
+        ("finger_of_death", Hex(q=3, r=0, s=-3)),
+        # Littlefinger of Death is the same effect at range 2.
+        ("littlefinger_of_death", Hex(q=2, r=0, s=-2)),
+    ],
+)
+def test_finger_family_present_when_only_discard_hero_in_range(
+    arena, card_id, victim_hex
+):
+    """Finger / Littlefinger of Death: an enemy hero with a discarded card
+    sitting at range (not adjacent) satisfies ONLY the ranged branch."""
+    hero = Hero(id="hero_dodger", name="Dodger", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Dodger", card_id)
+    arena.place_entity("hero_dodger", Hex(q=0, r=0, s=0))
+    victim = _place_enemy_hero(arena, victim_hex)
+    _give_hero_a_discarded_card(victim)
+
+    assert "ATTACK" in _menu_ids(arena, hero)
+
+
+def test_spirit_wolf_present_when_only_ranged_target_available(arena):
+    """Spirit Wolf ranged branch takes any enemy in range; place a minion
+    outside adjacency so only that branch is legal."""
+    hero = Hero(id="hero_tali", name="Tali", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Tali", "spirit_wolf")
+    arena.place_entity("hero_tali", Hex(q=0, r=0, s=0))
+    _enemy(arena, Hex(q=2, r=0, s=-2))  # range 2, not adjacent
+
+    assert "ATTACK" in _menu_ids(arena, hero)
+
+
+# --- Wuk Into the Canopy (SKILL) ------------------------------------------
+#
+# "Choose one — Swap with a Tree token in radius. / Swap a friendly unit in
+# radius with a Tree token in radius." Both alternatives take a mandatory
+# Tree token select, so absence of any Tree in radius makes every branch a
+# guaranteed no-op. Current pruning masks this behind the leading NUMBER
+# mode-choice select.
+
+
+def test_into_the_canopy_pruned_when_no_tree_in_radius(arena):
+    hero = Hero(id="hero_wuk", name="Wuk", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Wuk", "into_the_canopy")
+    arena.place_entity("hero_wuk", Hex(q=0, r=0, s=0))
+
+    assert "SKILL" not in _menu_ids(arena, hero)
+
+
+def test_into_the_canopy_present_when_tree_in_radius(arena):
+    hero = Hero(id="hero_wuk", name="Wuk", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Wuk", "into_the_canopy")
+    arena.place_entity("hero_wuk", Hex(q=0, r=0, s=0))
+    _place_tree(arena, Hex(q=1, r=0, s=-1))
+
+    assert "SKILL" in _menu_ids(arena, hero)
+
+
+# --- Wuk Tree of Plenty (SKILL) -------------------------------------------
+#
+# Structure differs: the first mandatory step is the Tree-removal COST
+# (SelectStep UNIT_OR_TOKEN, TREE filter) — NOT a NUMBER mode choice — so the
+# existing probe correctly prunes when no Tree is in radius. The downstream
+# retrieval branches are optional (self-retrieve / friendly-hero-retrieve),
+# so once the cost is satisfiable the action stays available regardless of
+# whether either retrieval branch would actually retrieve a card.
+
+
+def test_tree_of_plenty_pruned_when_no_tree_in_radius(arena):
+    hero = Hero(id="hero_wuk", name="Wuk", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Wuk", "tree_of_plenty")
+    arena.place_entity("hero_wuk", Hex(q=0, r=0, s=0))
+
+    assert "SKILL" not in _menu_ids(arena, hero)
+
+
+def test_tree_of_plenty_present_when_tree_in_radius_even_if_retrieves_would_noop(arena):
+    """Retrieval branches are optional -> action stays as long as the
+    mandatory Tree-removal cost has a candidate. Wuk has no discard and no
+    friendly hero is on the board, but SKILL must remain in the menu."""
+    hero = Hero(id="hero_wuk", name="Wuk", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Wuk", "tree_of_plenty")
+    arena.place_entity("hero_wuk", Hex(q=0, r=0, s=0))
+    _place_tree(arena, Hex(q=1, r=0, s=-1))
+
+    assert "SKILL" in _menu_ids(arena, hero)
+
+
+# --- Dodger Dread Razor (untiered gold, ATTACK) ----------------------------
+#
+# "Choose one — Target a unit adjacent to you. If you are adjacent to an
+# empty spawn point in the battle zone, target a unit in range."
+#
+# The effect builder collapses to a bare AttackSequenceStep when the hero is
+# NOT adjacent to an empty spawn -> the existing probe already prunes that
+# case. When the hero IS adjacent to an empty spawn point, the effect emits
+# a combined melee-or-ranged target gate; with no enemy adjacent AND no enemy
+# in range, every alternative is a guaranteed no-op and the option must be
+# pruned. Current pruning masks this second case.
+
+
+def _place_empty_spawn_adjacent(state: GameState, hero_hex: Hex) -> Hex:
+    """Attach an unoccupied minion spawn point to a tile adjacent to hero.
+
+    The tile must live in the current battle zone (``zone_id`` set) and have
+    ``spawn_point`` populated but no occupant. The arena fixture registers
+    zones by hex membership but leaves ``Tile.zone_id`` unset, so we also
+    stamp the zone here rather than mutate the shared fixture.
+    """
+    spawn_hex = Hex(q=hero_hex.q + 1, r=hero_hex.r, s=hero_hex.s - 1)
+    tile = state.board.tiles[spawn_hex]
+    tile.zone_id = "z1"
+    tile.spawn_point = SpawnPoint(
+        location=spawn_hex,
+        team=TeamColor.BLUE,
+        type=SpawnType.MINION,
+        minion_type=MinionType.MELEE,
+    )
+    return spawn_hex
+
+
+def test_dread_razor_pruned_when_no_enemy_and_no_spawn_adjacency(arena):
+    """Melee-only fallback path: without a spawn adjacency the effect emits a
+    single AttackSequenceStep, which is target-gated and correctly pruned."""
+    hero = Hero(id="hero_dodger", name="Dodger", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Dodger", "dread_razor")
+    arena.place_entity("hero_dodger", Hex(q=0, r=0, s=0))
+
+    assert "ATTACK" not in _menu_ids(arena, hero)
+
+
+def test_dread_razor_pruned_when_spawn_adjacency_but_no_enemy_anywhere(arena):
+    """Combined melee-or-ranged path: spawn adjacency enables the ranged
+    alternative, but with no enemy adjacent AND no enemy in range every
+    alternative is a no-op."""
+    hero = Hero(id="hero_dodger", name="Dodger", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Dodger", "dread_razor")
+    hero_hex = Hex(q=0, r=0, s=0)
+    arena.place_entity("hero_dodger", hero_hex)
+    _place_empty_spawn_adjacent(arena, hero_hex)
+
+    assert "ATTACK" not in _menu_ids(arena, hero)
+
+
+def test_dread_razor_present_when_spawn_adjacency_and_enemy_in_range(arena):
+    hero = Hero(id="hero_dodger", name="Dodger", team=TeamColor.RED, deck=[])
+    hero.current_turn_card = _card("Dodger", "dread_razor")
+    hero_hex = Hex(q=0, r=0, s=0)
+    arena.place_entity("hero_dodger", hero_hex)
+    _place_empty_spawn_adjacent(arena, hero_hex)
+    # Enemy two hexes away in a different direction -> only the ranged
+    # alternative applies; the combined gate must not veto that.
+    _enemy(arena, Hex(q=-2, r=0, s=2))
+
+    assert "ATTACK" in _menu_ids(arena, hero)

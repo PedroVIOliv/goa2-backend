@@ -741,8 +741,9 @@ def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minio
 
 @pytest.mark.effect_flow
 def test_spirit_wolf_attacks_a_single_target_in_range_without_repeat() -> None:
-    # Spirit Wolf uses can_choose_both=False: it resolves exactly one attack and
-    # never offers the "resolve the other attack" repeat that Spirit Bear does.
+    # Spirit Wolf is a single-target attack with no mode prompt: the combined
+    # candidate pool is offered in one SELECT_UNIT, and there is no repeat
+    # prompt afterwards (unlike Spirit Bear's can_choose_both=True branch).
     state = (
         EffectScenarioBuilder()
         .with_hexes(_arena())
@@ -754,9 +755,7 @@ def test_spirit_wolf_attacks_a_single_target_in_range_without_repeat() -> None:
 
     run = run_card(state, "hero_tali")
     run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.expect_input(InputRequestType.SELECT_NUMBER)
-    assert _option_set(run) == {1, 2}
-    run.choose(1)
+    # Flattened: goes straight to SELECT_UNIT, no SELECT_NUMBER mode prompt.
     run.expect_input(InputRequestType.SELECT_UNIT).choose("target")
     run.finish()  # no second SELECT_UNIT / repeat prompt
 
@@ -1020,15 +1019,14 @@ def test_reign_of_winter_passive_guards_reject_non_matching_contexts() -> None:
 
 
 @pytest.mark.effect_flow
-@pytest.mark.parametrize("card_id", ["spirit_wolf", "spirit_bear"])
-def test_spirit_adjacent_branch_is_still_a_ranged_attack(card_id: str) -> None:
+def test_spirit_bear_adjacent_branch_is_still_a_ranged_attack() -> None:
     # is_ranged is a property of the card, not of the chosen branch: the
     # "target a hero adjacent to you" mode of a ranged Spirit card is still a
     # ranged attack, so projectile reactions (Wasp/Tigerclaw) engage.
     state = (
         EffectScenarioBuilder()
         .with_hexes(_arena())
-        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", card_id))
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "spirit_bear"))
         .blue_hero("enemy", at=(1, 0, -1))
         .with_actor("hero_tali")
         .build()
@@ -1041,6 +1039,112 @@ def test_spirit_adjacent_branch_is_still_a_ranged_attack(card_id: str) -> None:
     run.expect_input(InputRequestType.SELECT_CARD_OR_PASS)
 
     assert state.execution_context["attack_is_ranged"] is True
+
+
+@pytest.mark.effect_flow
+def test_spirit_wolf_adjacent_target_is_still_a_ranged_attack() -> None:
+    # Spirit Wolf has no mode prompt (flattened) but is still a ranged card:
+    # attacking an adjacent enemy hero via the combined target list is a
+    # ranged attack, so projectile reactions engage.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "spirit_wolf"))
+        .blue_hero("enemy", at=(1, 0, -1))
+        .with_actor("hero_tali")
+        .build()
+    )
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    # Flattened: no SELECT_NUMBER, direct SELECT_UNIT.
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS)
+
+    assert state.execution_context["attack_is_ranged"] is True
+
+
+@pytest.mark.effect_flow
+def test_spirit_wolf_offers_combined_targets_directly_when_not_discarded() -> None:
+    # Flattening contract: Spirit Wolf (not from discard) skips the SELECT_NUMBER
+    # mode prompt and offers the union of eligible targets in one SELECT_UNIT:
+    #   - any enemy unit in range (ranged branch), AND
+    #   - any adjacent enemy hero (adjacent branch).
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "spirit_wolf"))
+        # An enemy ordinary unit reachable only via the ranged branch (range 2).
+        .blue_minion("ranged_minion", at=(2, 0, -2))
+        # An adjacent enemy hero — only eligible via the adjacent-hero branch
+        # (heroes are excluded from the plain "unit in range" filter in this
+        # design when they are not adjacent, but adjacent heroes qualify under
+        # BOTH branches; either branch surfacing them is fine).
+        .blue_hero("adjacent_hero", at=(1, 0, -1))
+        # A non-adjacent enemy hero at range 2 — the adjacent branch must NOT
+        # offer this one; the ranged branch WOULD offer it as a unit-in-range,
+        # so it should appear in the combined pool.
+        .blue_hero("far_hero", at=(0, 2, -2))
+        .with_actor("hero_tali")
+        .build()
+    )
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    # No SELECT_NUMBER — go directly to combined target selection.
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    options = _option_set(run)
+    # Both the ranged minion and the adjacent enemy hero must be offered.
+    assert "ranged_minion" in options
+    assert "adjacent_hero" in options
+    # The at-range-2 hero is offered by the ranged branch (unit in range).
+    assert "far_hero" in options
+    run.choose("adjacent_hero")
+    # Attacking a hero opens a defense window; PASS through it to let the
+    # attack resolve and confirm the whole flow terminates cleanly.
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
+    run.finish()
+
+
+@pytest.mark.effect_flow
+def test_spirit_wolf_offers_only_adjacent_enemy_heroes_when_played_from_discard() -> None:
+    # Flattening contract: Spirit Wolf played from discard MUST NOT offer the
+    # ranged branch. The combined selection collapses to "adjacent enemy hero"
+    # only.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0))
+        # Not adjacent — must be excluded.
+        .blue_minion("ranged_minion", at=(2, 0, -2))
+        # Adjacent enemy hero — the only valid target.
+        .blue_hero("adjacent_hero", at=(1, 0, -1))
+        # Non-adjacent enemy hero — must be excluded.
+        .blue_hero("far_hero", at=(0, 2, -2))
+        # Adjacent enemy minion — must be excluded (only enemy HEROES qualify
+        # in the adjacent branch).
+        .blue_minion("adjacent_minion", at=(-1, 0, 1))
+        .with_actor("hero_tali")
+        .build()
+    )
+    tali = state.get_hero("hero_tali")
+    assert tali is not None
+    discarded = hero_card("Tali", "spirit_wolf")
+    discarded.state = CardState.DISCARD
+    tali.discard_pile.append(discarded)
+    state.execution_context["perform_card"] = "spirit_wolf"
+    push_steps(state, [PerformPrimaryActionStep(card_key="perform_card", hero_id="hero_tali")])
+    run = EffectRun(state=state, hero_id="hero_tali")
+
+    # No SELECT_NUMBER prompt: from discard there is only one branch, so the
+    # engine should ask for the target directly.
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"adjacent_hero"}
+    run.choose("adjacent_hero")
+    # Attacking a hero opens a defense window; PASS through it to let the
+    # attack resolve and confirm the whole flow terminates cleanly.
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose("PASS")
+    run.finish()
 
 
 def _reign_scenario(*, enemy_at: tuple[int, int, int]) -> GameState:

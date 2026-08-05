@@ -8,11 +8,13 @@ import pytest
 import goa2.scripts.bain_effects  # noqa: F401 — registers effects
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
+from goa2.domain.input import InputRequestType
 from goa2.domain.models import (
     ActionType,
     Card,
     CardColor,
     CardTier,
+    GamePhase,
     Hero,
     Minion,
     MinionType,
@@ -26,11 +28,11 @@ from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.stats import CardStats
 from goa2.engine.steps import (
     AttackSequenceStep,
-    CheckContextConditionStep,
     DefeatUnitStep,
     PlaceMarkerStep,
     SelectStep,
 )
+from tests.engine.effects.runner import run_card
 
 # =============================================================================
 # Card Factories
@@ -274,41 +276,187 @@ def test_dead_or_alive_builds_attack_then_bounty_select(game_state):
 # =============================================================================
 
 
-def test_hand_crossbow_builds_branching_steps(game_state):
-    """Hand Crossbow produces choice + two conditional attack paths."""
-    from goa2.scripts.bain_effects import HandCrossbowEffect
-
-    effect = HandCrossbowEffect()
-    hero = game_state.get_hero("hero_bain")
+def _give_hand_crossbow(state):
+    """Attach Hand Crossbow as the resolving card for hero_bain."""
+    state.phase = GamePhase.RESOLUTION
     card = _make_ranged_attack_card("hc", "Hand Crossbow", "hand_crossbow")
-    stats = CardStats(primary_value=4, range=3)
-
-    steps = effect.build_steps(game_state, hero, card, stats)
-
-    # SelectStep(NUMBER) + 2 CheckContext + 2 AttackSequence
-    assert len(steps) == 5
-    assert isinstance(steps[0], SelectStep)
-    assert isinstance(steps[1], CheckContextConditionStep)
-    assert isinstance(steps[2], CheckContextConditionStep)
-    assert isinstance(steps[3], AttackSequenceStep)
-    assert isinstance(steps[4], AttackSequenceStep)
+    hero = state.get_hero("hero_bain")
+    hero.current_turn_card = card
+    return card
 
 
-def test_hand_crossbow_bounty_path_has_marker_filter(game_state):
-    """Bounty path filters for heroes with bounty marker."""
-    from goa2.scripts.bain_effects import HandCrossbowEffect
+# Reply value for each post-selection input type we may encounter while
+# draining an attack's follow-up prompts. Non-skippable dialogs (e.g. the
+# defender's reaction window) explicitly want PASS, not SKIP.
+_DECLINE_REPLY_BY_TYPE = {
+    InputRequestType.SELECT_CARD_OR_PASS: "PASS",
+    InputRequestType.CONFIRM_PASSIVE: "NO",
+    InputRequestType.CHOOSE_ACTION: "PASS",
+}
 
-    effect = HandCrossbowEffect()
-    hero = game_state.get_hero("hero_bain")
-    card = _make_ranged_attack_card("hc", "Hand Crossbow", "hand_crossbow")
-    stats = CardStats(primary_value=4, range=3)
 
-    steps = effect.build_steps(game_state, hero, card, stats)
+def _drain_to_completion(run):
+    """Drive an attack's post-selection prompts to completion.
 
-    bounty_attack = steps[3]  # First attack = bounty path
-    filter_types = [type(f) for f in bounty_attack.target_filters]
-    assert HasMarkerFilter in filter_types
-    assert UnitTypeFilter in filter_types
+    Reply is chosen per input type: PASS for defender/reaction windows,
+    NO for passive confirmations, SKIP only for genuinely skippable
+    selections (optional SELECT_UNIT etc.). Events emitted along the way
+    are accumulated on `run.events` so downstream assertions can inspect
+    COMBAT_RESOLVED and friends.
+    """
+    while True:
+        result = process_stack(run.state)
+        run.events.extend(result.events)
+        req = result.input_request
+        if req is None:
+            return
+        reply = _DECLINE_REPLY_BY_TYPE.get(req.request_type, "SKIP")
+        run.state.execution_stack[-1].pending_input = {"selection": reply}
+
+
+def test_hand_crossbow_flattens_to_single_select_unit(game_state):
+    """
+    Hand Crossbow should present ONE combined SELECT_UNIT after CHOOSE_ACTION,
+    with no intermediate SELECT_NUMBER mode picker.
+
+    Card text: "Choose one —
+      * Target a hero in range with a Bounty marker.
+      * Target a unit adjacent to you."
+
+    The two alternatives are equivalent target choices from the player's
+    perspective and should be flattened into one target selection whose valid
+    candidates are the union of the two branches.
+    """
+    # Bounty-mark the nonadjacent enemy hero at (3,0,-3) — range 3, not adjacent.
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero_2", value=0, source_id="hero_bain")
+
+    _give_hand_crossbow(game_state)
+
+    run = run_card(game_state, "hero_bain")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    # No SELECT_NUMBER in between: the next prompt is directly a SELECT_UNIT.
+    run.expect_input(InputRequestType.SELECT_UNIT)
+
+
+def test_hand_crossbow_offers_adjacent_and_bounty_targets_together(game_state):
+    """
+    The single SELECT_UNIT must offer BOTH categories together:
+      - adjacent ordinary enemies (adjacent minion, adjacent enemy hero),
+      - nonadjacent enemy heroes with the Bounty marker (in range).
+    """
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero_2", value=0, source_id="hero_bain")
+
+    _give_hand_crossbow(game_state)
+
+    run = run_card(game_state, "hero_bain")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    option_ids = {option.id for option in run.latest_request.options}
+
+    # Adjacent category: adjacent minion + adjacent enemy hero both qualify.
+    assert "minion_1" in option_ids, (
+        f"Adjacent minion should qualify via adjacent-unit branch; got {sorted(option_ids)!r}"
+    )
+    assert "enemy_hero" in option_ids, (
+        f"Adjacent enemy hero should qualify via adjacent-unit branch; got {sorted(option_ids)!r}"
+    )
+    # Bounty category: nonadjacent bounty-marked enemy hero qualifies.
+    assert "enemy_hero_2" in option_ids, (
+        f"Nonadjacent bounty-marked hero should qualify via bounty branch; got {sorted(option_ids)!r}"
+    )
+
+
+def test_hand_crossbow_excludes_nonqualifying_ranged_targets(game_state):
+    """
+    A nonadjacent enemy hero WITHOUT the Bounty marker is in range but
+    matches neither branch (not adjacent, not bounty-marked) and must be
+    excluded from the combined SELECT_UNIT options.
+    """
+    # Add a third enemy hero at (2,0,-2): in range 3 but not adjacent, no bounty.
+    enemy3 = Hero(id="enemy_hero_3", name="Enemy3", team=TeamColor.BLUE, deck=[], level=1)
+    game_state.teams[TeamColor.BLUE].heroes.append(enemy3)
+    game_state.place_entity("enemy_hero_3", Hex(q=2, r=0, s=-2))
+
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero_2", value=0, source_id="hero_bain")
+
+    _give_hand_crossbow(game_state)
+
+    run = run_card(game_state, "hero_bain")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT)
+    option_ids = {option.id for option in run.latest_request.options}
+
+    # The nonadjacent, non-bounty enemy is in range but does not qualify.
+    assert "enemy_hero_3" not in option_ids, (
+        f"Nonadjacent enemy without Bounty must be excluded; got {sorted(option_ids)!r}"
+    )
+    # Sanity: legitimate targets are still offered.
+    assert "enemy_hero" in option_ids  # adjacent
+    assert "enemy_hero_2" in option_ids  # bounty
+
+
+def test_hand_crossbow_resolves_adjacent_category_target(game_state):
+    """
+    Picking an adjacent-category target (adjacent minion) resolves an
+    attack whose victim is specifically that minion — asserted via the
+    COMBAT_RESOLVED event's target_id.
+    """
+    from goa2.domain.events import GameEventType
+
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero_2", value=0, source_id="hero_bain")
+
+    _give_hand_crossbow(game_state)
+
+    run = run_card(game_state, "hero_bain")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("minion_1")
+
+    _drain_to_completion(run)
+
+    combat_targets = [
+        event.target_id
+        for event in run.events
+        if event.event_type == GameEventType.COMBAT_RESOLVED
+    ]
+    assert combat_targets == ["minion_1"], (
+        "Adjacent-category attack must resolve with minion_1 as the "
+        f"combat target; got COMBAT_RESOLVED target_ids={combat_targets!r}"
+    )
+
+
+def test_hand_crossbow_resolves_bounty_category_target(game_state):
+    """
+    Picking a bounty-category target (nonadjacent bounty-marked enemy hero)
+    resolves an attack whose victim is specifically that hero — asserted
+    via the COMBAT_RESOLVED event's target_id, which is the stable
+    per-victim signal emitted by AttackSequenceStep.
+    """
+    from goa2.domain.events import GameEventType
+
+    marker = game_state.get_marker(MarkerType.BOUNTY)
+    marker.place(target_id="enemy_hero_2", value=0, source_id="hero_bain")
+
+    _give_hand_crossbow(game_state)
+
+    run = run_card(game_state, "hero_bain")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("enemy_hero_2")
+
+    _drain_to_completion(run)
+
+    combat_targets = [
+        event.target_id
+        for event in run.events
+        if event.event_type == GameEventType.COMBAT_RESOLVED
+    ]
+    assert combat_targets == ["enemy_hero_2"], (
+        "Bounty-category attack must resolve with enemy_hero_2 as the "
+        f"combat target; got COMBAT_RESOLVED target_ids={combat_targets!r}"
+    )
 
 
 # =============================================================================

@@ -468,12 +468,23 @@ class SpiritWolfEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        return _spirit_choice_steps(
-            card=card,
-            damage=stats.primary_value,
-            range_val=stats.range,
-            can_choose_both=False,
-        )
+        # The branches differ only by target eligibility; discard narrows it.
+        if card.state == CardState.DISCARD:
+            return [
+                AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=1,
+                    is_ranged=True,
+                    target_filters=[UnitTypeFilter(unit_type="HERO")],
+                )
+            ]
+        return [
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+            )
+        ]
 
 
 @register_effect("spirit_bear")

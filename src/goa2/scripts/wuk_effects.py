@@ -145,6 +145,44 @@ def _tree_in_radius_select(output_key: str, radius: int, active_if_key: str | No
     )
 
 
+def _canopy_flat_steps(radius: int) -> list[GameStep]:
+    return [
+        # Keep the mandatory Tree target first so action validation can inspect it.
+        SelectStep(
+            target_type=TargetType.UNIT_OR_TOKEN,
+            prompt="Select a Tree token in radius",
+            output_key="canopy_tree",
+            is_mandatory=True,
+            filters=[
+                UnitTypeFilter(unit_type="TOKEN"),
+                TokenTypeFilter(token_type=TokenType.TREE),
+                RangeFilter(max_range=radius),
+            ],
+        ),
+        # The branches differ only by participant eligibility, so combine them.
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select yourself or a friendly unit in radius to swap",
+            output_key="canopy_unit",
+            is_mandatory=True,
+            skip_self_filter=True,
+            filters=[
+                OrFilter(
+                    filters=[
+                        TeamFilter(relation="SELF"),
+                        TeamFilter(relation="FRIENDLY"),
+                    ]
+                ),
+                RangeFilter(max_range=radius),
+            ],
+        ),
+        SwapUnitsStep(
+            unit_a_key="canopy_unit",
+            unit_b_key="canopy_tree",
+        ),
+    ]
+
+
 def _canopy_choice_steps(hero_id: str, radius: int) -> list[GameStep]:
     return [
         SelectStep(
@@ -196,7 +234,7 @@ class IntoTheCanopyEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-        return _canopy_choice_steps(str(hero.id), stats.radius or 0)
+        return _canopy_flat_steps(stats.radius or 0)
 
 
 @register_effect("treetop_ride")
@@ -340,27 +378,40 @@ class TreeOfPlentyEffect(CardEffect):
         radius = stats.radius or 0
         return [
             *_remove_tree_cost(radius),
+            # The branches differ only by beneficiary eligibility, so combine them.
             SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose one",
-                output_key="retrieve_choice",
-                number_options=[1, 2],
-                number_labels={1: "You retrieve", 2: "A friendly hero retrieves"},
+                target_type=TargetType.UNIT,
+                prompt="Select yourself or a friendly hero in radius to retrieve a card",
+                output_key="plenty_beneficiary",
+                is_mandatory=False,
+                skip_self_filter=True,
+                filters=[
+                    UnitTypeFilter(unit_type="HERO"),
+                    OrFilter(
+                        filters=[
+                            TeamFilter(relation="SELF"),
+                            TeamFilter(relation="FRIENDLY"),
+                        ]
+                    ),
+                    RangeFilter(max_range=radius),
+                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
+                ],
             ),
-            CheckContextConditionStep(
-                input_key="retrieve_choice",
-                operator="==",
-                threshold=1,
-                output_key="retrieve_self",
+            SelectStep(
+                target_type=TargetType.CARD,
+                card_container=CardContainerType.DISCARD,
+                prompt="Select a card to retrieve",
+                output_key="plenty_card",
+                context_hero_id_key="plenty_beneficiary",
+                override_player_id_key="plenty_beneficiary",
+                is_mandatory=True,
+                active_if_key="plenty_beneficiary",
             ),
-            CheckContextConditionStep(
-                input_key="retrieve_choice",
-                operator="==",
-                threshold=2,
-                output_key="retrieve_friendly",
+            RetrieveCardStep(
+                card_key="plenty_card",
+                hero_key="plenty_beneficiary",
+                active_if_key="plenty_card",
             ),
-            *_self_retrieve_steps(active_if_key="retrieve_self"),
-            *_friendly_retrieve_steps(radius, active_if_key="retrieve_friendly"),
         ]
 
 
