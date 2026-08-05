@@ -756,7 +756,12 @@ class TriggerMineStep(GameStep):
                 )
 
         context[self.mine_ids_key] = []
-        context["rollback_frozen"] = True
+        # Mine reveal is a segment boundary: any pre-mine rollback snapshot
+        # would restore the removed mine and undo hidden info the actor now
+        # knows. GameSession._manage_rollback invalidates the pre-mine anchor
+        # and re-anchors at the next owner actionable prompt (e.g. a blast's
+        # ForceDiscardStep, or a later attack target selection).
+        context["rollback_reanchor_pending"] = True
 
         # Each blast mine forces the moved hero to discard a card (if able)
         new_steps: list[GameStep] = [
