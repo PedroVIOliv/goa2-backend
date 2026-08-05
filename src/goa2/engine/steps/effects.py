@@ -58,7 +58,7 @@ class CreateEffectStep(GameStep):
 
     # Card linkage (for card-based effects)
     source_card_id: str | None = None  # Explicit card ID
-    use_context_card: bool = True  # If True, use "current_card_id" from context
+    use_context_card: bool = True  # If True, infer the card performing the current action
 
     # Origin action type - tracks whether effect came from skill or attack
     origin_action_type: ActionType | None = None
@@ -118,7 +118,14 @@ class CreateEffectStep(GameStep):
         if not self.is_token_effect:
             card_id = self.source_card_id
             if card_id is None and self.use_context_card:
-                card_id = context.get("current_card_id")
+                # Defense text runs inside the attacker's action context, so
+                # current_card_id still names the incoming attack.
+                context_key = (
+                    "defense_card_id"
+                    if context.get("current_action_type") == ActionType.DEFENSE
+                    else "current_card_id"
+                )
+                card_id = context.get(context_key)
 
         # Resolve origin action type: use explicit value or fall back to context
         action_type = self.origin_action_type

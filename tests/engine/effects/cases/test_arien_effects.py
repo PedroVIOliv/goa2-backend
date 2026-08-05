@@ -5,8 +5,13 @@ import pytest
 import goa2.scripts.arien_effects  # noqa: F401 - register Arien effects
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import (
+    ActionType,
     ActiveEffect,
     AffectsFilter,
+    Card,
+    CardColor,
+    CardState,
+    CardTier,
     DurationType,
     EffectScope,
     EffectType,
@@ -16,6 +21,23 @@ from goa2.domain.models.enums import DisplacementType
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
+
+
+def _melee_attack() -> Card:
+    return Card(
+        id="incoming_attack",
+        name="Incoming Attack",
+        tier=CardTier.UNTIERED,
+        color=CardColor.GOLD,
+        initiative=1,
+        primary_action=ActionType.ATTACK,
+        primary_action_value=3,
+        secondary_actions={},
+        range_value=1,
+        effect_id="",
+        effect_text="",
+        is_facedown=False,
+    )
 
 
 def _option_set(run) -> set:
@@ -99,6 +121,41 @@ def _magnetic_dagger_state():
         )
     )
     return state
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("defense_id", ["expert_duelist", "master_duelist"])
+def test_duelist_immunity_is_linked_to_the_defense_card(defense_id: str) -> None:
+    attack = _melee_attack()
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .blue_hero("hero_attacker", at=(0, 0, 0), current_card=attack)
+        .red_hero("hero_arien", at=(1, 0, -1))
+        .with_actor("hero_attacker")
+        .build()
+    )
+    defense = hero_card("Arien", defense_id)
+    defense.state = CardState.HAND
+    arien = state.get_hero("hero_arien")
+    assert arien is not None
+    arien.hand = [defense]
+
+    run = run_card(state, "hero_attacker")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_arien")
+    run.expect_input(InputRequestType.SELECT_CARD_OR_PASS).choose(defense_id)
+    run.finish()
+
+    immunity = next(
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.ATTACK_IMMUNITY
+    )
+    assert immunity.source_id == "hero_arien"
+    assert immunity.source_card_id == defense_id
+    assert defense.is_active is True
+    assert attack.is_active is False
 
 
 @pytest.mark.effect_flow
