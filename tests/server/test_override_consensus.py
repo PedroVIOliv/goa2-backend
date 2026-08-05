@@ -170,3 +170,253 @@ def test_clock_pauses_while_proposal_open():
     game.pending_override = None
     reconcile_game_clock(game, 2_000)
     assert clock.active_kind is not None  # resumed
+
+
+# ---------------------------------------------------------------------------
+# WS integration
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from goa2.server.app import create_app  # noqa: E402
+
+
+@pytest.fixture
+def client(tmp_path):
+    os.environ["GOA2_SAVE_DIR"] = str(tmp_path)
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+    os.environ.pop("GOA2_SAVE_DIR", None)
+
+
+@pytest.fixture
+def game_data(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+        },
+    )
+    return resp.json()
+
+
+def _token_for(game_data, hero_id):
+    for pt in game_data["player_tokens"]:
+        if pt["hero_id"] == hero_id:
+            return pt["token"]
+    raise ValueError(hero_id)
+
+
+def _drain_until(ws, msg_type):
+    for _ in range(20):
+        msg = ws.receive_json()
+        if msg["type"] == msg_type:
+            return msg
+        if msg["type"] == "ERROR" and msg_type != "ERROR":
+            raise AssertionError(f"got ERROR while waiting for {msg_type}: {msg}")
+    raise AssertionError(f"never received {msg_type}")
+
+
+def _arien_view(update):
+    return next(h for h in update["view"]["teams"]["RED"]["heroes"] if h["id"] == "hero_arien")
+
+
+def test_propose_vote_apply_full_cycle(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()  # initial STATE_UPDATE
+        ws_w.receive_json()
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "patch",
+                "op": "set_gold",
+                "args": {"hero_id": "hero_arien", "value": 9},
+            }
+        )
+        proposed = _drain_until(ws_a, "OVERRIDE_PROPOSED")
+        assert proposed["threshold"] == 2  # 2 connected -> both must agree
+        assert proposed["tally"]["yes"] == ["hero_arien"]
+        assert proposed["summary"]
+        pid = proposed["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        resolved = _drain_until(ws_w, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "applied"
+        # Every client then receives a STATE_UPDATE with the patched value.
+        update = _drain_until(ws_w, "STATE_UPDATE")
+        assert _arien_view(update)["gold"] == 9
+
+
+def test_second_proposal_while_open_rejected(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    # Both players connected so the proposal needs a second vote and stays open.
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}"),
+    ):
+        ws_a.receive_json()
+        ws_a.send_json(
+            {"type": "PROPOSE_OVERRIDE", "family": "unstick", "op": "abort_action", "args": {}}
+        )
+        _drain_until(ws_a, "OVERRIDE_PROPOSED")
+        ws_a.send_json(
+            {"type": "PROPOSE_OVERRIDE", "family": "unstick", "op": "abort_action", "args": {}}
+        )
+        err = _drain_until(ws_a, "ERROR")
+        assert "already open" in err["detail"]
+
+
+def test_cancel_by_proposer_only(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        ws_a.send_json(
+            {"type": "PROPOSE_OVERRIDE", "family": "unstick", "op": "abort_action", "args": {}}
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "CANCEL_OVERRIDE", "proposal_id": pid})
+        err = _drain_until(ws_w, "ERROR")
+        assert "proposer" in err["detail"].lower()
+        ws_a.send_json({"type": "CANCEL_OVERRIDE", "proposal_id": pid})
+        resolved = _drain_until(ws_a, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "cancelled"
+
+
+def test_spectator_cannot_propose_or_vote(client, game_data):
+    gid = game_data["game_id"]
+    with client.websocket_connect(f"/games/{gid}/ws?token={game_data['spectator_token']}") as ws:
+        ws.receive_json()
+        ws.send_json(
+            {"type": "PROPOSE_OVERRIDE", "family": "unstick", "op": "abort_action", "args": {}}
+        )
+        err = ws.receive_json()
+        assert err["type"] == "ERROR"  # existing spectator guard
+
+
+def test_rejected_patch_reports_structured_reason(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        # Valid arg shape, but the entity is not on the board: passes proposal
+        # validation, fails at apply time.
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "patch",
+                "op": "move_entity",
+                "args": {"entity_id": "minion_999", "hex": {"q": 0, "r": 0, "s": 0}},
+            }
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        resolved = _drain_until(ws_w, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "rejected"
+        assert resolved["reason"]["code"]  # machine-readable
+        assert resolved["reason"]["message"]  # human-readable
+
+
+def test_vote_no_majority_rejects_without_applying(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "patch",
+                "op": "set_gold",
+                "args": {"hero_id": "hero_arien", "value": 99},
+            }
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": False})
+        resolved = _drain_until(ws_w, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "rejected"
+        assert "reason" not in resolved  # outvoted, not validation-rejected
+        # Value unchanged.
+        ws_a.send_json({"type": "GET_VIEW"})
+        update = _drain_until(ws_a, "STATE_UPDATE")
+        assert _arien_view(update)["gold"] != 99
+
+
+def test_rewind_proposal_replaces_session(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        initial = ws_a.receive_json()
+        hand_before = len(_arien_view(initial)["hand"])
+        ws_w.receive_json()
+        # Make one recorded decision: Arien commits a card.
+        card_id = _arien_view(initial)["hand"][0]["id"]
+        ws_a.send_json({"type": "COMMIT_CARD", "card_id": card_id})
+        _drain_until(ws_a, "ACTION_RESULT")
+        _drain_until(ws_w, "STATE_UPDATE")
+        # Rewind to before it.
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "rewind", "to": 0})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        resolved = _drain_until(ws_w, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "applied"
+        update = _drain_until(ws_a, "STATE_UPDATE")
+        arien = _arien_view(update)
+        # Arien's commit was undone: card back in hand, no pending commit.
+        assert len(arien["hand"]) == hand_before
+        assert arien["current_turn_card"] is None
+
+
+def test_rewind_out_of_range_rejected_at_proposal(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    with client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a:
+        ws_a.receive_json()
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "rewind", "to": 999})
+        err = _drain_until(ws_a, "ERROR")
+        assert "range" in err["detail"].lower()
+
+
+def test_view_payload_has_no_override_state(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    with client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a:
+        initial = ws_a.receive_json()
+        # Override negotiation state deliberately stays off the view.
+        assert "pending_override" not in initial["view"]
