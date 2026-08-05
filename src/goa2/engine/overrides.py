@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import GamePhase, TeamColor
+from goa2.domain.models.effect import ActiveEffect
+from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.session import GameSession, SessionResult
@@ -387,5 +389,183 @@ _register(
         args_model=SetLifeCountersArgs,
         apply=_apply_set_life_counters,
         summary_template="Set {team} life counters to {value}",
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Card / marker / effect patch ops
+# ---------------------------------------------------------------------------
+
+
+class MoveCardArgs(BaseModel):
+    hero_id: str
+    card_id: str
+    zone: Literal["hand", "discard", "played"]
+
+
+def _detach_card(hero: Any, card_id: str) -> Any:
+    """Remove the card from every live zone it occupies; return the Card."""
+    for i, c in enumerate(hero.hand):
+        if c.id == card_id:
+            return hero.hand.pop(i)
+    for i, c in enumerate(hero.discard_pile):
+        if c.id == card_id:
+            return hero.discard_pile.pop(i)
+    for i, c in enumerate(hero.played_cards):
+        if c is not None and c.id == card_id:
+            hero.played_cards[i] = None
+            return c
+    if hero.current_turn_card and hero.current_turn_card.id == card_id:
+        card = hero.current_turn_card
+        hero.current_turn_card = None
+        return card
+    if hero.extra_turn_card and hero.extra_turn_card.id == card_id:
+        card = hero.extra_turn_card
+        hero.extra_turn_card = None
+        return card
+    return None
+
+
+def _apply_move_card(session: GameSession, args: MoveCardArgs) -> None:
+    hero = _require_hero(session.state, args.hero_id)
+    card = _detach_card(hero, args.card_id)
+    if card is None:
+        raise OverrideRejectedError(
+            f"Card {args.card_id!r} not found in a movable zone of {args.hero_id} "
+            "(hand / discard / played / current / extra)",
+            code="unknown_card",
+        )
+    if args.zone == "hand":
+        hero.hand.append(card)
+    elif args.zone == "discard":
+        hero.discard_pile.append(card)
+    else:  # played — fill the first empty slot, else append
+        for i, slot in enumerate(hero.played_cards):
+            if slot is None:
+                hero.played_cards[i] = card
+                break
+        else:
+            hero.played_cards.append(card)
+
+
+_register(
+    OverrideOp(
+        name="move_card",
+        family="patch",
+        label="Move card between zones",
+        description="Move a card stuck in the wrong zone to hand, discard, or played.",
+        args_model=MoveCardArgs,
+        apply=_apply_move_card,
+        summary_template="Move card {card_id} of {hero_id} to {zone}",
+    )
+)
+
+
+class AddMarkerArgs(BaseModel):
+    marker_type: MarkerType
+    target_id: str
+    value: int = 0
+    source_id: str
+
+
+def _apply_add_marker(session: GameSession, args: AddMarkerArgs) -> None:
+    state = session.state
+    if (
+        state.get_hero(HeroID(args.target_id)) is None
+        and state.get_entity(BoardEntityID(args.target_id)) is None
+    ):
+        raise OverrideRejectedError(
+            f"Unknown marker target {args.target_id!r}", code="unknown_entity"
+        )
+    state.place_marker(args.marker_type, args.target_id, args.value, args.source_id)
+
+
+_register(
+    OverrideOp(
+        name="add_marker",
+        family="patch",
+        label="Place marker",
+        description="Place a singleton marker (venom / poison / bounty) on a target.",
+        args_model=AddMarkerArgs,
+        apply=_apply_add_marker,
+        summary_template="Place {marker_type} marker on {target_id}",
+    )
+)
+
+
+class RemoveMarkerArgs(BaseModel):
+    marker_type: MarkerType
+
+
+def _apply_remove_marker(session: GameSession, args: RemoveMarkerArgs) -> None:
+    session.state.remove_marker(args.marker_type)
+
+
+_register(
+    OverrideOp(
+        name="remove_marker",
+        family="patch",
+        label="Return marker to supply",
+        description="Return a marker to the supply (fixes wrong attribution).",
+        args_model=RemoveMarkerArgs,
+        apply=_apply_remove_marker,
+        summary_template="Return {marker_type} marker to supply",
+    )
+)
+
+
+class AddEffectArgs(BaseModel):
+    effect: dict
+
+
+def _apply_add_effect(session: GameSession, args: AddEffectArgs) -> None:
+    try:
+        effect = ActiveEffect.model_validate(args.effect)
+    except Exception as exc:
+        raise OverrideRejectedError(f"Invalid effect payload: {exc}", code="invalid_args") from exc
+    if any(e.id == effect.id for e in session.state.active_effects):
+        raise OverrideRejectedError(
+            f"Effect id {effect.id!r} already active", code="duplicate_effect"
+        )
+    session.state.add_effect(effect)
+
+
+_register(
+    OverrideOp(
+        name="add_effect",
+        family="patch",
+        label="Add active effect",
+        description="Re-instate a buff/debuff that expired early (full ActiveEffect payload).",
+        args_model=AddEffectArgs,
+        apply=_apply_add_effect,
+        summary_template="Add effect {effect}",
+    )
+)
+
+
+class RemoveEffectArgs(BaseModel):
+    effect_id: str
+
+
+def _apply_remove_effect(session: GameSession, args: RemoveEffectArgs) -> None:
+    state = session.state
+    before = len(state.active_effects)
+    state.active_effects = [e for e in state.active_effects if e.id != args.effect_id]
+    if len(state.active_effects) == before:
+        raise OverrideRejectedError(
+            f"No active effect with id {args.effect_id!r}", code="unknown_effect"
+        )
+
+
+_register(
+    OverrideOp(
+        name="remove_effect",
+        family="patch",
+        label="Remove active effect",
+        description="End a spurious buff/debuff immediately.",
+        args_model=RemoveEffectArgs,
+        apply=_apply_remove_effect,
+        summary_template="Remove effect {effect_id}",
     )
 )

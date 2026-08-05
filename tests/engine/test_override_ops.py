@@ -207,3 +207,106 @@ def test_starting_life_counters_untouched(session):
     before = session.state.teams[TeamColor.BLUE].starting_life_counters
     apply_override_decision(session, "set_life_counters", {"team": "BLUE", "value": 1})
     assert session.state.teams[TeamColor.BLUE].starting_life_counters == before
+
+
+# ---------------------------------------------------------------------------
+# Card / marker / effect patch ops (Task 3)
+# ---------------------------------------------------------------------------
+
+from goa2.domain.models.effect import (  # noqa: E402
+    ActiveEffect,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
+from goa2.domain.models.marker import MarkerType  # noqa: E402
+
+
+def test_move_card_hand_to_discard_and_back(session):
+    hero = session.state.get_hero("hero_arien")
+    card = hero.hand[0]
+    apply_override_decision(
+        session,
+        "move_card",
+        {"hero_id": "hero_arien", "card_id": card.id, "zone": "discard"},
+    )
+    hero = session.state.get_hero("hero_arien")
+    assert card.id in [c.id for c in hero.discard_pile]
+    assert card.id not in [c.id for c in hero.hand]
+
+    apply_override_decision(
+        session,
+        "move_card",
+        {"hero_id": "hero_arien", "card_id": card.id, "zone": "hand"},
+    )
+    hero = session.state.get_hero("hero_arien")
+    assert card.id in [c.id for c in hero.hand]
+    assert card.id not in [c.id for c in hero.discard_pile]
+
+
+def test_move_card_unknown_card_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(
+            session,
+            "move_card",
+            {"hero_id": "hero_arien", "card_id": "not_a_card", "zone": "hand"},
+        )
+
+
+def test_add_and_remove_marker(session):
+    apply_override_decision(
+        session,
+        "add_marker",
+        {
+            "marker_type": "venom",
+            "target_id": "hero_wasp",
+            "value": -1,
+            "source_id": "hero_arien",
+        },
+    )
+    markers = session.state.get_markers_on_hero("hero_wasp")
+    assert any(m.type == MarkerType.VENOM for m in markers)
+
+    apply_override_decision(session, "remove_marker", {"marker_type": "venom"})
+    assert not session.state.get_markers_on_hero("hero_wasp")
+
+
+def test_remove_effect(session):
+    session.state.add_effect(
+        ActiveEffect(
+            id="fx_test_1",
+            source_id="hero_arien",
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.GLOBAL, origin_id="hero_arien"),
+            duration=DurationType.THIS_ROUND,
+            created_at_turn=1,
+            created_at_round=1,
+        )
+    )
+    apply_override_decision(session, "remove_effect", {"effect_id": "fx_test_1"})
+    assert all(e.id != "fx_test_1" for e in session.state.active_effects)
+
+
+def test_remove_effect_unknown_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(session, "remove_effect", {"effect_id": "fx_none"})
+
+
+def test_add_effect_from_payload(session):
+    payload = {
+        "id": "fx_test_2",
+        "source_id": "hero_arien",
+        "effect_type": EffectType.AREA_STAT_MODIFIER.value,
+        "scope": {"shape": Shape.GLOBAL.value, "origin_id": "hero_arien"},
+        "duration": DurationType.THIS_ROUND.value,
+        "created_at_turn": 1,
+        "created_at_round": 1,
+    }
+    apply_override_decision(session, "add_effect", {"effect": payload})
+    assert any(e.id == "fx_test_2" for e in session.state.active_effects)
+
+
+def test_add_effect_invalid_payload_rejected(session):
+    with pytest.raises(OverrideRejectedError):
+        apply_override_decision(session, "add_effect", {"effect": {"id": "x"}})
