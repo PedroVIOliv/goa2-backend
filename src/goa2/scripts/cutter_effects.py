@@ -617,8 +617,6 @@ class GrapplingBoltEffect(CardEffect):
                     InStraightLineFilter(origin_id=str(hero.id)),
                     ClearLineOfSightFilter(
                         origin_id=str(hero.id),
-                        blocked_by_units=False,
-                        blocked_by_terrain=False,
                         blocked_by_obstacles=True,
                     ),
                     ObstacleFilter(is_obstacle=True),
