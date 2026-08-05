@@ -221,6 +221,20 @@ class TestPreActionMovementViaOffense:
             e.effect_type == EffectType.PRE_ACTION_MOVEMENT for e in basic_state.active_effects
         )
 
+    def test_attack_remains_available_when_pre_action_move_can_reach_target(self, basic_state):
+        card = self._make_attack_card()
+        hero = basic_state.get_hero("hero_misa")
+        hero.current_turn_card = card
+        hero.played_cards = [card]
+        basic_state.place_entity("enemy", Hex(q=2, r=0, s=-2))
+        _add_pre_action_effect(basic_state, "hero_misa", 1)
+
+        push_steps(basic_state, [ResolveCardStep(hero_id="hero_misa")])
+
+        req = process_stack(basic_state).input_request
+        assert req is not None
+        assert "ATTACK" in {option.id for option in req.options}
+
     def test_no_effect_skips_move(self, basic_state):
         card = self._make_attack_card()
         hero = basic_state.get_hero("hero_misa")

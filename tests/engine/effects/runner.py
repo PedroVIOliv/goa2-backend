@@ -7,11 +7,11 @@ from goa2.domain.events import GameEvent
 from goa2.domain.input import InputRequest, InputRequestType
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack, push_steps
-from goa2.engine.steps import FinalizeHeroTurnStep, ResolveCardStep
+from goa2.engine.steps import FinalizeHeroTurnStep, GameStep, ResolveCardStep
 
 
 def run_card(state: GameState, hero_id: str, *, finalize_turn: bool = False) -> EffectRun:
-    steps = [ResolveCardStep(hero_id=hero_id)]
+    steps: list[GameStep] = [ResolveCardStep(hero_id=hero_id)]
     if finalize_turn:
         steps.append(FinalizeHeroTurnStep(hero_id=hero_id))
     push_steps(state, steps)
@@ -41,6 +41,14 @@ class EffectRun:
         assert self.state.execution_stack, self._failure_dump("No stack step waiting for input")
         self.state.execution_stack[-1].pending_input = {"selection": value}
         self.latest_request = None
+        return self
+
+    def expect_option_absent(self, option_id: str) -> Self:
+        assert self.latest_request is not None, self._failure_dump("No pending input to inspect")
+        option_ids = {str(option.id) for option in self.latest_request.options}
+        assert option_id not in option_ids, self._failure_dump(
+            f"Expected option {option_id!r} to be absent, got {sorted(option_ids)!r}"
+        )
         return self
 
     def skip(self) -> Self:

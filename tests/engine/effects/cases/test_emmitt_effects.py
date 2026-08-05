@@ -578,11 +578,10 @@ class TestReverseTime:
         assert reversals[0].duration == DurationType.NEXT_TURN
         assert reversals[0].source_id == "hero_emmitt"
 
-    def test_no_effect_when_attack_aborts(self):
+    def test_attack_unavailable_without_target(self):
         state = self._state(with_target=False)
         run = run_card(state, "hero_emmitt", finalize_turn=True)
-        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
-        run.finish()  # no adjacent unit → mandatory targeting fails → abort
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("ATTACK")
         assert not [
             e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE
         ]
@@ -788,11 +787,10 @@ class TestTimeSnareTrap:
 
         assert [c.id for c in state.get_hero("hero_enemy").discard_pile] == ["enemy_hand_0"]
 
-    def test_time_snare_out_of_range_aborts(self):
+    def test_time_snare_skill_unavailable_out_of_range(self):
         state = _discard_state("time_snare", enemy_at=(3, 0, -3))
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         enemy = state.get_hero("hero_enemy")
         assert [c.id for c in enemy.hand] == ["enemy_hand_0"]
@@ -801,8 +799,7 @@ class TestTimeSnareTrap:
         for status in ("unresolved", "passed"):
             state = _discard_state("time_snare", enemy_status=status)
             run = run_card(state, "hero_emmitt")
-            run.expect_input("CHOOSE_ACTION").choose("SKILL")
-            run.finish()
+            run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
             assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
 
     def test_empty_hand_has_no_penalty_for_if_able_cards(self):
@@ -831,8 +828,7 @@ class TestTimeSnareTrap:
         )
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
 
@@ -874,8 +870,7 @@ class TestTimeBomb:
     def test_same_targeting_gate_as_time_snare(self):
         state = _discard_state("time_bomb", enemy_status="unresolved")
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=2, r=0, s=-2)
         assert [c.id for c in state.get_hero("hero_enemy").hand] == ["enemy_hand_0"]
@@ -943,19 +938,17 @@ class TestTimeLoop:
         assert state.get_position("hero_enemy") == Hex(q=0, r=0, s=0)
         assert any(e.event_type == GameEventType.UNITS_SWAPPED for e in run.events)
 
-    def test_no_resolved_enemy_aborts(self):
+    def test_skill_unavailable_without_resolved_enemy(self):
         state = _loop_state(enemy_resolved=False)
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()  # mandatory select has no candidates → abort
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
         assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
         assert state.get_position("hero_enemy") == Hex(q=3, r=0, s=-3)
 
-    def test_enemy_out_of_range_aborts(self):
+    def test_skill_unavailable_with_enemy_out_of_range(self):
         state = _loop_state(enemy_at=(5, 0, -5))  # range 4
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
         assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
 
     def test_swap_prevention_denies_and_aborts(self):
@@ -999,8 +992,7 @@ class TestTimeLoop:
             )
         )
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()  # only candidate immune → abort
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
         assert state.get_position("hero_emmitt") == Hex(q=0, r=0, s=0)
 
 
@@ -1549,12 +1541,11 @@ class TestFlashback:
         run.finish()
         assert _glitch_on_board(state) == {}
 
-    def test_attack_abort_skips_everything(self):
-        """U1: no adjacent unit → attack aborts → no placement offer."""
+    def test_attack_unavailable_without_adjacent_unit(self):
+        """U1: no adjacent unit makes attack unavailable, so no placement is offered."""
         state = _glitch_card_state(with_minion=False)  # victim is 2 away
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("ATTACK")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("ATTACK")
         assert _glitch_on_board(state) == {}
 
     def test_infeasible_board_never_offers_placement(self):
@@ -1971,14 +1962,13 @@ class TestTimeWalkFastForward:
 
         assert {o.id for o in run.latest_request.options} == {"hero_stayer"}
 
-    def test_sole_target_that_moved_this_turn_aborts_the_action(self):
-        """U1: with no remaining valid target the mandatory select aborts."""
+    def test_skill_unavailable_when_sole_target_moved_this_turn(self):
+        """U1: with no remaining valid target the skill is unavailable."""
         state = _walk_state()
         state.last_turn_positions["hero_enemy"] = Hex(q=2, r=0, s=-2)
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
 
@@ -2055,8 +2045,7 @@ class TestTimeWalkFastForward:
         state.place_entity("hero_enemy", Hex(q=1, r=1, s=-2))  # shoved off its snapshot hex
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=1, r=1, s=-2)
 
@@ -2090,8 +2079,7 @@ class TestTimeWalkFastForward:
         )
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
 
@@ -2119,8 +2107,7 @@ class TestTimeWalkFastForward:
         state.active_effects.append(_self_immunity("hero_enemy"))
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=1, r=0, s=-1)
 
@@ -2139,8 +2126,7 @@ class TestTimeWalkFastForward:
         state = _walk_state("time_walk", enemy_at=(4, 0, -4), board_radius=6)
 
         run = run_card(state, "hero_emmitt")
-        run.expect_input("CHOOSE_ACTION").choose("SKILL")
-        run.finish()
+        run.expect_input("CHOOSE_ACTION").expect_option_absent("SKILL")
 
         assert state.get_position("hero_enemy") == Hex(q=4, r=0, s=-4)
 

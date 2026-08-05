@@ -17,6 +17,7 @@ from goa2.domain.models.enums import (
 from goa2.domain.types import HeroID
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_composite import AndFilter, OrFilter
 from goa2.engine.filters_hex import (
     BattleZoneFilter,
     HasEmptyNeighborFilter,
@@ -397,44 +398,26 @@ class _FingerOfDeathEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Choose mode
-            SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose attack mode",
-                output_key="fod_choice",
-                number_options=[1, 2],
-                number_labels={1: "Attack Adjacent Unit", 2: "Attack Hero with Discard"},
-                is_mandatory=True,
-            ),
-            # 2. Branch flags
-            CheckContextConditionStep(
-                input_key="fod_choice",
-                operator="==",
-                threshold=1,
-                output_key="chose_melee",
-            ),
-            CheckContextConditionStep(
-                input_key="fod_choice",
-                operator="==",
-                threshold=2,
-                output_key="chose_ranged",
-            ),
-            # 3a. Melee: target adjacent unit
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=1,
-                is_ranged=True,
-                active_if_key="chose_melee",
-            ),
-            # 3b. Ranged: target hero in range with cards in discard
+            # The branches differ only by target eligibility, so combine them.
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=True,
-                active_if_key="chose_ranged",
                 target_filters=[
-                    UnitTypeFilter(unit_type="HERO"),
-                    CardsInContainerFilter(container=CardContainerType.DISCARD, min_cards=1),
+                    OrFilter(
+                        filters=[
+                            RangeFilter(max_range=1),
+                            AndFilter(
+                                filters=[
+                                    UnitTypeFilter(unit_type="HERO"),
+                                    CardsInContainerFilter(
+                                        container=CardContainerType.DISCARD,
+                                        min_cards=1,
+                                    ),
+                                ]
+                            ),
+                        ]
+                    ),
                 ],
             ),
         ]
@@ -589,64 +572,24 @@ class DreadRazorEffect(CardEffect):
     Card Text: "Choose one — Target a unit adjacent to you.
     If you are adjacent to an empty spawn point in the battle zone,
     target a unit in range."
-
-    At build time, check if hero is adjacent to an empty spawn point.
-    If not, only offer melee option.
     """
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
-
         hero_hex = state.get_position(str(hero.id))
 
         can_ranged = False
         if hero_hex and state.battle_zone_ids():
             can_ranged = _is_adjacent_to_empty_spawn_in_battle_zone(state, hero_hex, str(hero.id))
 
-        if not can_ranged:
-            # Only melee option available
-            return [
-                AttackSequenceStep(
-                    damage=stats.primary_value,
-                    range_val=1,
-                    is_ranged=True,
-                ),
-            ]
-
-        # Both options available
+        # The spawn condition only widens the eligible target range.
+        range_val = stats.range if can_ranged else 1
         return [
-            SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose attack mode",
-                output_key="razor_choice",
-                number_options=[1, 2],
-                number_labels={1: "Attack Adjacent Unit", 2: "Attack Unit in Range"},
-                is_mandatory=True,
-            ),
-            CheckContextConditionStep(
-                input_key="razor_choice",
-                operator="==",
-                threshold=1,
-                output_key="chose_melee",
-            ),
-            CheckContextConditionStep(
-                input_key="razor_choice",
-                operator="==",
-                threshold=2,
-                output_key="chose_ranged",
-            ),
             AttackSequenceStep(
                 damage=stats.primary_value,
-                range_val=1,
+                range_val=range_val,
                 is_ranged=True,
-                active_if_key="chose_melee",
-            ),
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=stats.range,
-                is_ranged=True,
-                active_if_key="chose_ranged",
             ),
         ]
 

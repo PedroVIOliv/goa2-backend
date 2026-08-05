@@ -146,21 +146,24 @@ class SelectStep(GameStep):
 
         return effective
 
-    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        if self.should_skip(context):
-            logger.debug(
-                f"   [SKIP] Conditional Step '{self.prompt}' skipped (Key '{self.active_if_key}' missing)."
-            )
-            return StepResult(is_finished=True)
-
+    def _resolve_actor_id(self, state: GameState, context: dict[str, Any]) -> Any:
+        """The acting unit for this selection, honoring override_player_id_key."""
         actor_id = state.current_actor_id
-        prompt_player_id = normalize_prompt_player_id(state, actor_id) if actor_id else None
         if self.override_player_id_key:
             found = context.get(self.override_player_id_key)
             if found:
                 actor_id = HeroID(str(found))
-                prompt_player_id = normalize_prompt_player_id(state, found)
+        return actor_id
 
+    def _build_candidates(
+        self, state: GameState, context: dict[str, Any], actor_id: Any
+    ) -> tuple[list[Any], list[Any]]:
+        """Enumerate raw candidates for this selection's target_type.
+
+        Returns (candidates, card_candidates); card_candidates is the list of
+        Card objects for CARD selections (used for metadata), empty otherwise.
+        Pure: reads state only, no mutation.
+        """
         candidates: list[Any] = []
         card_candidates: list[Any] = []
         if self.target_type == TargetType.UNIT:
@@ -288,7 +291,23 @@ class SelectStep(GameStep):
                 card_candidates = source_list
                 candidates = [c.id for c in source_list]
 
-        valid_candidates = []
+        return candidates, card_candidates
+
+    def _filter_valid(
+        self,
+        candidates: list[Any],
+        state: GameState,
+        context: dict[str, Any],
+        actor_id: Any,
+        *,
+        first_only: bool = False,
+    ) -> list[Any]:
+        """Keep candidates passing can_be_targeted (units) + effective filters.
+
+        Pure: reads state only. With first_only=True, returns after the first
+        valid candidate (used by the has_valid_candidate probe).
+        """
+        valid_candidates: list[Any] = []
         effective_filters = self._get_effective_filters()
         for c in candidates:
             # Intrinsic Validation for UNITS: Check can_be_targeted (LOS, etc.)
@@ -311,6 +330,69 @@ class SelectStep(GameStep):
                     break
             if is_valid:
                 valid_candidates.append(c)
+                if first_only:
+                    return valid_candidates
+        return valid_candidates
+
+    def has_valid_candidate(self, state: GameState, context: dict[str, Any]) -> bool:
+        """True if this selection would have at least one valid candidate.
+
+        Side-effect-free (save/restores acting_piece_id only). Used to probe,
+        before an action resolves, whether its mandatory target selection could
+        succeed (menu-time legality pruning). A guarded step is treated as
+        having no gate to enforce, so it returns True.
+
+        Multi-piece heroes: the acting piece is chosen after the action, so try
+        each piece as the origin and succeed if any yields a candidate (avoids
+        over-pruning an attack a non-default piece could make).
+        """
+        if self.should_skip(context):
+            return True
+        actor_id = self._resolve_actor_id(state, context)
+
+        def _probe() -> bool:
+            candidates, _ = self._build_candidates(state, context, actor_id)
+            return bool(self._filter_valid(candidates, state, context, actor_id, first_only=True))
+
+        piece_ids: list[str] = []
+        if actor_id is not None:
+            multi = state._multi_piece_hero(str(actor_id))
+            if multi is not None and not state.acting_piece_id:
+                piece_ids = [str(p) for p in state.get_piece_ids(str(actor_id))]
+
+        if not piece_ids:
+            return _probe()
+
+        from goa2.domain.types import BoardEntityID
+
+        saved = state.acting_piece_id
+        try:
+            for pid in piece_ids:
+                state.acting_piece_id = BoardEntityID(pid)
+                if _probe():
+                    return True
+            return False
+        finally:
+            state.acting_piece_id = saved
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            logger.debug(
+                f"   [SKIP] Conditional Step '{self.prompt}' skipped (Key '{self.active_if_key}' missing)."
+            )
+            return StepResult(is_finished=True)
+
+        actor_id = state.current_actor_id
+        prompt_player_id = normalize_prompt_player_id(state, actor_id) if actor_id else None
+        if self.override_player_id_key:
+            found = context.get(self.override_player_id_key)
+            if found:
+                actor_id = HeroID(str(found))
+                prompt_player_id = normalize_prompt_player_id(state, found)
+
+        candidates, card_candidates = self._build_candidates(state, context, actor_id)
+
+        valid_candidates = self._filter_valid(candidates, state, context, actor_id)
 
         if not valid_candidates:
             if self.is_mandatory:

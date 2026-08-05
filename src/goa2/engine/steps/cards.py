@@ -23,7 +23,8 @@ from goa2.domain.models import (
     TeamColor,
     TokenType,
 )
-from goa2.domain.models.enums import StatType
+from goa2.domain.models.effect import EffectType
+from goa2.domain.models.enums import PassiveTrigger, StatType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine import rules
@@ -33,6 +34,132 @@ from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+
+def action_passes_initial_target_gate(
+    state: GameState, hero: Hero, card: Card, act_type: ActionType, *, is_primary: bool
+) -> bool:
+    """Whether the action's initial mandatory target gate can succeed.
+
+    Returns False only when the first top-level mandatory target gate (a
+    SelectStep, or an AttackSequenceStep that would spawn one) has no valid
+    candidate in the current state. Used to prune guaranteed no-op options from
+    the CHOOSE_ACTION menu.
+
+    Conservative by design: anything unexpected returns True (never hide a legal
+    move). Does not recurse into CreateEffectStep.finishing_steps (deferred
+    end-of-turn targets like Silverarrow's warning_shot stay available).
+    """
+    from goa2.engine.effects import CardEffectRegistry
+    from goa2.engine.filters_units import TeamFilter
+    from goa2.engine.steps.combat import AttackSequenceStep
+    from goa2.engine.steps.selection import SelectStep
+
+    try:
+        # The acting piece is chosen after the action menu. Until then, target
+        # legality and per-piece action restrictions cannot be evaluated from a
+        # single origin safely, so never prune a multi-piece hero here.
+        if hero.is_multi_piece and not state.acting_piece_id:
+            return True
+
+        # Source the top-level steps this action would expand into.
+        steps: list[GameStep]
+        effect_id = card.current_effect_id if is_primary else None
+        effect = CardEffectRegistry.get(effect_id) if effect_id else None
+        if effect is not None:
+            steps = list(effect.get_steps(state, hero, card))
+        elif effect_id is not None:
+            # Scripted card whose effect isn't registered: we can't know its
+            # step shape, so never prune (conservative).
+            return True
+        elif act_type == ActionType.ATTACK:
+            # Standard / basic / secondary ATTACK: a bare AttackSequenceStep.
+            base_rng = card.get_base_stat_value(StatType.RANGE) or 1
+            eff_rng = get_computed_stat(state, UnitID(hero.id), StatType.RANGE, base_rng)
+            steps = [AttackSequenceStep(damage=0, range_val=eff_rng)]
+        else:
+            # SKILL with no registered effect does nothing meaningful; leave it.
+            return True
+
+        # Walk to the first unconditional gating step.
+        for step in steps:
+            if step.should_skip(state.execution_context):
+                continue
+            if isinstance(step, SelectStep):
+                if not step.is_mandatory:
+                    return True  # optional target -> action still playable
+                if step.target_type == TargetType.NUMBER:
+                    return True  # mode choice, not a target gate
+                return step.has_valid_candidate(state, state.execution_context)
+            if isinstance(step, AttackSequenceStep):
+                if step.target_id_key or not step.is_mandatory:
+                    return True  # target pre-selected, or optional
+                probe = SelectStep(
+                    target_type=TargetType.UNIT,
+                    prompt="",
+                    filters=[
+                        RangeFilter(max_range=step.range_val),
+                        TeamFilter(relation="ENEMY"),
+                        *step.target_filters,
+                    ],
+                )
+                return probe.has_valid_candidate(state, state.execution_context)
+            # Any other leading step (aura, self, setup, movement, etc.) means
+            # there is no target gate up front -> not prunable.
+            return True
+        return True
+    except Exception:  # pragma: no cover - never hide a legal move on error
+        logger.exception("initial target gate probe failed; leaving option available")
+        return True
+
+
+def action_may_change_targets_before_card_text(
+    state: GameState, hero: Hero, act_type: ActionType, *, is_primary: bool
+) -> bool:
+    """Whether a hook before card text could change target availability.
+
+    The menu is built before these hooks resolve. If one is eligible, probing
+    the current board could hide an action that becomes targetable after the
+    hook, so pruning must remain conservative.
+    """
+    from goa2.engine.effects import CardEffectRegistry
+
+    if is_primary and any(
+        effect.effect_type == EffectType.PRE_ACTION_MOVEMENT
+        and effect.source_id == hero.id
+        and effect.is_active
+        for effect in state.active_effects
+    ):
+        return True
+
+    triggers = {PassiveTrigger.BEFORE_ACTION}
+    if act_type == ActionType.ATTACK:
+        triggers.add(PassiveTrigger.BEFORE_ATTACK)
+    elif act_type == ActionType.SKILL:
+        triggers.add(PassiveTrigger.BEFORE_SKILL)
+
+    passive_cards = [
+        card
+        for card in hero.played_cards
+        if card is not None and card.state == CardState.RESOLVED and not card.is_facedown
+    ]
+    if hero.level >= 8 and hero.ultimate_card:
+        passive_cards.append(hero.ultimate_card)
+
+    for passive_card in passive_cards:
+        effect_id = passive_card.current_effect_id
+        effect = CardEffectRegistry.get(effect_id) if effect_id else None
+        if not effect:
+            continue
+        for config in effect.get_passive_configs():
+            if config.trigger not in triggers:
+                continue
+            if (
+                config.uses_per_turn <= 0
+                or passive_card.passive_uses_this_turn < config.uses_per_turn
+            ):
+                return True
+    return False
 
 
 class SetCardInitiativeStep(GameStep):
@@ -680,7 +807,7 @@ class ResolveCardStep(GameStep):
 
         from goa2.engine.rules import get_safe_zones_for_fast_travel
 
-        def is_action_available(act_type: ActionType) -> bool:
+        def is_action_available(act_type: ActionType, *, is_primary: bool) -> bool:
             # 1. Check Global/Effect Validation (e.g. Spell Break prevention)
             # We pass the 'card' object in context so validation can check exceptions (color).
             val_res = state.validator.can_perform_action(
@@ -712,7 +839,18 @@ class ResolveCardStep(GameStep):
                 ]
                 if not safe:
                     return False
-            return True
+
+            # 2. Prune target-gated actions with no legal target (ATTACK/SKILL):
+            # keeps a guaranteed no-op out of the menu so the AI never expands it.
+            return (
+                act_type not in (ActionType.ATTACK, ActionType.SKILL)
+                or action_may_change_targets_before_card_text(
+                    state, hero, act_type, is_primary=is_primary
+                )
+                or action_passes_initial_target_gate(
+                    state, hero, card, act_type, is_primary=is_primary
+                )
+            )
 
         # Helper to compute option values
         def compute_option(act_type: ActionType, base_val: int | None) -> tuple[int, str]:
@@ -735,49 +873,44 @@ class ResolveCardStep(GameStep):
 
             return final_val, text_val
 
-        # Primary - DEFENSE cannot be chosen as an active action on your turn
-        # DEFENSE_SKILL is shown as SKILL option
-        primary_action = card.current_primary_action
-        if primary_action and primary_action not in (
-            ActionType.DEFENSE,
-            ActionType.DEFENSE_SKILL,
-        ):
-            if is_action_available(primary_action):
-                c_val, c_text = compute_option(primary_action, card.current_primary_action_value)
-                options.append(
-                    {
-                        "id": primary_action.name,
-                        "type": primary_action,
-                        "value": c_val,
-                        "text": f"Primary: {primary_action.name} ({c_text})",
-                    }
-                )
-        # DEFENSE_SKILL is shown as SKILL option
-        elif primary_action == ActionType.DEFENSE_SKILL and is_action_available(ActionType.SKILL):
-            c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
-            options.append(
-                {
-                    "id": ActionType.SKILL.name,
-                    "type": ActionType.SKILL,
-                    "value": c_val,
-                    "text": f"Primary: SKILL ({c_text})",
-                }
-            )
+        def build_option(
+            act_type: ActionType, base_val: int | None, label: str, *, is_primary: bool
+        ) -> dict[str, Any] | None:
+            """Build one CHOOSE_ACTION option, or None if it shouldn't be offered.
 
-        # Secondaries - DEFENSE cannot be chosen as an active action on your turn
+            - DEFENSE: never an active action on your turn -> omitted.
+            - DEFENSE_SKILL: shown as a SKILL option (primary only).
+            - is_action_available: prevention/FAST_TRAVEL gate + no-target prune.
+            """
+            if act_type == ActionType.DEFENSE:
+                return None
+            display_type = ActionType.SKILL if act_type == ActionType.DEFENSE_SKILL else act_type
+
+            if not is_action_available(display_type, is_primary=is_primary):
+                return None
+
+            c_val, c_text = compute_option(display_type, base_val)
+            return {
+                "id": display_type.name,
+                "type": display_type,
+                "value": c_val,
+                "text": f"{label}: {display_type.name} ({c_text})",
+            }
+
+        # Primary: DEFENSE omitted, DEFENSE_SKILL remapped to SKILL.
+        primary_action = card.current_primary_action
+        if primary_action:
+            primary_opt = build_option(
+                primary_action, card.current_primary_action_value, "Primary", is_primary=True
+            )
+            if primary_opt:
+                options.append(primary_opt)
+
+        # Secondaries: DEFENSE omitted.
         for action_type, val in card.current_secondary_actions.items():
-            if action_type == ActionType.DEFENSE:
-                continue  # Skip DEFENSE - it can only be used during reaction window
-            if is_action_available(action_type):
-                c_val, c_text = compute_option(action_type, val)
-                options.append(
-                    {
-                        "id": action_type.name,
-                        "type": action_type,
-                        "value": c_val,
-                        "text": f"Secondary: {action_type.name} ({c_text})",
-                    }
-                )
+            secondary_opt = build_option(action_type, val, "Secondary", is_primary=False)
+            if secondary_opt:
+                options.append(secondary_opt)
 
         if self.pending_input:
             choice_id = self.pending_input.get("selection")
@@ -1914,9 +2047,7 @@ class PerformPrimaryActionStep(GameStep):
         if self.exclude_target_key:
             self._inject_exclusion_filter(steps, self.exclude_target_key)
 
-        logger.debug(
-            f"   [PERFORM] Performing primary action of {card.name} " f"({len(steps)} steps)"
-        )
+        logger.debug(f"   [PERFORM] Performing primary action of {card.name} ({len(steps)} steps)")
         return StepResult(is_finished=True, new_steps=steps)
 
     @classmethod
@@ -2026,11 +2157,18 @@ class PerformCardActionStep(GameStep):
                 logger.debug(f"   [PERFORM ANY] Card {card_id} not found on {owner.id}.")
                 return StepResult(is_finished=True)
 
-        def is_action_available(act_type: ActionType) -> bool:
+        def is_action_available(act_type: ActionType, *, is_primary: bool) -> bool:
             val_res = state.validator.can_perform_action(
                 state, performer_id, act_type, context={"card": card}
             )
-            return bool(val_res.allowed)
+            if not val_res.allowed:
+                return False
+            return act_type not in (
+                ActionType.ATTACK,
+                ActionType.SKILL,
+            ) or action_passes_initial_target_gate(
+                state, performer, card, act_type, is_primary=is_primary
+            )
 
         def compute_option(act_type: ActionType, base_val: int | None) -> tuple[int, str]:
             final_val = base_val or 0
@@ -2045,47 +2183,36 @@ class PerformCardActionStep(GameStep):
                 text_val = str(final_val)
             return final_val, text_val
 
+        def build_option(
+            act_type: ActionType, base_val: int | None, label: str, *, is_primary: bool
+        ) -> dict[str, Any] | None:
+            if act_type == ActionType.DEFENSE:
+                return None
+            display_type = ActionType.SKILL if act_type == ActionType.DEFENSE_SKILL else act_type
+            if not is_action_available(display_type, is_primary=is_primary):
+                return None
+            c_val, c_text = compute_option(display_type, base_val)
+            return {
+                "id": display_type.name,
+                "type": display_type,
+                "value": c_val,
+                "text": f"{label}: {display_type.name} ({c_text})",
+            }
+
         # Build the normal resolution menu minus defense.
         options: list[dict[str, Any]] = []
         primary_action = card.current_primary_action
-        if primary_action and primary_action not in (
-            ActionType.DEFENSE,
-            ActionType.DEFENSE_SKILL,
-        ):
-            if is_action_available(primary_action):
-                c_val, c_text = compute_option(primary_action, card.current_primary_action_value)
-                options.append(
-                    {
-                        "id": primary_action.name,
-                        "type": primary_action,
-                        "value": c_val,
-                        "text": f"Primary: {primary_action.name} ({c_text})",
-                    }
-                )
-        elif primary_action == ActionType.DEFENSE_SKILL and is_action_available(ActionType.SKILL):
-            c_val, c_text = compute_option(ActionType.SKILL, card.current_primary_action_value)
-            options.append(
-                {
-                    "id": ActionType.SKILL.name,
-                    "type": ActionType.SKILL,
-                    "value": c_val,
-                    "text": f"Primary: SKILL ({c_text})",
-                }
+        if primary_action:
+            primary_opt = build_option(
+                primary_action, card.current_primary_action_value, "Primary", is_primary=True
             )
+            if primary_opt:
+                options.append(primary_opt)
 
         for action_type, val in card.current_secondary_actions.items():
-            if action_type == ActionType.DEFENSE:
-                continue  # defense is never performable this way
-            if is_action_available(action_type):
-                c_val, c_text = compute_option(action_type, val)
-                options.append(
-                    {
-                        "id": action_type.name,
-                        "type": action_type,
-                        "value": c_val,
-                        "text": f"Secondary: {action_type.name} ({c_text})",
-                    }
-                )
+            secondary_opt = build_option(action_type, val, "Secondary", is_primary=False)
+            if secondary_opt:
+                options.append(secondary_opt)
 
         def request_action() -> StepResult:
             return StepResult(

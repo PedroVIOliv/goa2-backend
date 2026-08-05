@@ -104,8 +104,7 @@ def test_seismic_skips_enemy_hero_not_adjacent_to_terrain_or_rock(card_id: str) 
 
     run = run_card(state, "hero_mrak")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL")
-    run.finish()
+    run.expect_option_absent("SKILL")
 
     assert len(arien.hand) == 1  # untouched
 
@@ -365,8 +364,7 @@ def test_stomping_requires_a_terrain_or_rock_adjacent_unit() -> None:
 
     run = run_card(state, "hero_mrak")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL")
-    run.finish()  # mandatory select has no candidate -> nothing happens
+    run.expect_option_absent("SKILL")
 
     assert state.entity_locations.get("blue_minion") == Hex(q=0, r=0, s=0)
     assert not _rock_at(state, 0, 0, 0)
@@ -551,8 +549,7 @@ def test_boulder_cannot_push_friendly_unit() -> None:
 
     run = run_card(state, "hero_mrak")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL")
-    run.finish()  # only a friendly unit adjacent -> nothing to push
+    run.expect_option_absent("SKILL")
 
     assert state.entity_locations.get("red_minion") == Hex(q=4, r=0, s=-4)
 

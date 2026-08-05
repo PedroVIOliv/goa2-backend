@@ -260,9 +260,7 @@ class ExpeditionLeaderEffect(_MoveFriendlyEffect):
 
 
 class _TrapEffect(CardEffect):
-    """Choose one — an enemy hero adjacent to you, OR an enemy hero in radius
-    adjacent to 3+ obstacles — then that hero discards a card (bear/log) or
-    discards a card, or is defeated (deadfall)."""
+    """Target an adjacent enemy hero or one in radius adjacent to 3+ obstacles."""
 
     defeat_on_no_card: bool = False
 
@@ -276,45 +274,24 @@ class _TrapEffect(CardEffect):
     ) -> list[GameStep]:
         return [
             SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose one",
-                output_key="trap_choice",
-                number_options=[1, 2],
-                number_labels={
-                    1: "An enemy hero adjacent to you",
-                    2: "An enemy hero in radius adjacent to 3+ obstacles",
-                },
-                is_mandatory=True,
-            ),
-            CheckContextConditionStep(
-                input_key="trap_choice", operator="==", threshold=1, output_key="trap_a"
-            ),
-            SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Select an adjacent enemy hero",
+                prompt="Select an adjacent or qualifying enemy hero in radius",
                 output_key="trap_victim",
                 is_mandatory=True,
-                active_if_key="trap_a",
                 filters=[
                     TeamFilter(relation="ENEMY"),
                     UnitTypeFilter(unit_type="HERO"),
-                    RangeFilter(max_range=1),
-                ],
-            ),
-            CheckContextConditionStep(
-                input_key="trap_choice", operator="==", threshold=2, output_key="trap_b"
-            ),
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Select an enemy hero in radius adjacent to 3+ obstacles",
-                output_key="trap_victim",
-                is_mandatory=True,
-                active_if_key="trap_b",
-                filters=[
-                    TeamFilter(relation="ENEMY"),
-                    UnitTypeFilter(unit_type="HERO"),
-                    RangeFilter(max_range=stats.radius),
-                    AdjacentToObstaclesFilter(min_count=3),
+                    OrFilter(
+                        filters=[
+                            RangeFilter(max_range=1),
+                            AndFilter(
+                                filters=[
+                                    RangeFilter(max_range=stats.radius),
+                                    AdjacentToObstaclesFilter(min_count=3),
+                                ]
+                            ),
+                        ]
+                    ),
                 ],
             ),
             self._resolve_step(),
@@ -649,49 +626,31 @@ class DecoyEffect(CardEffect):
 
 @register_effect("familiar_ground")
 class FamiliarGroundEffect(CardEffect):
-    """Choose one — target a unit adjacent to you, or a hero in range who is
-    adjacent to 3+ obstacles. Then attack it (ranged)."""
+    """Target an adjacent unit or a hero in range adjacent to 3+ obstacles."""
 
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
             SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose one",
-                output_key="fg_choice",
-                number_options=[1, 2],
-                number_labels={
-                    1: "A unit adjacent to you",
-                    2: "A hero in range adjacent to 3+ obstacles",
-                },
-                is_mandatory=True,
-            ),
-            CheckContextConditionStep(
-                input_key="fg_choice", operator="==", threshold=1, output_key="fg_a"
-            ),
-            SelectStep(
                 target_type=TargetType.UNIT,
-                prompt="Target a unit adjacent to you",
+                prompt="Target an adjacent unit or a qualifying hero in range",
                 output_key="fg_victim",
                 is_mandatory=True,
-                active_if_key="fg_a",
-                filters=[RangeFilter(max_range=1), TeamFilter(relation="ENEMY")],
-            ),
-            CheckContextConditionStep(
-                input_key="fg_choice", operator="==", threshold=2, output_key="fg_b"
-            ),
-            SelectStep(
-                target_type=TargetType.UNIT,
-                prompt="Target a hero in range adjacent to 3+ obstacles",
-                output_key="fg_victim",
-                is_mandatory=True,
-                active_if_key="fg_b",
                 filters=[
-                    RangeFilter(max_range=stats.range),
                     TeamFilter(relation="ENEMY"),
-                    UnitTypeFilter(unit_type="HERO"),
-                    AdjacentToObstaclesFilter(min_count=3),
+                    OrFilter(
+                        filters=[
+                            RangeFilter(max_range=1),
+                            AndFilter(
+                                filters=[
+                                    UnitTypeFilter(unit_type="HERO"),
+                                    RangeFilter(max_range=stats.range),
+                                    AdjacentToObstaclesFilter(min_count=3),
+                                ]
+                            ),
+                        ]
+                    ),
                 ],
             ),
             AttackSequenceStep(

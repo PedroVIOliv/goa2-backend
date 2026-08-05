@@ -220,7 +220,7 @@ def test_hear_nothing_rejects_minion_friendly_and_out_of_radius() -> None:
 
 
 @pytest.mark.effect_flow
-def test_hear_nothing_aborts_with_no_enemy_hero_in_radius() -> None:
+def test_hear_nothing_skill_unavailable_with_no_enemy_hero_in_radius() -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes(_hex_disk(3))
@@ -232,7 +232,7 @@ def test_hear_nothing_aborts_with_no_enemy_hero_in_radius() -> None:
 
     run = run_card(state, "hero_hanu")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL").finish()  # mandatory hero swap has no target -> abort
+    run.expect_option_absent("SKILL")
     assert _pos(state, "hero_hanu") == (0, 0, 0)
 
 
@@ -1009,7 +1009,7 @@ def test_hurry_up_restores_initiative_at_end_of_turn() -> None:
 
 
 @pytest.mark.effect_flow
-def test_hurry_up_aborts_with_no_hero_in_range() -> None:
+def test_hurry_up_skill_unavailable_with_no_hero_in_range() -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes(_hex_disk(6))
@@ -1020,7 +1020,7 @@ def test_hurry_up_aborts_with_no_hero_in_range() -> None:
     )
     run = run_card(state, "hero_hanu")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL").finish()  # no hero with unresolved card in range -> abort
+    run.expect_option_absent("SKILL")
     assert state.get_hero("blue_far").current_turn_card.initiative != 11
 
 

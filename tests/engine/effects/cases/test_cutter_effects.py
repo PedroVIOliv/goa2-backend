@@ -540,8 +540,7 @@ def test_crashland_allows_distance_five() -> None:
 
 @pytest.mark.effect_flow
 def test_brace_landing_must_be_adjacent_to_enemy_hero_not_minion() -> None:
-    # Only an enemy minion is around (no enemy hero) -> mandatory move has no
-    # legal destination -> action aborts, nothing happens.
+    # Only an enemy minion is around (no enemy hero), so the skill is unavailable.
     state = (
         EffectScenarioBuilder()
         .with_hexes(_hex_disk(6))
@@ -552,7 +551,7 @@ def test_brace_landing_must_be_adjacent_to_enemy_hero_not_minion() -> None:
     )
     run = run_card(state, "hero_cutter")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL").finish()
+    run.expect_option_absent("SKILL")
     # Cutter did not move; no discard happened.
     assert _pos(state, "hero_cutter") == (0, 0, 0)
 
