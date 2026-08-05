@@ -188,3 +188,30 @@ class DraftViewResponse(BaseModel):
     you: dict[str, Any] | None = None
     game_id: str | None = None
     game_token: str | None = None
+
+
+class OverrideOpSchema(BaseModel):
+    name: str
+    family: str  # "patch" | "unstick"
+    label: str
+    description: str
+    args_schema: dict  # JSON Schema for the op's args
+
+
+class OverrideSchemaResponse(BaseModel):
+    ops: list[OverrideOpSchema]
+
+
+class OverrideHistoryEntry(BaseModel):
+    index: int  # raw decision index (rewind targets use this space)
+    type: str  # replay record type (commit / input / ov_patch / ...)
+    round: int | None = None
+    turn: int | None = None
+    hero_id: str | None = None
+    label: str  # human-readable, viewer-scoped
+    superseded: bool = False  # dead segment behind a rewind
+
+
+class OverrideHistoryResponse(BaseModel):
+    total: int
+    decisions: list[OverrideHistoryEntry]

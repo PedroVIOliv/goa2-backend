@@ -29,6 +29,7 @@ from goa2.server.routes_bug_reports import public_router as bug_reports_router
 from goa2.server.routes_draft import router as draft_router
 from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
+from goa2.server.routes_overrides import router as overrides_router
 from goa2.server.time_control import resume_timers, stop_timers
 from goa2.server.ws import router as ws_router
 
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(heroes_router)
     app.include_router(games_router)
+    app.include_router(overrides_router)
     app.include_router(bug_reports_router)
     app.include_router(draft_router)
     app.include_router(ws_router)
