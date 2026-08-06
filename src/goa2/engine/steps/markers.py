@@ -632,9 +632,11 @@ class PlaceTokenTrailStep(GameStep):
         ds = (dest.s - origin.s) // dist
 
         target_hexes: list[Hex] = []
+        raw_excluded_hexes = (
+            context.get(self.excluded_hexes_key, []) if self.excluded_hexes_key else []
+        )
         excluded_hexes = {
-            Hex(**value) if isinstance(value, dict) else value
-            for value in context.get(self.excluded_hexes_key, [])
+            Hex(**value) if isinstance(value, dict) else value for value in raw_excluded_hexes
         }
         current = origin
         for _ in range(dist):  # origin, origin+1, ..., dest-1 (destination excluded)
