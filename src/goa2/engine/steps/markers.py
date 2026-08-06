@@ -609,6 +609,7 @@ class PlaceTokenTrailStep(GameStep):
     origin_hex_key: str
     dest_key: str
     owner_id_key: str | None = None
+    excluded_hexes_key: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         if self.should_skip(context):
@@ -631,9 +632,16 @@ class PlaceTokenTrailStep(GameStep):
         ds = (dest.s - origin.s) // dist
 
         target_hexes: list[Hex] = []
+        raw_excluded_hexes = (
+            context.get(self.excluded_hexes_key, []) if self.excluded_hexes_key else []
+        )
+        excluded_hexes = {
+            Hex(**value) if isinstance(value, dict) else value for value in raw_excluded_hexes
+        }
         current = origin
         for _ in range(dist):  # origin, origin+1, ..., dest-1 (destination excluded)
-            target_hexes.append(current)
+            if current not in excluded_hexes:
+                target_hexes.append(current)
             current = Hex(q=current.q + dq, r=current.r + dr, s=current.s + ds)
 
         removal_steps = _token_shortfall_removal_steps(
@@ -860,6 +868,7 @@ class MoveTokenStep(GameStep):
     destination_key: str = "target_hex"
     range_val: int = 1
     pass_through_obstacles: bool = False
+    force_straight_line: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         token_id = context.get(self.token_key)
@@ -894,6 +903,16 @@ class MoveTokenStep(GameStep):
             if not is_valid:
                 logger.debug(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")
                 return StepResult(is_finished=True)
+
+            if self.force_straight_line:
+                from goa2.engine.filters_geometry import StraightLinePathFilter
+
+                if not StraightLinePathFilter(
+                    origin_id=str(token_id),
+                    pass_through_obstacles=self.pass_through_obstacles,
+                ).apply(dest_hex, state, context):
+                    logger.debug(f"   [TOKEN] Invalid token move {token_id}: not a clear line.")
+                    return StepResult(is_finished=True)
         else:
             return StepResult(is_finished=True)
 

@@ -758,6 +758,7 @@ class GetOverHereEffect(CardEffect):
                 destination_key="goh_dest",
                 range_val=stats.range,
                 is_movement_action=False,
+                force_straight_line=True,
             ),
         ]
 

@@ -285,6 +285,7 @@ def _rolling_steps(hero_id: str, max_empty: int) -> list[GameStep]:
             range_val=99,
             pass_through_obstacles=True,
             is_movement_action=False,
+            force_straight_line=True,
             active_if_key="rolling_dest",
         ),
     ]
@@ -353,9 +354,10 @@ def _boulder_steps(hero_id: str, max_n: int) -> list[GameStep]:
         MoveUnitStep(
             unit_id=hero_id,
             destination_key="boulder_follow_dest",
-            range_val=99,
+            range_val=max_n,
             pass_through_obstacles=True,
             is_movement_action=False,
+            force_straight_line=True,
             active_if_key="boulder_follow_dest",
         ),
     ]
