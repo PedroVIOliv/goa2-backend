@@ -6,8 +6,8 @@ skip giving markers."
 
 Locked interpretations (2026-07-07):
 - The chooser is exactly the normal card-resolution menu minus defense
-  (primary, secondary movement, Hold, Fast Travel where legal — Hold always
-  exists, so every card offers at least one action).
+  (primary and secondary actions subject to normal availability checks; Hold
+  always exists, so every card offers at least one action).
 - build_steps is called when the primary action is chosen.
 - Values come from THAT card, computed with the PERFORMER as actor.
 - Token placements inside the copied effect place Illusion tokens instead.
@@ -16,6 +16,8 @@ Locked interpretations (2026-07-07):
 
 from __future__ import annotations
 
+import goa2.scripts.brogan_effects  # noqa: F401
+from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType, InputResponse
@@ -189,6 +191,48 @@ def test_menu_offers_all_actions_except_defense() -> None:
     assert "MOVEMENT" in ids  # secondary
     assert "HOLD" in ids  # always available
     assert "DEFENSE" not in ids
+
+
+def test_menu_prunes_secondary_attack_without_target() -> None:
+    state = _state()
+    card = _card(
+        "enemy_defense_card",
+        primary=ActionType.DEFENSE,
+        primary_value=7,
+        secondary={ActionType.ATTACK: 3},
+    )
+
+    result = _run_perform(state, card)
+
+    assert "ATTACK" not in _option_ids(result)
+
+
+def test_menu_offers_secondary_attack_with_target() -> None:
+    state = _state()
+    state.move_unit("hero_enemy", Hex(q=1, r=0, s=-1))
+    card = _card(
+        "enemy_defense_card",
+        primary=ActionType.DEFENSE,
+        primary_value=7,
+        secondary={ActionType.ATTACK: 3},
+    )
+
+    result = _run_perform(state, card)
+
+    assert "ATTACK" in _option_ids(result)
+
+
+def test_menu_keeps_copied_move_then_attack_available() -> None:
+    state = _state()
+    brogan = HeroRegistry.get("Brogan")
+    assert brogan is not None
+    card = next(c for c in brogan.deck if c.id == "mad_dash").model_copy(deep=True)
+    card.state = CardState.RESOLVED
+    card.is_facedown = False
+
+    result = _run_perform(state, card)
+
+    assert "ATTACK" in _option_ids(result)
 
 
 def test_menu_routed_to_performer() -> None:

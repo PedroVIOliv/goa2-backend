@@ -204,8 +204,7 @@ def test_proven_warrior_u2_no_friendly_discard_fizzles():
     give_hand(state, ENEMY, colored("enemy_red", CardColor.RED))
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()  # the ally has an empty discard → not selectable → action aborts
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
     assert state.get_hero(ENEMY).discard_pile == []
 
@@ -264,8 +263,7 @@ def test_proven_warrior_u5b_ally_with_only_facedown_discards_is_not_selectable()
     hidden.is_facedown = True
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
-    run.finish()  # no usable color source → mandatory pick finds nobody → abort
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("SKILL")
 
 
 @pytest.mark.effect_flow

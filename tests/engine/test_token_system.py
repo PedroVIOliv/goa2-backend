@@ -121,6 +121,28 @@ def test_place_move_remove_token_lifecycle():
     assert any(e.event_type == GameEventType.TOKEN_REMOVED for e in remove_res.events)
 
 
+def test_move_token_force_straight_line_rejects_detour() -> None:
+    state = _make_state()
+    token = Token(id="smoke_bomb_1", name="Smoke Bomb", token_type=TokenType.SMOKE_BOMB)
+    state.register_entity(token)
+    state.token_pool[TokenType.SMOKE_BOMB] = [token]
+    state.place_entity("smoke_bomb_1", Hex(q=1, r=-1, s=0))
+    context = {
+        "token_id": "smoke_bomb_1",
+        "dest": Hex(q=0, r=1, s=-1),
+    }
+
+    result = MoveTokenStep(
+        token_key="token_id",
+        destination_key="dest",
+        range_val=2,
+        force_straight_line=True,
+    ).resolve(state, context)
+
+    assert state.entity_locations["smoke_bomb_1"] == Hex(q=1, r=-1, s=0)
+    assert result.events == []
+
+
 def test_remove_token_clears_linked_effects():
     state = _make_state()
     token = Token(id="smoke_bomb_1", name="Smoke Bomb", token_type=TokenType.SMOKE_BOMB)

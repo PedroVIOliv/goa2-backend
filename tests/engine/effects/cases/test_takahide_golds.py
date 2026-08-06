@@ -321,13 +321,12 @@ def test_sting_h3_h4_swap_fires_after_a_defended_attack():
 
 
 @pytest.mark.effect_flow
-def test_sting_u1_no_target_at_max_range_aborts_without_a_swap():
+def test_sting_u1_no_target_at_max_range_hides_attack_without_a_swap():
     state = gold_state("sting_like_a_bee", enemies=[(1, 0, -1)])
     taka = state.get_hero(TAKAHIDE)
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.finish()  # mandatory targeting fails → abort → no swap
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     sting = deck_card(taka, "sting_like_a_bee")
     assert sting.state == CardState.UNRESOLVED
@@ -377,13 +376,12 @@ def test_strike_h2_adjacent_attack_then_swap():
 
 
 @pytest.mark.effect_flow
-def test_strike_u1_no_adjacent_target_aborts_without_a_swap():
+def test_strike_u1_no_adjacent_target_hides_attack_without_a_swap():
     state = gold_state("strike_like_a_tiger", enemies=[(3, 0, -3)])
     taka = state.get_hero(TAKAHIDE)
 
     run = run_card(state, TAKAHIDE)
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     strike = deck_card(taka, "strike_like_a_tiger")
     assert strike.state == CardState.UNRESOLVED

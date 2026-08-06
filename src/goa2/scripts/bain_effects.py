@@ -7,6 +7,7 @@ from goa2.domain.models.enums import CardContainerType, PassiveTrigger, TargetTy
 from goa2.domain.models.marker import MarkerType
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
+from goa2.engine.filters_composite import AndFilter, OrFilter
 from goa2.engine.filters_geometry import (
     ClearLineOfSightFilter,
     InStraightLineFilter,
@@ -282,45 +283,37 @@ class HandCrossbowEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Choose mode
+            # The branches differ only by target eligibility, so combine them.
             SelectStep(
-                target_type=TargetType.NUMBER,
-                prompt="Choose attack target",
-                output_key="hc_choice",
-                number_options=[1, 2],
-                number_labels={1: "Target Hero with Bounty in Range", 2: "Target Adjacent Unit"},
+                target_type=TargetType.UNIT,
+                prompt="Target an enemy unit",
+                output_key="hc_target",
                 is_mandatory=True,
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    OrFilter(
+                        filters=[
+                            AndFilter(
+                                filters=[
+                                    RangeFilter(max_range=1),
+                                ]
+                            ),
+                            AndFilter(
+                                filters=[
+                                    UnitTypeFilter(unit_type="HERO"),
+                                    RangeFilter(max_range=stats.range),
+                                    HasMarkerFilter(marker_type=MarkerType.BOUNTY),
+                                ]
+                            ),
+                        ]
+                    ),
+                ],
             ),
-            # 2. Branch flags
-            CheckContextConditionStep(
-                input_key="hc_choice",
-                operator="==",
-                threshold=1,
-                output_key="chose_bounty",
-            ),
-            CheckContextConditionStep(
-                input_key="hc_choice",
-                operator="==",
-                threshold=2,
-                output_key="chose_adjacent",
-            ),
-            # 3a. Bounty target: hero in range with Bounty marker
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=True,
-                active_if_key="chose_bounty",
-                target_filters=[
-                    UnitTypeFilter(unit_type="HERO"),
-                    HasMarkerFilter(marker_type=MarkerType.BOUNTY),
-                ],
-            ),
-            # 3b. Adjacent: standard melee attack
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=1,
-                is_ranged=True,
-                active_if_key="chose_adjacent",
+                target_id_key="hc_target",
             ),
         ]
 
@@ -758,6 +751,7 @@ class GetOverHereEffect(CardEffect):
                 destination_key="goh_dest",
                 range_val=stats.range,
                 is_movement_action=False,
+                force_straight_line=True,
             ),
         ]
 

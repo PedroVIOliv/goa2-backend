@@ -256,8 +256,9 @@ def _blue_move_steps(hero: Hero, max_range: int) -> list[GameStep]:
         MoveUnitStep(
             unit_id=hero.id,
             destination_key="move_dest",
-            range_val=99,
+            range_val=max_range,
             pass_through_obstacles=True,
+            force_straight_line=True,
         ),
     ]
 

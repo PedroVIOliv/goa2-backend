@@ -591,6 +591,7 @@ class _StraightLineShoveMixin:
                 destination_key=dest_key,
                 range_val=_STRAIGHT_LINE_SPACES,
                 is_movement_action=False,
+                force_straight_line=True,
             ),
         ]
 

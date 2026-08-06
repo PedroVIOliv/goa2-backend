@@ -3,8 +3,10 @@
 import pytest
 
 from goa2.domain.events import GameEventType
+from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import GamePhase, MinionType, TeamColor
+from goa2.domain.models import GamePhase, MinionType, TeamColor, Token, TokenType
+from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.steps import PerformPrimaryActionStep, SetContextFlagStep
 
 from ..builders import EffectScenarioBuilder, hero_card
@@ -46,6 +48,19 @@ def _give_hand(state, hero_id: str, n: int = 1) -> list:
 def _pos(state, uid) -> tuple:
     h = state.entity_locations.get(uid)
     return (h.q, h.r, h.s) if h is not None else None
+
+
+def _place_mine(state, *, owner_id: str, at: tuple[int, int, int]) -> None:
+    mine = Token(
+        id=BoardEntityID("mine_1"),
+        name="Mine",
+        token_type=TokenType.MINE_DUD,
+        owner_id=HeroID(owner_id),
+        is_passable=True,
+    )
+    state.token_pool[TokenType.MINE_DUD] = [mine]
+    state.register_entity(mine, "token")
+    state.place_entity(mine.id, Hex(q=at[0], r=at[1], s=at[2]))
 
 
 # =============================================================================
@@ -461,6 +476,7 @@ def test_brace_for_impact_charges_through_obstacle_and_forces_discard() -> None:
         .build()
     )
     hand = _give_hand(state, "blue_hero")
+    _place_mine(state, owner_id="blue_hero", at=(1, 0, -1))
 
     run = run_card(state, "hero_cutter")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
@@ -472,6 +488,7 @@ def test_brace_for_impact_charges_through_obstacle_and_forces_discard() -> None:
     run.choose(hand[0].id).finish()
 
     assert _pos(state, "hero_cutter") == (3, 0, -3)
+    assert _pos(state, "mine_1") is None
     assert hand[0] in state.get_hero("blue_hero").discard_pile
 
 
@@ -523,8 +540,7 @@ def test_crashland_allows_distance_five() -> None:
 
 @pytest.mark.effect_flow
 def test_brace_landing_must_be_adjacent_to_enemy_hero_not_minion() -> None:
-    # Only an enemy minion is around (no enemy hero) -> mandatory move has no
-    # legal destination -> action aborts, nothing happens.
+    # Only an enemy minion is around (no enemy hero), so the skill is unavailable.
     state = (
         EffectScenarioBuilder()
         .with_hexes(_hex_disk(6))
@@ -533,10 +549,9 @@ def test_brace_landing_must_be_adjacent_to_enemy_hero_not_minion() -> None:
         .with_actor("hero_cutter")
         .build()
     )
-
     run = run_card(state, "hero_cutter")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL").finish()
+    run.expect_option_absent("SKILL")
     # Cutter did not move; no discard happened.
     assert _pos(state, "hero_cutter") == (0, 0, 0)
 
@@ -618,6 +633,28 @@ def test_grappling_bolt_blocked_by_obstacle_between() -> None:
     options = _hex_options(run)
     assert (2, 0, -2) in options  # clear line to the near obstacle
     assert (4, 0, -4) not in options  # blocked by the obstacle between
+
+
+@pytest.mark.effect_flow
+def test_grappling_bolt_may_target_mine_but_not_past_it() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(6))
+        .red_hero("hero_cutter", at=(0, 0, 0), current_card=hero_card("Cutter", "grappling_bolt"))
+        .blue_hero("mine_owner", at=(0, 4, -4))
+        .with_actor("hero_cutter")
+        .build()
+    )
+    _place_mine(state, owner_id="mine_owner", at=(2, 0, -2))
+    _make_terrain(state, (4, 0, -4))
+
+    run = run_card(state, "hero_cutter")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_HEX)
+    options = _hex_options(run)
+
+    assert (2, 0, -2) in options
+    assert (4, 0, -4) not in options
 
 
 @pytest.mark.effect_flow
@@ -736,6 +773,7 @@ def test_fearless_lunge_charges_up_to_three() -> None:
         .with_actor("hero_cutter")
         .build()
     )
+    _place_mine(state, owner_id="blue_hero", at=(1, 0, -1))
 
     run = run_card(state, "hero_cutter")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
@@ -746,6 +784,7 @@ def test_fearless_lunge_charges_up_to_three() -> None:
     run.choose("PASS").finish()
 
     assert _pos(state, "hero_cutter") == (3, 0, -3)
+    assert _pos(state, "mine_1") is None
     assert 7 in _combat_values(run)  # Fearless base 5, +2
 
 

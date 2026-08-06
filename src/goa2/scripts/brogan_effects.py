@@ -380,7 +380,8 @@ class MadDashEffect(CardEffect):
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="dash_destination",
-                range_val=99,
+                range_val=2,
+                force_straight_line=True,
             ),
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
@@ -417,7 +418,8 @@ class BullrushEffect(CardEffect):
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="rush_destination",
-                range_val=99,
+                range_val=3,
+                force_straight_line=True,
             ),
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]
@@ -454,7 +456,8 @@ class FuriousChargeEffect(CardEffect):
             MoveUnitStep(
                 unit_id=hero.id,
                 destination_key="charge_destination",
-                range_val=99,
+                range_val=4,
+                force_straight_line=True,
             ),
             AttackSequenceStep(damage=stats.primary_value, range_val=1),
         ]

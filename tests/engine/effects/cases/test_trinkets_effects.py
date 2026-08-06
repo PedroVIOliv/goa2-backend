@@ -369,7 +369,7 @@ def test_cannon_no_bonus_when_not_aligned_with_turret() -> None:
 
 
 @pytest.mark.effect_flow
-def test_cannon_aborts_without_turret() -> None:
+def test_cannon_attack_is_hidden_without_turret() -> None:
     state = (
         EffectScenarioBuilder()
         .line_board(length=4)
@@ -384,8 +384,7 @@ def test_cannon_aborts_without_turret() -> None:
     )
 
     run = run_card(state, "hero_trinkets")
-    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
-    run.finish()
+    run.expect_input(InputRequestType.CHOOSE_ACTION).expect_option_absent("ATTACK")
 
     assert not _combat_events(run)
 

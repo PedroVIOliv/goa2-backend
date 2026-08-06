@@ -107,8 +107,27 @@ class GameSession:
         return self._build_result(stack_result.input_request, events=stack_result.events)
 
     def rollback(self) -> SessionResult:
-        """Rollback to the snapshot taken at the start of the current actor's resolution."""
+        """Rollback to the snapshot anchor set at the owner's most recent
+        actionable prompt. Never restores past a foreign player's committed
+        decision or a hidden-info reveal — segment boundaries drop the
+        pre-boundary snapshot.
+        """
+        # Defense-in-depth: hidden-event freeze rejects even with a stale
+        # snapshot; a pending re-anchor (boundary just fired inside a step)
+        # means any surviving snapshot pre-dates the boundary; a mismatched
+        # persisted snapshot (belongs to a prior owner) is scrubbed before
+        # rejection. All three cases scrub then raise.
+        if self.state.execution_context.get("rollback_frozen"):
+            raise ValueError("No rollback snapshot available")
+        if self.state.execution_context.get("rollback_reanchor_pending"):
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+            raise ValueError("No rollback snapshot available")
         if self._rollback_snapshot is None:
+            raise ValueError("No rollback snapshot available")
+        if not self._snapshot_belongs_to_owner():
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
             raise ValueError("No rollback snapshot available")
 
         live_time_control = self.state.time_control
@@ -159,8 +178,38 @@ class GameSession:
         return data
 
     def _manage_rollback(self, stack_result) -> None:
-        """Take snapshots and set can_rollback flag on input requests."""
-        # Clear snapshot when no actor (turn ended without next actor)
+        """Take snapshots and set ``can_rollback`` on input requests.
+
+        The "resolution owner" is ``state.resolution_owner_id`` (falling back
+        to ``state.current_actor_id``). Behavior on each input request:
+
+        - **Hidden-event freeze** (``execution_context['rollback_frozen']``,
+          set by the timer timeout / replay path): drops the snapshot and
+          rejects rollback for the rest of the resolution. Auto-skips
+          ``ConfirmResolutionStep``.
+        - **Boundary re-anchor pending**
+          (``execution_context['rollback_reanchor_pending']``, set by a
+          foreign prompt or a hidden-info reveal such as mine detonation or
+          card-color guess reveal): invalidates any pre-boundary snapshot
+          before deciding this pass, so a stale anchor can never be
+          restored. An owner actionable prompt will then re-anchor at
+          current (post-boundary) state and clear the marker; a
+          ``ConfirmResolutionStep`` auto-completes if no re-anchor happened.
+        - **Foreign input** (not addressed to owner, not a Hanu remap):
+          clears the pre-foreign snapshot at a segment boundary and sets
+          the re-anchor pending marker.
+        - **Owner actionable input** (addressed to owner, including
+          Hanu-remapped ``context['controlled_hero_id'] == owner``): clears
+          any pending re-anchor marker and takes a fresh snapshot when none
+          exists; advertises ``can_rollback``.
+        - **``ConfirmResolutionStep``**: never *creates* a new snapshot,
+          only inherits an existing one from a prior actionable prompt.
+
+        The re-anchor pending flag lives in ``execution_context`` and is
+        naturally cleared per turn by ``FinalizeHeroTurnStep.context.clear()``.
+        """
+        from goa2.domain.models.enums import StepType
+
         if self.state.current_actor_id is None:
             self._rollback_snapshot = None
             self._rollback_actor_id = None
@@ -169,40 +218,113 @@ class GameSession:
         if stack_result.input_request is None:
             return
 
-        actor_id = str(self.state.current_actor_id)
-        rollback_frozen = self.state.execution_context.get("rollback_frozen", False)
+        owner_id = self._resolution_owner_id()
+        if owner_id is None:
+            return
 
-        if rollback_frozen:
+        if self.state.execution_context.get("rollback_frozen"):
             self._rollback_snapshot = None
             self._rollback_actor_id = None
             return
 
-        # If actor changed, clear old snapshot so a fresh one is taken
-        if self._rollback_actor_id is not None and self._rollback_actor_id != actor_id:
+        # A boundary set inside a step (foreign prompt on a prior pass, mine
+        # trigger, or card-color reveal) invalidates any pre-boundary snapshot
+        # before we consider this pass's anchor. Scrub first, then decide.
+        if self.state.execution_context.get("rollback_reanchor_pending"):
             self._rollback_snapshot = None
             self._rollback_actor_id = None
 
-        # The input belongs to the current actor's action when it is addressed
-        # to the actor directly, or — under Hanu's ultimate — remapped to the
-        # controller (the original actor is preserved in ``controlled_hero_id``).
         request = stack_result.input_request
-        is_actor_action_input = request.player_id == actor_id or (
-            request.context.get("controlled_hero_id") == actor_id
+        is_owner_input = self._is_owner_input(request, owner_id)
+
+        # Foreign input: segment boundary. Drop the snapshot and mark
+        # re-anchor pending so a trailing confirm-only run auto-completes.
+        if not is_owner_input:
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+            self.state.execution_context["rollback_reanchor_pending"] = True
+            return
+
+        # Owner changed (turn boundary): drop the prior owner's snapshot.
+        if self._rollback_actor_id is not None and self._rollback_actor_id != owner_id:
+            self._rollback_snapshot = None
+            self._rollback_actor_id = None
+
+        # ConfirmResolutionStep never *creates* a snapshot; identify it by
+        # the waiting step type rather than by prompt text.
+        waiting_step = self.state.execution_stack[-1] if self.state.execution_stack else None
+        is_confirm_only = (
+            waiting_step is not None and waiting_step.type == StepType.CONFIRM_RESOLUTION
         )
 
-        if not is_actor_action_input:
+        if self._rollback_snapshot is None:
+            if is_confirm_only:
+                return
+            # Owner actionable prompt: satisfy any pending re-anchor and
+            # take a fresh snapshot.
+            self.state.execution_context.pop("rollback_reanchor_pending", None)
+            self._rollback_snapshot = self._make_snapshot()
+            self._rollback_actor_id = owner_id
+
+        request.can_rollback = True
+
+    # -- shared rollback predicates --
+
+    def _resolution_owner_id(self) -> str | None:
+        """Canonical owner id: ``resolution_owner_id`` with
+        ``current_actor_id`` as fallback; ``None`` when no resolution is open.
+        """
+        owner = (
+            self.state.resolution_owner_id
+            if self.state.resolution_owner_id is not None
+            else self.state.current_actor_id
+        )
+        return str(owner) if owner is not None else None
+
+    @staticmethod
+    def _is_owner_input(request: InputRequest, owner_id: str) -> bool:
+        """Whether ``request`` is native to the owner — either directly
+        addressed, or Hanu-remapped via ``context['controlled_hero_id']``.
+        """
+        return request.player_id == owner_id or (
+            request.context.get("controlled_hero_id") == owner_id
+        )
+
+    def reapply_rollback_flag(self, request: InputRequest) -> None:
+        """Re-assert ``can_rollback`` on a request re-emitted after reload.
+
+        Shares the eligibility predicate with ``_manage_rollback`` so
+        persistence can't drift from live behavior. A persisted snapshot is
+        stale if it was taken before an in-step boundary (mine reveal, guess
+        reveal, foreign prompt); the ``rollback_reanchor_pending`` marker
+        signals that, so we scrub the snapshot and refuse to advertise
+        rollback until the next live pass anchors a fresh one.
+        """
+        if self.state.execution_context.get("rollback_frozen"):
+            return
+        if self.state.execution_context.get("rollback_reanchor_pending"):
             self._rollback_snapshot = None
             self._rollback_actor_id = None
             return
-
-        # Take snapshot on the first input request for the current actor's action
-        if self._rollback_snapshot is None and is_actor_action_input:
-            self._rollback_snapshot = self._make_snapshot()
-            self._rollback_actor_id = actor_id
-
-        # Set can_rollback flag when applicable
-        if self._rollback_snapshot is not None and is_actor_action_input:
+        if self._rollback_snapshot is None:
+            return
+        if not self._snapshot_belongs_to_owner():
+            return
+        owner_id = self._resolution_owner_id()
+        if owner_id is None:
+            return
+        if self._is_owner_input(request, owner_id):
             request.can_rollback = True
+
+    def _snapshot_belongs_to_owner(self) -> bool:
+        """Whether the in-memory snapshot's ``_rollback_actor_id`` matches
+        the canonical owner. Callers treat a mismatch as "no snapshot"
+        (never restore stale state, never advertise rollback).
+        """
+        if self._rollback_snapshot is None or self._rollback_actor_id is None:
+            return False
+        owner_id = self._resolution_owner_id()
+        return owner_id is not None and self._rollback_actor_id == owner_id
 
     def _check_after_planning(self) -> SessionResult:
         """After a planning action, check if phase transitioned."""

@@ -145,31 +145,74 @@ class TestConfirmResolutionStep:
 
 
 class TestRollbackSegmentBoundary:
-    def test_other_player_input_clears_snapshot_but_does_not_freeze(self):
-        """When a step prompts a non-actor player, the actor's rollback snapshot is cleared (segment boundary)."""
+    def test_foreign_input_clears_snapshot_without_freezing(self):
+        """Foreign input drops the pre-foreign snapshot but does NOT set
+        ``rollback_frozen`` — the resolution is a segment boundary, not
+        permanently contaminated."""
         state = _make_state()
         state.current_actor_id = "hero_a"
         session = GameSession(state)
 
-        # Push two steps: own step first (to create snapshot) then foreign step
-        own_step = AskConfirmationStep(player_id="hero_a", prompt="Continue?")
-        foreign_step = AskConfirmationStep(player_id="hero_b", prompt="Block?")
-        push_steps(state, [own_step, foreign_step])
+        push_steps(
+            state,
+            [
+                AskConfirmationStep(player_id="hero_a", prompt="Continue?"),
+                AskConfirmationStep(player_id="hero_b", prompt="Block?"),
+            ],
+        )
 
-        # First own step prompt
         res1 = session.advance()
         assert res1.input_request.player_id == "hero_a"
         assert session._rollback_snapshot is not None
         assert res1.input_request.can_rollback is True
 
-        # Answer YES to proceed to foreign step
         res2 = _respond(session, res1, "YES")
         assert res2.input_request.player_id == "hero_b"
-        # Snapshot cleared because of foreign input
-        assert session._rollback_snapshot is None
         assert res2.input_request.can_rollback is False
-        # But rollback is NOT frozen
+        assert session._rollback_snapshot is None
         assert state.execution_context.get("rollback_frozen") is not True
+
+    def test_owner_actionable_prompt_after_foreign_reanchors_and_rollback_returns_to_it(self):
+        """A post-foreign owner actionable prompt re-anchors a fresh snapshot;
+        rollback returns to that prompt and preserves the foreign player's
+        committed side-effects."""
+        state = _make_state()
+        state.current_actor_id = "hero_a"
+        session = GameSession(state)
+
+        push_steps(
+            state,
+            [
+                AskConfirmationStep(player_id="hero_a", prompt="Pre-Foreign"),
+                AskConfirmationStep(player_id="hero_b", prompt="Foreign", output_key="foreign_ok"),
+                AskConfirmationStep(player_id="hero_a", prompt="Post-Foreign"),
+            ],
+        )
+
+        res1 = session.advance()
+        assert res1.input_request.prompt == "Pre-Foreign"
+        assert res1.input_request.can_rollback is True
+        pre_foreign_snapshot = session._rollback_snapshot
+        assert pre_foreign_snapshot is not None
+
+        res2 = _respond(session, res1, "YES")
+        assert res2.input_request.prompt == "Foreign"
+        assert res2.input_request.can_rollback is False
+        assert session._rollback_snapshot is None
+        assert state.execution_context.get("rollback_frozen") is not True
+
+        res3 = _respond(session, res2, "YES")
+        assert res3.input_request.player_id == "hero_a"
+        assert res3.input_request.prompt == "Post-Foreign"
+        assert res3.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+        assert session._rollback_snapshot is not pre_foreign_snapshot
+
+        # Rollback returns to Post-Foreign, never past the foreign segment.
+        res_rb = session.rollback()
+        assert res_rb.input_request.prompt == "Post-Foreign"
+        assert res_rb.input_request.can_rollback is True
+        assert session.state.execution_context.get("foreign_ok") is True
 
     def test_same_player_input_does_not_clear_snapshot(self):
         """When a step prompts the current actor, the rollback snapshot is retained."""
@@ -556,10 +599,26 @@ class TestRollbackSnapshotBoardExclusion:
 
 
 class TestRollbackSnapshotPersistence:
-    def test_snapshot_and_can_rollback_survive_save_load(self, tmp_path):
-        """A mid-action rollback snapshot survives a save/reload cycle."""
+    @staticmethod
+    def _save_and_load(tmp_path, session, *, game_id, snapshot, actor_id):
+        """Persist ``(session.state, snapshot, actor_id)`` and reload."""
         from goa2.engine.persistence import load_game, save_game
 
+        path = save_game(
+            game_id=game_id,
+            state=session.state,
+            player_tokens={},
+            spectator_token="s",
+            hero_to_token={},
+            created_at=0.0,
+            save_dir=str(tmp_path),
+            rollback_snapshot=snapshot,
+            rollback_actor_id=actor_id,
+        )
+        return load_game(str(path))
+
+    def test_snapshot_and_can_rollback_survive_save_load(self, tmp_path):
+        """A mid-action rollback snapshot survives a save/reload cycle."""
         state = _make_state()
         session = GameSession(state)
         _setup_resolution(state)
@@ -568,33 +627,147 @@ class TestRollbackSnapshotPersistence:
         assert result.input_request.can_rollback is True
         assert session._rollback_snapshot is not None
 
-        path = save_game(
+        data = self._save_and_load(
+            tmp_path,
+            session,
             game_id="g1",
-            state=session.state,
-            player_tokens={},
-            spectator_token="s",
-            hero_to_token={},
-            created_at=0.0,
-            save_dir=str(tmp_path),
-            rollback_snapshot=session._rollback_snapshot,
-            rollback_actor_id=session._rollback_actor_id,
+            snapshot=session._rollback_snapshot,
+            actor_id=session._rollback_actor_id,
         )
-
-        data = load_game(str(path))
         restored = data["session"]
 
-        # Snapshot and actor survived
         assert restored._rollback_snapshot is not None
         assert restored._rollback_actor_id == "hero_a"
-
-        # The re-derived last_result re-offers rollback to the actor
-        assert data["last_result"] is not None
         assert data["last_result"].input_request.can_rollback is True
 
-        # Rollback actually works after reload
         rb = restored.rollback()
-        assert rb.input_request is not None
         assert rb.input_request.player_id == "hero_a"
+
+    def test_frozen_resolution_never_advertises_can_rollback_after_reload(self, tmp_path):
+        """A saved frozen resolution reloads without advertising rollback,
+        even when a stale snapshot survives in the payload."""
+        state = _make_state()
+        state.current_actor_id = "hero_a"
+        state.resolution_owner_id = HeroID("hero_a")
+        state.execution_context["rollback_frozen"] = True
+        push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Owner Post-Freeze")])
+        session = GameSession(state)
+
+        data = self._save_and_load(
+            tmp_path,
+            session,
+            game_id="frozen_persist",
+            snapshot=session._make_snapshot(),  # stale non-null snapshot
+            actor_id="hero_a",
+        )
+        restored = data["session"]
+
+        assert restored.state.execution_context.get("rollback_frozen") is True
+        assert data["last_result"].input_request.player_id == "hero_a"
+        assert data["last_result"].input_request.can_rollback is False
+        with pytest.raises(ValueError, match="No rollback snapshot"):
+            restored.rollback()
+
+    def test_hanu_controlled_request_preserves_can_rollback_after_reload(self, tmp_path):
+        """A Hanu-remapped controlled request (``player_id == controller``,
+        ``context.controlled_hero_id == controlled_actor``) still advertises
+        rollback after save/load with a valid snapshot."""
+        state = _control_state()
+        session = GameSession(state)
+
+        result = session.advance()
+        assert result.input_request.player_id == "hero_hanu"
+        assert result.input_request.context.get("controlled_hero_id") == "blue_enemy"
+        assert result.input_request.can_rollback is True
+
+        data = self._save_and_load(
+            tmp_path,
+            session,
+            game_id="hanu_persist",
+            snapshot=session._rollback_snapshot,
+            actor_id=session._rollback_actor_id,
+        )
+        restored = data["session"]
+
+        assert restored._rollback_actor_id == "blue_enemy"
+        req = data["last_result"].input_request
+        assert req.player_id == "hero_hanu"
+        assert req.context.get("controlled_hero_id") == "blue_enemy"
+        assert req.can_rollback is True
+
+        rb = restored.rollback()
+        assert rb.input_request.player_id == "hero_hanu"
+        assert rb.input_request.context.get("controlled_hero_id") == "blue_enemy"
+        assert rb.input_request.can_rollback is True
+
+    def test_stale_actor_snapshot_is_rejected_after_reload(self, tmp_path):
+        """A persisted snapshot whose ``rollback_actor_id`` belongs to a
+        prior owner must not be usable in the new owner's resolution."""
+        # hero_a's prior-turn snapshot (hero_a at (0,0,0)).
+        prior_state = _make_state()
+        prior_state.current_actor_id = "hero_a"
+        prior_state.resolution_owner_id = HeroID("hero_a")
+        stale_snapshot = GameSession(prior_state)._make_snapshot()
+
+        # Current: hero_b owns; hero_a moved so non-restoration is provable.
+        state = _make_state()
+        state.current_actor_id = "hero_b"
+        state.resolution_owner_id = HeroID("hero_b")
+        current_hex = Hex(q=1, r=-1, s=0)
+        state.place_entity("hero_a", current_hex)
+        push_steps(state, [AskConfirmationStep(player_id="hero_b", prompt="Owner Prompt")])
+        session = GameSession(state)
+
+        data = self._save_and_load(
+            tmp_path,
+            session,
+            game_id="stale_actor_persist",
+            snapshot=stale_snapshot,
+            actor_id="hero_a",  # mismatched with current owner hero_b
+        )
+        restored = data["session"]
+
+        assert str(restored.state.resolution_owner_id) == "hero_b"
+        req = data["last_result"].input_request
+        assert req.player_id == "hero_b"
+        assert req.can_rollback is False
+
+        with pytest.raises(ValueError, match="No rollback snapshot"):
+            restored.rollback()
+        assert _loc(restored.state, "hero_a") == current_hex
+
+    def test_reanchor_pending_snapshot_is_rejected_after_reload(self, tmp_path):
+        """Save with ``rollback_reanchor_pending=True`` + a matching-owner
+        snapshot: reload must not advertise ``can_rollback`` and direct
+        rollback rejects, scrubbing the stale pair."""
+        state = _make_state()
+        state.current_actor_id = "hero_a"
+        state.resolution_owner_id = HeroID("hero_a")
+        pre_boundary_snapshot = GameSession(state)._make_snapshot()
+
+        # Simulate the in-step boundary having fired.
+        state.execution_context["rollback_reanchor_pending"] = True
+        push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Post-Boundary")])
+        session = GameSession(state)
+
+        data = self._save_and_load(
+            tmp_path,
+            session,
+            game_id="reanchor_pending_persist",
+            snapshot=pre_boundary_snapshot,
+            actor_id="hero_a",  # matches current owner
+        )
+        restored = data["session"]
+
+        assert restored.state.execution_context.get("rollback_reanchor_pending") is True
+        req = data["last_result"].input_request
+        assert req.player_id == "hero_a"
+        assert req.can_rollback is False
+
+        with pytest.raises(ValueError, match="No rollback snapshot"):
+            restored.rollback()
+        assert restored._rollback_snapshot is None
+        assert restored._rollback_actor_id is None
 
 
 # ---- StepType registration ----
@@ -622,142 +795,233 @@ class TestStepTypeRegistration:
 
 
 class TestScenarioCAndMineBlast:
-    def test_scenario_c_foreign_decision_anchoring(self):
-        """Actor picks own hex, then enemy is prompted, then actor picks another own hex.
-        Assert that:
-        1. Actor can roll back after the second own pick.
-        2. Rollback undoes only the post-foreign own choices.
-        3. The enemy's committed result (e.g. its placed unit/token) survives the rollback.
-        """
-        from goa2.engine.steps import PlaceUnitStep
-
-        state = _make_state()
-        session = GameSession(state)
-        state.current_actor_id = "hero_a"
-
-        choice1 = AskConfirmationStep(
-            player_id="hero_a", prompt="Actor Choice 1", output_key="actor_choice_1"
-        )
-        enemy_choice = AskConfirmationStep(
-            player_id="hero_b", prompt="Enemy Choice", output_key="enemy_decided"
-        )
-        place_unit = PlaceUnitStep(
-            unit_id="hero_b", target_hex_arg=Hex(q=1, r=0, s=-1), active_if_key="enemy_decided"
-        )
-        choice2 = AskConfirmationStep(
-            player_id="hero_a", prompt="Actor Choice 2", output_key="actor_choice_2"
-        )
-        confirm = ConfirmResolutionStep(hero_id="hero_a")
-
-        push_steps(state, [choice1, enemy_choice, place_unit, choice2, confirm])
-
-        # 1. Prompt actor for Choice 1
-        res1 = session.advance()
-        assert res1.input_request.player_id == "hero_a"
-        assert res1.input_request.prompt == "Actor Choice 1"
-        assert res1.input_request.can_rollback is True
-        assert session._rollback_snapshot is not None
-
-        # Actor submits YES
-        res2 = _respond(session, res1, "YES")
-
-        # 2. Prompt enemy for Enemy Choice
-        assert res2.input_request.player_id == "hero_b"
-        assert res2.input_request.prompt == "Enemy Choice"
-        # Since it's foreign, can_rollback should be False, and snapshot should be cleared.
-        assert res2.input_request.can_rollback is False
-        assert session._rollback_snapshot is None
-
-        # Enemy submits YES
-        res3 = _respond(session, res2, "YES")
-
-        # 3. PlaceUnitStep executes automatically (no input needed), then choice2 prompts hero_a
-        assert res3.input_request.player_id == "hero_a"
-        assert res3.input_request.prompt == "Actor Choice 2"
-        # Since this is actor's next own input after a foreign segment boundary, a fresh snapshot is taken
-        assert res3.input_request.can_rollback is True
-        assert session._rollback_snapshot is not None
-
-        # Verify that the enemy's placed unit exists at the target hex in current state
-        assert state.entity_locations.get("hero_b") == Hex(q=1, r=0, s=-1)
-
-        # Actor submits YES for Choice 2
-        res4 = _respond(session, res3, "YES")
-
-        # Now we land on ConfirmResolutionStep (or we can rollback before or after)
-        assert res4.input_request is not None
-        assert res4.input_request.can_rollback is True
-
-        # Actor rolls back!
-        res_rollback = session.rollback()
-
-        # Assert that we are back at "Actor Choice 2" prompt
-        assert res_rollback.input_request.prompt == "Actor Choice 2"
-
-        # Assert that the enemy's committed result SURVIVES the rollback!
-        assert session.state.entity_locations.get("hero_b") == Hex(q=1, r=0, s=-1)
-
-        # Assert that the post-foreign own choice was undone (actor_choice_2 is None/False)
-        assert session.state.execution_context.get("actor_choice_2") is not True
-
-        # Assert that pre-foreign own choice is still intact
-        assert session.state.execution_context.get("actor_choice_1") is True
-
-    def test_mine_blast_freezes_rollback(self):
-        """Assert that rollback stays frozen after a mine blast (the permanent case)."""
-        from goa2.domain.models import Token, TokenType
+    @staticmethod
+    def _place_mine(state, mine_id, token_type, hex, owner_id="hero_b"):
+        from goa2.domain.models import Token
         from goa2.domain.types import BoardEntityID
-        from goa2.engine.steps import TriggerMineStep
 
-        state = _make_state()
-        state.current_actor_id = "hero_a"
-        session = GameSession(state)
-
-        # Place a mine token in state
         mine = Token(
-            id=BoardEntityID("mine_1"),
+            id=BoardEntityID(mine_id),
             name="Mine",
-            token_type=TokenType.MINE_BLAST,
-            owner_id="hero_b",
+            token_type=token_type,
+            owner_id=owner_id,
             is_passable=True,
             is_facedown=True,
         )
-        state.token_pool[TokenType.MINE_BLAST] = [mine]
-        state.misc_entities[BoardEntityID("mine_1")] = mine
-        state.place_entity(BoardEntityID("mine_1"), Hex(q=1, r=0, s=-1))
+        state.token_pool.setdefault(token_type, []).append(mine)
+        state.misc_entities[BoardEntityID(mine_id)] = mine
+        state.place_entity(BoardEntityID(mine_id), hex)
+        return BoardEntityID(mine_id)
 
-        # 1. Prompt actor for Choice 1 to establish a snapshot
-        choice1 = AskConfirmationStep(player_id="hero_a", prompt="Choice 1")
-        push_steps(state, [choice1])
-        res1 = session.advance()
-        assert res1.input_request.can_rollback is True
+    @staticmethod
+    def _push_mine_trigger(state, mine_id, *followup_steps, victim_id="hero_a"):
+        """Push ``[TriggerMineStep, *followup_steps]`` with the context keys
+        TriggerMineStep expects; the trigger fires first."""
+        from goa2.engine.steps import TriggerMineStep
+
+        state.execution_context["triggered_mine_ids"] = [mine_id]
+        state.execution_context["mine_victim_id"] = victim_id
+        push_steps(state, [TriggerMineStep(), *followup_steps])
+
+    @classmethod
+    def _make_mine_state(cls, token_type, mine_hex=None):
+        """Return ``(state, session, mine_id, pre_snapshot)`` with hero_a as
+        owner and an established pre-mine rollback anchor."""
+        if mine_hex is None:
+            mine_hex = Hex(q=1, r=0, s=-1)
+        state = _make_state()
+        state.current_actor_id = "hero_a"
+        state.resolution_owner_id = HeroID("hero_a")
+        mine_id = cls._place_mine(state, "mine_1", token_type, mine_hex)
+        session = GameSession(state)
+        push_steps(state, [AskConfirmationStep(player_id="hero_a", prompt="Pre-Mine")])
+        res = session.advance()
+        assert res.input_request.can_rollback is True
+        pre_snapshot = session._rollback_snapshot
+        _respond(session, res, "YES")
+        return state, session, mine_id, pre_snapshot
+
+    def test_mine_blast_forced_discard_reanchors_after_boundary(self):
+        """Blast reveal is a boundary; the auto-spawned ForceDiscardStep is
+        owner-addressed and re-anchors past the boundary."""
+        from goa2.domain.models import TokenType
+
+        state, session, _, _ = self._make_mine_state(TokenType.MINE_BLAST)
+        self._push_mine_trigger(state, "mine_1")
+
+        res = session.advance()
+        assert "select a card to discard" in res.input_request.prompt
+        assert state.execution_context.get("rollback_frozen") is not True
+        assert res.input_request.can_rollback is True
         assert session._rollback_snapshot is not None
+        assert state.execution_context.get("rollback_reanchor_pending") is not True
 
-        # Trigger mine blast.
-        # We push: [TriggerMineStep, AskConfirmationStep(Choice 2)]
-        trigger = TriggerMineStep()
-        choice2 = AskConfirmationStep(player_id="hero_a", prompt="Choice 2")
+    def test_mine_dud_reveal_is_boundary_and_reanchors_at_target_selection(self):
+        """Dud reveal + attack target select over two adjacent enemies →
+        target select re-anchors; rollback returns there while preserving
+        the mover's position and mine removal."""
+        from goa2.domain.models import TokenType
+        from goa2.domain.models.unit import Hero
 
-        # Set context variables needed by TriggerMineStep
-        state.execution_context["triggered_mine_ids"] = ["mine_1"]
-        state.execution_context["mine_victim_id"] = "hero_a"
+        post_move_hex = Hex(q=1, r=-1, s=0)
+        state, session, mine_id, pre_snap = self._make_mine_state(TokenType.MINE_DUD, post_move_hex)
+        # Second adjacent enemy so target selection has two picks.
+        state.teams[TeamColor.BLUE].heroes.append(
+            Hero(
+                id=HeroID("hero_c"),
+                name="C",
+                team=TeamColor.BLUE,
+                deck=[],
+                hand=_filler_cards(),
+            )
+        )
+        state.place_entity("hero_a", post_move_hex)
+        state.place_entity("hero_b", Hex(q=2, r=-1, s=-1))
+        state.place_entity("hero_c", Hex(q=1, r=0, s=-1))
 
-        # Answer the active request before adding new work to the LIFO stack.
-        # Request correlation correctly rejects a response if another step is
-        # pushed above the step that issued it.
-        _respond(session, res1, "YES")
-        push_steps(state, [trigger, choice2])
+        self._push_mine_trigger(
+            state,
+            "mine_1",
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt="Pick target",
+                is_mandatory=True,
+                output_key="attack_target",
+                filters=[
+                    TeamFilter(relation="ENEMY"),
+                    {"type": "range_filter", "max_range": 1},
+                ],
+            ),
+            ConfirmResolutionStep(hero_id="hero_a"),
+        )
 
-        # Run the trigger step, which freezes rollback and prompts for discard.
-        res2 = session.advance()
+        res = session.advance()
+        assert res.input_request["type"] == "SELECT_UNIT"
+        assert res.input_request.can_rollback is True
+        assert session._rollback_snapshot is not pre_snap
+        assert state.execution_context.get("rollback_frozen") is not True
+        assert mine_id not in state.entity_locations
+        assert {"hero_b", "hero_c"} <= {opt.id for opt in res.input_request.options}
 
-        # Assert we are prompted for discard (since a blast mine forces the victim to discard a card)
-        assert "select a card to discard" in res2.input_request.prompt
-        # Assert rollback is frozen and snapshot is cleared
-        assert res2.input_request.can_rollback is False
-        assert session._rollback_snapshot is None
-        assert state.execution_context.get("rollback_frozen") is True
+        res_confirm = _respond(session, res, "hero_b")
+        assert res_confirm.input_request.can_rollback is True
 
-        # Confirm that calling rollback raises ValueError
+        res_rb = session.rollback()
+        assert res_rb.input_request["type"] == "SELECT_UNIT"
+        assert res_rb.input_request.can_rollback is True
+        assert _loc(session.state, "hero_a") == post_move_hex
+        assert mine_id not in session.state.entity_locations
+
+    def test_mine_dud_reveal_alone_auto_completes_confirm(self):
+        """Mine reveal + confirm alone → confirm auto-completes silently."""
+        from goa2.domain.models import TokenType
+
+        state, session, _, _ = self._make_mine_state(TokenType.MINE_DUD)
+        self._push_mine_trigger(state, "mine_1", ConfirmResolutionStep(hero_id="hero_a"))
+
+        res = session.advance()
+        assert res.input_request is None
+        assert res.result_type == SessionResultType.ACTION_COMPLETE
+        assert state.execution_context.get("rollback_frozen") is not True
         with pytest.raises(ValueError, match="No rollback snapshot"):
             session.rollback()
+
+
+# ---- Concrete attack: defender PASS freezes attacker's rollback ----
+
+
+def _attack_state():
+    """Attacker hero_a adjacent to defender hero_b; hero_a is the acting owner."""
+    state = _make_state()
+    state.current_actor_id = "hero_a"
+    # hero_a already at (0,0,0), hero_b at (2,0,-2). Move hero_b adjacent for range=1.
+    state.place_entity("hero_b", Hex(q=1, r=0, s=-1))
+    return state
+
+
+class TestAttackReactionRollback:
+    """Attacker → foreign defense → ... rollback contract."""
+
+    @staticmethod
+    def _drive_through_defense(session, defender_response):
+        """Attacker picks hero_b as target; defender responds. Returns the
+        SessionResult on the prompt that lands next (or ACTION_COMPLETE)."""
+        res = session.advance()
+        assert res.input_request["type"] == "SELECT_UNIT"
+        assert res.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+        pre_attack_snap = session._rollback_snapshot
+
+        res = _respond(session, res, "hero_b")
+        assert res.input_request["type"] == "SELECT_CARD_OR_PASS"
+        assert res.input_request.player_id == "hero_b"
+        assert res.input_request.can_rollback is False
+        assert session._rollback_snapshot is None
+        assert session.state.execution_context.get("rollback_frozen") is not True
+
+        return _respond(session, res, defender_response), pre_attack_snap
+
+    @pytest.mark.parametrize("defender_response", ["PASS"])
+    def test_confirm_only_after_defense_auto_completes(self, defender_response):
+        """Attack → foreign defense → ConfirmResolutionStep alone: no
+        actionable re-anchor → confirm auto-completes silently."""
+        from goa2.engine.steps import AttackSequenceStep
+
+        state = _attack_state()
+        state.resolution_owner_id = HeroID("hero_a")
+        session = GameSession(state)
+        push_steps(
+            state,
+            [
+                AttackSequenceStep(damage=3, range_val=1, is_ranged=False),
+                ConfirmResolutionStep(hero_id="hero_a"),
+            ],
+        )
+
+        res, _ = self._drive_through_defense(session, defender_response)
+        assert res.input_request is None
+        assert res.result_type == SessionResultType.ACTION_COMPLETE
+        assert session._rollback_snapshot is None
+        assert state.execution_context.get("rollback_frozen") is not True
+        assert not any(
+            getattr(step, "type", None) == StepType.CONFIRM_RESOLUTION
+            for step in state.execution_stack
+        )
+        with pytest.raises(ValueError, match="No rollback snapshot"):
+            session.rollback()
+
+    @pytest.mark.parametrize("defender_response", ["PASS"])
+    def test_post_attack_actionable_prompt_reanchors_and_confirm_retains_rollback(
+        self, defender_response
+    ):
+        """Attack → foreign defense → post-attack actionable owner prompt →
+        confirm. Actionable prompt re-anchors; rollback from confirm returns
+        there, never past the defender's committed decision."""
+        from goa2.engine.steps import AttackSequenceStep
+
+        state = _attack_state()
+        state.resolution_owner_id = HeroID("hero_a")
+        session = GameSession(state)
+        push_steps(
+            state,
+            [
+                AttackSequenceStep(damage=3, range_val=1, is_ranged=False),
+                AskConfirmationStep(player_id="hero_a", prompt="Attack again?"),
+                ConfirmResolutionStep(hero_id="hero_a"),
+            ],
+        )
+
+        res, pre_attack_snap = self._drive_through_defense(session, defender_response)
+        assert res.input_request.player_id == "hero_a"
+        assert res.input_request.prompt == "Attack again?"
+        assert res.input_request.can_rollback is True
+        assert session._rollback_snapshot is not None
+        assert session._rollback_snapshot is not pre_attack_snap
+
+        res_confirm = _respond(session, res, "YES")
+        assert res_confirm.input_request.player_id == "hero_a"
+        assert res_confirm.input_request.can_rollback is True
+
+        res_rb = session.rollback()
+        assert res_rb.input_request.prompt == "Attack again?"
+        assert res_rb.input_request.can_rollback is True

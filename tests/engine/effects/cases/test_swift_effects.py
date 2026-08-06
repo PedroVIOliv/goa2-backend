@@ -83,9 +83,7 @@ def test_snipe_cannot_target_unit_closer_than_max_range() -> None:
 
     run = run_card(state, "hero_swift")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("ATTACK")
-    # No legal target at maximum range -> the attack finds nothing to select.
-    run.finish()
+    run.expect_option_absent("ATTACK")
     combat_events = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
     assert not combat_events
 
@@ -130,8 +128,7 @@ def test_straight_line_shot_rejects_adjacent_target(card_id: str) -> None:
 
     run = run_card(state, "hero_swift")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("ATTACK")
-    run.finish()
+    run.expect_option_absent("ATTACK")
     assert not [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
 
 
@@ -324,8 +321,7 @@ def test_suppress_family_skips_enemy_hero_adjacent_to_terrain(card_id: str) -> N
 
     run = run_card(state, "hero_swift")
     run.expect_input(InputRequestType.CHOOSE_ACTION)
-    run.choose("SKILL")
-    run.finish()
+    run.expect_option_absent("SKILL")
 
     assert len(arien.hand) == 1  # untouched
 

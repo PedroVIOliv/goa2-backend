@@ -124,6 +124,17 @@ def test_forced_movement_triggers_mine():
     assert BoardEntityID("mine_1") not in state.entity_locations
 
 
+def test_movement_cannot_end_on_mine() -> None:
+    state = _make_state_with_mine()
+    state.execution_context["target_hex"] = {"q": 1, "r": -1, "s": 0}
+
+    push_steps(state, [MoveUnitStep(unit_id="hero_a", destination_key="target_hex", range_val=1)])
+    process_stack(state)
+
+    assert state.entity_locations[BoardEntityID("hero_a")] == Hex(q=0, r=0, s=0)
+    assert state.entity_locations[BoardEntityID("mine_1")] == Hex(q=1, r=-1, s=0)
+
+
 def test_blast_mine_forces_discard():
     """Walking through a blast mine forces the moved hero to discard a card."""
     state = _make_state_with_mine()
