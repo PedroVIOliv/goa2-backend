@@ -40,7 +40,13 @@ router = APIRouter(prefix="/replays", tags=["replays"], dependencies=[Depends(re
 # Tiny in-process LRU of reconstructed cursors. This is a single-user dev tool,
 # so it is a plain dict with no concurrency hardening; it is a pure optimization
 # (identical inputs always yield identical views).
-_CACHE: OrderedDict[str, ReplayCursor] = OrderedDict()
+#
+# Each entry is keyed by game_id and stamped with the log file's (mtime_ns,
+# size). A replay of a *live* game keeps growing on disk, and a cursor holds the
+# decision list it was built from — so an entry whose stamp no longer matches is
+# discarded and rebuilt. Without that check the cursor's `total` stayed frozen at
+# whatever the file held when it was first viewed.
+_CACHE: OrderedDict[str, tuple[tuple[int, int], ReplayCursor]] = OrderedDict()
 _CACHE_MAX = 8
 
 
@@ -55,15 +61,19 @@ def _replay_path(game_id: str) -> Path:
 
 
 def _get_cursor(game_id: str) -> ReplayCursor:
-    """Return a cached ReplayCursor for the game, loading it if necessary."""
-    cached = _CACHE.get(game_id)
-    if cached is not None:
-        _CACHE.move_to_end(game_id)
-        return cached
+    """Return a ReplayCursor for the game, rebuilding it if the log has changed."""
     path = _replay_path(game_id)
+    st = path.stat()
+    stamp = (st.st_mtime_ns, st.st_size)
+
+    cached = _CACHE.get(game_id)
+    if cached is not None and cached[0] == stamp:
+        _CACHE.move_to_end(game_id)
+        return cached[1]
+
     setup, decisions = load_replay(str(path))
     cursor = ReplayCursor(setup, decisions)
-    _CACHE[game_id] = cursor
+    _CACHE[game_id] = (stamp, cursor)
     _CACHE.move_to_end(game_id)
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)

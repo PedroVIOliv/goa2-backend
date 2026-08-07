@@ -45,6 +45,30 @@ def _record_two_commit_game(seed: int = 42) -> GameSession:
     return live
 
 
+def _record_partial_game(game_id: str, seed: int = 42):
+    """Record a game that is still being played: first hero committed, second not.
+
+    Returns (live_session, finish) where calling ``finish()`` commits the second
+    hero and appends that decision to the same on-disk log — the shape of a
+    replay being viewed while its game is still running.
+    """
+    state = GameSetup.create_game(_resolve_map_path(MAP), RED, BLUE, False, "QUICK", seed=seed)
+    live = GameSession(state)
+    rec = ReplayRecorder(game_id)
+    rec.record_setup(
+        map_name=MAP, red_heroes=RED, blue_heroes=BLUE, game_type="QUICK", cheats=False, seed=seed
+    )
+    first, second = _hero_ids(live.state)
+
+    def commit(hero_id: str) -> None:
+        card = live.state.get_hero(HeroID(hero_id)).hand[0]
+        rec.record_commit(hero_id, card.id, live.state.round, live.state.turn)
+        live.commit_card(HeroID(hero_id), card)
+
+    commit(first)
+    return live, lambda: commit(second)
+
+
 @pytest.fixture
 def client_with_replay():
     """A TestClient with the replay API enabled and a recorded game on disk."""
@@ -116,6 +140,29 @@ def test_reveal_all_shows_every_hand(client_with_replay):
     assert len(heroes) == 2
     # Omniscient: every hero's hand is populated, not just one player's.
     assert all(len(h["hand"]) > 0 for h in heroes)
+
+
+def test_cache_reloads_when_the_log_grows(client_with_replay):
+    """A replay of a *live* game keeps growing on disk; the cursor must follow it.
+
+    Caching by game_id alone froze `total_decisions` at whatever the file held
+    on first view, so the transport counter capped below the real end of the
+    game until the server restarted.
+    """
+    # A second game recorded mid-play: only the first hero has committed so far.
+    live, pending = _record_partial_game("growing")
+    before = client_with_replay.get("/replays/growing/state?decision=999").json()
+    assert before["position"]["total_decisions"] == 1
+
+    # The game continues: the remaining decision is appended to the same log.
+    pending()
+
+    after = client_with_replay.get("/replays/growing/state?decision=999").json()
+    assert after["position"]["total_decisions"] == 2
+    assert after["position"]["decision_index"] == 2
+    assert _strip_volatile(after["view"]) == _strip_volatile(
+        build_view(live.state, reveal_all=True)
+    )
 
 
 def test_cache_path_matches_cold_rebuild(client_with_replay):
