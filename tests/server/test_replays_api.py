@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import threading
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -163,6 +166,67 @@ def test_cache_reloads_when_the_log_grows(client_with_replay):
     assert _strip_volatile(after["view"]) == _strip_volatile(
         build_view(live.state, reveal_all=True)
     )
+
+
+def test_growing_log_reuses_the_cursor_instead_of_rebuilding(client_with_replay):
+    """Appends must not throw away applied work — the log is append-only.
+
+    Rebuilding from the seed on every append costs a full re-simulation; reusing
+    the cursor costs a re-parse. Cursor identity is the observable proxy for
+    "the session was kept".
+    """
+    _live, pending = _record_partial_game("growing2")
+    client_with_replay.get("/replays/growing2/state?decision=1")
+    before = routes_replays._CACHE["growing2"][1]
+    assert before.cursor == 1
+
+    pending()
+    client_with_replay.get("/replays/growing2/state?decision=2")
+    after = routes_replays._CACHE["growing2"][1]
+
+    assert after is before, "cursor was rebuilt instead of extended"
+    assert after.total == 2
+    assert after.cursor == 2
+
+
+def test_divergent_log_still_rebuilds(client_with_replay):
+    """If the prefix no longer matches, reuse would be wrong — rebuild instead."""
+    _record_partial_game("diverging")
+    client_with_replay.get("/replays/diverging/state?decision=1")
+    before = routes_replays._CACHE["diverging"][1]
+
+    # Rewrite the log with a different first decision (not a real append).
+    path = Path(os.environ["GOA2_REPLAY_DIR"]) / "diverging.jsonl"
+    lines = path.read_text().splitlines()
+    header, first = lines[0], json.loads(lines[1])
+    first["card"] = "some_other_card"
+    path.write_text(header + "\n" + json.dumps(first) + "\n")
+
+    client_with_replay.get("/replays/diverging/state?decision=0")
+    assert routes_replays._CACHE["diverging"][1] is not before
+
+
+def test_concurrent_seeks_on_one_game_stay_consistent(client_with_replay):
+    """Two threads sharing a cursor must not interleave into a corrupted session."""
+    expected = {
+        n: _strip_volatile(client_with_replay.get(f"/replays/{GAME_ID}/state?decision={n}").json())
+        for n in (0, 1, 2)
+    }
+    errors: list[str] = []
+
+    def hammer() -> None:
+        for _ in range(10):
+            for n in (0, 2, 1):
+                body = client_with_replay.get(f"/replays/{GAME_ID}/state?decision={n}").json()
+                if _strip_volatile(body) != expected[n]:
+                    errors.append(f"decision {n} returned a mismatched view")
+
+    threads = [threading.Thread(target=hammer) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, errors[:3]
 
 
 def test_cache_path_matches_cold_rebuild(client_with_replay):

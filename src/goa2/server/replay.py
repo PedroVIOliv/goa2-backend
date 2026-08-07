@@ -387,6 +387,35 @@ def index_for_round_turn(
     return len(decisions)
 
 
+def winner_of(state: Any) -> str | None:
+    """Winner label for a reconstructed state, or None while the game is unfinished."""
+    if state.individual_winner_id is not None:
+        return str(state.individual_winner_id)
+    return state.winner.value if state.winner else None
+
+
+def state_body(session: GameSession, *, cursor_index: int, total: int) -> dict[str, Any]:
+    """The body served for a replay position.
+
+    Lives here rather than in the route so the dynamic endpoint and the share
+    bake — which runs in a separate process with no FastAPI imported — produce
+    byte-identical output for the same index.
+    """
+    from goa2.domain.views import build_view
+
+    state = session.state
+    return {
+        "view": build_view(state, reveal_all=True),
+        "position": {
+            "decision_index": cursor_index,
+            "round": state.round,
+            "turn": state.turn,
+            "total_decisions": total,
+        },
+        "winner": winner_of(state),
+    }
+
+
 class ReplayCursor:
     """A reconstructed game positioned at a decision index, advanceable forward.
 
@@ -514,16 +543,19 @@ def cleanup_old_replays(replay_dir: str | None = None, ttl_days: int | None = No
     Independent of the game-save cleanup: a finished/removed game's replay is
     retained for the full TTL so bugs reported later can still be investigated.
     Replays referenced by an *open* bug report are pinned and never deleted;
-    resolving or deleting the report releases the pin.
+    resolving or deleting the report releases the pin. Shared replays are pinned
+    the same way — the baked share does not read the log, so this only keeps the
+    original available for re-baking and debugging.
     """
     from goa2.server.bug_reports import open_report_game_ids
+    from goa2.server.shares import shared_game_ids
 
     directory = Path(replay_dir or _replay_dir())
     if not directory.is_dir():
         return 0
     ttl = (ttl_days if ttl_days is not None else _replay_ttl_days()) * 86400
     now = time.time()
-    pinned = open_report_game_ids()
+    pinned = open_report_game_ids() | shared_game_ids()
     removed = 0
     for f in directory.glob("*.jsonl"):
         if f.stem in pinned:

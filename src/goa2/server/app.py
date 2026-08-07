@@ -108,10 +108,19 @@ def create_app() -> FastAPI:
     from goa2.server.admin import admin_api_enabled
     from goa2.server.routes_bug_reports import admin_router as bug_reports_admin_router
     from goa2.server.routes_replays import router as replays_router
+    from goa2.server.routes_shares import admin_router as shares_admin_router
+    from goa2.server.routes_shares import router as shared_router
 
     if admin_api_enabled():
         app.include_router(replays_router)
         app.include_router(bug_reports_admin_router)
+        app.include_router(shares_admin_router)
+
+    # Shared replays are mounted unconditionally: the share token is itself the
+    # credential and recipients are not admins. Only minting (on the admin
+    # replays router) can create one, so a server with no admin token configured
+    # can serve existing shares but never make new ones.
+    app.include_router(shared_router)
 
     # CORS
     allowed_origins = os.environ.get("GOA2_CORS_ORIGINS", "").split(",")
