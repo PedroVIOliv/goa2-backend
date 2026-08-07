@@ -380,20 +380,16 @@ def test_team_addressed_input_resolves_via_teammate_bot() -> None:
     assert bot.last_owned == frozenset({wasp.id})
 
 
-def test_team_addressed_input_owned_hero_ids_excludes_human_teammate() -> None:
-    """Two-hero team, one bot + one human on the same team: the bot's
-    ``owned_hero_ids`` for a team-addressed request must be the bot only,
-    never the human teammate."""
+def test_team_addressed_input_defers_to_human_teammate() -> None:
+    """A team-level decision remains pending when the team has a human."""
     state = _new_game(["Wasp", "Xargatha"], ["Arien", "Brogan"])
     wasp = state.teams[TeamColor.RED].heroes[0]
-    xarg = state.teams[TeamColor.RED].heroes[1]
     bot = _StubAgent(input_selection="X")
     req = _select_option_request("team:RED", ["X", "Y"])
     result = _input_needed_result(state, req)
     decision = inspect_next_decision(state, {wasp.id: bot}, result)
-    assert decision is not None
-    assert bot.last_owned == frozenset({wasp.id})
-    assert xarg.id not in (bot.last_owned or frozenset())
+    assert decision is None
+    assert bot.last_owned is None
 
 
 def test_hero_addressed_input_returns_none_for_unmapped_owner() -> None:
@@ -926,10 +922,8 @@ def test_inspect_next_owner_returns_none_when_no_mapped_bot() -> None:
     assert inspect_next_owner(state, {}, None) is None
 
 
-def test_inspect_next_owner_input_uses_eligibility_order() -> None:
-    """For an INPUT request the owner is the first eligible mapped hero,
-    matching :func:`inspect_next_decision`'s ordering. We prove this
-    with a team-scoped request and two bot-mapped heroes on RED."""
+def test_inspect_next_owner_team_input_defers_to_human() -> None:
+    """The coordinator must not claim a mixed team's shared decision."""
     from automata.runtime.driver import inspect_next_owner
 
     state = _new_game(["Wasp", "Xargatha"], ["Arien"])
@@ -943,11 +937,8 @@ def test_inspect_next_owner_input_uses_eligibility_order() -> None:
         input_request=req,
         current_phase=GamePhase.RESOLUTION,
     )
-    # Only hero_xargatha is bot-mapped even though hero_wasp is first in
-    # roster order — the owner helper must return hero_xargatha because
-    # hero_wasp is a human.
     owner = inspect_next_owner(state, {"hero_xargatha": RandomAgent(0)}, result)
-    assert owner == "hero_xargatha"
+    assert owner is None
 
 
 def test_inspect_next_owner_input_returns_none_for_human_scoped() -> None:

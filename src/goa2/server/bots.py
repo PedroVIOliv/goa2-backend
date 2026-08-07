@@ -90,6 +90,8 @@ from goa2.server.time_control import (
 
 logger = logging.getLogger(__name__)
 
+BOT_ACTION_PACING_SECONDS = 0.5
+
 __all__ = [
     "agent_for_spec",
     "auto_ready_bot_heroes",
@@ -958,6 +960,17 @@ def _current_pending_request(
     return _snapshot_pending_request(last_result)
 
 
+def _bot_pacing_delay_seconds(game: ManagedGame) -> float:
+    """Presentation delay between bot updates in games with human seats."""
+    has_human = any(hero_id not in game.bot_specs for hero_id in game.hero_to_token)
+    return BOT_ACTION_PACING_SECONDS if has_human else 0.0
+
+
+async def _pace_before_next_bot_mutation(game: ManagedGame) -> None:
+    # Called only after mutation locks and the preceding broadcast are complete.
+    await asyncio.sleep(_bot_pacing_delay_seconds(game))
+
+
 # --------------------------------------------------------------------------- #
 # Worker                                                                       #
 # --------------------------------------------------------------------------- #
@@ -978,7 +991,8 @@ async def _bot_drive_worker(game: ManagedGame, registry: GameRegistry) -> None:
        decision (i.e. the engine is between input requests during
        RESOLUTION and we own it), issue one plain ``session.advance()``
        through the same locked-mutation path. Otherwise exit.
-    5. Yield to the event loop, then continue.
+    5. After broadcasting and releasing locks, apply presentation pacing,
+       then continue.
     """
     if not game.bot_specs:
         return
@@ -1073,7 +1087,7 @@ async def _bot_drive_worker(game: ManagedGame, registry: GameRegistry) -> None:
             progressed = await _maybe_plain_advance(game, registry, agents)
             if not progressed:
                 return
-            await asyncio.sleep(0)
+            await _pace_before_next_bot_mutation(game)
             continue
 
         # ------------------------------------------------------------------ #
@@ -1092,9 +1106,9 @@ async def _bot_drive_worker(game: ManagedGame, registry: GameRegistry) -> None:
             return
 
         # ------------------------------------------------------------------ #
-        # 4. Yield to the event loop before scheduling another decision.
+        # 4. Pace after broadcast and lock release before the next decision.
         # ------------------------------------------------------------------ #
-        await asyncio.sleep(0)
+        await _pace_before_next_bot_mutation(game)
 
     logger.error(
         "Bot drive worker for game %s exceeded iteration safety limit",

@@ -212,13 +212,21 @@ def eligible_hero_ids_for_request(
 
 
 def _resolve_bot_owner(
-    agents: Mapping[str, Agent], eligible_hero_ids: list[str]
+    agents: Mapping[str, Agent],
+    eligible_hero_ids: list[str],
+    *,
+    require_all_eligible_bot_owned: bool = False,
 ) -> str | None:
-    """First hero in ``eligible_hero_ids`` that has a mapped bot agent.
+    """Resolve the first eligible bot, optionally deferring to a human.
 
     Returns the hero id, or ``None`` if none of the eligible heroes are
-    bot-owned. The caller uses ``None`` as the "leave it to the human" signal.
+    bot-owned. Team-addressed decisions set ``require_all_eligible_bot_owned``
+    so a human teammate gets precedence over every bot on that team.
     """
+    if require_all_eligible_bot_owned and any(
+        hid not in agents for hid in eligible_hero_ids
+    ):
+        return None
     for hid in eligible_hero_ids:
         if hid in agents:
             return hid
@@ -492,7 +500,11 @@ def _input_owner(
         ]
         if not eligible:
             return None
-    return _resolve_bot_owner(agents, eligible)
+    return _resolve_bot_owner(
+        agents,
+        eligible,
+        require_all_eligible_bot_owned=request.player_id.startswith("team:"),
+    )
 
 
 def _inspect_planning(
@@ -648,7 +660,11 @@ def _inspect_input_request(
             selection=selection,
         )
 
-    resolved = _resolve_bot_owner(agents, eligible)
+    resolved = _resolve_bot_owner(
+        agents,
+        eligible,
+        require_all_eligible_bot_owned=request.player_id.startswith("team:"),
+    )
     if resolved is None:
         return None
     owner_hero_id = resolved

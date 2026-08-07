@@ -68,8 +68,11 @@ def _restore_get_or_build_agents():
     """Snapshot & restore ``bots.get_or_build_agents`` around each test so
     ``_install_agent`` monkeypatches don't leak into unrelated cases."""
     original = bots_mod.get_or_build_agents
+    original_pacing = bots_mod.BOT_ACTION_PACING_SECONDS
+    bots_mod.BOT_ACTION_PACING_SECONDS = 0.0
     yield
     bots_mod.get_or_build_agents = original
+    bots_mod.BOT_ACTION_PACING_SECONDS = original_pacing
 
 
 def _make_game(
@@ -518,6 +521,7 @@ def test_successful_apply_records_all_side_effects() -> None:
         finalize_calls: list[Any] = []
         capture_calls: list[Any] = []
         send_calls: list[Any] = []
+        pacing_calls: list[Any] = []
         save_calls: list[str] = []
 
         real_finalize = bots_mod.finalize_timed_mutation
@@ -532,6 +536,11 @@ def test_successful_apply_records_all_side_effects() -> None:
 
         async def spy_send(g, messages):
             send_calls.append((g.game_id, list(messages)))
+
+        async def spy_pacing(g):
+            pacing_calls.append(
+                (len(send_calls), g.lock.locked(), g.outbound_lock.locked())
+            )
 
         # Replay & logger — record method calls without changing behavior.
         replay_calls: list[tuple[str, tuple]] = []
@@ -588,6 +597,7 @@ def test_successful_apply_records_all_side_effects() -> None:
 
         with (
             patch.object(bots_mod, "finalize_timed_mutation", spy_finalize),
+            patch.object(bots_mod, "_pace_before_next_bot_mutation", spy_pacing),
             patch("goa2.server.ws._capture_broadcast", spy_capture),
             patch("goa2.server.ws._send_captured_broadcast", spy_send),
         ):
@@ -600,6 +610,7 @@ def test_successful_apply_records_all_side_effects() -> None:
             "finalize_calls": finalize_calls,
             "capture_calls": capture_calls,
             "send_calls": send_calls,
+            "pacing_calls": pacing_calls,
             "save_calls": save_calls,
             "replay_calls": replay_calls,
             "log_calls": log_calls,
@@ -611,6 +622,11 @@ def test_successful_apply_records_all_side_effects() -> None:
     assert len(r["finalize_calls"]) >= 1, "finalize_timed_mutation must run"
     assert len(r["capture_calls"]) >= 1, "broadcast must be captured"
     assert len(r["send_calls"]) >= 1, "broadcast must be sent"
+    assert r["pacing_calls"]
+    assert all(
+        sends > 0 and not game_locked and not outbound_locked
+        for sends, game_locked, outbound_locked in r["pacing_calls"]
+    ), f"pacing must follow broadcast and lock release; got {r['pacing_calls']}"
     # Save runs through finalize_timed_mutation (which calls
     # registry.save_game). Even without a save_dir, save_game is invoked.
     assert any(gid for gid in r["save_calls"]), "save_game must be called"
@@ -646,6 +662,20 @@ def test_successful_apply_records_all_side_effects() -> None:
 # --------------------------------------------------------------------------- #
 # 6. Idempotent scheduling / yield / reschedule (Finding 7)                   #
 # --------------------------------------------------------------------------- #
+
+
+def test_bot_pacing_only_applies_when_game_has_human_seat() -> None:
+    bots_mod.BOT_ACTION_PACING_SECONDS = 0.5
+    _, mixed_game = _make_game({"hero_wasp": BotSpec(kind="random")})
+    _, bot_only_game = _make_game(
+        {
+            "hero_wasp": BotSpec(kind="random"),
+            "hero_arien": BotSpec(kind="random"),
+        }
+    )
+
+    assert bots_mod._bot_pacing_delay_seconds(mixed_game) == 0.5
+    assert bots_mod._bot_pacing_delay_seconds(bot_only_game) == 0.0
 
 
 def test_schedule_bot_drive_is_idempotent_while_task_is_alive() -> None:
@@ -685,8 +715,8 @@ def test_schedule_bot_drive_is_idempotent_while_task_is_alive() -> None:
 
 
 def test_schedule_bot_drive_yields_between_decisions() -> None:
-    """After each applied decision the worker must yield with
-    ``await asyncio.sleep(0)`` so foreign tasks can interleave. We prove
+    """After each applied decision the worker must yield through the pacing
+    helper so foreign tasks can interleave. We prove
     this by scheduling a competing task after the first decision lands
     and confirming it runs before the second decision is computed.
 
@@ -1683,20 +1713,29 @@ def test_bot_worker_issues_plain_advance_when_owed_but_no_pending_input() -> Non
     )
 
 
-def test_bot_worker_does_not_advance_when_pending_input_is_human() -> None:
-    """The plain-advance nudge must NOT fire when the live pending input
-    is addressed to a human — the worker must exit and wait for the
-    human's REST/WS mutation."""
+@pytest.mark.parametrize(
+    "red,blue,player_id",
+    [
+        (["Wasp"], ["Arien"], "hero_arien"),
+        (["Wasp", "Xargatha"], ["Arien", "Brogan"], "team:RED"),
+    ],
+    ids=["human-addressed", "mixed-team-addressed"],
+)
+def test_bot_worker_does_not_advance_when_pending_input_is_human(
+    red: list[str], blue: list[str], player_id: str
+) -> None:
+    """The worker must leave direct and mixed-team human decisions pending."""
     from goa2.domain.input import InputOption
     from goa2.engine.session import SessionResult, SessionResultType
 
     async def scenario() -> list[Any]:
-        registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
-        # Inject a pending input addressed to the human Arien.
+        registry, game = _make_game(
+            {"hero_wasp": BotSpec(kind="random")}, red=red, blue=blue
+        )
         human_req = InputRequest(
             id="R_HUMAN",
             request_type=InputRequestType.SELECT_OPTION,
-            player_id="hero_arien",
+            player_id=player_id,
             options=[InputOption(id="A", text="A")],
         )
         game.last_result = SessionResult(
