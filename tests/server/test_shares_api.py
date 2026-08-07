@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -110,6 +112,35 @@ def test_rejected_mint_leaves_no_artifact(client):
 
 def test_mint_unknown_game_404(client):
     assert client.post("/replays/nope/share").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "lines, expected_status",
+    [
+        # No setup header at all, and a corrupt line: rejected before any bake.
+        ([{"type": "pass", "r": 1, "t": 1, "hero": "hero_arien"}], 422),
+        ("{not json", 422),
+        # Malformed decision records: these reach the engine and must still come
+        # back as 422, not a 500. A missing key raises KeyError rather than the
+        # ValueError engine drift produces, which once escaped as a 500.
+        ([{"type": "commit", "r": 1, "t": 1, "card": "x"}], 422),
+        ([{"type": "teleport", "r": 1, "t": 1, "hero": "hero_arien"}], 422),
+    ],
+)
+def test_broken_replays_are_rejected_not_500(client, lines, expected_status):
+    path = Path(os.environ["GOA2_REPLAY_DIR"]) / "broken.jsonl"
+    header = (Path(os.environ["GOA2_REPLAY_DIR"]) / f"{FINISHED}.jsonl").read_text().splitlines()[0]
+    if isinstance(lines, str):
+        path.write_text(header + "\n" + lines + "\n")
+    else:
+        body = "\n".join(json.dumps(d) for d in lines)
+        # First case deliberately omits the header to exercise that path.
+        prefix = "" if lines[0].get("type") == "pass" else header + "\n"
+        path.write_text(prefix + body + "\n")
+
+    res = client.post("/replays/broken/share")
+    assert res.status_code == expected_status, res.text
+    assert shares.list_shares() == []  # nothing published, no staging left behind
 
 
 def test_minting_twice_returns_the_same_share(client):

@@ -213,6 +213,8 @@ def create_share(game_id: str) -> dict[str, Any]:
             )
         if reason == "rewind":
             raise HTTPException(status_code=422, detail="Cannot share a replay containing a rewind")
+        if reason == "crashed":
+            raise HTTPException(status_code=500, detail="The bake process died; check server logs")
         raise HTTPException(
             status_code=422,
             detail=f"Replay reconstruction failed at decision {result['at']}: {result['error']}",
