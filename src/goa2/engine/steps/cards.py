@@ -358,9 +358,7 @@ class ForceDiscardStep(GameStep):
     @model_validator(mode="after")
     def _require_victim_source(self) -> ForceDiscardStep:
         if not self.victim_id and not self.victim_key:
-            raise ValueError(
-                "ForceDiscardStep requires a non-empty victim_id or victim_key"
-            )
+            raise ValueError("ForceDiscardStep requires a non-empty victim_id or victim_key")
         return self
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
@@ -393,9 +391,7 @@ class ForceDiscardStep(GameStep):
             if self.card_is_basic is None or card.is_basic == self.card_is_basic
         ]
         if not eligible_hand:
-            logger.debug(
-                f"   [EFFECT] {resolved_victim} has no matching cards to discard (Safe)."
-            )
+            logger.debug(f"   [EFFECT] {resolved_victim} has no matching cards to discard (Safe).")
             return StepResult(is_finished=True)
 
         # Mrak's discard-shield: a forced HAND discard may be redirected onto a

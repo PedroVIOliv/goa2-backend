@@ -241,9 +241,7 @@ def _round_trip_step(step, *, drop_fields: tuple[str, ...] = ()) -> object:
     ],
     ids=["trigger_mine", "force_discard", "select"],
 )
-def test_legacy_step_payload_without_new_fields_round_trips(
-    step_factory, drop_fields, expected
-):
+def test_legacy_step_payload_without_new_fields_round_trips(step_factory, drop_fields, expected):
     """Genuinely-old payloads (new fields absent) validate with default None literals."""
     step = _round_trip_step(step_factory(), drop_fields=drop_fields)
     for name, value in expected.items():
