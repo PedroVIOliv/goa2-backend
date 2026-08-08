@@ -1676,7 +1676,7 @@ class RevealHandCardStep(GameStep):
         }
         tier_value = tier_values[target_card.tier]
         context[self.tier_value_key] = tier_value
-        context["rollback_frozen"] = True
+        context["rollback_reanchor_pending"] = True
 
         revealer_id = str(state.current_actor_id) if state.current_actor_id else None
         state.card_reveal = {
