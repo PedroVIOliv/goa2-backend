@@ -1159,8 +1159,10 @@ class RevealAndResolveGuessStep(GameStep):
             logger.debug(f"   [GUESS] Wrong! Card is {actual_color}, guessed {guessed_color}")
 
         # The reveal leaks hidden hand info to the actor; rolling back past it
-        # would allow re-guessing with that knowledge (same rule as mines).
-        context["rollback_frozen"] = True
+        # would allow re-guessing with that knowledge. This is a segment
+        # boundary (same shape as a mine trigger or foreign input), not a
+        # hard freeze.
+        context["rollback_reanchor_pending"] = True
 
         # The flip is public, so this event names the card for every recipient.
         # The card face itself stays in the view: a wrong guess leaves the card

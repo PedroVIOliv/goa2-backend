@@ -779,7 +779,12 @@ class TriggerMineStep(GameStep):
 
         # Clear legacy shared queue; the literal-based chain does not depend on it.
         context[self.mine_ids_key] = []
-        context["rollback_frozen"] = True
+        # Mine reveal is a segment boundary: any pre-mine rollback snapshot
+        # would restore the removed mine and undo hidden info the actor now
+        # knows. GameSession._manage_rollback invalidates the pre-mine anchor
+        # and re-anchors at the next owner actionable prompt (e.g. a blast's
+        # ForceDiscardStep, or a later attack target selection).
+        context["rollback_reanchor_pending"] = True
 
         # Snapshot victim as literal so downstream chains are not rerouted.
         new_steps: list[GameStep] = [
