@@ -63,6 +63,7 @@ Games are untimed unless creation (or draft-lobby settings) includes an explicit
 {
   "planning_allowance_seconds": 60,
   "resolution_allowance_seconds": 45,
+  "initiative_bonus_seconds": 15,
   "response_grant_seconds": 15,
   "initial_time_bank_seconds": 120,
   "time_bank_increment_seconds": 10,
@@ -74,9 +75,12 @@ Games are untimed unless creation (or draft-lobby settings) includes an explicit
 
 Time fields are integers from 0 through 86,400, `automatic_turn_limit` is an
 integer from 0 through 100, and the maximum Time Bank must be at least its
-initial value. The automatic limit counts consecutive shared turns completed
-without an accepted human gameplay decision; `0` disables inactivity
-suspension. A timed game stays in its public ready check until
+initial value. `initiative_bonus_seconds` is a one-shot bonus for the first
+primary Resolution actor in each shared turn. It is spendable only by that
+actor's primary Resolution clock; it is not part of the Time Bank and cannot
+be spent during Response prompts. The automatic limit counts consecutive
+shared turns completed without an accepted human gameplay decision; `0`
+disables inactivity suspension. A timed game stays in its public ready check until
 every player readies through `POST /games/{game_id}/ready` with
 `{"ready":true}`, or the WebSocket `SET_READY` message below. Game decisions
 are rejected until then. Disconnecting does not pause a running clock.
@@ -835,7 +839,10 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 For a timed match, `time_control` is the immutable creation configuration and
 `clock` is a public snapshot containing `status`, `server_now_ms`, the shared
 `turn_key`, `ready_hero_ids`, active clock kind/targets, and every hero's
-remaining Planning, Resolution, Response, Upgrade, and Time Bank milliseconds.
+remaining Planning, Resolution, Initiative Bonus, Response, Upgrade, and Time
+Bank milliseconds. The Initiative Bonus is granted when the first primary
+Resolution request of a shared turn starts and is reset at the next shared
+turn.
 Clients should extrapolate running values from `server_now_ms`; the server does
 not broadcast one-second ticks. Timeout outcomes arrive as `TIMER_EXPIRED`
 events, while the authoritative state update contains the resulting automatic
@@ -1607,6 +1614,7 @@ are left unchanged. Broadcasts a `STATE_UPDATE` like any other mutation:
   "time_control": {
     "planning_allowance_seconds": 60,
     "resolution_allowance_seconds": 45,
+    "initiative_bonus_seconds": 15,
     "response_grant_seconds": 15,
     "initial_time_bank_seconds": 120,
     "time_bank_increment_seconds": 10,

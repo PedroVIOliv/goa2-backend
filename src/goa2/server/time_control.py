@@ -21,6 +21,7 @@ from goa2.domain.time_control import (
     begin_shared_turn,
     exhausted_active_hero_ids,
     finish_game_clock,
+    grant_initiative_bonus,
     grant_response_time,
     milliseconds_until_next_exhaustion,
     settle_clock,
@@ -210,10 +211,16 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
     if target not in clock.players:
         activate_clocks(clock, None, request_id=request.id, now_ms=at_ms)
         return
-    is_response = state.resolution_owner_id is not None and str(state.resolution_owner_id) != target
+    owner = str(state.resolution_owner_id) if state.resolution_owner_id is not None else None
+    is_response = owner is not None and owner != target
     kind = ClockKind.RESPONSE if is_response else ClockKind.RESOLUTION
     if is_response:
         grant_response_time(clock, config, request.id, [target])
+    elif owner == target:
+        # Only a hero prompted during their own turn may claim the one-shot
+        # bonus. Turn-boundary prompts (expiring-effect finishing steps) run
+        # with no resolution owner and must not consume it.
+        grant_initiative_bonus(clock, config, target)
     activate_clocks(clock, kind, [target], request_id=request.id, now_ms=at_ms)
 
 
