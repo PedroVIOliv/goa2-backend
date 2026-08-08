@@ -228,7 +228,7 @@ class _FireAttackEffect(_IgnatiaBranchEffect):
             damage=stats.primary_value,
             range_val=stats.range,
             is_ranged=True,
-            target_id_key=f"ign_{slot}_v1",
+            target_output_key=f"ign_{slot}_v1",
             target_filters=[line_filter, *_excl(exclude)],
         )
 
@@ -303,7 +303,7 @@ class _RangeExtremeAttackEffect(_IgnatiaBranchEffect):
                 damage=stats.primary_value,
                 range_val=1,
                 is_ranged=True,
-                target_id_key=f"ign_{slot}_v1",
+                target_output_key=f"ign_{slot}_v1",
                 target_filters=_excl(exclude),
             )
         ]
@@ -314,7 +314,7 @@ class _RangeExtremeAttackEffect(_IgnatiaBranchEffect):
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=True,
-                target_id_key=f"ign_{slot}_v1",
+                target_output_key=f"ign_{slot}_v1",
                 target_filters=[
                     RangeFilter(min_range=stats.range, max_range=stats.range),
                     *_excl(exclude),
@@ -340,7 +340,7 @@ class ImminentEruptionEffect(_RangeExtremeAttackEffect):
             damage=stats.primary_value,
             range_val=1,
             is_ranged=True,
-            target_id_key=f"ign_{slot}_v1",
+            target_output_key=f"ign_{slot}_v1",
             target_filters=_excl(exclude),
         )
         repeat = MayRepeatOnceStep(
@@ -387,7 +387,7 @@ class ChaosBoltEffect(_IgnatiaBranchEffect):
                 damage=stats.primary_value,
                 range_val=1,
                 is_ranged=True,
-                target_id_key=f"ign_{slot}_v1",
+                target_output_key=f"ign_{slot}_v1",
                 target_filters=[UnitTypeFilter(unit_type="MINION"), *_excl(exclude)],
             )
         ]
@@ -398,7 +398,7 @@ class ChaosBoltEffect(_IgnatiaBranchEffect):
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=True,
-                target_id_key=f"ign_{slot}_v1",
+                target_output_key=f"ign_{slot}_v1",
                 target_filters=[UnitTypeFilter(unit_type="HERO"), *_excl(exclude)],
             )
         ]
