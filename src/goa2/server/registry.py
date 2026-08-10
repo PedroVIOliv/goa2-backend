@@ -90,9 +90,7 @@ class ManagedGame:
     # cleared by the done-callback. Registry teardown and app
     # shutdown observe this set to make sure a slow search cannot
     # outlive the game object.
-    _bot_search_futures: set[asyncio.Future[Any]] = field(
-        default_factory=set, repr=False
-    )
+    _bot_search_futures: set[asyncio.Future[Any]] = field(default_factory=set, repr=False)
 
     @property
     def current_responder(self) -> str | None:

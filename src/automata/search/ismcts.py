@@ -130,9 +130,7 @@ class RootTarget:
                 raise ValueError("CARD RootTarget must not carry request_id/player_id")
         elif self.kind == "INPUT":
             if self.request_id is None or self.player_id is None:
-                raise ValueError(
-                    "INPUT RootTarget requires request_id and player_id"
-                )
+                raise ValueError("INPUT RootTarget requires request_id and player_id")
             if self.hero_id is not None:
                 raise ValueError("INPUT RootTarget must not carry hero_id")
         else:  # pragma: no cover - Literal enforcement
@@ -399,14 +397,10 @@ class _Simulator:
                 f"(winner={decision.winner!r})"
             )
         if not target.matches(decision):
-            surfaced_id = (
-                decision.hero.id if decision.hero is not None else None
-            ) or (decision.request.id if decision.request is not None else None)
-            surfaced_pid = (
-                decision.request.player_id
-                if decision.request is not None
-                else None
+            surfaced_id = (decision.hero.id if decision.hero is not None else None) or (
+                decision.request.id if decision.request is not None else None
             )
+            surfaced_pid = decision.request.player_id if decision.request is not None else None
             raise RootMismatchError(
                 f"simulator surfaced {decision.kind}("
                 f"id={surfaced_id!r}, player_id={surfaced_pid!r}) but "
@@ -479,9 +473,7 @@ def _normalize_weights(
     return {k: v / total for k, v in exps.items()}
 
 
-def _rollout(
-    sim: _Simulator, decision: Decision, cfg: SearchConfig, value_fn: ValueFn
-) -> float:
+def _rollout(sim: _Simulator, decision: Decision, cfg: SearchConfig, value_fn: ValueFn) -> float:
     """Default-policy playout from `decision` until the round-count cutoff."""
     start_round = sim.state.round
     while not decision.is_terminal and (sim.state.round - start_round) < cfg.cutoff_rounds:
@@ -505,9 +497,7 @@ def _rollout(
 # --------------------------------------------------------------------------- #
 
 
-def _validate_root_legal(
-    caller_legal: Sequence[Key], canonical: list[Key]
-) -> None:
+def _validate_root_legal(caller_legal: Sequence[Key], canonical: list[Key]) -> None:
     """Check that ``caller_legal`` and ``canonical`` describe the same multiset.
 
     Same set, different order is ALLOWED — the caller's order is preserved
@@ -552,9 +542,7 @@ def _simulate(
     silently descends from a mismatched root.
     """
     world = determinize(root_state, our_team, rng)
-    sim = _Simulator(
-        world, our_team, default_policy, owned_hero_ids=root_target.owned_hero_ids
-    )
+    sim = _Simulator(world, our_team, default_policy, owned_hero_ids=root_target.owned_hero_ids)
     # Strict root validation: surface EXACTLY the requested root or raise.
     decision = sim.advance_to_root(root_target)
 

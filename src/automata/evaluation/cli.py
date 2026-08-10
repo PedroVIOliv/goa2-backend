@@ -110,9 +110,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the GoA2 agent evaluation matrix.")
     parser.add_argument("--games", type=int, default=20, help="Games per fast matchup.")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--search-games", type=int, default=None, help="Games per ISMCTS matchup."
-    )
+    parser.add_argument("--search-games", type=int, default=None, help="Games per ISMCTS matchup.")
     parser.add_argument(
         "--search-iters", type=int, default=8, help="ISMCTS iterations per decision."
     )
@@ -132,7 +130,9 @@ def main() -> None:
         payload = {
             "generated_at": datetime.now(UTC).isoformat(),
             "games": args.games,
-            "search_games": args.search_games if args.search_games is not None else min(args.games, 6),
+            "search_games": (
+                args.search_games if args.search_games is not None else min(args.games, 6)
+            ),
             "base_seed": args.seed,
             "search_iterations": args.search_iters,
             "red": RED,

@@ -27,8 +27,7 @@ def _reject_bots_key(data: Any) -> Any:
     """
     if isinstance(data, dict) and "bots" in data:
         raise ValueError(
-            "'bots' is not supported on draft requests; configure bots via "
-            "POST /games instead"
+            "'bots' is not supported on draft requests; configure bots via " "POST /games instead"
         )
     return data
 

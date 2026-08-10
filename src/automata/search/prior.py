@@ -47,9 +47,7 @@ class PolicyResult:
 class Policy(Protocol):
     """Rank a decision's legal keys (best-first), optionally with weights."""
 
-    def __call__(
-        self, state: GameState, decision: Decision, legal: list[Key]
-    ) -> PolicyResult: ...
+    def __call__(self, state: GameState, decision: Decision, legal: list[Key]) -> PolicyResult: ...
 
 
 class HeuristicPrior:
@@ -59,9 +57,7 @@ class HeuristicPrior:
         # Seed is irrelevant: the scoring methods used here are RNG-free.
         self._h = heuristic or HeuristicAgent(0)
 
-    def __call__(
-        self, state: GameState, decision: Decision, legal: list[Key]
-    ) -> PolicyResult:
+    def __call__(self, state: GameState, decision: Decision, legal: list[Key]) -> PolicyResult:
         scored = self._scores(state, decision, legal)
         if scored is None:
             return PolicyResult(order=list(legal), weights=None)

@@ -455,8 +455,7 @@ def test_create_game_rejects_ismcts_decision_timeout_over_max(client):
                     "kind": "ismcts",
                     "search": {
                         "iterations": 10,
-                        "decision_timeout_seconds": PROD_MAX_DECISION_TIMEOUT_SECONDS
-                        + 1.0,
+                        "decision_timeout_seconds": PROD_MAX_DECISION_TIMEOUT_SECONDS + 1.0,
                     },
                 }
             },

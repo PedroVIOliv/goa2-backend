@@ -156,7 +156,6 @@ class HeuristicAgent:
         # Default: no preference between concrete options.
         return 0.0
 
-
     # --- scoring -----------------------------------------------------------
     def _action_priority(self, option: Any) -> int:
         return _ACTION_PRIORITY.get(option.metadata.get("type"), 0)

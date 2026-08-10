@@ -34,9 +34,7 @@ def _enemy_of(team: TeamColor) -> TeamColor:
     return TeamColor.BLUE if team == TeamColor.RED else TeamColor.RED
 
 
-def determinize(
-    state: GameState, perspective_team: TeamColor, rng: random.Random
-) -> GameState:
+def determinize(state: GameState, perspective_team: TeamColor, rng: random.Random) -> GameState:
     """Return a cloned state with enemy hidden commitments resampled.
 
     Only valid during PLANNING (the phase with hidden simultaneous commits).

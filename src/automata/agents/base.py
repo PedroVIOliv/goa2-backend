@@ -137,9 +137,7 @@ class PlanningDecision:
                 raise ValueError("COMMIT PlanningDecision requires a card")
         else:
             if self.card is not None:
-                raise ValueError(
-                    f"{self.kind.value} PlanningDecision must not carry a card"
-                )
+                raise ValueError(f"{self.kind.value} PlanningDecision must not carry a card")
 
     @classmethod
     def commit(cls, card: Card) -> PlanningDecision:

@@ -100,8 +100,7 @@ class ISMCTSAgent:
                 raise ValueError("owned_hero_ids must be non-empty")
             if hero.id not in owned_hero_ids:
                 raise ValueError(
-                    f"hero {hero.id!r} must be in owned_hero_ids "
-                    f"{sorted(owned_hero_ids)!r}"
+                    f"hero {hero.id!r} must be in owned_hero_ids " f"{sorted(owned_hero_ids)!r}"
                 )
             owned = owned_hero_ids
 
@@ -164,15 +163,10 @@ class ISMCTSAgent:
         if pid.startswith("team:"):
             addressed_team_opt = _team_of_player(state, pid)
             if addressed_team_opt is None:
-                raise ValueError(
-                    f"request.player_id {pid!r} does not resolve to a known team"
-                )
+                raise ValueError(f"request.player_id {pid!r} does not resolve to a known team")
             addressed_team: TeamColor = addressed_team_opt
             eligible = any(
-                (
-                    (h := state.get_hero(HeroID(hid))) is not None
-                    and h.team == addressed_team
-                )
+                ((h := state.get_hero(HeroID(hid))) is not None and h.team == addressed_team)
                 for hid in owned_hero_ids
             )
             if not eligible:

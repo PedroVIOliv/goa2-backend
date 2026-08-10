@@ -124,16 +124,10 @@ def _validate_agent_coverage(state: GameState, agents: Mapping[str, Agent]) -> N
     Instead we raise ``ValueError`` up front with the missing hero list so
     the caller sees the mistake at setup time.
     """
-    missing = [
-        h.id
-        for team in state.teams.values()
-        for h in team.heroes
-        if h.id not in agents
-    ]
+    missing = [h.id for team in state.teams.values() for h in team.heroes if h.id not in agents]
     if missing:
         raise ValueError(
-            "run_game requires an agent for every hero; missing "
-            f"{sorted(missing)!r}"
+            "run_game requires an agent for every hero; missing " f"{sorted(missing)!r}"
         )
 
 

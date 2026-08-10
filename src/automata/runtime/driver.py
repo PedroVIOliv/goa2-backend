@@ -157,9 +157,7 @@ def _all_hero_ids(state: GameState) -> list[str]:
     return [h.id for team in state.teams.values() for h in team.heroes]
 
 
-def _eligible_hero_ids_for_request(
-    state: GameState, request: InputRequest
-) -> list[str]:
+def _eligible_hero_ids_for_request(state: GameState, request: InputRequest) -> list[str]:
     """Hero IDs that could legitimately answer ``request``.
 
     - Direct hero-id addressing → just that hero (if it exists).
@@ -190,9 +188,7 @@ def _eligible_hero_ids_for_request(
     return []
 
 
-def eligible_hero_ids_for_request(
-    state: GameState, request: InputRequest
-) -> list[str]:
+def eligible_hero_ids_for_request(state: GameState, request: InputRequest) -> list[str]:
     """Public wrapper: hero IDs that could legitimately answer ``request``.
 
     Server-side callers (the bot coordinator) need to recompute who is
@@ -223,9 +219,7 @@ def _resolve_bot_owner(
     bot-owned. Team-addressed decisions set ``require_all_eligible_bot_owned``
     so a human teammate gets precedence over every bot on that team.
     """
-    if require_all_eligible_bot_owned and any(
-        hid not in agents for hid in eligible_hero_ids
-    ):
+    if require_all_eligible_bot_owned and any(hid not in agents for hid in eligible_hero_ids):
         return None
     for hid in eligible_hero_ids:
         if hid in agents:
@@ -233,9 +227,7 @@ def _resolve_bot_owner(
     return None
 
 
-def _filter_upgrade_request_to_bots(
-    request: InputRequest, bot_hero_ids: set[str]
-) -> InputRequest:
+def _filter_upgrade_request_to_bots(request: InputRequest, bot_hero_ids: set[str]) -> InputRequest:
     """Copy an UPGRADE_PHASE request scoped to bot-owned pending heroes.
 
     UPGRADE_PHASE's choice space is ``request.context['players']`` — a mapping
@@ -248,9 +240,7 @@ def _filter_upgrade_request_to_bots(
     ``ResolveUpgradesStep._is_legal_upgrade`` regardless of what we pass in).
     """
     players_ctx = dict(request.context.get("players") or {})
-    scoped = {
-        hid: info for hid, info in players_ctx.items() if hid in bot_hero_ids
-    }
+    scoped = {hid: info for hid, info in players_ctx.items() if hid in bot_hero_ids}
     new_context = dict(request.context)
     new_context["players"] = scoped
     return request.model_copy(update={"context": new_context})
@@ -445,9 +435,7 @@ def apply_decision(session: GameSession, decision: BotDecision) -> SessionResult
 # --------------------------------------------------------------------------- #
 
 
-def _planning_owner(
-    state: GameState, agents: Mapping[str, Agent]
-) -> str | None:
+def _planning_owner(state: GameState, agents: Mapping[str, Agent]) -> str | None:
     """Owner of the next planning decision, without invoking any policy.
 
     Mirrors :func:`_inspect_planning`'s traversal but stops as soon as a
@@ -493,11 +481,7 @@ def _input_owner(
         return None
     if request.request_type is InputRequestType.UPGRADE_PHASE:
         players_ctx = request.context.get("players") or {}
-        eligible = [
-            hid
-            for hid in eligible
-            if players_ctx.get(hid, {}).get("remaining", 0) > 0
-        ]
+        eligible = [hid for hid in eligible if players_ctx.get(hid, {}).get("remaining", 0) > 0]
         if not eligible:
             return None
     return _resolve_bot_owner(
@@ -507,9 +491,7 @@ def _input_owner(
     )
 
 
-def _inspect_planning(
-    state: GameState, agents: Mapping[str, Agent]
-) -> BotDecision | None:
+def _inspect_planning(state: GameState, agents: Mapping[str, Agent]) -> BotDecision | None:
     """Pick the next bot planning move (commit / finish / pass).
 
     Order of concerns for each hero, in team-roster order:
@@ -628,11 +610,7 @@ def _inspect_input_request(
     # slot are actually eligible right now.
     if request.request_type is InputRequestType.UPGRADE_PHASE:
         players_ctx = request.context.get("players") or {}
-        eligible = [
-            hid
-            for hid in eligible
-            if players_ctx.get(hid, {}).get("remaining", 0) > 0
-        ]
+        eligible = [hid for hid in eligible if players_ctx.get(hid, {}).get("remaining", 0) > 0]
         if not eligible:
             return None
         bot_hero_ids = {hid for hid in eligible if hid in agents}
@@ -644,9 +622,7 @@ def _inspect_input_request(
         owner_hero_id = next(hid for hid in eligible if hid in bot_hero_ids)
         scoped_request = _filter_upgrade_request_to_bots(request, bot_hero_ids)
         agent = agents[owner_hero_id]
-        selection = _call_choose_input(
-            agent, state, scoped_request, frozenset(bot_hero_ids)
-        )
+        selection = _call_choose_input(agent, state, scoped_request, frozenset(bot_hero_ids))
         if selection is None:
             # Legacy UPGRADE_PHASE convention: agent may abstain this tick
             # by returning None. Validation is skipped because the driver
@@ -685,9 +661,7 @@ def _inspect_input_request(
     )
 
 
-def _validate_input_selection(
-    request: InputRequest, selection: Any, hero_id: str
-) -> None:
+def _validate_input_selection(request: InputRequest, selection: Any, hero_id: str) -> None:
     """Raise :class:`IllegalBotDecisionError` if ``selection`` is not legal.
 
     A legal selection is:

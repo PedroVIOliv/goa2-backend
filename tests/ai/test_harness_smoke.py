@@ -273,9 +273,7 @@ def test_emmitt_second_card_choose_none_maps_to_finish() -> None:
     bot: Any = _StubAgent()
     bot.choose_card = choose  # type: ignore[assignment]
 
-    decision = inspect_next_decision(
-        state, agents={emmitt.id: bot}, last_result=None
-    )
+    decision = inspect_next_decision(state, agents={emmitt.id: bot}, last_result=None)
     assert decision is not None
     assert decision.kind is DecisionKind.PLANNING
     assert decision.hero_id == emmitt.id
@@ -296,9 +294,7 @@ def test_emmitt_second_card_choose_card_maps_to_second_commit() -> None:
     first, second = emmitt.hand[0], emmitt.hand[1]
     session.commit_card(HeroID(emmitt.id), first)
     bot = _StubAgent(card_for={emmitt.id: second})
-    decision = inspect_next_decision(
-        state, agents={emmitt.id: bot}, last_result=None
-    )
+    decision = inspect_next_decision(state, agents={emmitt.id: bot}, last_result=None)
     assert decision is not None
     assert decision.planning is not None
     assert decision.planning.kind is PlanningKind.COMMIT
@@ -412,9 +408,7 @@ def test_hero_addressed_input_uses_owner_agent_with_singleton_owned_set() -> Non
     arien_bot = _StubAgent(input_selection="B")
     req = _select_option_request(wasp.id, ["A", "B"])
     result = _input_needed_result(state, req)
-    decision = inspect_next_decision(
-        state, {wasp.id: wasp_bot, arien.id: arien_bot}, result
-    )
+    decision = inspect_next_decision(state, {wasp.id: wasp_bot, arien.id: arien_bot}, result)
     assert decision is not None
     assert decision.selection == "A"
     assert decision.hero_id == wasp.id
@@ -441,9 +435,7 @@ def test_upgrade_phase_returns_none_when_only_humans_have_pending_upgrades() -> 
     state = _new_game(["Wasp"], ["Arien"])
     wasp = state.teams[TeamColor.RED].heroes[0]
     arien = state.teams[TeamColor.BLUE].heroes[0]
-    req = _upgrade_request(
-        {arien.id: {"remaining": 1, "options": [{"pair": ["c1", "c2"]}]}}
-    )
+    req = _upgrade_request({arien.id: {"remaining": 1, "options": [{"pair": ["c1", "c2"]}]}})
     bot = _StubAgent()
     result = _input_needed_result(state, req)
     assert inspect_next_decision(state, {wasp.id: bot}, result) is None
@@ -585,9 +577,7 @@ def test_bot_decision_planning_requires_a_plan() -> None:
 
 def test_bot_decision_input_requires_a_request() -> None:
     with pytest.raises(ValueError):
-        BotDecision(
-            kind=DecisionKind.INPUT, hero_id=HeroID("hero_wasp"), selection="X"
-        )
+        BotDecision(kind=DecisionKind.INPUT, hero_id=HeroID("hero_wasp"), selection="X")
 
 
 def test_bot_decision_planning_rejects_stray_request_fields() -> None:
@@ -617,10 +607,7 @@ def test_returns_none_when_no_pending_request_outside_planning() -> None:
     state.phase = GamePhase.RESOLUTION
     bot = _StubAgent()
     # Neutral ACTION_COMPLETE result → no pending → and RESOLUTION → nothing.
-    assert (
-        inspect_next_decision(state, {"hero_wasp": bot}, _non_input_result(state))
-        is None
-    )
+    assert inspect_next_decision(state, {"hero_wasp": bot}, _non_input_result(state)) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -817,9 +804,7 @@ def test_record_decision_includes_skip_in_legal_keys_when_can_skip() -> None:
     assert row["chosen_key"] == "SKIP"
     # The recorded legal set MUST contain SKIP so trajectory consumers can
     # verify the chosen value is a member of the enumerated legal keys.
-    assert "SKIP" in row["legal_keys"], (
-        f"chosen SKIP was not in legal_keys={row['legal_keys']!r}"
-    )
+    assert "SKIP" in row["legal_keys"], f"chosen SKIP was not in legal_keys={row['legal_keys']!r}"
     # Original option values are still present.
     assert "A" in row["legal_keys"]
     assert "B" in row["legal_keys"]
@@ -996,6 +981,7 @@ def test_driver_rejects_illegal_input_selection_planning_path_regressed() -> Non
         def choose_card(self, state, hero):
             # Fabricate a Card that isn't in the hand.
             from copy import deepcopy
+
             fake = deepcopy(hero.hand[0])
             fake.id = "not-in-hand-id"
             return fake

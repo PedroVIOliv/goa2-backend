@@ -316,11 +316,7 @@ def _fallback_agents(agents: dict[str, Agent], game: ManagedGame) -> dict[str, A
     different heroes.
     """
     return {
-        hero_id: (
-            _fallback_agent_for_hero(game, hero_id)
-            if _is_ismcts_agent(agent)
-            else agent
-        )
+        hero_id: (_fallback_agent_for_hero(game, hero_id) if _is_ismcts_agent(agent) else agent)
         for hero_id, agent in agents.items()
     }
 
@@ -404,9 +400,7 @@ async def _bounded_inspect_next_decision(
                 owner_hero_id,
                 queue_wait,
             )
-            return await _fallback_inspect(
-                game, cloned_state, agents, cloned_last_result
-            )
+            return await _fallback_inspect(game, cloned_state, agents, cloned_last_result)
     finally:
         ismcts_metrics.current_queue_depth -= 1
     queue_wait = time.monotonic() - queue_start
@@ -474,9 +468,7 @@ async def _bounded_inspect_next_decision(
             search_wait,
             search_timeout,
         )
-        return await _fallback_inspect(
-            game, cloned_state, agents, cloned_last_result
-        )
+        return await _fallback_inspect(game, cloned_state, agents, cloned_last_result)
     except asyncio.CancelledError:
         # The outer bot task was cancelled (shutdown / registry.remove).
         # Do NOT cancel the executor future — it may still be doing work
@@ -496,9 +488,7 @@ async def _bounded_inspect_next_decision(
             exc.reason,
             search_wait,
         )
-        return await _fallback_inspect(
-            game, cloned_state, agents, cloned_last_result
-        )
+        return await _fallback_inspect(game, cloned_state, agents, cloned_last_result)
     except Exception:
         finished_flag["finished"] = True
         search_wait = time.monotonic() - search_started_at
@@ -510,9 +500,7 @@ async def _bounded_inspect_next_decision(
             owner_hero_id,
             search_wait,
         )
-        return await _fallback_inspect(
-            game, cloned_state, agents, cloned_last_result
-        )
+        return await _fallback_inspect(game, cloned_state, agents, cloned_last_result)
 
     finished_flag["finished"] = True
     search_wait = time.monotonic() - search_started_at
@@ -562,9 +550,7 @@ async def _fallback_inspect(
             inspect_next_decision, cloned_state, fallback_map, cloned_last_result
         )
     except Exception:
-        logger.exception(
-            "ismcts: heuristic fallback also failed game=%s", game.game_id
-        )
+        logger.exception("ismcts: heuristic fallback also failed game=%s", game.game_id)
         return None
 
 
@@ -797,9 +783,7 @@ def _is_decision_still_valid(
 CapturedBroadcast = list[tuple[str | None, Any, dict[str, Any]]]
 
 
-def _capture_broadcast_for_result(
-    game: ManagedGame, result: SessionResult
-) -> CapturedBroadcast:
+def _capture_broadcast_for_result(game: ManagedGame, result: SessionResult) -> CapturedBroadcast:
     """Materialize scoped broadcasts for ``result`` while holding the lock."""
     from goa2.server.ws import _capture_broadcast
 
@@ -1066,9 +1050,7 @@ async def _bot_drive_worker(game: ManagedGame, registry: GameRegistry) -> None:
             )
             return
         except Exception:
-            logger.exception(
-                "Bot compute failed for game %s; halting drive", game.game_id
-            )
+            logger.exception("Bot compute failed for game %s; halting drive", game.game_id)
             return
 
         if decision is None:
@@ -1150,9 +1132,7 @@ async def _apply_bot_decision(
                     # not resume a suspended clock or bypass GAME_OVER.
                     return None
                 live_state = game.session.state
-                if not _is_decision_still_valid(
-                    live_state, game.last_result, decision, agents
-                ):
+                if not _is_decision_still_valid(live_state, game.last_result, decision, agents):
                     logger.debug(
                         "Bot decision for game %s stale on apply; dropping",
                         game.game_id,
@@ -1309,9 +1289,7 @@ async def _maybe_plain_advance(
                 try:
                     _log_result(game, result)
                 except Exception:
-                    logger.exception(
-                        "Bot idle-advance log failed for game %s", game.game_id
-                    )
+                    logger.exception("Bot idle-advance log failed for game %s", game.game_id)
                 try:
                     messages = _capture_broadcast_for_result(game, result)
                 except Exception:
@@ -1333,9 +1311,7 @@ async def _maybe_plain_advance(
     except asyncio.CancelledError:
         raise
     except Exception:
-        logger.exception(
-            "Unexpected error during bot idle-advance for game %s", game.game_id
-        )
+        logger.exception("Unexpected error during bot idle-advance for game %s", game.game_id)
         return False
 
     if result is None:
@@ -1655,8 +1631,7 @@ async def cancel_all_bot_tasks(
             exc = fut.exception()
             if exc is not None:
                 logger.warning(
-                    "cancel_all_bot_tasks: drained future ended with "
-                    "exception: %r",
+                    "cancel_all_bot_tasks: drained future ended with " "exception: %r",
                     exc,
                 )
 
@@ -1666,8 +1641,7 @@ async def cancel_all_bot_tasks(
     # warning but is not a crash.
     if _in_flight_search_futures:
         logger.warning(
-            "cancel_all_bot_tasks: %d future(s) still tracked module-wide "
-            "after drain",
+            "cancel_all_bot_tasks: %d future(s) still tracked module-wide " "after drain",
             len(_in_flight_search_futures),
         )
     for game in registry.all_games():

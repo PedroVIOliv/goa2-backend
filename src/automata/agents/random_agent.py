@@ -19,7 +19,9 @@ class RandomAgent:
     def __init__(self, seed: int = 0) -> None:
         self._rng = random.Random(seed)
 
-    def choose_card(self, state: GameState, hero: Hero) -> Card | None:  # pyright: ignore[reportUnusedParameter]
+    def choose_card(
+        self, state: GameState, hero: Hero
+    ) -> Card | None:  # pyright: ignore[reportUnusedParameter]
         if not hero.hand:
             return None
         return self._rng.choice(list(hero.hand))

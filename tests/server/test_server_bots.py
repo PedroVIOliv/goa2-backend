@@ -296,9 +296,7 @@ def test_restored_game_starts_with_no_cached_agents(tmp_path) -> None:
     """A game freshly restored from disk carries only ``bot_specs``; its
     agent cache must be empty so the coordinator builds instances with
     the current entropy source, not resurrected in-memory objects."""
-    _registry, game = _make_game(
-        {"hero_wasp": BotSpec(kind="random")}, save_dir=str(tmp_path)
-    )
+    _registry, game = _make_game({"hero_wasp": BotSpec(kind="random")}, save_dir=str(tmp_path))
     get_or_build_agents(game)
     assert game._bot_agents is not None
     registry2 = GameRegistry(save_dir=str(tmp_path))
@@ -538,9 +536,7 @@ def test_successful_apply_records_all_side_effects() -> None:
             send_calls.append((g.game_id, list(messages)))
 
         async def spy_pacing(g):
-            pacing_calls.append(
-                (len(send_calls), g.lock.locked(), g.outbound_lock.locked())
-            )
+            pacing_calls.append((len(send_calls), g.lock.locked(), g.outbound_lock.locked()))
 
         # Replay & logger — record method calls without changing behavior.
         replay_calls: list[tuple[str, tuple]] = []
@@ -630,33 +626,31 @@ def test_successful_apply_records_all_side_effects() -> None:
     # Save runs through finalize_timed_mutation (which calls
     # registry.save_game). Even without a save_dir, save_game is invoked.
     assert any(gid for gid in r["save_calls"]), "save_game must be called"
-    assert any(kind == "commit" for kind, _ in r["replay_calls"]), (
-        f"expected replay commit; got {r['replay_calls']}"
-    )
+    assert any(
+        kind == "commit" for kind, _ in r["replay_calls"]
+    ), f"expected replay commit; got {r['replay_calls']}"
     # Replay commit records the decision maker as the first positional arg.
     commit_records = [args for kind, args in r["replay_calls"] if kind == "commit"]
-    assert commit_records and commit_records[0][0] == "hero_wasp", (
-        f"replay commit must use decision.hero_id; got {commit_records}"
-    )
+    assert (
+        commit_records and commit_records[0][0] == "hero_wasp"
+    ), f"replay commit must use decision.hero_id; got {commit_records}"
     log_kinds = [k for k, _a, _kw in r["log_calls"]]
-    assert "phase_change" in log_kinds, (
-        f"generic _log_result must fire; got {log_kinds}"
-    )
+    assert "phase_change" in log_kinds, f"generic _log_result must fire; got {log_kinds}"
     # Action-specific logger call must precede the generic phase_change log
     # (matches REST/WS ordering).
     card_commit_positions = [i for i, (k, *_) in enumerate(r["log_calls"]) if k == "card_commit"]
     phase_change_positions = [i for i, (k, *_) in enumerate(r["log_calls"]) if k == "phase_change"]
-    assert card_commit_positions, (
-        f"log_card_commit must fire for COMMIT bot decision; got {log_kinds}"
-    )
-    assert card_commit_positions[0] < phase_change_positions[0], (
-        f"log_card_commit must precede log_phase_change; got {r['log_calls']}"
-    )
+    assert (
+        card_commit_positions
+    ), f"log_card_commit must fire for COMMIT bot decision; got {log_kinds}"
+    assert (
+        card_commit_positions[0] < phase_change_positions[0]
+    ), f"log_card_commit must precede log_phase_change; got {r['log_calls']}"
     # Payload of log_card_commit is (hero_id, card_id).
     _, cc_args, _cc_kw = r["log_calls"][card_commit_positions[0]]
-    assert cc_args[0] == "hero_wasp", (
-        f"log_card_commit hero_id must be the decision maker; got {cc_args}"
-    )
+    assert (
+        cc_args[0] == "hero_wasp"
+    ), f"log_card_commit hero_id must be the decision maker; got {cc_args}"
 
 
 # --------------------------------------------------------------------------- #
@@ -748,13 +742,9 @@ def test_schedule_bot_drive_yields_between_decisions() -> None:
 
             def choose_input(self, state, request, *, owned_hero_ids=None):
                 events.append(f"input:{request.player_id}")
-                return self.inner.choose_input(
-                    state, request, owned_hero_ids=owned_hero_ids
-                )
+                return self.inner.choose_input(state, request, owned_hero_ids=owned_hero_ids)
 
-        wrapped = {
-            hid: _Recording(agent, hid) for hid, agent in base_agents.items()
-        }
+        wrapped = {hid: _Recording(agent, hid) for hid, agent in base_agents.items()}
         _install_agent(bots_mod, wrapped)
 
         async def interloper() -> None:
@@ -829,9 +819,7 @@ def test_is_decision_still_valid_input_recomputes_eligibility() -> None:
         request=stale_req,
         selection="A",
     )
-    assert not _is_decision_still_valid(
-        game.session.state, live_res, decision, agents
-    )
+    assert not _is_decision_still_valid(game.session.state, live_res, decision, agents)
 
 
 def test_is_decision_still_valid_rejects_mismatched_request_id() -> None:
@@ -863,9 +851,7 @@ def test_is_decision_still_valid_rejects_mismatched_request_id() -> None:
         request=old_req,
         selection="A",
     )
-    assert not _is_decision_still_valid(
-        game.session.state, live_res, decision, agents
-    )
+    assert not _is_decision_still_valid(game.session.state, live_res, decision, agents)
 
 
 def test_is_decision_still_valid_rejects_upgrade_with_zero_remaining() -> None:
@@ -894,9 +880,7 @@ def test_is_decision_still_valid_rejects_upgrade_with_zero_remaining() -> None:
         request=live_req,
         selection={"hero_id": "hero_wasp", "card_id": "c1"},
     )
-    assert not _is_decision_still_valid(
-        game.session.state, live_res, decision, agents
-    )
+    assert not _is_decision_still_valid(game.session.state, live_res, decision, agents)
 
 
 def test_is_decision_still_valid_rejects_no_longer_bot_owned() -> None:
@@ -926,9 +910,7 @@ def test_is_decision_still_valid_rejects_no_longer_bot_owned() -> None:
         request=live_req,
         selection="A",
     )
-    assert not _is_decision_still_valid(
-        game.session.state, live_res, decision, empty_agents
-    )
+    assert not _is_decision_still_valid(game.session.state, live_res, decision, empty_agents)
 
 
 # --------------------------------------------------------------------------- #
@@ -1056,9 +1038,7 @@ def test_input_replay_actor_is_decision_hero_not_team_player_id() -> None:
 
     # Replay INPUT actor is decision.hero_id, NOT "team:RED".
     input_records = [args for kind, args in replay_calls if kind == "input"]
-    assert input_records, (
-        f"expected a replay input record; got {replay_calls}"
-    )
+    assert input_records, f"expected a replay input record; got {replay_calls}"
     actor, selection, *_ = input_records[0]
     assert actor == "hero_wasp", (
         f"INPUT replay actor must be decision.hero_id, got {actor!r} "
@@ -1069,21 +1049,15 @@ def test_input_replay_actor_is_decision_hero_not_team_player_id() -> None:
 
     # Logger's log_input_response must fire with the same hero_id,
     # before the generic log_phase_change (mirrors ws._handle_submit_input).
-    ir_positions = [
-        i for i, (k, *_r) in enumerate(log_calls) if k == "input_response"
-    ]
-    pc_positions = [
-        i for i, (k, *_r) in enumerate(log_calls) if k == "phase_change"
-    ]
+    ir_positions = [i for i, (k, *_r) in enumerate(log_calls) if k == "input_response"]
+    pc_positions = [i for i, (k, *_r) in enumerate(log_calls) if k == "phase_change"]
     assert ir_positions, f"log_input_response must fire; got {log_calls}"
     _, ir_args, _ = log_calls[ir_positions[0]]
-    assert ir_args[0] == "hero_wasp", (
-        f"log_input_response hero_id must be decision maker; got {ir_args}"
-    )
+    assert (
+        ir_args[0] == "hero_wasp"
+    ), f"log_input_response hero_id must be decision maker; got {ir_args}"
     if pc_positions:
-        assert ir_positions[0] < pc_positions[0], (
-            "log_input_response must precede log_phase_change"
-        )
+        assert ir_positions[0] < pc_positions[0], "log_input_response must precede log_phase_change"
 
 
 def test_input_replay_actor_is_decision_hero_for_simultaneous_request() -> None:
@@ -1098,11 +1072,7 @@ def test_input_replay_actor_is_decision_hero_for_simultaneous_request() -> None:
         request_type=InputRequestType.UPGRADE_PHASE,
         player_id="simultaneous",
         options=[],
-        context={
-            "players": {
-                "hero_wasp": {"remaining": 1, "options": [{"pair": ["c1", "c2"]}]}
-            }
-        },
+        context={"players": {"hero_wasp": {"remaining": 1, "options": [{"pair": ["c1", "c2"]}]}}},
     )
     game.last_result = SessionResult(
         result_type=SessionResultType.INPUT_NEEDED,
@@ -1168,10 +1138,7 @@ def test_pass_decision_fires_log_pass_turn_before_generic_log() -> None:
     registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
     # Empty Wasp's hand so PASS is legal.
     wasp = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_wasp"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_wasp"
     )
     wasp.hand.clear()
 
@@ -1237,27 +1204,19 @@ def test_pass_decision_fires_log_pass_turn_before_generic_log() -> None:
     ):
         _drive_direct_decision(game, registry, decision)
 
-    pt_positions = [
-        i for i, (k, *_r) in enumerate(log_calls) if k == "pass_turn"
-    ]
-    pc_positions = [
-        i for i, (k, *_r) in enumerate(log_calls) if k == "phase_change"
-    ]
-    assert pt_positions, (
-        f"log_pass_turn must fire for PASS decision; got {log_calls}"
-    )
+    pt_positions = [i for i, (k, *_r) in enumerate(log_calls) if k == "pass_turn"]
+    pc_positions = [i for i, (k, *_r) in enumerate(log_calls) if k == "phase_change"]
+    assert pt_positions, f"log_pass_turn must fire for PASS decision; got {log_calls}"
     _, pt_args, _ = log_calls[pt_positions[0]]
-    assert pt_args == ("hero_wasp",), (
-        f"log_pass_turn(hero_id) must use decision.hero_id; got {pt_args}"
-    )
+    assert pt_args == (
+        "hero_wasp",
+    ), f"log_pass_turn(hero_id) must use decision.hero_id; got {pt_args}"
     if pc_positions:
-        assert pt_positions[0] < pc_positions[0], (
-            "log_pass_turn must precede log_phase_change"
-        )
+        assert pt_positions[0] < pc_positions[0], "log_pass_turn must precede log_phase_change"
     pass_records = [args for kind, args in replay_calls if kind == "pass"]
-    assert pass_records and pass_records[0][0] == "hero_wasp", (
-        f"replay pass actor must be decision.hero_id; got {pass_records}"
-    )
+    assert (
+        pass_records and pass_records[0][0] == "hero_wasp"
+    ), f"replay pass actor must be decision.hero_id; got {pass_records}"
 
 
 def test_finish_decision_records_replay_but_no_dedicated_log() -> None:
@@ -1344,9 +1303,9 @@ def test_finish_decision_records_replay_but_no_dedicated_log() -> None:
 
     # Replay MUST record a finish entry with the decision maker.
     finish_records = [args for kind, args in replay_calls if kind == "finish"]
-    assert finish_records and finish_records[0][0] == "hero_wasp", (
-        f"replay finish actor must be decision.hero_id; got {finish_records}"
-    )
+    assert (
+        finish_records and finish_records[0][0] == "hero_wasp"
+    ), f"replay finish actor must be decision.hero_id; got {finish_records}"
     # No dedicated log method for FINISH — only the generic result log.
     log_kinds = [k for k, *_r in log_calls]
     assert "pass_turn" not in log_kinds
@@ -1444,10 +1403,14 @@ def test_stale_input_race_produces_no_side_effects() -> None:
             release.set()
             await _await_task(game.bot_task, timeout=5.0)
         return {
-            "pre_last_id": pre_last.input_request.id if pre_last and pre_last.input_request else None,
-            "post_last_id": game.last_result.input_request.id
-            if game.last_result and game.last_result.input_request
-            else None,
+            "pre_last_id": (
+                pre_last.input_request.id if pre_last and pre_last.input_request else None
+            ),
+            "post_last_id": (
+                game.last_result.input_request.id
+                if game.last_result and game.last_result.input_request
+                else None
+            ),
             "save_calls": save_calls,
             "replay_calls": replay_calls,
             "send_calls": send_calls,
@@ -1457,18 +1420,16 @@ def test_stale_input_race_produces_no_side_effects() -> None:
     # The live pending request was swapped by the test — that's the id we
     # should still see, unchanged by the (rejected) bot decision.
     assert r["post_last_id"] == "LIVE-NEW"
-    assert r["replay_calls"] == [], (
-        f"stale decision must not record a replay entry (got {r['replay_calls']})"
-    )
+    assert (
+        r["replay_calls"] == []
+    ), f"stale decision must not record a replay entry (got {r['replay_calls']})"
     # save_game may still be called by finalize_timed_mutation? No — the
     # stale check returns BEFORE any clock/finalize work, so save_game
     # should NOT be invoked by the bot's stale path.
-    assert r["save_calls"] == [], (
-        f"stale decision must not trigger save_game (got {r['save_calls']})"
-    )
-    assert r["send_calls"] == [], (
-        f"stale decision must not send broadcast (got {r['send_calls']})"
-    )
+    assert (
+        r["save_calls"] == []
+    ), f"stale decision must not trigger save_game (got {r['save_calls']})"
+    assert r["send_calls"] == [], f"stale decision must not send broadcast (got {r['send_calls']})"
 
 
 def test_human_race_bot_produces_no_side_effects() -> None:
@@ -1702,11 +1663,7 @@ def test_bot_worker_issues_plain_advance_when_owed_but_no_pending_input() -> Non
         return advance_calls, game.last_result
 
     advance_calls, _last = asyncio.run(scenario())
-    plain_calls = [
-        (args, kwargs)
-        for args, kwargs in advance_calls
-        if args == () and not kwargs
-    ]
+    plain_calls = [(args, kwargs) for args, kwargs in advance_calls if args == () and not kwargs]
     assert plain_calls, (
         f"expected at least one plain session.advance() call with empty "
         f"args (no InputResponse); got advance_calls={advance_calls!r}"
@@ -1729,9 +1686,7 @@ def test_bot_worker_does_not_advance_when_pending_input_is_human(
     from goa2.engine.session import SessionResult, SessionResultType
 
     async def scenario() -> list[Any]:
-        registry, game = _make_game(
-            {"hero_wasp": BotSpec(kind="random")}, red=red, blue=blue
-        )
+        registry, game = _make_game({"hero_wasp": BotSpec(kind="random")}, red=red, blue=blue)
         human_req = InputRequest(
             id="R_HUMAN",
             request_type=InputRequestType.SELECT_OPTION,
@@ -1765,9 +1720,9 @@ def test_bot_worker_does_not_advance_when_pending_input_is_human(
         return advance_calls
 
     advance_calls = asyncio.run(scenario())
-    assert advance_calls == [], (
-        f"worker must not advance() when human owes the input (got {advance_calls})"
-    )
+    assert (
+        advance_calls == []
+    ), f"worker must not advance() when human owes the input (got {advance_calls})"
 
 
 # --------------------------------------------------------------------------- #
@@ -1874,10 +1829,7 @@ def test_illegal_bot_choice_is_caught_and_game_remains_recoverable() -> None:
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
         state = game.session.state
         arien = next(
-            h
-            for team in state.teams.values()
-            for h in team.heroes
-            if h.id == "hero_arien"
+            h for team in state.teams.values() for h in team.heroes if h.id == "hero_arien"
         )
         foreign_card = arien.hand[0]
 
@@ -1961,9 +1913,7 @@ def test_auto_ready_bot_heroes_transitions_timed_match_when_only_bots() -> None:
         max_time_bank_seconds=60,
         upgrade_allowance_seconds=10,
     )
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=9
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=9)
     session = GameSession(state)
     hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
     registry = GameRegistry()
@@ -1999,9 +1949,7 @@ def test_auto_ready_bot_heroes_leaves_human_ready_pending() -> None:
         max_time_bank_seconds=60,
         upgrade_allowance_seconds=10,
     )
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=9
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=9)
     session = GameSession(state)
     hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
     registry = GameRegistry()
@@ -2312,10 +2260,7 @@ def test_rest_commit_card_calls_schedule_bot_drive(_bots_test_app, monkeypatch) 
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
     resp = client.post(
@@ -2324,9 +2269,9 @@ def test_rest_commit_card_calls_schedule_bot_drive(_bots_test_app, monkeypatch) 
         headers={"Authorization": f"Bearer {arien_token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert calls == [game_id], (
-        f"commit_card must call schedule_bot_drive after mutation; got {calls}"
-    )
+    assert calls == [
+        game_id
+    ], f"commit_card must call schedule_bot_drive after mutation; got {calls}"
 
 
 def test_rest_pass_turn_calls_schedule_bot_drive(_bots_test_app, monkeypatch) -> None:
@@ -2358,10 +2303,7 @@ def test_rest_pass_turn_calls_schedule_bot_drive(_bots_test_app, monkeypatch) ->
     )
     # Force Arien's hand empty so pass_turn is legal.
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     arien.hand.clear()
     resp = client.post(
@@ -2369,9 +2311,7 @@ def test_rest_pass_turn_calls_schedule_bot_drive(_bots_test_app, monkeypatch) ->
         headers={"Authorization": f"Bearer {arien_token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert calls == [game_id], (
-        f"pass_turn must call schedule_bot_drive after mutation; got {calls}"
-    )
+    assert calls == [game_id], f"pass_turn must call schedule_bot_drive after mutation; got {calls}"
 
 
 def test_rest_cheat_gold_calls_schedule_bot_drive(_bots_test_app, monkeypatch) -> None:
@@ -2412,9 +2352,9 @@ def test_rest_cheat_gold_calls_schedule_bot_drive(_bots_test_app, monkeypatch) -
         headers={"Authorization": f"Bearer {arien_token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert calls == [game_id], (
-        f"cheats/gold must call schedule_bot_drive after mutation; got {calls}"
-    )
+    assert calls == [
+        game_id
+    ], f"cheats/gold must call schedule_bot_drive after mutation; got {calls}"
 
 
 def test_ws_commit_card_calls_schedule_bot_drive(_bots_test_app, monkeypatch) -> None:
@@ -2450,10 +2390,7 @@ def test_ws_commit_card_calls_schedule_bot_drive(_bots_test_app, monkeypatch) ->
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
     calls.clear()
@@ -2464,9 +2401,9 @@ def test_ws_commit_card_calls_schedule_bot_drive(_bots_test_app, monkeypatch) ->
         reply = ws.receive_json()
         assert reply["type"] == "ACTION_RESULT", reply
 
-    assert calls == [game_id], (
-        f"WS COMMIT_CARD must call schedule_bot_drive after mutation; got {calls}"
-    )
+    assert calls == [
+        game_id
+    ], f"WS COMMIT_CARD must call schedule_bot_drive after mutation; got {calls}"
 
 
 def test_restored_game_resumes_bot_after_lifespan_restart(tmp_path, monkeypatch) -> None:
@@ -2517,9 +2454,7 @@ def test_restored_game_resumes_bot_after_lifespan_restart(tmp_path, monkeypatch)
         }
 
     r = asyncio.run(scenario())
-    assert r["wasp_committed"] is True, (
-        "restored bot must resume and complete its first commit"
-    )
+    assert r["wasp_committed"] is True, "restored bot must resume and complete its first commit"
 
 
 def test_timer_deadline_schedules_bot_drive_after_timeout() -> None:
@@ -2548,9 +2483,7 @@ def test_timer_deadline_schedules_bot_drive_after_timeout() -> None:
     )
 
     async def scenario() -> list[str]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=5
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=5)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry()
@@ -2590,9 +2523,9 @@ def test_timer_deadline_schedules_bot_drive_after_timeout() -> None:
         return scheduled
 
     scheduled = asyncio.run(scenario())
-    assert scheduled == ["timed-test-fake"] or len(scheduled) == 1, (
-        f"deadline worker must call schedule_bot_drive on timeout; got {scheduled}"
-    )
+    assert (
+        scheduled == ["timed-test-fake"] or len(scheduled) == 1
+    ), f"deadline worker must call schedule_bot_drive on timeout; got {scheduled}"
 
 
 def test_stop_clock_covers_bot_thinking_time() -> None:
@@ -2694,10 +2627,17 @@ def test_bot_stale_check_rejects_after_timer_landed_the_same_input() -> None:
         replay_calls: list[str] = []
 
         class _RecReplay:
-            def record_commit(self, *a): replay_calls.append("commit")
-            def record_pass(self, *a): replay_calls.append("pass")
-            def record_finish_planning(self, *a): replay_calls.append("finish")
-            def record_input(self, *a): replay_calls.append("input")
+            def record_commit(self, *a):
+                replay_calls.append("commit")
+
+            def record_pass(self, *a):
+                replay_calls.append("pass")
+
+            def record_finish_planning(self, *a):
+                replay_calls.append("finish")
+
+            def record_input(self, *a):
+                replay_calls.append("input")
 
         game.replay_recorder = _RecReplay()  # type: ignore[assignment]
 
@@ -2719,9 +2659,9 @@ def test_bot_stale_check_rejects_after_timer_landed_the_same_input() -> None:
         return {"replay_calls": replay_calls}
 
     r = asyncio.run(scenario())
-    assert r["replay_calls"] == [], (
-        f"bot's stale decision must not land a replay entry (got {r['replay_calls']})"
-    )
+    assert (
+        r["replay_calls"] == []
+    ), f"bot's stale decision must not land a replay entry (got {r['replay_calls']})"
 
 
 # --------------------------------------------------------------------------- #
@@ -2754,9 +2694,7 @@ def test_start_bot_lifecycle_persists_and_schedules_before_bot_compute() -> None
     )
 
     async def scenario() -> dict[str, Any]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=41
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=41)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry()
@@ -2815,18 +2753,14 @@ def test_start_bot_lifecycle_persists_and_schedules_before_bot_compute() -> None
     deadline_positions = [i for i, e in enumerate(events) if e.startswith("deadline:")]
     bot_schedule_positions = [i for i, e in enumerate(events) if e.startswith("schedule:")]
     assert save_positions, f"save_game must fire during lifecycle; events={events}"
-    assert deadline_positions, (
-        f"schedule_deadline must fire during lifecycle; events={events}"
-    )
-    assert bot_schedule_positions, (
-        f"schedule_bot_drive must fire during lifecycle; events={events}"
-    )
-    assert save_positions[0] < bot_schedule_positions[0], (
-        f"save_game must precede schedule_bot_drive; events={events}"
-    )
-    assert deadline_positions[0] < bot_schedule_positions[0], (
-        f"schedule_deadline must precede schedule_bot_drive; events={events}"
-    )
+    assert deadline_positions, f"schedule_deadline must fire during lifecycle; events={events}"
+    assert bot_schedule_positions, f"schedule_bot_drive must fire during lifecycle; events={events}"
+    assert (
+        save_positions[0] < bot_schedule_positions[0]
+    ), f"save_game must precede schedule_bot_drive; events={events}"
+    assert (
+        deadline_positions[0] < bot_schedule_positions[0]
+    ), f"schedule_deadline must precede schedule_bot_drive; events={events}"
 
 
 def test_start_bot_lifecycle_broadcasts_ready_transition_before_bot_compute() -> None:
@@ -2851,9 +2785,7 @@ def test_start_bot_lifecycle_broadcasts_ready_transition_before_bot_compute() ->
     )
 
     async def scenario() -> list[str]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=42
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=42)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry()
@@ -2918,9 +2850,7 @@ def test_start_bot_lifecycle_untimed_still_schedules_bot() -> None:
 
     started, calls = asyncio.run(scenario())
     assert started is False, "no clock → no ready transition"
-    assert len(calls) == 1, (
-        f"un-timed bot game must still schedule bot drive; got {calls}"
-    )
+    assert len(calls) == 1, f"un-timed bot game must still schedule bot drive; got {calls}"
 
 
 def test_start_bot_lifecycle_untimed_with_bots_schedules_drive() -> None:
@@ -2950,9 +2880,13 @@ def test_start_bot_lifecycle_untimed_with_bots_schedules_drive() -> None:
         return calls
 
     calls = asyncio.run(scenario())
-    assert calls == [
-        # Even without a ready transition, un-timed bots must be scheduled.
-    ] or len(calls) == 1
+    assert (
+        calls
+        == [
+            # Even without a ready transition, un-timed bots must be scheduled.
+        ]
+        or len(calls) == 1
+    )
     # The invariant: if the game has bots, schedule fires exactly once —
     # regardless of whether a ready transition happened.
     # (An un-timed game returns started=False but scheduling still runs.)
@@ -2985,9 +2919,9 @@ def test_rest_timed_mutation_seam_schedules_bot_on_success() -> None:
         return calls
 
     calls = asyncio.run(scenario())
-    assert calls == ["a" + "b" * 11] or len(calls) == 1, (
-        f"timed_rest_mutation must call schedule_bot_drive on success; got {calls}"
-    )
+    assert (
+        calls == ["a" + "b" * 11] or len(calls) == 1
+    ), f"timed_rest_mutation must call schedule_bot_drive on success; got {calls}"
 
 
 def test_rest_timed_mutation_seam_schedules_bot_on_exception_path() -> None:
@@ -3019,9 +2953,7 @@ def test_rest_timed_mutation_seam_schedules_bot_on_exception_path() -> None:
     )
 
     async def scenario() -> list[str]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=71
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=71)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry()
@@ -3104,8 +3036,7 @@ def test_rest_timed_mutation_seam_skips_scheduling_on_pure_validation_error() ->
 
     calls = asyncio.run(scenario())
     assert calls == [], (
-        f"validation error with no inline timer must NOT schedule bot; "
-        f"got {calls}"
+        f"validation error with no inline timer must NOT schedule bot; " f"got {calls}"
     )
 
 
@@ -3213,10 +3144,7 @@ def test_rest_lost_deadline_error_still_schedules_bot(_bots_test_app, monkeypatc
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
     resp = client.post(
@@ -3226,9 +3154,7 @@ def test_rest_lost_deadline_error_still_schedules_bot(_bots_test_app, monkeypatc
     )
     # 400 from the ValueError → JSONResponse handler.
     assert resp.status_code == 400, resp.text
-    assert calls == [game_id], (
-        f"lost-deadline REST error path must still schedule bot; got {calls}"
-    )
+    assert calls == [game_id], f"lost-deadline REST error path must still schedule bot; got {calls}"
 
 
 def test_ws_lost_deadline_error_still_schedules_bot(_bots_test_app, monkeypatch) -> None:
@@ -3290,10 +3216,7 @@ def test_ws_lost_deadline_error_still_schedules_bot(_bots_test_app, monkeypatch)
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
 
@@ -3307,9 +3230,7 @@ def test_ws_lost_deadline_error_still_schedules_bot(_bots_test_app, monkeypatch)
     # OR the lost-deadline branch — depending on which fake_apply
     # metadata matches ``client_decision_timed_out``). In either shape
     # the schedule MUST fire.
-    assert len(calls) >= 1, (
-        f"WS lost-deadline path must schedule bot; got {calls}"
-    )
+    assert len(calls) >= 1, f"WS lost-deadline path must schedule bot; got {calls}"
     assert calls[0] == game_id
 
 
@@ -3440,10 +3361,7 @@ def test_rest_real_bot_follows_human_commit_via_portal(_bots_test_app) -> None:
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
 
@@ -3494,10 +3412,7 @@ def test_rest_real_bot_follows_human_commit_via_portal(_bots_test_app) -> None:
     # (planning still open) or current_turn_card (planning finished)
     # depends on how far the engine has progressed.
     wasp = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_wasp"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_wasp"
     )
     assert (
         HeroID("hero_wasp") in game.session.state.pending_inputs
@@ -3577,10 +3492,7 @@ def test_rest_real_bot_records_exactly_one_replay_and_broadcast(
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
 
@@ -3627,21 +3539,20 @@ def test_rest_real_bot_records_exactly_one_replay_and_broadcast(
     with open(replay_path) as f:
         entries = [json.loads(line) for line in f if line.strip()]
     wasp_commits = [
-        e for e in entries
-        if e.get("type") == "commit" and e.get("hero") == "hero_wasp"
+        e for e in entries if e.get("type") == "commit" and e.get("hero") == "hero_wasp"
     ]
-    assert len(wasp_commits) == 1, (
-        f"exactly one replay entry for bot commit expected; got {wasp_commits}"
-    )
+    assert (
+        len(wasp_commits) == 1
+    ), f"exactly one replay entry for bot commit expected; got {wasp_commits}"
 
     # Broadcast: the coordinator's own send seam must have fired exactly
     # once. The tombstone above guarantees the coordinator cannot have
     # applied a second decision — a value != 1 here is a real regression
     # (either scheduling did not fire, or the coordinator raced the
     # tombstone check).
-    assert len(bot_send_calls) == 1, (
-        f"expected exactly one bot broadcast send; got {bot_send_calls}"
-    )
+    assert (
+        len(bot_send_calls) == 1
+    ), f"expected exactly one bot broadcast send; got {bot_send_calls}"
 
 
 def test_ws_real_bot_follows_human_commit_via_portal(_bots_test_app) -> None:
@@ -3670,10 +3581,7 @@ def test_ws_real_bot_follows_human_commit_via_portal(_bots_test_app) -> None:
         pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_arien"
     )
     arien = next(
-        h
-        for team in game.session.state.teams.values()
-        for h in team.heroes
-        if h.id == "hero_arien"
+        h for team in game.session.state.teams.values() for h in team.heroes if h.id == "hero_arien"
     )
     card_id = arien.hand[0].id
 
@@ -3741,9 +3649,9 @@ def test_registry_remove_sets_tombstone_before_cancel() -> None:
     registry.remove(game.game_id)
 
     assert game.removed is True
-    assert fake_task.cancelled_at_removed_flag is True, (
-        "tombstone must be set BEFORE cancel() is called"
-    )
+    assert (
+        fake_task.cancelled_at_removed_flag is True
+    ), "tombstone must be set BEFORE cancel() is called"
 
 
 def test_schedule_bot_drive_bails_on_tombstone() -> None:
@@ -3784,9 +3692,7 @@ def test_save_game_bails_on_tombstone(tmp_path) -> None:
     # which nothing in the lifecycle wiring does. Assert the tombstone-guarded path:
     registry._games[game.game_id] = game  # simulate a rogue re-insert
     registry.save_game(game.game_id)
-    assert not save_path.exists(), (
-        "save_game must observe the tombstone and skip persisting"
-    )
+    assert not save_path.exists(), "save_game must observe the tombstone and skip persisting"
 
 
 def test_registry_remove_mid_bot_compute_no_side_effects() -> None:
@@ -3853,18 +3759,14 @@ def test_registry_remove_mid_bot_compute_no_side_effects() -> None:
     r = asyncio.run(scenario())
     assert r["removed"] is True
     assert r["task_done"] is True
-    assert r["replay_calls"] == [], (
-        f"tombstone must block replay writes; got {r['replay_calls']}"
-    )
+    assert r["replay_calls"] == [], f"tombstone must block replay writes; got {r['replay_calls']}"
     # save may fire from create_game before remove; but no NEW save
     # after remove. Since remove() deletes the file, and no side effect
     # after should re-save, we assert no re-save landed after remove().
     # Practically: the coordinator's save happens inside finalize which
     # runs after apply — tombstone gates that, so save count should be
     # zero from the coordinator side.
-    assert r["send_calls"] == [], (
-        f"tombstone must block broadcast sends; got {r['send_calls']}"
-    )
+    assert r["send_calls"] == [], f"tombstone must block broadcast sends; got {r['send_calls']}"
 
 
 def test_registry_remove_mid_idle_advance_no_side_effects() -> None:
@@ -3909,9 +3811,9 @@ def test_registry_remove_mid_idle_advance_no_side_effects() -> None:
 
     r = asyncio.run(scenario())
     assert r["progressed"] is False, "tombstoned game must never plain-advance"
-    assert r["advance_calls"] == [], (
-        f"tombstoned game must not call session.advance; got {r['advance_calls']}"
-    )
+    assert (
+        r["advance_calls"] == []
+    ), f"tombstoned game must not call session.advance; got {r['advance_calls']}"
 
 
 def test_deadline_worker_bails_on_tombstone() -> None:
@@ -3933,9 +3835,7 @@ def test_deadline_worker_bails_on_tombstone() -> None:
     )
 
     async def scenario() -> dict[str, Any]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=88
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=88)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry()
@@ -3957,9 +3857,9 @@ def test_deadline_worker_bails_on_tombstone() -> None:
         return {"apply_calls": apply_calls}
 
     r = asyncio.run(scenario())
-    assert r["apply_calls"] == [], (
-        f"tombstoned game must not run apply_due_timeouts; got {r['apply_calls']}"
-    )
+    assert (
+        r["apply_calls"] == []
+    ), f"tombstoned game must not run apply_due_timeouts; got {r['apply_calls']}"
 
 
 # --------------------------------------------------------------------------- #
@@ -3989,9 +3889,7 @@ def test_auto_ready_transition_persisted_across_restart(tmp_path) -> None:
     )
 
     async def scenario() -> dict[str, Any]:
-        state = GameSetup.create_game(
-            MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=51
-        )
+        state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], time_control=config, seed=51)
         session = GameSession(state)
         hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
         registry = GameRegistry(save_dir=str(tmp_path))
@@ -4027,9 +3925,7 @@ def test_auto_ready_transition_persisted_across_restart(tmp_path) -> None:
         restored = registry2.get(game.game_id)
         return {
             "restored_status": (
-                restored.session.state.clock.status
-                if restored.session.state.clock
-                else None
+                restored.session.state.clock.status if restored.session.state.clock else None
             ),
             "restored_ready": (
                 list(restored.session.state.clock.ready_hero_ids)
@@ -4039,12 +3935,13 @@ def test_auto_ready_transition_persisted_across_restart(tmp_path) -> None:
         }
 
     r = asyncio.run(scenario())
-    assert r["restored_status"] == ClockStatus.RUNNING, (
-        f"auto-ready transition must persist; restored clock status={r['restored_status']}"
-    )
-    assert set(r["restored_ready"]) == {"hero_wasp", "hero_arien"}, (
-        f"both bot heroes must remain ready after restore; got {r['restored_ready']}"
-    )
+    assert (
+        r["restored_status"] == ClockStatus.RUNNING
+    ), f"auto-ready transition must persist; restored clock status={r['restored_status']}"
+    assert set(r["restored_ready"]) == {
+        "hero_wasp",
+        "hero_arien",
+    }, f"both bot heroes must remain ready after restore; got {r['restored_ready']}"
 
 
 # --------------------------------------------------------------------------- #
@@ -4073,9 +3970,7 @@ def _make_timed_game(
     )
     red = red or ["Wasp"]
     blue = blue or ["Arien"]
-    state = GameSetup.create_game(
-        MAP_PATH, red, blue, time_control=config, seed=seed
-    )
+    state = GameSetup.create_game(MAP_PATH, red, blue, time_control=config, seed=seed)
     session = GameSession(state)
     hero_ids = [str(h.id) for team in state.teams.values() for h in team.heroes]
     registry = GameRegistry()
@@ -4101,9 +3996,9 @@ def test_schedule_bot_drive_noop_when_timed_clock_waiting_for_players() -> None:
         return game.bot_task
 
     task = asyncio.run(scenario())
-    assert task is None, (
-        "schedule_bot_drive must not spawn a task while clock is WAITING_FOR_PLAYERS"
-    )
+    assert (
+        task is None
+    ), "schedule_bot_drive must not spawn a task while clock is WAITING_FOR_PLAYERS"
 
 
 def test_schedule_bot_drive_noop_when_timed_clock_suspended() -> None:
@@ -4121,9 +4016,7 @@ def test_schedule_bot_drive_noop_when_timed_clock_suspended() -> None:
         return game.bot_task
 
     task = asyncio.run(scenario())
-    assert task is None, (
-        "schedule_bot_drive must not spawn a task while clock is SUSPENDED"
-    )
+    assert task is None, "schedule_bot_drive must not spawn a task while clock is SUSPENDED"
 
 
 def test_schedule_bot_drive_noop_when_timed_clock_finished() -> None:
@@ -4132,9 +4025,7 @@ def test_schedule_bot_drive_noop_when_timed_clock_finished() -> None:
     from goa2.domain.time_control import ClockStatus
 
     async def scenario() -> asyncio.Task[Any] | None:
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         clock = game.session.state.clock
         assert clock is not None
         clock.status = ClockStatus.FINISHED
@@ -4166,9 +4057,7 @@ def test_schedule_bot_drive_runs_when_timed_clock_running() -> None:
     from goa2.domain.time_control import ClockStatus
 
     async def scenario() -> asyncio.Task[Any] | None:
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         clock = game.session.state.clock
         assert clock is not None
         # Ready every hero so the clock legitimately reaches RUNNING.
@@ -4184,9 +4073,7 @@ def test_schedule_bot_drive_runs_when_timed_clock_running() -> None:
         return task
 
     task = asyncio.run(scenario())
-    assert task is not None, (
-        "schedule_bot_drive must spawn a task when the clock is RUNNING"
-    )
+    assert task is not None, "schedule_bot_drive must spawn a task when the clock is RUNNING"
 
 
 def test_schedule_bot_drive_runs_when_untimed() -> None:
@@ -4204,9 +4091,7 @@ def test_schedule_bot_drive_runs_when_untimed() -> None:
         return task
 
     task = asyncio.run(scenario())
-    assert task is not None, (
-        "schedule_bot_drive must spawn a task on an un-timed bot game"
-    )
+    assert task is not None, "schedule_bot_drive must spawn a task on an un-timed bot game"
 
 
 def test_bot_worker_bails_when_state_becomes_suspended_mid_flight() -> None:
@@ -4217,9 +4102,7 @@ def test_bot_worker_bails_when_state_becomes_suspended_mid_flight() -> None:
     from goa2.domain.time_control import ClockStatus
 
     async def scenario() -> dict[str, Any]:
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         clock = game.session.state.clock
         assert clock is not None
         clock.status = ClockStatus.RUNNING
@@ -4261,9 +4144,9 @@ def test_bot_worker_bails_when_state_becomes_suspended_mid_flight() -> None:
 
     r = asyncio.run(scenario())
     assert r["status"] == ClockStatus.SUSPENDED_FOR_INACTIVITY
-    assert r["replay_calls"] == [], (
-        f"bot must not apply after clock suspended; got {r['replay_calls']}"
-    )
+    assert (
+        r["replay_calls"] == []
+    ), f"bot must not apply after clock suspended; got {r['replay_calls']}"
 
 
 # --------------------------------------------------------------------------- #
@@ -4282,9 +4165,7 @@ def test_mixed_timed_bots_auto_ready_but_no_action_while_waiting() -> None:
 
     async def scenario() -> dict[str, Any]:
         # Bot on Wasp (blue), human on Arien (red).
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         clock = game.session.state.clock
         assert clock is not None
         assert clock.status == ClockStatus.WAITING_FOR_PLAYERS
@@ -4298,18 +4179,16 @@ def test_mixed_timed_bots_auto_ready_but_no_action_while_waiting() -> None:
         }
 
     r = asyncio.run(scenario())
-    assert r["status"] == ClockStatus.WAITING_FOR_PLAYERS, (
-        "human has not readied yet — clock must remain WAITING_FOR_PLAYERS"
-    )
-    assert "hero_wasp" in r["ready_ids"], (
-        "bot Wasp must have auto-readied even though the clock did not start"
-    )
-    assert "hero_arien" not in r["ready_ids"], (
-        "human Arien must not be pre-readied"
-    )
-    assert r["bot_task"] is None or r["bot_task"].done(), (
-        "no bot task must be running while clock is WAITING_FOR_PLAYERS"
-    )
+    assert (
+        r["status"] == ClockStatus.WAITING_FOR_PLAYERS
+    ), "human has not readied yet — clock must remain WAITING_FOR_PLAYERS"
+    assert (
+        "hero_wasp" in r["ready_ids"]
+    ), "bot Wasp must have auto-readied even though the clock did not start"
+    assert "hero_arien" not in r["ready_ids"], "human Arien must not be pre-readied"
+    assert (
+        r["bot_task"] is None or r["bot_task"].done()
+    ), "no bot task must be running while clock is WAITING_FOR_PLAYERS"
 
 
 def test_mixed_timed_partial_human_ready_still_no_bot_action() -> None:
@@ -4345,17 +4224,17 @@ def test_mixed_timed_partial_human_ready_still_no_bot_action() -> None:
         }
 
     r = asyncio.run(scenario())
-    assert r["status"] == ClockStatus.WAITING_FOR_PLAYERS, (
-        f"only one human readied — clock must remain waiting; got {r['status']}"
-    )
+    assert (
+        r["status"] == ClockStatus.WAITING_FOR_PLAYERS
+    ), f"only one human readied — clock must remain waiting; got {r['status']}"
     # Bots + the ready human.
     assert r["ready_ids"] == {"hero_wasp", "hero_brogan", "hero_min"}, (
         f"ready_hero_ids must reflect exactly the bots + the readied human; "
         f"got {r['ready_ids']}"
     )
-    assert r["bot_task"] is None or r["bot_task"].done(), (
-        "no bot task must be running while a human still owes ready"
-    )
+    assert (
+        r["bot_task"] is None or r["bot_task"].done()
+    ), "no bot task must be running while a human still owes ready"
 
 
 def test_mixed_timed_final_ready_transitions_running_then_bot_acts() -> None:
@@ -4376,9 +4255,7 @@ def test_mixed_timed_final_ready_transitions_running_then_bot_acts() -> None:
     from goa2.server.time_control import now_ms, set_player_ready
 
     async def scenario() -> dict[str, Any]:
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         # Auto-ready the bot.
         await start_bot_lifecycle(game, registry)
         # Human readies — this must be the last-required ready and
@@ -4411,9 +4288,9 @@ def test_mixed_timed_final_ready_transitions_running_then_bot_acts() -> None:
         }
 
     r = asyncio.run(scenario())
-    assert r["status"] == ClockStatus.RUNNING, (
-        f"final ready must have started the clock; got {r['status']}"
-    )
+    assert (
+        r["status"] == ClockStatus.RUNNING
+    ), f"final ready must have started the clock; got {r['status']}"
 
 
 def test_mixed_timed_suspended_no_bot_action() -> None:
@@ -4423,9 +4300,7 @@ def test_mixed_timed_suspended_no_bot_action() -> None:
     from goa2.domain.time_control import ClockStatus
 
     async def scenario() -> dict[str, Any]:
-        registry, game = _make_timed_game(
-            {"hero_wasp": BotSpec(kind="random")}
-        )
+        registry, game = _make_timed_game({"hero_wasp": BotSpec(kind="random")})
         clock = game.session.state.clock
         assert clock is not None
         # Simulate a match that ran, then got suspended.
@@ -4438,9 +4313,7 @@ def test_mixed_timed_suspended_no_bot_action() -> None:
 
     r = asyncio.run(scenario())
     assert r["status"] == ClockStatus.SUSPENDED_FOR_INACTIVITY
-    assert r["bot_task"] is None, (
-        "no bot task must spawn while the clock is SUSPENDED"
-    )
+    assert r["bot_task"] is None, "no bot task must spawn while the clock is SUSPENDED"
 
 
 def test_rest_set_ready_inherits_runnable_gate() -> None:
@@ -4469,6 +4342,7 @@ def test_rest_set_ready_inherits_runnable_gate() -> None:
         from fastapi.testclient import TestClient
 
         from goa2.server.app import create_app
+
         prev_save = os.environ.get("GOA2_SAVE_DIR")
         import tempfile
 
@@ -4496,14 +4370,11 @@ def test_rest_set_ready_inherits_runnable_gate() -> None:
 
                 # Auto-ready the bots via the lifecycle seam (as create
                 # would when wired end-to-end).
-                client.portal.call(
-                    bots_mod.start_bot_lifecycle, game, client.app.state.registry
-                )
+                client.portal.call(bots_mod.start_bot_lifecycle, game, client.app.state.registry)
 
                 # Partial ready — one human.
                 min_token = next(
-                    pt["token"] for pt in game_data["player_tokens"]
-                    if pt["hero_id"] == "hero_min"
+                    pt["token"] for pt in game_data["player_tokens"] if pt["hero_id"] == "hero_min"
                 )
                 resp = client.post(
                     f"/games/{game_id}/ready",
@@ -4513,9 +4384,9 @@ def test_rest_set_ready_inherits_runnable_gate() -> None:
                 assert resp.status_code == 200
                 # The clock must still be WAITING (one human unready).
                 assert game.session.state.clock.status == ClockStatus.WAITING_FOR_PLAYERS
-                assert game.bot_task is None or game.bot_task.done(), (
-                    "no bot task must be running while final human unready"
-                )
+                assert (
+                    game.bot_task is None or game.bot_task.done()
+                ), "no bot task must be running while final human unready"
         finally:
             if prev_save is None:
                 os.environ.pop("GOA2_SAVE_DIR", None)
@@ -4582,6 +4453,7 @@ class _StubISMCTSAgent:
 
     def choose_card(self, state, hero):
         import time as _t
+
         self.calls += 1
         if self.latency:
             _t.sleep(self.latency)
@@ -4593,6 +4465,7 @@ class _StubISMCTSAgent:
 
     def choose_input(self, state, request, *, owned_hero_ids=None):
         import time as _t
+
         self.calls += 1
         if self.latency:
             _t.sleep(self.latency)
@@ -4721,9 +4594,7 @@ def test_ismcts_never_runs_on_event_loop_thread() -> None:
         _install_ismcts_stub(bots_mod, {"hero_wasp": agent})
         # Give the game the search bounds it would get with a real ISMCTS spec.
         game.bot_specs = {
-            "hero_wasp": BotSpec(
-                kind="ismcts", search=SearchSettings(decision_timeout_seconds=1.0)
-            )
+            "hero_wasp": BotSpec(kind="ismcts", search=SearchSettings(decision_timeout_seconds=1.0))
         }
         main_tid = threading.get_ident()
         schedule_bot_drive(game, registry)
@@ -4746,9 +4617,7 @@ def test_event_loop_stays_responsive_during_ismcts_search() -> None:
     async def scenario() -> int:
         bots_mod.reset_ismcts_metrics()
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
-        agent = _mark_stub_ismcts(
-            _StubISMCTSAgent(latency=0.30, card_pick="first"), timeout=5.0
-        )
+        agent = _mark_stub_ismcts(_StubISMCTSAgent(latency=0.30, card_pick="first"), timeout=5.0)
         _install_ismcts_stub(bots_mod, {"hero_wasp": agent})
 
         ticks = 0
@@ -4785,9 +4654,7 @@ def test_search_timeout_falls_back_to_heuristic_and_progresses() -> None:
         bots_mod.reset_ismcts_metrics()
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
         # Tight timeout, big latency → guaranteed timeout.
-        agent = _mark_stub_ismcts(
-            _StubISMCTSAgent(latency=0.5, card_pick="first"), timeout=0.05
-        )
+        agent = _mark_stub_ismcts(_StubISMCTSAgent(latency=0.5, card_pick="first"), timeout=0.05)
         _install_ismcts_stub(bots_mod, {"hero_wasp": agent})
 
         before = bots_mod.ismcts_metrics.fallback_search_timeout
@@ -4832,6 +4699,7 @@ def test_semaphore_serializes_concurrent_searches() -> None:
                 # (asyncio.Lock isn't reentrant-safe from a thread, so we
                 # coordinate through a plain threading.Lock.)
                 import threading as _th
+
                 if not hasattr(_ConcurrentStub, "_tlock"):
                     _ConcurrentStub._tlock = _th.Lock()
                 with _ConcurrentStub._tlock:
@@ -4839,6 +4707,7 @@ def test_semaphore_serializes_concurrent_searches() -> None:
                     max_seen["n"] = max(max_seen["n"], max_seen["cur"])
                 try:
                     import time as _t
+
                     _t.sleep(0.1)
                     return hero.hand[0] if hero.hand else None
                 finally:
@@ -4879,9 +4748,9 @@ def test_semaphore_serializes_concurrent_searches() -> None:
         return max_seen["n"]
 
     peak = asyncio.run(scenario())
-    assert peak <= PROD_SEARCH_CONCURRENCY, (
-        f"observed {peak} concurrent searches; cap is {PROD_SEARCH_CONCURRENCY}"
-    )
+    assert (
+        peak <= PROD_SEARCH_CONCURRENCY
+    ), f"observed {peak} concurrent searches; cap is {PROD_SEARCH_CONCURRENCY}"
 
 
 def test_timed_out_worker_retains_semaphore_until_thread_completes() -> None:
@@ -4911,6 +4780,7 @@ def test_timed_out_worker_retains_semaphore_until_thread_completes() -> None:
             def choose_card(self, state, hero):
                 import threading as _th
                 import time as _t
+
                 self.tid = _th.get_ident()
                 # Loop until the test releases us OR 5s guardrail elapses.
                 for _ in range(500):
@@ -4954,6 +4824,7 @@ def test_timed_out_worker_retains_semaphore_until_thread_completes() -> None:
         # Set a tiny queue timeout for the whole test so the victim doesn't
         # wait forever.
         import automata.search.config as _cfg
+
         original_qt = _cfg.PROD_QUEUE_TIMEOUT_SECONDS
         _cfg.PROD_QUEUE_TIMEOUT_SECONDS = 0.1
         # Also reload the value used inside the module (already imported
@@ -4993,9 +4864,7 @@ def test_timed_out_worker_retains_semaphore_until_thread_completes() -> None:
             bots_mod.PROD_QUEUE_TIMEOUT_SECONDS = original_qt
 
     qtimeout_count, victim_progressed = asyncio.run(scenario())
-    assert qtimeout_count >= 1, (
-        "victim did not observe queue timeout while slots were held"
-    )
+    assert qtimeout_count >= 1, "victim did not observe queue timeout while slots were held"
     assert victim_progressed, "victim did not fall back and progress"
 
 
@@ -5025,9 +4894,7 @@ def test_late_completion_result_never_applied() -> None:
             for h in team.heroes
             if h.id == "hero_wasp"
         )
-        assert len(wasp.hand) >= 2, (
-            "Test requires >=2 cards so late vs fallback picks can differ"
-        )
+        assert len(wasp.hand) >= 2, "Test requires >=2 cards so late vs fallback picks can differ"
         # 1) Probe the deterministic fallback pick. We build a fresh
         #    HeuristicAgent with the same seed the coordinator's per-hero
         #    fallback would use for this game/hero, run it on a state
@@ -5045,18 +4912,13 @@ def test_late_completion_result_never_applied() -> None:
         # probe on a clone so probe advancement doesn't drift the RNG.
         probe_state = clone_state(game.session.state)
         probe_hero = next(
-            h
-            for team in probe_state.teams.values()
-            for h in team.heroes
-            if h.id == "hero_wasp"
+            h for team in probe_state.teams.values() for h in team.heroes if h.id == "hero_wasp"
         )
         fallback_pick = probe_agent.choose_card(probe_state, probe_hero)
         assert fallback_pick is not None
         fallback_card_id = fallback_pick.id
         # Now pick a DIFFERENT card as the late-only pick.
-        distinct_cards = [
-            c.id for c in wasp.hand if c.id != fallback_card_id
-        ]
+        distinct_cards = [c.id for c in wasp.hand if c.id != fallback_card_id]
         assert distinct_cards, (
             "Test precondition: wasp hand must contain a card the "
             "heuristic fallback would not pick"
@@ -5074,7 +4936,8 @@ def test_late_completion_result_never_applied() -> None:
         log_events: list[tuple[str, str]] = []
 
         class _RecReplay:
-            def record_setup(self, **kwargs): pass
+            def record_setup(self, **kwargs):
+                pass
 
             def record_commit(self, hero_id, card_id, r, t):
                 replay_events.append(("commit", f"{hero_id}:{card_id}"))
@@ -5089,7 +4952,8 @@ def test_late_completion_result_never_applied() -> None:
                 replay_events.append(("input", str(hero_id)))
 
         class _RecLogger:
-            def log_game_created(self, *a, **kw): pass
+            def log_game_created(self, *a, **kw):
+                pass
 
             def log_card_commit(self, hero_id, card_id):
                 log_events.append(("commit", f"{hero_id}:{card_id}"))
@@ -5100,13 +4964,17 @@ def test_late_completion_result_never_applied() -> None:
             def log_input_response(self, hero_id, sel):
                 log_events.append(("input", str(hero_id)))
 
-            def log_events(self, ev): pass
+            def log_events(self, ev):
+                pass
 
-            def log_phase_change(self, *a): pass
+            def log_phase_change(self, *a):
+                pass
 
-            def log_input_request(self, *a): pass
+            def log_input_request(self, *a):
+                pass
 
-            def log_game_over(self, w): pass
+            def log_game_over(self, w):
+                pass
 
         game.replay_recorder = _RecReplay()  # type: ignore[assignment]
         game.game_logger = _RecLogger()  # type: ignore[assignment]
@@ -5121,6 +4989,7 @@ def test_late_completion_result_never_applied() -> None:
 
             def choose_card(self, state, hero):
                 import time as _t
+
                 self.calls += 1
                 _t.sleep(0.3)
                 for c in hero.hand:
@@ -5144,11 +5013,7 @@ def test_late_completion_result_never_applied() -> None:
             for h in team.heroes
             if h.id == "hero_wasp"
         )
-        applied = (
-            wasp2.current_turn_card.id
-            if wasp2.current_turn_card is not None
-            else None
-        )
+        applied = wasp2.current_turn_card.id if wasp2.current_turn_card is not None else None
         commit_replays = [e for e in replay_events if e[0] == "commit"]
         commit_logs = [e for e in log_events if e[0] == "commit"]
         return (
@@ -5181,8 +5046,7 @@ def test_late_completion_result_never_applied() -> None:
     )
     # 3) The applied card is NOT the late-only pick.
     assert applied != late_id, (
-        f"Late ISMCTS result was applied: state has {applied!r} which is "
-        f"the late-only pick"
+        f"Late ISMCTS result was applied: state has {applied!r} which is " f"the late-only pick"
     )
     # 4) The late-completion counter incremented (metrics observability).
     assert late_delta >= 1
@@ -5190,12 +5054,8 @@ def test_late_completion_result_never_applied() -> None:
     assert calls >= 1
     # 6) Exactly ONE commit landed on replay and ONE on the log — no
     #    double-apply from the late thread.
-    assert n_replay_commits == 1, (
-        f"Expected exactly one replay commit; got {n_replay_commits}"
-    )
-    assert n_log_commits == 1, (
-        f"Expected exactly one log commit; got {n_log_commits}"
-    )
+    assert n_replay_commits == 1, f"Expected exactly one replay commit; got {n_replay_commits}"
+    assert n_log_commits == 1, f"Expected exactly one log commit; got {n_log_commits}"
 
 
 def test_queue_timeout_falls_back_to_heuristic() -> None:
@@ -5213,6 +5073,7 @@ def test_queue_timeout_falls_back_to_heuristic() -> None:
         class _Holder(_StubISMCTSAgent):
             def choose_card(self, state, hero):
                 import time as _t
+
                 for _ in range(500):
                     if hold_release.is_set():
                         break
@@ -5223,15 +5084,11 @@ def test_queue_timeout_falls_back_to_heuristic() -> None:
         holder_games: list[tuple[GameRegistry, ManagedGame]] = []
         for _ in range(PROD_SEARCH_CONCURRENCY):
             reg, g = _make_game({"hero_wasp": BotSpec(kind="random")})
-            g._bot_agents = {
-                "hero_wasp": _mark_stub_ismcts(_Holder(), timeout=10.0)
-            }
+            g._bot_agents = {"hero_wasp": _mark_stub_ismcts(_Holder(), timeout=10.0)}
             holder_games.append((reg, g))
 
         reg_v, g_v = _make_game({"hero_wasp": BotSpec(kind="random")})
-        g_v._bot_agents = {
-            "hero_wasp": _mark_stub_ismcts(_StubISMCTSAgent(), timeout=5.0)
-        }
+        g_v._bot_agents = {"hero_wasp": _mark_stub_ismcts(_StubISMCTSAgent(), timeout=5.0)}
 
         def factory(g: ManagedGame) -> dict[str, Any]:
             return g._bot_agents  # type: ignore[return-value]
@@ -5289,9 +5146,7 @@ def test_agent_exception_falls_back_to_heuristic() -> None:
     async def scenario() -> tuple[int, bool]:
         bots_mod.reset_ismcts_metrics()
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
-        agent = _mark_stub_ismcts(
-            _StubISMCTSAgent(raise_exc=RuntimeError("boom")), timeout=5.0
-        )
+        agent = _mark_stub_ismcts(_StubISMCTSAgent(raise_exc=RuntimeError("boom")), timeout=5.0)
         _install_ismcts_stub(bots_mod, {"hero_wasp": agent})
 
         before = bots_mod.ismcts_metrics.fallback_error
@@ -5326,9 +5181,7 @@ def test_invalid_bot_decision_falls_back_to_heuristic() -> None:
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
         # Return None in choose_card even when hand is non-empty →
         # IllegalBotDecisionError is raised from the driver.
-        agent = _mark_stub_ismcts(
-            _StubISMCTSAgent(card_pick=None), timeout=5.0
-        )
+        agent = _mark_stub_ismcts(_StubISMCTSAgent(card_pick=None), timeout=5.0)
         _install_ismcts_stub(bots_mod, {"hero_wasp": agent})
 
         before = bots_mod.ismcts_metrics.fallback_invalid_decision
@@ -5367,9 +5220,7 @@ def test_random_heuristic_bots_bypass_bounded_path() -> None:
         return bots_mod.ismcts_metrics.total_calls
 
     calls = asyncio.run(scenario())
-    assert calls == 0, (
-        f"Random-only game triggered ISMCTS-bounded path ({calls} calls)"
-    )
+    assert calls == 0, f"Random-only game triggered ISMCTS-bounded path ({calls} calls)"
 
 
 def test_ismcts_smoke_end_to_end_bounded() -> None:
@@ -5424,9 +5275,7 @@ def test_inspect_next_owner_matches_inspect_next_decision_planning() -> None:
     from automata.runtime.driver import inspect_next_decision, inspect_next_owner
     from goa2.engine.setup import GameSetup
 
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp", "Xargatha"], ["Arien"], seed=11
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp", "Xargatha"], ["Arien"], seed=11)
     # Only ``hero_wasp`` is bot-mapped; the driver should return an owner
     # that is exactly ``hero_wasp`` (not ``hero_xargatha`` even though it
     # is uncommitted) and match the actual decision hero.
@@ -5488,9 +5337,7 @@ def test_bounded_wrapper_skips_semaphore_for_heuristic_owner_with_ismcts_teammat
         _registry, game = _make_game(
             {
                 "hero_wasp": BotSpec(kind="heuristic"),
-                "hero_xargatha": BotSpec(
-                    kind="ismcts", search=SearchSettings(iterations=1)
-                ),
+                "hero_xargatha": BotSpec(kind="ismcts", search=SearchSettings(iterations=1)),
             },
             red=["Wasp", "Xargatha"],
             blue=["Arien"],
@@ -5534,12 +5381,9 @@ def test_bounded_wrapper_skips_semaphore_for_heuristic_owner_with_ismcts_teammat
         # increment (and, given the ISMCTS teammate stub has no
         # latency, no timeout would fire — but the total_calls increment
         # is the smoking-gun assertion).
-        decision = await bots_mod._bounded_inspect_next_decision(
-            game, cloned, agents, None
-        )
+        decision = await bots_mod._bounded_inspect_next_decision(game, cloned, agents, None)
         assert decision is not None, (
-            "bounded wrapper returned no decision even though a bot "
-            "owned the next planning turn"
+            "bounded wrapper returned no decision even though a bot " "owned the next planning turn"
         )
         # The decision must belong to hero_wasp (proving the driver
         # actually walked the Heuristic-owner path).
@@ -5610,9 +5454,7 @@ def test_bounded_wrapper_uses_owner_timeout_not_teammate_timeout() -> None:
         )
 
         # 100ms latency: comfortably under 300ms, over 30ms.
-        ismcts_agent = _mark_stub_ismcts(
-            _StubISMCTSAgent(latency=0.10), timeout=0.30
-        )
+        ismcts_agent = _mark_stub_ismcts(_StubISMCTSAgent(latency=0.10), timeout=0.30)
         heuristic_agent = HeuristicAgent(0)
         _install_ismcts_stub(
             bots_mod,
@@ -5627,9 +5469,7 @@ def test_bounded_wrapper_uses_owner_timeout_not_teammate_timeout() -> None:
         agents = bots_mod.get_or_build_agents(game)
         before_tc_1 = bots_mod.ismcts_metrics.total_calls
         before_st_1 = bots_mod.ismcts_metrics.fallback_search_timeout
-        decision1 = await bots_mod._bounded_inspect_next_decision(
-            game, cloned1, agents, None
-        )
+        decision1 = await bots_mod._bounded_inspect_next_decision(game, cloned1, agents, None)
         assert decision1 is not None
         assert str(decision1.hero_id) == "hero_wasp"
         after_tc_1 = bots_mod.ismcts_metrics.total_calls
@@ -5640,9 +5480,7 @@ def test_bounded_wrapper_uses_owner_timeout_not_teammate_timeout() -> None:
         cloned2 = clone_state(game.session.state)
         before_tc_2 = bots_mod.ismcts_metrics.total_calls
         before_st_2 = bots_mod.ismcts_metrics.fallback_search_timeout
-        decision2 = await bots_mod._bounded_inspect_next_decision(
-            game, cloned2, agents, None
-        )
+        decision2 = await bots_mod._bounded_inspect_next_decision(game, cloned2, agents, None)
         assert decision2 is not None  # Heuristic fallback still produces one
         after_tc_2 = bots_mod.ismcts_metrics.total_calls
         after_st_2 = bots_mod.ismcts_metrics.fallback_search_timeout
@@ -5737,9 +5575,9 @@ def test_fallback_agents_do_not_share_rng() -> None:
     # Two independent HeuristicAgent instances with different seeds
     # produce differently-ordered internal RNG state; that is the
     # invariant we prove — not a specific card choice.
-    assert fb_wasp._rng.random() != fb_xarg._rng.random(), (
-        "Per-hero fallback RNG streams are coupled (identical seeds)"
-    )
+    assert (
+        fb_wasp._rng.random() != fb_xarg._rng.random()
+    ), "Per-hero fallback RNG streams are coupled (identical seeds)"
 
 
 def test_cancel_all_bot_tasks_drains_in_flight_search_futures() -> None:
@@ -5755,6 +5593,7 @@ def test_cancel_all_bot_tasks_drains_in_flight_search_futures() -> None:
         # Force-block agent inside compute using a threading Event so we
         # can control when the search finishes on its executor thread.
         import threading as _th
+
         release = _th.Event()
 
         class _BlockingAgent(_StubISMCTSAgent):
@@ -5775,12 +5614,10 @@ def test_cancel_all_bot_tasks_drains_in_flight_search_futures() -> None:
             if bots_mod._in_flight_search_futures:
                 break
             await asyncio.sleep(0.01)
-        assert bots_mod._in_flight_search_futures, (
-            "search future was never registered — worker didn't dispatch"
-        )
-        assert game._bot_search_futures, (
-            "per-game future set was never populated"
-        )
+        assert (
+            bots_mod._in_flight_search_futures
+        ), "search future was never registered — worker didn't dispatch"
+        assert game._bot_search_futures, "per-game future set was never populated"
 
         # Release the agent so ``cancel_all_bot_tasks`` can drain within
         # its bounded timeout. In production the shutdown drain waits up
@@ -5794,12 +5631,8 @@ def test_cancel_all_bot_tasks_drains_in_flight_search_futures() -> None:
         )
 
     module_remaining, game_remaining = asyncio.run(scenario())
-    assert module_remaining == 0, (
-        f"module-level tracker still holds {module_remaining} future(s)"
-    )
-    assert game_remaining == 0, (
-        f"per-game tracker still holds {game_remaining} future(s)"
-    )
+    assert module_remaining == 0, f"module-level tracker still holds {module_remaining} future(s)"
+    assert game_remaining == 0, f"per-game tracker still holds {game_remaining} future(s)"
 
 
 def test_cancel_all_bot_tasks_respects_drain_timeout() -> None:
@@ -5823,6 +5656,7 @@ def test_cancel_all_bot_tasks_respects_drain_timeout() -> None:
         registry, game = _make_game({"hero_wasp": BotSpec(kind="random")})
 
         import threading as _th
+
         release = _th.Event()
 
         class _BlockingAgent(_StubISMCTSAgent):
@@ -5843,9 +5677,7 @@ def test_cancel_all_bot_tasks_respects_drain_timeout() -> None:
             if bots_mod._in_flight_search_futures:
                 break
             await asyncio.sleep(0.01)
-        assert bots_mod._in_flight_search_futures, (
-            "search future was never dispatched"
-        )
+        assert bots_mod._in_flight_search_futures, "search future was never dispatched"
         # Capture the specific future so we can assert on it later.
         (tracked_future,) = tuple(bots_mod._in_flight_search_futures)
         assert tracked_future in game._bot_search_futures
@@ -5853,30 +5685,24 @@ def test_cancel_all_bot_tasks_respects_drain_timeout() -> None:
         # Drain with a short timeout — must return, must not raise, must
         # NOT cancel the future.
         start = asyncio.get_event_loop().time()
-        await bots_mod.cancel_all_bot_tasks(
-            registry, drain_timeout_seconds=0.15
-        )
+        await bots_mod.cancel_all_bot_tasks(registry, drain_timeout_seconds=0.15)
         elapsed = asyncio.get_event_loop().time() - start
 
         # 1) Drain honored its timeout (didn't hang for the barrier).
-        assert elapsed < 1.5, (
-            f"drain took {elapsed:.3f}s; expected <1.5s"
-        )
+        assert elapsed < 1.5, f"drain took {elapsed:.3f}s; expected <1.5s"
         # 2) The future is STILL pending — not cancelled, not done.
         assert not tracked_future.done(), (
             "drain cancelled the future — this violates the semaphore-slot "
             "invariant (only the done-callback may release)"
         )
-        assert not tracked_future.cancelled(), (
-            "drain cancelled the future — must never happen"
-        )
+        assert not tracked_future.cancelled(), "drain cancelled the future — must never happen"
         # 3) It's still tracked in BOTH sets (module + per-game).
-        assert tracked_future in bots_mod._in_flight_search_futures, (
-            "future was removed from the module tracker while still pending"
-        )
-        assert tracked_future in game._bot_search_futures, (
-            "future was removed from the per-game tracker while still pending"
-        )
+        assert (
+            tracked_future in bots_mod._in_flight_search_futures
+        ), "future was removed from the module tracker while still pending"
+        assert (
+            tracked_future in game._bot_search_futures
+        ), "future was removed from the per-game tracker while still pending"
 
         # 4) Semaphore capacity is NOT available to a new caller — the
         #    pending future is still holding its slot. We probe by
@@ -5927,12 +5753,12 @@ def test_cancel_all_bot_tasks_respects_drain_timeout() -> None:
                 break
             await asyncio.sleep(0.01)
         assert tracked_future.done(), "future never completed after release"
-        assert tracked_future not in bots_mod._in_flight_search_futures, (
-            "done-callback failed to remove future from module tracker"
-        )
-        assert tracked_future not in game._bot_search_futures, (
-            "done-callback failed to remove future from per-game tracker"
-        )
+        assert (
+            tracked_future not in bots_mod._in_flight_search_futures
+        ), "done-callback failed to remove future from module tracker"
+        assert (
+            tracked_future not in game._bot_search_futures
+        ), "done-callback failed to remove future from per-game tracker"
         # 6) Semaphore capacity is fully restored: acquire N slots
         #    concurrently, all must succeed.
         acquired2 = 0
@@ -5986,9 +5812,7 @@ def test_illegal_ismcts_input_falls_back_to_heuristic() -> None:
             InputOption(id="hero_brogan", text="Brogan"),
         ],
     )
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp"], ["Arien", "Brogan"], seed=17
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien", "Brogan"], seed=17)
     with pytest.raises(bots_mod.IllegalBotDecisionError) as exc:
         _inspect_input_request(state, {"hero_wasp": _BadInputAgent()}, request)
     assert "not-a-legal-option" in str(exc.value)
@@ -6008,9 +5832,7 @@ def test_driver_accepts_skip_when_can_skip_true() -> None:
         def choose_input(self, state, request, *, owned_hero_ids=None):
             return "SKIP"
 
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp"], ["Arien"], seed=19
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], seed=19)
 
     # Legal SKIP:
     can_skip_request = InputRequest(
@@ -6019,9 +5841,7 @@ def test_driver_accepts_skip_when_can_skip_true() -> None:
         options=[InputOption(id="hero_arien", text="Arien")],
         can_skip=True,
     )
-    decision = _inspect_input_request(
-        state, {"hero_wasp": _SkipAgent()}, can_skip_request
-    )
+    decision = _inspect_input_request(state, {"hero_wasp": _SkipAgent()}, can_skip_request)
     assert decision is not None
     assert decision.selection == "SKIP"
 
@@ -6033,9 +5853,7 @@ def test_driver_accepts_skip_when_can_skip_true() -> None:
         can_skip=False,
     )
     with pytest.raises(bots_mod.IllegalBotDecisionError):
-        _inspect_input_request(
-            state, {"hero_wasp": _SkipAgent()}, no_skip_request
-        )
+        _inspect_input_request(state, {"hero_wasp": _SkipAgent()}, no_skip_request)
 
 
 def test_driver_accepts_hex_dict_selection() -> None:
@@ -6063,12 +5881,8 @@ def test_driver_accepts_hex_dict_selection() -> None:
             InputOption.from_value(Hex(q=2, r=-2, s=0)),
         ],
     )
-    state = GameSetup.create_game(
-        MAP_PATH, ["Wasp"], ["Arien"], seed=21
-    )
-    decision = _inspect_input_request(
-        state, {"hero_wasp": _HexAgent()}, request
-    )
+    state = GameSetup.create_game(MAP_PATH, ["Wasp"], ["Arien"], seed=21)
+    decision = _inspect_input_request(state, {"hero_wasp": _HexAgent()}, request)
     assert decision is not None
     assert decision.selection == hex_dict
 
@@ -6136,11 +5950,7 @@ def test_bounded_wrapper_falls_back_on_illegal_ismcts_input() -> None:
             for h in team.heroes
             if h.id == "hero_wasp"
         )
-        applied = (
-            wasp.current_turn_card.id
-            if wasp.current_turn_card is not None
-            else None
-        )
+        applied = wasp.current_turn_card.id if wasp.current_turn_card is not None else None
         return after - before, applied
 
     delta, applied = asyncio.run(scenario())
@@ -6234,9 +6044,9 @@ def _wait_for_game_over(client, game_id: str, *, timeout: float = 30.0) -> None:
         state = game.session.state
         return state.phase.value == "GAME_OVER"
 
-    assert _pump_until(client, _check, timeout=timeout), (
-        f"game {game_id} did not reach GAME_OVER within {timeout}s"
-    )
+    assert _pump_until(
+        client, _check, timeout=timeout
+    ), f"game {game_id} did not reach GAME_OVER within {timeout}s"
 
 
 def _create_bot_game(
@@ -6342,7 +6152,7 @@ def test_e2e_heuristic_vs_random_completes_via_public_api(_bots_test_app) -> Non
         },
     )
     game_id = game_data["game_id"]
-    _wait_for_game_over(client, game_id, timeout=30.0)
+    _wait_for_game_over(client, game_id, timeout=90.0)
 
     game = client.app.state.registry.get(game_id)
     winner = game.last_result.winner if game.last_result else None
@@ -6399,17 +6209,16 @@ def test_e2e_human_vs_heuristic_handoff_stops_at_human(_bots_test_app) -> None:
         # Bot has committed a card (planning slot has a pending_input or
         # pending_second_card or is otherwise "done").
         state = game.session.state
-        return (
-            HeroID("hero_wasp") in state.pending_inputs
-            or wasp.current_turn_card is not None
-        )
+        return HeroID("hero_wasp") in state.pending_inputs or wasp.current_turn_card is not None
 
-    assert _pump_until(client, _bot_ready, timeout=10.0), (
-        "heuristic bot must plan without waiting for human"
-    )
+    assert _pump_until(
+        client, _bot_ready, timeout=10.0
+    ), "heuristic bot must plan without waiting for human"
 
     # Now the human commits.
-    view = client.get(f"/games/{game_id}", headers={"Authorization": f"Bearer {arien_token}"}).json()
+    view = client.get(
+        f"/games/{game_id}", headers={"Authorization": f"Bearer {arien_token}"}
+    ).json()
     arien_hand = None
     for team_data in view["view"]["teams"].values():
         for hero in team_data["heroes"]:
@@ -6436,9 +6245,9 @@ def test_e2e_human_vs_heuristic_handoff_stops_at_human(_bots_test_app) -> None:
         # only acceptable when a bot is genuinely computing.
         return task is None or task.done()
 
-    assert _pump_until(client, _handoff_complete, timeout=15.0), (
-        "coordinator must exit cleanly when next decision belongs to human"
-    )
+    assert _pump_until(
+        client, _handoff_complete, timeout=15.0
+    ), "coordinator must exit cleanly when next decision belongs to human"
 
     game = client.app.state.registry.get(game_id)
     # If not GAME_OVER, the pending input (if any) must be for the human
@@ -6449,14 +6258,16 @@ def test_e2e_human_vs_heuristic_handoff_stops_at_human(_bots_test_app) -> None:
             # The pending player_id must not resolve to a bot-only entity.
             # It may be team:RED (which contains the human), a hero id
             # for the human, or "simultaneous" (which contains the human).
-            assert req.player_id != "hero_wasp", (
-                f"pending request must not be for the bot alone: {req}"
-            )
+            assert (
+                req.player_id != "hero_wasp"
+            ), f"pending request must not be for the bot alone: {req}"
     assert game.bot_task is None or game.bot_task.done()
 
     # Hidden info: opponent (bot) hand contents must NOT be visible in
     # the human's view. Wasp's hand must appear as counts / hidden cards.
-    view2 = client.get(f"/games/{game_id}", headers={"Authorization": f"Bearer {arien_token}"}).json()
+    view2 = client.get(
+        f"/games/{game_id}", headers={"Authorization": f"Bearer {arien_token}"}
+    ).json()
     for team_data in view2["view"]["teams"].values():
         for hero in team_data["heroes"]:
             if hero["id"] == "hero_wasp":
@@ -6618,14 +6429,12 @@ def test_e2e_restart_while_bot_task_pending_resumes_safely(tmp_path, monkeypatch
             async def _in_flight_compute() -> bool:
                 assert ready_event is not None
                 game = client.app.state.registry.get(game_id)
-                task_alive = (
-                    game.bot_task is not None and not game.bot_task.done()
-                )
+                task_alive = game.bot_task is not None and not game.bot_task.done()
                 return task_alive and ready_event.is_set()
 
-            assert _pump_until(client, _in_flight_compute, timeout=10.0), (
-                "expected bot_task alive AND barrier ready before shutdown"
-            )
+            assert _pump_until(
+                client, _in_flight_compute, timeout=10.0
+            ), "expected bot_task alive AND barrier ready before shutdown"
             # No pre-exit release: the wrapper releases inside its own
             # finally-clause, AFTER real_cancel_all_bot_tasks has run.
         # TestClient.__exit__ runs the lifespan finally block, which
@@ -6633,18 +6442,16 @@ def test_e2e_restart_while_bot_task_pending_resumes_safely(tmp_path, monkeypatch
         # await real cancel → release barrier → shutdown complete.
 
         # (a) The shutdown wrapper actually ran.
-        assert shutdown_started["value"], (
-            "cancel_all_bot_tasks wrapper must run during lifespan exit"
-        )
-        assert shutdown_completed["value"], (
-            "cancel_all_bot_tasks wrapper must complete (release fired)"
-        )
+        assert shutdown_started[
+            "value"
+        ], "cancel_all_bot_tasks wrapper must run during lifespan exit"
+        assert shutdown_completed[
+            "value"
+        ], "cancel_all_bot_tasks wrapper must complete (release fired)"
         # (b) At least one bot task was alive going into shutdown, and
         # every such task is now cancelled — not merely done, but
         # explicitly cancelled by ``cancel_all_bot_tasks``.
-        assert cancelled_task_refs, (
-            "expected at least one alive bot_task at shutdown entry"
-        )
+        assert cancelled_task_refs, "expected at least one alive bot_task at shutdown entry"
         for task in cancelled_task_refs:
             assert task.done(), f"task {task!r} must be done post-shutdown"
             # An outer worker cancelled while its inner ``to_thread``
@@ -6674,9 +6481,11 @@ def test_e2e_restart_while_bot_task_pending_resumes_safely(tmp_path, monkeypatch
             with open(replay_path) as f:
                 entries = [json.loads(line) for line in f if line.strip()]
             for e in entries:
-                assert e.get("type") not in ("commit", "pass", "input"), (
-                    f"barrier-interrupted decision left a replay entry: {e!r}"
-                )
+                assert e.get("type") not in (
+                    "commit",
+                    "pass",
+                    "input",
+                ), f"barrier-interrupted decision left a replay entry: {e!r}"
 
         # (d) Save file exists (from initial ``start_bot_lifecycle``),
         # but the persisted state has not been advanced by a bot
@@ -6690,9 +6499,7 @@ def test_e2e_restart_while_bot_task_pending_resumes_safely(tmp_path, monkeypatch
 
         # Restore real agent factory before second app boots.
         bots_mod.agent_for_spec = real_agent_for_spec  # type: ignore[assignment]
-        monkeypatch.setattr(
-            app_module, "cancel_all_bot_tasks", real_cancel_all_bot_tasks
-        )
+        monkeypatch.setattr(app_module, "cancel_all_bot_tasks", real_cancel_all_bot_tasks)
         # The second app now exercises the unwrapped production shutdown seam.
 
         # No module-level bounded-search futures leaked (Random path
@@ -6822,9 +6629,9 @@ def test_e2e_ismcts_bounded_timeout_fallback_via_public_config(_bots_test_app) -
     # phase or replay entries or pending state.
     assert state.round >= 0
     metrics = bots_mod.ismcts_metrics
-    assert metrics.total_calls > 0, (
-        f"ISMCTS bot must have been consulted at least once; metrics={metrics}"
-    )
+    assert (
+        metrics.total_calls > 0
+    ), f"ISMCTS bot must have been consulted at least once; metrics={metrics}"
     fallback_count = (
         metrics.fallback_search_timeout
         + metrics.fallback_error
@@ -6890,9 +6697,7 @@ def test_e2e_websocket_receives_state_update_after_bot_action(_bots_test_app) ->
     assert arien_hand
     card_id = arien_hand[0]["id"]
 
-    with client.websocket_connect(
-        f"/games/{game_id}/ws?token={arien_token}"
-    ) as ws:
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws:
 
         def _receive_with_timeout(per_message_timeout: float = 5.0) -> dict:
             """Bounded ``ws.receive_json`` via a daemon-thread relay.
@@ -6921,8 +6726,7 @@ def test_e2e_websocket_receives_state_update_after_bot_action(_bots_test_app) ->
                 kind, payload = q.get(timeout=per_message_timeout)
             except queue.Empty as exc:
                 raise TimeoutError(
-                    f"ws.receive_json did not return within "
-                    f"{per_message_timeout}s"
+                    f"ws.receive_json did not return within " f"{per_message_timeout}s"
                 ) from exc
             if kind == "err":
                 raise payload  # type: ignore[misc]
@@ -6958,9 +6762,7 @@ def test_e2e_websocket_receives_state_update_after_bot_action(_bots_test_app) ->
             if saw_action_result and saw_state_update:
                 break
 
-        assert saw_action_result, (
-            "human WS COMMIT_CARD must produce a direct ACTION_RESULT reply"
-        )
+        assert saw_action_result, "human WS COMMIT_CARD must produce a direct ACTION_RESULT reply"
         assert saw_state_update, (
             "WS handler must broadcast a STATE_UPDATE after mutation "
             "(via _send_captured_broadcast); connected subscriber did "
@@ -7098,40 +6900,34 @@ def test_e2e_no_orphan_bot_tasks_after_shutdown(tmp_path, monkeypatch) -> None:
             async def _in_flight() -> bool:
                 assert ready_event is not None
                 game = client.app.state.registry.get(game_id)
-                task_alive = (
-                    game.bot_task is not None and not game.bot_task.done()
-                )
+                task_alive = game.bot_task is not None and not game.bot_task.done()
                 return task_alive and ready_event.is_set()
 
-            assert _pump_until(client, _in_flight, timeout=10.0), (
-                "expected bot_task alive AND barrier ready before shutdown"
-            )
+            assert _pump_until(
+                client, _in_flight, timeout=10.0
+            ), "expected bot_task alive AND barrier ready before shutdown"
 
             game_ref = client.app.state.registry.get(game_id)
             task_ref = game_ref.bot_task
             assert task_ref is not None
-            assert not task_ref.done(), (
-                "bot_task must be alive just before shutdown"
-            )
+            assert not task_ref.done(), "bot_task must be alive just before shutdown"
             # No pre-exit release: the wrapper releases the barrier
             # inside its own finally block, AFTER the real cancel has
             # already surfaced ``CancelledError`` on the outer task.
         # TestClient.__exit__ ran ``lifespan`` cleanup via our wrapper.
 
         # (a) The shutdown wrapper actually ran cancel-then-release.
-        assert shutdown_started["value"], (
-            "cancel_all_bot_tasks wrapper must run during lifespan exit"
-        )
-        assert shutdown_completed["value"], (
-            "cancel_all_bot_tasks wrapper must complete (release fired)"
-        )
+        assert shutdown_started[
+            "value"
+        ], "cancel_all_bot_tasks wrapper must run during lifespan exit"
+        assert shutdown_completed[
+            "value"
+        ], "cancel_all_bot_tasks wrapper must complete (release fired)"
         # (b) The task snapshot we captured is now cancelled — not
         # merely done. If the runtime observed a non-CancelledError
         # completion instead, accept an explicit CancelledError
         # exception as equivalent evidence — but never silent success.
-        assert cancelled_task_refs, (
-            "expected at least one alive bot_task at shutdown entry"
-        )
+        assert cancelled_task_refs, "expected at least one alive bot_task at shutdown entry"
         for task in cancelled_task_refs:
             assert task.done()
             if not task.cancelled():
@@ -7150,12 +6946,10 @@ def test_e2e_no_orphan_bot_tasks_after_shutdown(tmp_path, monkeypatch) -> None:
         # leak canary — a bounded-ISMCTS future accidentally
         # spawned by this game would fail here.
         assert not game_ref._bot_search_futures, (
-            f"bounded-search futures leaked past shutdown: "
-            f"{game_ref._bot_search_futures}"
+            f"bounded-search futures leaked past shutdown: " f"{game_ref._bot_search_futures}"
         )
         assert not bots_mod._in_flight_search_futures, (
-            f"module-wide bounded-search futures leaked: "
-            f"{bots_mod._in_flight_search_futures}"
+            f"module-wide bounded-search futures leaked: " f"{bots_mod._in_flight_search_futures}"
         )
     finally:
         bots_mod.agent_for_spec = real_agent_for_spec  # type: ignore[assignment]
@@ -7197,9 +6991,9 @@ def test_e2e_random_vs_random_persistence_between_mutations(_bots_test_app) -> N
 
     # Multiple save events must have happened for this game_id.
     my_saves = [g for g in save_calls if g == game_id]
-    assert len(my_saves) >= 3, (
-        f"expected multiple saves during a full bot game; got {len(my_saves)}"
-    )
+    assert (
+        len(my_saves) >= 3
+    ), f"expected multiple saves during a full bot game; got {len(my_saves)}"
 
 
 def test_e2e_spectator_view_visible_but_hidden_info_hidden(_bots_test_app) -> None:
@@ -7255,8 +7049,7 @@ def test_e2e_spectator_view_visible_but_hidden_info_hidden(_bots_test_app) -> No
             )
             deck = hero["deck"]
             assert isinstance(deck, dict), (
-                f"spectator deck must be a count dict, got {type(deck).__name__} "
-                f"({deck!r})"
+                f"spectator deck must be a count dict, got {type(deck).__name__} " f"({deck!r})"
             )
             assert "count" in deck, f"spectator deck must expose count: {deck}"
             assert isinstance(deck["count"], int) and deck["count"] >= 0
@@ -7268,9 +7061,7 @@ def test_e2e_spectator_view_visible_but_hidden_info_hidden(_bots_test_app) -> No
                 f"spectator spellbook must not be a list (would leak "
                 f"prepared-spell identities); got {spellbook!r}"
             )
-    assert heroes_seen >= 2, (
-        f"expected at least 2 heroes in view; got {heroes_seen}"
-    )
+    assert heroes_seen >= 2, f"expected at least 2 heroes in view; got {heroes_seen}"
 
     # --- Human view: own hand present, opponent hand empty. ---
     resp = client.get(
@@ -7289,9 +7080,7 @@ def test_e2e_spectator_view_visible_but_hidden_info_hidden(_bots_test_app) -> No
                 # Own hero: hand is a non-empty list of card dicts (the
                 # initial hand is dealt at game creation).
                 assert isinstance(hero["hand"], list), hero["hand"]
-                assert len(hero["hand"]) > 0, (
-                    "own hero's hand must be visible in view"
-                )
+                assert len(hero["hand"]) > 0, "own hero's hand must be visible in view"
                 # Own deck: list of card views, not a count dict.
                 assert isinstance(hero["deck"], list), hero["deck"]
             elif hero["id"] == "hero_wasp":
@@ -7299,14 +7088,11 @@ def test_e2e_spectator_view_visible_but_hidden_info_hidden(_bots_test_app) -> No
                 # Opponent (bot) hero from Arien's perspective: hand
                 # empty, deck is count dict.
                 assert hero["hand"] == [], (
-                    f"human MUST see empty hand for opposing hero_wasp; "
-                    f"got {hero['hand']!r}"
+                    f"human MUST see empty hand for opposing hero_wasp; " f"got {hero['hand']!r}"
                 )
                 assert isinstance(hero["deck"], dict), hero["deck"]
                 assert "count" in hero["deck"]
-    assert arien_seen and wasp_seen, (
-        "expected both hero_arien and hero_wasp in Arien's view"
-    )
+    assert arien_seen and wasp_seen, "expected both hero_arien and hero_wasp in Arien's view"
 
     # --- Sanity: the response's top-level input_request is scoped ---
     # A spectator gets None for input_request; a human sees only
