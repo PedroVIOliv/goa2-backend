@@ -92,7 +92,11 @@ Explicit non-goals for this integration (still parked):
 | ismcts vs ismcts_noprior | 100% (4 games) | directional — prior helps |
 
 ISMCTS rows are tiny-sample (games are expensive); treat as directional until a
-larger deliberate run.
+larger deliberate run. The targeted Rung-1 protocol now adds a promoted
+ISMCTS-vs-Heuristic result: **12-0 over 6 paired seeds** at 4 iterations and a
+1-round cutoff, with no max-step terminations and a 95% Wilson interval of
+**[75.7%, 100%]**. The exact source and protocol identity are recorded in
+`baselines.json`.
 
 ## Next rungs
 
@@ -118,9 +122,17 @@ Cheap, high-confidence wins before any ML:
    selection does not, yet.
 2. **Larger, deliberate ISMCTS eval.** Establish a *real* (not 4-game) win-rate
    for ismcts-vs-heuristic and prior-on-vs-off, so Rung-1 gains are measurable.
-   Run in the background; record numbers. **PARTIAL** — 16-iter/40-game runs are
-   >1h and impractical as a loop; the PUCT comparison used 8 iters/12 games
-   (~30min). Need a cheaper, repeatable eval protocol (fewer iters, or cache).
+   Run in the background; record numbers. **PARTIAL** — the deterministic,
+   paired JSONL protocol now resumes exact missing cases and rejects stale
+   source/config identities. The canonical 4-iteration/1-round screen completed
+   ISMCTS-vs-Heuristic at **12-0**, passing both the point-estimate and Wilson
+   promotion gates. Prior-on-vs-off remains incomplete at **5/12** (prior-on
+   leads 4-1): the next game ran for more than 98 minutes without reaching the
+   20,000-step cap, so no prior-strength claim is promoted from that run. Each
+   targeted case now runs in a one-shot spawned process with a configurable
+   wall-clock limit (`--case-timeout-seconds`, default **1800 s**). A timeout is
+   hard-terminated, checkpointed as `wall_clock_timeout`, and blocks both gates;
+   changing the limit creates a fresh protocol identity for an explicit retry.
 3. **Tune** `iterations`, `cutoff_rounds`, `uct_c`/`puct_c`, widening via the
    matrix. Gate: search strength must not regress. **TODO.**
 
