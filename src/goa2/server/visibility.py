@@ -13,16 +13,9 @@ from typing import Any
 
 from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequest
-from goa2.domain.models import Card, TeamColor, Token
+from goa2.domain.models import Card, Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
-
-
-def _viewer_team(state: GameState, for_hero_id: str | None) -> TeamColor | None:
-    if for_hero_id is None:
-        return None
-    hero = state.get_hero(HeroID(for_hero_id))
-    return hero.team if hero else None
 
 
 def _can_answer_input(state: GameState, expected: str, for_hero_id: str | None) -> bool:
@@ -195,10 +188,7 @@ def _sanitize_card_values(
 def _token_identity_visible(state: GameState, token: Token, for_hero_id: str | None) -> bool:
     if not token.is_facedown:
         return True
-    viewer_team = _viewer_team(state, for_hero_id)
-    owner = state.get_hero(token.owner_id) if token.owner_id else None
-    owner_team = owner.team if owner else None
-    return bool(viewer_team is not None and viewer_team == owner_team)
+    return bool(for_hero_id is not None and token.owner_id == for_hero_id)
 
 
 def events_for_viewer(

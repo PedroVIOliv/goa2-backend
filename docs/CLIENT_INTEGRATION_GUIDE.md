@@ -707,7 +707,7 @@ The `input_request` key is present only when the receiving hero is allowed to an
 
 The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID for an individual victory. Check for its presence with `msg.get("winner")` rather than assuming it exists.
 
-The `events` key is only present on **broadcasts that follow a mutation**. It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. Event metadata is projected independently for each recipient: hidden card IDs/names are `null` (or omitted from ID lists), and facedown mine placement reports `metadata.token_type: "mine"` outside the owning team. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
+The `events` key is only present on **broadcasts that follow a mutation**. It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. Event metadata is projected independently for each recipient: hidden card IDs/names are `null` (or omitted from ID lists), and facedown mine placement reports `metadata.token_type: "mine"` to everyone except the token's owner. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
 
 #### `ACTION_RESULT`
 
@@ -1160,10 +1160,10 @@ Tokens are board objects (obstacles, traps, bombs, etc.) that are distinct from 
 |-------|------|-------------|
 | `id` | string | Unique token ID (also appears in `entity_locations` and tile `occupant_id`). Facedown mine IDs are opaque and must not be interpreted as a subtype or supply order |
 | `name` | string | Display name |
-| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`, `"magma"`, `"glitch"`, `"illusion"`, `"familiar"`. For facedown enemy tokens, this is `"mine"` (true type hidden) |
+| `token_type` | string | Token type: `"smoke_bomb"`, `"grenade"`, `"mine_blast"`, `"mine_dud"`, `"zombie"`, `"pyro"`, `"barrier"`, `"ice"`, `"totem"`, `"tree"`, `"rock"`, `"magma"`, `"glitch"`, `"illusion"`, `"familiar"`. For facedown tokens the viewer does not own, this is `"mine"` (true type hidden) |
 | `owner_id` | string/null | Hero ID that owns/placed this token |
 | `is_passable` | boolean | If `true`, units can move through this token but not land on it. Mine tokens are passable |
-| `is_facedown` | boolean | If `true`, the token's actual type is hidden from opponents. The owning team sees the real `token_type`; opponents see `"mine"` |
+| `is_facedown` | boolean | If `true`, the token's actual type is hidden from everyone but its owner. Only the owning hero sees the real `token_type`; teammates, opponents, and spectators see `"mine"` |
 | `hex` | hex | Current position on the board |
 
 Tokens are obstacles — any tile with a token as `occupant_id` is impassable unless the token is **passable** (e.g. mines). Passable tokens can be traversed but not landed on. When an enemy hero moves through a passable mine token, the mine is triggered and removed. Blast mines (`mine_blast`) force the moved hero to discard a card; dud mines (`mine_dud`) have no effect. Some effects can make specific tokens unselectable by enemy actions, such as Tali's Venerated Totem.
@@ -1455,7 +1455,7 @@ Events describe what happened during a game action. They are meant for animation
 | `UNIT_MOVED` | A unit walked to a new hex | `actor_id`, `from_hex`, `to_hex` |
 | `TOKEN_MOVED` | A token moved to a new hex | `target_id`, `from_hex`, `to_hex` |
 | `UNIT_PLACED` | A unit was placed on the board (spawn, summon) | `actor_id`, `to_hex` |
-| `TOKEN_PLACED` | A token was placed on the board. `metadata.token_type` is the real type for visible tokens/the owning team and `"mine"` for a facedown enemy mine or spectator | `actor_id`, `target_id`, `to_hex`, `metadata.token_type` |
+| `TOKEN_PLACED` | A token was placed on the board. `metadata.token_type` is the real type for visible tokens and for the owner of a facedown mine, and `"mine"` for everyone else (teammates, opponents, spectators) | `actor_id`, `target_id`, `to_hex`, `metadata.token_type` |
 | `BOARD_ENTITY_PLACED` | A non-unit, non-token board entity was placed or repositioned | `actor_id`, `target_id`, `from_hex`, `to_hex`, `metadata.entity_kind` |
 | `UNIT_PUSHED` | A unit was forcibly moved | `actor_id`, `from_hex`, `to_hex` |
 | `TOKEN_PUSHED` | A token was forcibly moved | `actor_id`, `target_id`, `from_hex`, `to_hex` |

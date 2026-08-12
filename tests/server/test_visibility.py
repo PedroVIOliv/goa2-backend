@@ -91,6 +91,23 @@ def test_facedown_mine_placement_event_masks_subtype_per_recipient():
     assert revealed["metadata"]["token_type"] == "mine_blast"
 
 
+def test_facedown_mine_placement_event_masks_subtype_from_allies():
+    state = GameSetup.create_game(MAP_PATH, ["Arien", "Brogan"], ["Wasp", "Tali"], seed=1)
+    mine = state.token_pool[TokenType.MINE_BLAST][0]
+    mine.owner_id = "hero_arien"
+    destination = next(hex_ for hex_, tile in state.board.tiles.items() if not tile.is_occupied)
+    state.place_entity(mine.id, destination)
+    placed = GameEvent(
+        event_type=GameEventType.TOKEN_PLACED,
+        actor_id="hero_arien",
+        target_id=mine.id,
+        metadata={"token_type": TokenType.MINE_BLAST.value},
+    ).model_dump()
+
+    ally_event = events_for_viewer([placed], state, "hero_brogan")[0]
+    assert ally_event["metadata"]["token_type"] == "mine"
+
+
 def test_event_metadata_hides_private_card_ids_and_names():
     state = _state()
     arien = state.get_hero("hero_arien")
