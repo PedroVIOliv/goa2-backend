@@ -17,6 +17,7 @@ from goa2.domain.models import GamePhase
 from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.overrides import OverrideRejectedError, apply_override_decision
+from goa2.engine.session import SessionResult
 from goa2.server import overrides as ov
 from goa2.server.errors import (
     CardNotInHandError,
@@ -38,7 +39,11 @@ from goa2.server.time_control import (
     set_player_ready,
     stop_clock_for_accepted_decision,
 )
-from goa2.server.visibility import events_for_viewer, input_request_for_viewer
+from goa2.server.visibility import (
+    awaiting_input_hero_ids,
+    events_for_viewer,
+    input_request_for_viewer,
+)
 
 router = APIRouter()
 
@@ -153,6 +158,23 @@ def _capture_ping(game: ManagedGame, hero_id: str, target: dict[str, Any]) -> Ca
     return messages
 
 
+def _action_result_message(
+    game: ManagedGame, result: SessionResult, hero_id: str | None
+) -> dict[str, Any]:
+    """Build the ACTION_RESULT reply sent to the player who acted."""
+    return {
+        "type": "ACTION_RESULT",
+        "result_type": result.result_type.value,
+        "current_phase": result.current_phase.value,
+        "events": [ev.model_dump() for ev in result.events],
+        "input_request": input_request_for_viewer(
+            result.input_request, game.session.state, hero_id
+        ),
+        "awaiting_input": awaiting_input_hero_ids(result.input_request, game.session.state),
+        "winner": result.winner,
+    }
+
+
 def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
     """Build a STATE_UPDATE message for a specific player."""
     hero_id_typed = HeroID(hero_id) if hero_id else None
@@ -166,6 +188,7 @@ def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any
     input_request = input_request_for_viewer(ir, game.session.state, hero_id)
     if input_request:
         msg["input_request"] = input_request
+    msg["awaiting_input"] = awaiting_input_hero_ids(ir, game.session.state)
     if winner:
         msg["winner"] = winner
     return msg
@@ -294,16 +317,7 @@ async def _handle_submit_input(
         game.replay_recorder.record_input(hero_id, data.get("selection"), rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_commit_card(
@@ -337,16 +351,7 @@ async def _handle_commit_card(
     if game.game_logger:
         game.game_logger.log_card_commit(hero_id, card_id)
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, Any]:
@@ -379,16 +384,7 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
     if game.game_logger and card is not None:
         game.game_logger.log_card_uncommit(hero_id, card.id)
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_set_ready(
@@ -424,16 +420,7 @@ async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, 
         game.replay_recorder.record_finish_planning(hero_id, rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
@@ -456,16 +443,7 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     if game.game_logger:
         game.game_logger.log_pass_turn(hero_id)
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
@@ -491,16 +469,7 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         game.replay_recorder.record_rollback(hero_id, rec_round, rec_turn)
     game.last_result = result
     _log_ws_result(game, result)
-    return {
-        "type": "ACTION_RESULT",
-        "result_type": result.result_type.value,
-        "current_phase": result.current_phase.value,
-        "events": [ev.model_dump() for ev in result.events],
-        "input_request": input_request_for_viewer(
-            result.input_request, game.session.state, hero_id
-        ),
-        "winner": result.winner,
-    }
+    return _action_result_message(game, result, hero_id)
 
 
 async def _handle_cheats_gold(

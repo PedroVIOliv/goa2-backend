@@ -85,6 +85,9 @@ class GameViewResponse(BaseModel):
 
     view: dict[str, Any]
     input_request: dict[str, Any] | None = None
+    # Public identity of whoever the pending request is waiting on, even for a
+    # recipient whose `input_request` was withheld as private.
+    awaiting_input: list[str] = []
     winner: str | None = None
 
 
@@ -93,6 +96,7 @@ class ActionResultResponse(BaseModel):
     current_phase: str
     events: list[dict[str, Any]] = []
     input_request: dict[str, Any] | None = None
+    awaiting_input: list[str] = []
     winner: str | None = None
 
 

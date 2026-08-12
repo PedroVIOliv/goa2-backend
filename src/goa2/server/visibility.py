@@ -13,7 +13,7 @@ from typing import Any
 
 from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequest
-from goa2.domain.models import Card, Token
+from goa2.domain.models import Card, TeamColor, Token
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 
@@ -54,6 +54,28 @@ def input_request_for_viewer(
         return None
     payload["players"] = {for_hero_id: players[for_hero_id]}
     return payload
+
+
+def awaiting_input_hero_ids(request: InputRequest | None, state: GameState) -> list[str]:
+    """Return every hero a pending request is still waiting on.
+
+    Who is being waited on is public even where the request body is not, so
+    this travels beside the scoped payload from ``input_request_for_viewer``:
+    observers can name the blocking player without seeing their options. A
+    simultaneous request drops a hero from ``players`` as soon as they have
+    nothing left to answer, so the list shrinks as players finish.
+    """
+    if request is None:
+        return []
+
+    expected = request.player_id
+    if expected == "simultaneous":
+        players = request.context.get("players")
+        return sorted(str(hero_id) for hero_id in players) if isinstance(players, dict) else []
+    if expected.startswith("team:"):
+        team = state.teams.get(TeamColor(expected[5:]))
+        return [str(hero.id) for hero in team.heroes] if team else []
+    return [expected]
 
 
 def _card_location(state: GameState, card_id: str) -> tuple[str, str, Card] | None:

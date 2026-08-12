@@ -5,7 +5,11 @@ from goa2.domain.input import InputRequestType, create_input_request
 from goa2.domain.models import TeamColor, TokenType
 from goa2.domain.state import GameState
 from goa2.engine.setup import GameSetup
-from goa2.server.visibility import events_for_viewer, input_request_for_viewer
+from goa2.server.visibility import (
+    awaiting_input_hero_ids,
+    events_for_viewer,
+    input_request_for_viewer,
+)
 
 MAP_PATH = "src/goa2/data/maps/forgotten_island.json"
 
@@ -60,6 +64,47 @@ def test_team_and_simultaneous_requests_are_narrowed_to_authorized_players():
     assert arien_payload["players"] == {"hero_arien": {"options": ["arien_upgrade"]}}
     assert wasp_payload["players"] == {"hero_wasp": {"options": ["wasp_upgrade"]}}
     assert input_request_for_viewer(simultaneous, state, None) is None
+
+
+def test_awaiting_input_names_the_responder_of_a_private_request():
+    state = _state()
+    request = create_input_request(
+        InputRequestType.SELECT_CARD_OR_PASS,
+        player_id="hero_wasp",
+        prompt="Choose a defense",
+        options=[{"id": "magnetic_dagger", "text": "Magnetic Dagger"}],
+    )
+
+    assert awaiting_input_hero_ids(request, state) == ["hero_wasp"]
+
+
+def test_awaiting_input_lists_every_member_of_a_team_request():
+    state = _state()
+    request = create_input_request(
+        InputRequestType.CHOOSE_ACTOR,
+        player_id=f"team:{TeamColor.RED.value}",
+        options=["hero_arien"],
+    )
+
+    assert awaiting_input_hero_ids(request, state) == ["hero_arien"]
+
+
+def test_awaiting_input_lists_every_player_with_a_pending_upgrade():
+    state = _state()
+    request = create_input_request(
+        InputRequestType.UPGRADE_PHASE,
+        player_id="simultaneous",
+        players={
+            "hero_arien": {"remaining": 1, "options": ["arien_upgrade"]},
+            "hero_wasp": {"remaining": 2, "options": ["wasp_upgrade"]},
+        },
+    )
+
+    assert awaiting_input_hero_ids(request, state) == ["hero_arien", "hero_wasp"]
+
+
+def test_awaiting_input_is_empty_without_a_pending_request():
+    assert awaiting_input_hero_ids(None, _state()) == []
 
 
 def test_facedown_mine_placement_event_masks_subtype_per_recipient():

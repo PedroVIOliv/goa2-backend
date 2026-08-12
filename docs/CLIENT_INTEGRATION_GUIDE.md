@@ -238,11 +238,14 @@ Get the current game view for the authenticated player.
 {
   "view": { ... },
   "input_request": null,
+  "awaiting_input": ["hero_wasp"],
   "winner": "RED"
 }
 ```
 
 The `view` object contains the player-scoped game state (see [Understanding the Game View](#understanding-the-game-view)). The `input_request` is present only when the authenticated hero is allowed to answer it. Opponents and spectators receive `null`. Team-level requests are visible only to that team's heroes; simultaneous upgrade requests contain only the authenticated hero's entry.
+
+The `awaiting_input` array names every hero the pending request is waiting on, and is sent to **all** recipients — including those whose `input_request` was withheld. Use it to render "waiting for X" indicators; use `input_request` to decide whether *you* may answer. See [Who is being waited on](#who-is-being-waited-on).
 
 The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID (for example, `"hero_cutter"`) for an individual victory. Check for its presence with `response.get("winner")` rather than assuming it exists.
 
@@ -489,6 +492,7 @@ All mutation endpoints return this shape:
 | `current_phase` | string | Current game phase (see [Game Flow](#game-flow)) |
 | `events` | array | Recipient-scoped game events emitted during this action (see [Events](#events)) |
 | `input_request` | object/null | Present only when the authenticated action performer may answer the pending request. It can be `null` even when `result_type` is `INPUT_NEEDED` if the action advanced to another player's decision |
+| `awaiting_input` | array | Hero IDs the pending request is waiting on, unscoped; `[]` when none. Populated even when `input_request` is `null` — that pairing is exactly the "waiting on someone else" case (see [Who is being waited on](#who-is-being-waited-on)) |
 | `winner` | string/null | `"RED"`/`"BLUE"` for a team victory or a hero ID for an individual victory when `result_type` is `GAME_OVER` |
 
 ---
@@ -698,12 +702,15 @@ Sent on connection, on `GET_VIEW` requests, and broadcast to all connected clien
   "type": "STATE_UPDATE",
   "view": { ... },
   "input_request": { ... },
+  "awaiting_input": ["hero_wasp"],
   "winner": "RED",
   "events": [ ... ]
 }
 ```
 
 The `input_request` key is present only when the receiving hero is allowed to answer the pending request. It is omitted for opponents and spectators. Team-level requests go only to that team, and simultaneous upgrade requests contain only the receiving hero's `players` entry. Check for its presence with `msg.get("input_request")` rather than assuming it exists.
+
+The `awaiting_input` array is always present and identical for every recipient, naming the heroes the pending request is waiting on (`[]` when there is none). Unlike `input_request` it is not scoped, so observers can name the blocking player. See [Who is being waited on](#who-is-being-waited-on).
 
 The `winner` key is only present when the game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID for an individual victory. Check for its presence with `msg.get("winner")` rather than assuming it exists.
 
@@ -720,6 +727,7 @@ Sent to the player who performed the action:
   "current_phase": "RESOLUTION",
   "events": [ ... ],
   "input_request": { ... },
+  "awaiting_input": ["hero_wasp"],
   "winner": null
 }
 ```
@@ -1240,6 +1248,24 @@ The path choice is made by the **current actor** (the player controlling the mov
 ## Handling Input Requests
 
 When the engine needs a hero's input, only that hero (or an authorized member for a team-level request) receives the `input_request` object. Other players and spectators receive `null` via REST and no `input_request` key via WebSocket. A simultaneous upgrade request is reduced to the receiving hero's own `players` entry.
+
+### Who is being waited on
+
+The scoping above hides the request body from everyone who may not answer it — including its *identity*, which observers need to render "waiting for X". The `awaiting_input` array carries that identity separately, unscoped, on every REST view response, `ACTION_RESULT`, and `STATE_UPDATE`:
+
+| Request `player_id` | `awaiting_input` |
+|---|---|
+| A hero ID (`"hero_wasp"`) | `["hero_wasp"]` |
+| `"team:RED"` | every hero on that team |
+| `"simultaneous"` | every hero with an entry still pending |
+| No pending request | `[]` |
+
+It contains only hero IDs, never options or card identities, so it is safe to send to opponents and spectators.
+
+Two consequences worth designing around:
+
+- **`current_actor_id` is not a fallback for this.** During a defense reaction the current actor is still the *attacker* while the *defender* is being waited on. Read `awaiting_input`; fall back to `view.current_actor_id` only when it is empty.
+- **A simultaneous request shrinks as players finish.** Heroes drop out of `awaiting_input` as their pending upgrades reach zero, and a hero owed several upgrades stays listed until all are spent. A player who has finished still receives the request with an empty `players` entry — that is the "done, waiting on others" state, and `awaiting_input` tells them who remains.
 
 ### Input request shape
 
