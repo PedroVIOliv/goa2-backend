@@ -173,6 +173,10 @@ class GameLogger:
         self._add_event("GAME_OVER", {"winner": winner})
         self._save_json()
 
+    def log_clock(self, event: str) -> None:
+        self.logger.info("CLOCK: %s", event)
+        self._add_event("CLOCK", {"event": event})
+
     def log_ws_connect(self, hero_id: str | None, is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_CONNECT: %s", who)

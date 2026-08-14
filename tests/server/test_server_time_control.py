@@ -18,7 +18,7 @@ from goa2.engine.steps.cards import ResolveUpgradesStep
 from goa2.server.app import create_app
 from goa2.server.map_paths import resolve_map_path
 from goa2.server.registry import GameRegistry, ManagedGame
-from goa2.server.replay import ReplayRecorder, replay_game
+from goa2.server.replay import ReplayRecorder, load_clock_telemetry, replay_game
 from goa2.server.time_control import (
     _apply_input_timeout,
     _timeout_selection,
@@ -999,3 +999,81 @@ def test_level_up_timeout_completes_every_pending_upgrade_for_player() -> None:
     timeouts = [event for event in events if event.event_type.value == "TIMER_EXPIRED"]
     assert len(timeouts) == 2
     assert all(event.metadata["clock_kind"] == "LEVEL_UP" for event in timeouts)
+
+
+def _clock_telemetry(game: ManagedGame) -> list[dict]:
+    recorder = game.replay_recorder
+    assert recorder is not None
+    if not recorder.path.exists():
+        return []
+    return load_clock_telemetry(str(recorder.path))
+
+
+def _clock_events(game: ManagedGame) -> list[str]:
+    return [t["event"] for t in _clock_telemetry(game) if t["type"] == "clock"]
+
+
+def test_completed_ready_check_records_the_match_start() -> None:
+    game = _game(_config())
+
+    set_player_ready(game, "hero_arien", True, 0)
+    assert _clock_events(game) == []
+
+    set_player_ready(game, "hero_wasp", True, 5_000)
+
+    assert _clock_events(game) == ["STARTED"]
+    started = _clock_telemetry(game)[0]
+    assert (started["r"], started["t"]) == (1, 1)
+
+
+def test_suspension_and_resume_are_recorded() -> None:
+    game = _game(_config(automatic_turn_limit=2))
+    _start(game)
+    state = game.session.state
+
+    state.turn = 2
+    reconcile_game_clock(game, 1_000)
+    state.turn = 3
+    reconcile_game_clock(game, 2_000)
+    assert _clock_events(game) == ["STARTED", "SUSPENDED"]
+
+    set_player_ready(game, "hero_arien", True, 3_000)
+    set_player_ready(game, "hero_wasp", True, 3_000)
+
+    assert _clock_events(game) == ["STARTED", "SUSPENDED", "RESUMED"]
+
+
+def test_game_over_records_the_match_end() -> None:
+    game = _game(_config())
+    _start(game)
+    game.session.state.phase = GamePhase.GAME_OVER
+
+    reconcile_game_clock(game, 9_000)
+
+    assert _clock_events(game) == ["STARTED", "FINISHED"]
+
+
+def test_game_over_records_the_match_end_only_once() -> None:
+    game = _game(_config())
+    _start(game)
+    game.session.state.phase = GamePhase.GAME_OVER
+
+    reconcile_game_clock(game, 9_000)
+    reconcile_game_clock(game, 10_000)
+
+    assert _clock_events(game) == ["STARTED", "FINISHED"]
+
+
+def test_each_shared_turn_snapshots_every_players_time_bank() -> None:
+    game = _game(_config(initial_time_bank_seconds=30, time_bank_increment_seconds=5))
+    _start(game)
+    state = game.session.state
+
+    state.turn = 2
+    reconcile_game_clock(game, 1_000)
+
+    snapshots = [t for t in _clock_telemetry(game) if t["type"] == "clock_turn"]
+    assert [(s["r"], s["t"]) for s in snapshots] == [(1, 1), (1, 2)]
+    # The increment is granted once as the new shared turn opens.
+    assert snapshots[0]["bank"] == {"hero_arien": 30_000, "hero_wasp": 30_000}
+    assert snapshots[1]["bank"] == {"hero_arien": 35_000, "hero_wasp": 35_000}

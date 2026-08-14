@@ -16,6 +16,8 @@ from goa2.server.replay import (
     ReplayRecorder,
     _resolve_map_path,
     cleanup_old_replays,
+    load_clock_telemetry,
+    load_replay,
     replay_game,
 )
 from goa2.server.ws import _handle_commit_card, _handle_finish_planning, _handle_pass_turn
@@ -394,4 +396,97 @@ def test_record_and_replay_roundtrip_with_uncommit(tmp_path):
     assert any(c.id == card0.id for c in replayed_hero.hand)
     assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
         live.state.model_dump(mode="json")
+    )
+
+
+def test_clock_records_are_telemetry_not_decisions(tmp_path):
+    """Clock records must not shift decision indices used by ov_rewind/until_decision."""
+    rec = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(rec)
+    rec.record_clock("STARTED", round_num=1, turn=1)
+    rec.record_commit("hero_arien", "arien_basic_1", 1, 1)
+    rec.record_clock_turn(round_num=1, turn=2, bank_ms={"hero_arien": 30000})
+    rec.record_input("hero_arien", "minion_1", 1, 2)
+
+    setup, decisions = load_replay(str(tmp_path / "g1.jsonl"))
+
+    assert setup["type"] == "setup"
+    assert [d["type"] for d in decisions] == ["commit", "input"]
+
+
+def test_clock_lifecycle_records_carry_event_and_turn(tmp_path):
+    rec = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(rec)
+    rec.record_clock("STARTED", round_num=1, turn=1)
+    rec.record_clock("SUSPENDED", round_num=2, turn=3)
+
+    telemetry = load_clock_telemetry(str(tmp_path / "g1.jsonl"))
+
+    assert [(t["event"], t["r"], t["t"]) for t in telemetry] == [
+        ("STARTED", 1, 1),
+        ("SUSPENDED", 2, 3),
+    ]
+    assert all(isinstance(t["ts"], float) for t in telemetry)
+
+
+def test_clock_turn_record_snapshots_every_players_bank(tmp_path):
+    rec = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(rec)
+    rec.record_clock_turn(round_num=2, turn=1, bank_ms={"hero_arien": 25000, "hero_wasp": 30000})
+
+    telemetry = load_clock_telemetry(str(tmp_path / "g1.jsonl"))
+
+    assert telemetry == [
+        {
+            "type": "clock_turn",
+            "r": 2,
+            "t": 1,
+            "bank": {"hero_arien": 25000, "hero_wasp": 30000},
+            "ts": telemetry[0]["ts"],
+        }
+    ]
+
+
+def test_replay_ignores_clock_telemetry(tmp_path):
+    """A replay carrying clock telemetry still reconstructs from its decisions."""
+    seed = 42
+    rec = ReplayRecorder("g1", str(tmp_path))
+    _record_setup(rec, seed)
+    live = _live_game(seed)
+    first_hero = _hero_ids(live.state)[0]
+    card = live.state.get_hero(HeroID(first_hero)).hand[0]
+
+    rec.record_clock("STARTED", round_num=1, turn=1)
+    rec.record_commit(first_hero, card.id, live.state.round, live.state.turn)
+    live.commit_card(HeroID(first_hero), card)
+    rec.record_clock_turn(round_num=1, turn=1, bank_ms={first_hero: 30000})
+
+    replayed = replay_game(str(tmp_path / "g1.jsonl"))
+
+    assert _strip_volatile(replayed.state.model_dump(mode="json")) == _strip_volatile(
+        live.state.model_dump(mode="json")
+    )
+
+
+def test_every_recorded_type_is_dispatched_or_declared_telemetry(tmp_path):
+    """Guardrail: a new record type must be applied on replay or excluded from decisions."""
+    import inspect
+    import re as _re
+
+    from goa2.server import replay as replay_module
+
+    source = inspect.getsource(replay_module.ReplayRecorder)
+    emitted = set(_re.findall(r'"type":\s*"(\w+)"', source))
+    dispatched = set(
+        _re.findall(
+            r'kind (?:==|in) \(?"?([\w"\s,]+)"?\)?',
+            inspect.getsource(replay_module._apply_decision),
+        )
+    )
+    dispatched = {t.strip().strip('"') for chunk in dispatched for t in chunk.split(",")}
+
+    unhandled = emitted - dispatched - replay_module.NON_DECISION_TYPES - {"setup"}
+    assert not unhandled, (
+        f"Record types {sorted(unhandled)} are neither applied by _apply_decision nor "
+        f"declared in NON_DECISION_TYPES; they would break replay and shift decision indices."
     )

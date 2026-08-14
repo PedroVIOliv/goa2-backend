@@ -43,6 +43,20 @@ accepted and logged. It is not part of the deterministic reconstruction (the
 replayer ignores it), but it lets analytics measure how long players took to
 make each decision.
 
+Timed matches additionally emit clock telemetry, listed in
+``NON_DECISION_TYPES`` and read back with ``load_clock_telemetry``:
+
+  {"type":"clock","event":"STARTED","r":1,"t":1,"ts":1718900000.0}
+  {"type":"clock_turn","r":1,"t":2,"bank":{"hero_arien":30000},"ts":1718900100.0}
+
+``clock`` marks the lifecycle transitions STARTED / SUSPENDED / RESUMED /
+FINISHED, which is the only record of when a match really began and of the
+intervals it spent suspended (game creation long precedes the ready check).
+``clock_turn`` snapshots each player's remaining Time Bank as a shared turn
+opens, so allowance and increment settings can be tuned against real drain
+curves. Both are observations, never applied: ``load_replay`` keeps them out of
+the decision list, whose positional indices ``ov_rewind`` targets.
+
 Replays are durable: they live in their own directory with their own
 retention (default 30 days) and are NOT deleted when a game's save is removed.
 """
@@ -69,6 +83,11 @@ logger = logging.getLogger(__name__)
 REPLAY_VERSION = 1
 DEFAULT_REPLAY_DIR = "data/replays"
 DEFAULT_REPLAY_TTL_DAYS = 30
+
+# Records carrying observation only. They must stay out of the decision list:
+# ov_rewind's ``to`` and ``until_decision`` are positional indices into it, so
+# mixing telemetry in would silently retarget existing rewinds.
+NON_DECISION_TYPES = frozenset({"clock", "clock_turn"})
 
 
 def _replay_dir() -> str:
@@ -224,6 +243,14 @@ class ReplayRecorder:
             record["eligible_heroes"] = list(eligible_hero_ids or [])
         self._append(record)
 
+    def record_clock(self, event: str, *, round_num: int, turn: int) -> None:
+        """Record a match-clock lifecycle transition (STARTED/SUSPENDED/…)."""
+        self._append({"type": "clock", "event": event, "r": round_num, "t": turn})
+
+    def record_clock_turn(self, *, round_num: int, turn: int, bank_ms: dict[str, int]) -> None:
+        """Snapshot every player's remaining Time Bank at a shared-turn boundary."""
+        self._append({"type": "clock_turn", "r": round_num, "t": turn, "bank": dict(bank_ms)})
+
     def record_override(self, record: dict[str, Any]) -> None:
         """Append a consensus-override decision (ov_patch / ov_unstick / ov_rewind).
 
@@ -261,12 +288,30 @@ def load_replay(path: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             record = json.loads(raw)
             if record.get("type") == "setup":
                 setup = record
-            else:
+            elif record.get("type") not in NON_DECISION_TYPES:
                 decisions.append(record)
 
     if setup is None:
         raise ValueError(f"Replay file has no setup header: {path}")
     return setup, decisions
+
+
+def load_clock_telemetry(path: str) -> list[dict[str, Any]]:
+    """Read the clock lifecycle and per-turn Time Bank records from a replay."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"Replay file not found: {path}")
+
+    telemetry: list[dict[str, Any]] = []
+    with open(p) as f:
+        for raw in f:
+            raw = raw.strip()
+            if not raw:
+                continue
+            record = json.loads(raw)
+            if record.get("type") in NON_DECISION_TYPES:
+                telemetry.append(record)
+    return telemetry
 
 
 def build_session_from_setup(setup: dict[str, Any]) -> GameSession:

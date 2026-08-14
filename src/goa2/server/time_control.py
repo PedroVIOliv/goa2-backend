@@ -41,6 +41,27 @@ def now_ms() -> int:
     return time.time_ns() // 1_000_000
 
 
+def _record_clock_event(game: ManagedGame, event: str) -> None:
+    clock = game.session.state.clock
+    if clock is None:
+        return
+    if game.replay_recorder is not None:
+        game.replay_recorder.record_clock(event, round_num=clock.turn_round, turn=clock.turn_number)
+    if game.game_logger is not None:
+        game.game_logger.log_clock(event)
+
+
+def _record_shared_turn_bank(game: ManagedGame) -> None:
+    clock = game.session.state.clock
+    if clock is None or game.replay_recorder is None:
+        return
+    game.replay_recorder.record_clock_turn(
+        round_num=clock.turn_round,
+        turn=clock.turn_number,
+        bank_ms={hero_id: player.time_bank_ms for hero_id, player in clock.players.items()},
+    )
+
+
 def _team_hero_ids(game: ManagedGame, player_id: str) -> list[str]:
     if not player_id.startswith("team:"):
         return []
@@ -83,6 +104,7 @@ def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -
 
     if ready_ids == set(clock.players):
         start_game_clock(clock, at_ms)
+        _record_clock_event(game, "RESUMED" if resuming else "STARTED")
         if resuming:
             # Suspension happens after the engine has entered the next shared
             # turn but before its fresh pools are initialized. A completed
@@ -91,13 +113,16 @@ def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -
             config = game.session.state.time_control
             if config is None:
                 raise ValueError("Suspended clock is missing its time-control configuration")
-            begin_shared_turn(
+            if begin_shared_turn(
                 clock,
                 config,
                 round_number=game.session.state.round,
                 turn_number=game.session.state.turn,
                 now_ms=at_ms,
-            )
+            ):
+                _record_shared_turn_bank(game)
+        else:
+            _record_shared_turn_bank(game)
         reconcile_game_clock(game, at_ms)
         return True
     return False
@@ -121,6 +146,7 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
 
     if state.phase == GamePhase.GAME_OVER:
         finish_game_clock(clock, at_ms)
+        _record_clock_event(game, "FINISHED")
         return
 
     if game.pending_override is not None:
@@ -140,15 +166,17 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
             and clock.consecutive_automatic_turns >= config.automatic_turn_limit
         ):
             suspend_game_clock_for_inactivity(clock, at_ms)
+            _record_clock_event(game, "SUSPENDED")
             return
 
-    begin_shared_turn(
+    if begin_shared_turn(
         clock,
         config,
         round_number=state.round,
         turn_number=state.turn,
         now_ms=at_ms,
-    )
+    ):
+        _record_shared_turn_bank(game)
 
     if state.phase == GamePhase.PLANNING:
         active: list[str] = []
