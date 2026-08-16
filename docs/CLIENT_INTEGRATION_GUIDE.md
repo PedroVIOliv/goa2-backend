@@ -878,7 +878,7 @@ ready check starts that pending shared turn with its normal fresh allowances.
 | `battle_zones` | object | Current Battle Zone per lane (`lane_id -> zone_id`). Single-lane maps have one entry (`"lane_1"`). |
 | `wave_counters` | object | Remaining Wave counters per lane (`lane_id -> int`). |
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
-| `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`) |
+| `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`). In a game created from a draft, this starts as the draft's `first_team` — the coin flip that decided who bans first is the same coin. Games created directly via `POST /games` flip it from the seed. |
 | `tokens` | object[] | Tokens currently on the board (see [Tokens](#tokens)) |
 | `board_entities` | object[] | Non-unit, non-token board entities currently known to the game (see [Board Entities](#board-entities)) |
 | `hero_pieces` | object | Stable board pieces for multi-piece heroes (see [Hero Pieces](#hero-pieces)) |
@@ -1669,6 +1669,7 @@ Available draft modes:
 |------|-------|
 | `sequential_ban_pick` | Ban pair before each pick pair; see the table below. |
 | `simple_draft` | No bans. Team A picks 1, Team B picks 2, then teams alternate up to 2 picks until both rosters are full. |
+| `chaos` | A random subset of the roster is the entire draft. See [Chaos Draft](#chaos-draft). |
 
 `sequential_ban_pick` resolves draft rounds relative to `first_team` (Team A) and the other team
 (Team B):
@@ -1681,6 +1682,53 @@ Available draft modes:
 
 Only the rounds needed to fill the larger team are emitted. In uneven drafts, both teams still
 make the round's bans, but a team that already has enough picked heroes skips that round's pick.
+
+### Chaos Draft
+
+`chaos` narrows the roster before anyone acts. At `start`, the backend shuffles all draftable
+heroes and keeps `4 * playersPerTeam + 4` of them as `hero_pool`. Heroes outside that pool are
+unavailable for the whole draft, and because every ban and pick consumes exactly one hero, the
+draft ends with **four heroes still available** — never banned, never picked.
+
+| Players per team | Pool size | Bans | Picks | Unused |
+|---|---|---|---|---|
+| 2 | 12 | 4 | 4 | 4 |
+| 3 | 16 | 6 | 6 | 4 |
+| 4 | 20 | 8 | 8 | 4 |
+| 5 | 24 | 10 | 10 | 4 |
+
+Two rules differ from the other modes:
+
+- **Teams must be exactly equal.** Where other modes allow a one-player difference, `chaos`
+  rejects `start` with `409` unless both teams are the same size.
+- **The full roster is required.** `chaos` is selectable only while `max_hero_stars` is `4`.
+  Creating a chaos draft with a lower cap, switching an existing lobby to `chaos` while the cap
+  is lower, or lowering the cap while `chaos` is selected all return `400` and leave the lobby
+  unchanged. To do both at once, send `draft_mode` and `max_hero_stars` in the same
+  `PATCH /drafts/{id}/settings` call.
+
+Ban and pick order is resolved relative to `first_team` (Team A) and the other team (Team B):
+
+| Round | Ban order | Pick order |
+|-------|-----------|------------|
+| 1 | Team A, Team B | Team A, Team B |
+| 2 | Team B, Team A | Team B, Team A |
+| 3 | Team A, Team B | Team B, Team A |
+| 4 | Team B, Team A | Team A, Team B |
+| 5 | Team B, Team A | Team B, Team A |
+
+A draft uses the first `playersPerTeam` rounds of that table — 2v2 stops after round 2, 3v3 after
+round 3, and so on. Unlike `sequential_ban_pick`, this order is a fixed table rather than a
+formula, so read `sequence` rather than deriving it.
+
+`CLAIMING` is unchanged: picks accumulate in `picks[TEAM]` as a team pool, and each player then
+claims one of them.
+
+> **4v4 and 5v5 are not yet reachable.** The lobby caps at 6 players, so only 2v2 and 3v3 can be
+> assembled today. The rounds 4 and 5 rows above are implemented and tested ahead of that: the
+> pool formula and the equal-teams rule already generalise, so enabling those brackets means
+> raising the lobby cap *and* restricting them to double-lane maps, which are the only maps that
+> seat 8 or 10 players.
 
 ### Draft view shape
 
@@ -1729,6 +1777,8 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
 - `red_size`/`blue_size` are `0` during `LOBBY` (sizes aren't decided yet); they are set from
   team membership when the draft starts. During `LOBBY`, derive the live counts from `players`.
 - `cheats` reflects the current (host-editable) cheat setting; it flows into the created game.
+- `first_team` is the coin-flip winner (Team A), set when the draft starts. It is the *same*
+  coin as the match's Tie Breaker: the created game begins with `tie_breaker_team == first_team`.
 - `you` is the caller's own player record (omitted/`null` for spectators).
 - Once `status` is `COMPLETE`, `game_id` is set, and a player calling `GET /drafts/{id}` with
   their own token also receives their `game_token`. Use these to switch to the normal game flow:

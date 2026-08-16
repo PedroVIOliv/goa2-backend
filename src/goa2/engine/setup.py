@@ -82,6 +82,7 @@ class GameSetup:
         game_type: str = "LONG",
         seed: int | None = None,
         time_control: TimeControlConfig | None = None,
+        tie_breaker_team: TeamColor | None = None,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -92,6 +93,8 @@ class GameSetup:
         :param game_type: "QUICK" or "LONG" (default: "LONG").
         :param seed: Optional deterministic RNG seed. If omitted, a stable seed is
             derived from the setup inputs.
+        :param tie_breaker_team: Result of a coin flip already held elsewhere (a
+            draft lobby's, say). If omitted, the coin is flipped here from the seed.
         """
 
         # 1. Load Map
@@ -171,7 +174,7 @@ class GameSetup:
         # 8. Finalize Setup
         # Flip Coin
         rng = random.Random(seed)
-        state.tie_breaker_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
+        state.tie_breaker_team = tie_breaker_team or rng.choice([TeamColor.RED, TeamColor.BLUE])
 
         # Transition to Planning. Initial setup counts as the first position
         # snapshot, so turn-1 effects have a defined "last turn" to read.

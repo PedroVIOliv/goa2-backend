@@ -1,3 +1,5 @@
+import random
+
 from goa2.domain.models import TeamColor
 from goa2.draft.models import DraftActionType
 from goa2.draft.modes import DRAFT_MODES, SequentialBanPickMode, get_mode
@@ -94,5 +96,7 @@ def test_sequence_uneven_3v2_fills_each_team():
 
 
 def test_hero_pool_is_all_heroes():
-    pool = get_mode("sequential_ban_pick").hero_pool(["Arien", "Wasp"])
+    pool = get_mode("sequential_ban_pick").hero_pool(
+        ["Arien", "Wasp"], red_size=1, blue_size=1, rng=random.Random(0)
+    )
     assert pool == ["Arien", "Wasp"]

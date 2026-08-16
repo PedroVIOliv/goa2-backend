@@ -6,6 +6,7 @@ from typing import cast
 from goa2.domain.models import TeamColor
 from goa2.domain.time_control import TimeControlConfig
 from goa2.draft.errors import (
+    ChaosRequiresFullRosterError,
     DraftFullError,
     HeroNotClaimableError,
     HeroUnavailableError,
@@ -21,6 +22,16 @@ from goa2.draft.modes import get_mode
 # Team sizes are not preset; they emerge from who joins each side.
 MAX_PLAYERS = 6
 UNSET = object()
+
+CHAOS_MODE = "chaos"
+FULL_ROSTER_STARS = 4
+
+
+def _require_full_roster_for_chaos(draft_mode: str, max_hero_stars: int) -> None:
+    if draft_mode == CHAOS_MODE and max_hero_stars != FULL_ROSTER_STARS:
+        raise ChaosRequiresFullRosterError(
+            "Chaos Draft needs the full hero roster; set max_hero_stars to 4"
+        )
 
 
 def get_player(state: DraftState, player_id: str) -> DraftPlayer:
@@ -69,6 +80,7 @@ def create_draft(
     time_control: TimeControlConfig | None = None,
 ) -> DraftState:
     get_mode(draft_mode)  # validate mode name early (raises KeyError -> caller maps)
+    _require_full_roster_for_chaos(draft_mode, max_hero_stars)
     state = DraftState(
         draft_id=draft_id,
         map_name=map_name,
@@ -98,6 +110,13 @@ def update_settings(
     _require_phase(state, DraftStatus.LOBBY)
     if draft_mode is not None:
         get_mode(draft_mode)  # raises KeyError -> caller maps to 400
+    # Mode and star cap constrain each other, so validate the combination this call
+    # would produce before mutating either — a rejected update leaves the lobby as-is.
+    _require_full_roster_for_chaos(
+        draft_mode if draft_mode is not None else state.draft_mode,
+        max_hero_stars if max_hero_stars is not None else state.max_hero_stars,
+    )
+    if draft_mode is not None:
         state.draft_mode = draft_mode
     if map_name is not None:
         state.map_name = map_name
@@ -175,10 +194,11 @@ def start_draft(state: DraftState, all_heroes: list[str], rng: random.Random) ->
         raise InvalidDraftPhaseError(
             f"Teams must be balanced (size difference <= 1); got {red} vs {blue}"
         )
+    _require_full_roster_for_chaos(state.draft_mode, state.max_hero_stars)
     state.red_size = red
     state.blue_size = blue
     mode = get_mode(state.draft_mode)
-    state.hero_pool = mode.hero_pool(all_heroes)
+    state.hero_pool = mode.hero_pool(all_heroes, red_size=red, blue_size=blue, rng=rng)
     state.first_team = rng.choice([TeamColor.RED, TeamColor.BLUE])
     state.sequence = mode.build_sequence(state.red_size, state.blue_size, state.first_team)
     # Every ban and pick consumes one hero; reject a start the pool can't fill.

@@ -118,6 +118,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         state.game_type,
         seed=seed,
         time_control=state.time_control,
+        tie_breaker_team=state.first_team,
     )
     session = GameSession(game_state)
     hero_ids = [h.id for team in game_state.teams.values() for h in team.heroes]
@@ -132,6 +133,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             cheats=state.cheats,
             seed=seed,
             time_control=state.time_control,
+            tie_breaker_team=game_state.tie_breaker_team.value,
         )
     name_to_id = {h.name: h.id for team in game_state.teams.values() for h in team.heroes}
     for player in state.players:

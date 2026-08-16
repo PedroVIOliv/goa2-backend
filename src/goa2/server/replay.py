@@ -11,7 +11,8 @@ Format: one JSON object per line (JSONL).
   line 1  setup header:
     {"v":1,"type":"setup","game_id":"...","map":"forgotten_island",
      "red":["Arien"],"blue":["Wasp"],"game_type":"QUICK","cheats":false,
-     "seed":1234,"engine":"<git sha>","created_at":1718900000.0}
+     "seed":1234,"tie_breaker_team":"RED","engine":"<git sha>",
+     "created_at":1718900000.0}
 
   line N  one decision (in applied order), tagged with round/turn and a
   wall-clock receipt timestamp ``ts`` (epoch seconds, UTC):
@@ -71,7 +72,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from goa2.domain.models import GamePhase
+from goa2.domain.models import GamePhase, TeamColor
 from goa2.domain.time_control import TimeControlConfig
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
@@ -161,6 +162,7 @@ class ReplayRecorder:
         cheats: bool,
         seed: int,
         time_control: TimeControlConfig | None = None,
+        tie_breaker_team: str | None = None,
     ) -> None:
         """Write the setup header. No-op if the log already has a header."""
         if self.has_setup:
@@ -176,6 +178,9 @@ class ReplayRecorder:
                 "game_type": game_type,
                 "cheats": cheats,
                 "seed": seed,
+                # Absent in logs written before drafts supplied the coin; a reader
+                # that finds no key must fall back to flipping from the seed.
+                "tie_breaker_team": tie_breaker_team,
                 "time_control": (
                     time_control.model_dump(mode="json") if time_control is not None else None
                 ),
@@ -318,6 +323,7 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
     """Create a fresh GameSession from a replay setup header (seeded, no decisions)."""
     configured = setup.get("time_control")
     time_control = TimeControlConfig.model_validate(configured) if configured else None
+    coin = setup.get("tie_breaker_team")
     state = GameSetup.create_game(
         _resolve_map_path(setup["map"]),
         setup["red"],
@@ -326,6 +332,7 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
         setup.get("game_type", "LONG"),
         seed=setup["seed"],
         time_control=time_control,
+        tie_breaker_team=TeamColor(coin) if coin else None,
     )
     if time_control is not None:
         # Replays record exact decisions, not readiness or wall-clock receipt

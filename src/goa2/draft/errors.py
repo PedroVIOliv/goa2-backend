@@ -39,3 +39,7 @@ class HeroNotClaimableError(DraftError):
 
 class InvalidTeamError(DraftError):
     status_code = 400
+
+
+class ChaosRequiresFullRosterError(DraftError):
+    status_code = 400

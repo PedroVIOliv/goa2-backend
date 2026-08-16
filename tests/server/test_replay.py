@@ -8,6 +8,7 @@ import json
 import pytest
 
 from goa2.domain.input import InputResponse
+from goa2.domain.models import TeamColor
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.setup import GameSetup
@@ -15,6 +16,7 @@ from goa2.server.registry import ManagedGame
 from goa2.server.replay import (
     ReplayRecorder,
     _resolve_map_path,
+    build_session_from_setup,
     cleanup_old_replays,
     load_clock_telemetry,
     load_replay,
@@ -489,4 +491,57 @@ def test_every_recorded_type_is_dispatched_or_declared_telemetry(tmp_path):
     assert not unhandled, (
         f"Record types {sorted(unhandled)} are neither applied by _apply_decision nor "
         f"declared in NON_DECISION_TYPES; they would break replay and shift decision indices."
+    )
+
+
+def _setup_header(path):
+    with open(path) as fh:
+        return json.loads(fh.readline())
+
+
+def test_setup_header_records_the_tie_breaker_team(tmp_path):
+    recorder = ReplayRecorder(game_id="g1", replay_dir=str(tmp_path))
+    recorder.record_setup(
+        map_name=MAP,
+        red_heroes=RED,
+        blue_heroes=BLUE,
+        game_type="LONG",
+        cheats=False,
+        seed=99,
+        tie_breaker_team="BLUE",
+    )
+    assert _setup_header(recorder.path)["tie_breaker_team"] == "BLUE"
+
+
+def test_reconstruction_honours_a_recorded_tie_breaker_team():
+    """A drafted game's coin came from the lobby, so the seed alone can't reproduce it."""
+    base = {
+        "map": MAP,
+        "red": RED,
+        "blue": BLUE,
+        "game_type": "LONG",
+        "cheats": False,
+        "seed": 3,
+    }
+    seeded = build_session_from_setup(dict(base)).state.tie_breaker_team
+    flipped = TeamColor.BLUE if seeded is TeamColor.RED else TeamColor.RED
+
+    session = build_session_from_setup({**base, "tie_breaker_team": flipped.value})
+    assert session.state.tie_breaker_team is flipped
+
+
+@pytest.mark.parametrize("seed", [3, 4, 5, 6])
+def test_reconstruction_of_a_pre_coin_replay_still_flips_from_the_seed(seed):
+    """Headers written before the coin was recorded have no key to read, so they must
+    land on exactly the coin the seed alone used to produce."""
+    legacy = {"map": MAP, "red": RED, "blue": BLUE, "game_type": "LONG", "seed": seed}
+    expected = GameSetup.create_game(
+        _resolve_map_path(MAP), RED, BLUE, False, "LONG", seed=seed
+    ).tie_breaker_team
+
+    assert build_session_from_setup(legacy).state.tie_breaker_team is expected
+    # A recorded null (every game created outside a draft) takes the same path.
+    assert (
+        build_session_from_setup({**legacy, "tie_breaker_team": None}).state.tie_breaker_team
+        is expected
     )

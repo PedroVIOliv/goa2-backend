@@ -308,3 +308,203 @@ def test_start_rejected_when_cap_leaves_too_few_heroes(client):
     assert r.status_code == 409
     view = client.get(f"/drafts/{draft_id}", headers=_auth(host)).json()["draft"]
     assert view["status"] == "LOBBY"
+
+
+def _chaos_lobby(client, players=("Alice", "Bob", "Carol", "Dave")):
+    """Create a chaos draft with an even 2v2 split; return (draft_id, tokens)."""
+    r = client.post("/drafts", json={"host_name": players[0], "draft_mode": "chaos"})
+    assert r.status_code == 201, r.text
+    d = r.json()
+    draft_id = d["draft_id"]
+    toks = {"p1": d["player_token"]}
+    for name in players[1:]:
+        jr = client.post(f"/drafts/{draft_id}/join", json={"display_name": name})
+        toks[jr.json()["player_id"]] = jr.json()["player_token"]
+    half = len(players) // 2
+    for i, pid in enumerate(toks):
+        team = "RED" if i < half else "BLUE"
+        assert (
+            client.post(
+                f"/drafts/{draft_id}/team", json={"team": team}, headers=_auth(toks[pid])
+            ).status_code
+            == 200
+        )
+    return draft_id, toks
+
+
+def test_chaos_mode_is_advertised(client):
+    r = client.get("/drafts/modes")
+    assert "chaos" in {m["name"] for m in r.json()}
+
+
+def test_chaos_start_draws_a_random_subset_of_the_roster(client):
+    draft_id, toks = _chaos_lobby(client)
+    assert client.post(f"/drafts/{draft_id}/start", headers=_auth(toks["p1"])).status_code == 200
+
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+    roster = client.get("/heroes").json()
+    assert len(view["hero_pool"]) == 12
+    assert set(view["hero_pool"]) < set(roster)
+    assert len(view["sequence"]) == 8
+
+
+def test_chaos_rejects_a_non_captain(client):
+    draft_id, toks = _chaos_lobby(client)
+    client.post(f"/drafts/{draft_id}/start", headers=_auth(toks["p1"]))
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+
+    acting_team = view["sequence"][0]["team"]
+    grunt = next(p for p in view["players"] if p["team"] == acting_team and not p["is_captain"])
+    r = client.post(
+        f"/drafts/{draft_id}/action",
+        json={"hero": view["hero_pool"][0]},
+        headers=_auth(toks[grunt["id"]]),
+    )
+    assert r.status_code == 403
+
+
+def test_chaos_full_draft_creates_a_game_and_leaves_four_heroes_unused(client):
+    draft_id, toks = _chaos_lobby(client)
+    client.post(f"/drafts/{draft_id}/start", headers=_auth(toks["p1"]))
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+
+    cap = {p["team"]: p["id"] for p in view["players"] if p["is_captain"]}
+    pool = list(view["hero_pool"])
+    for step in view["sequence"]:
+        r = client.post(
+            f"/drafts/{draft_id}/action",
+            json={"hero": pool.pop(0)},
+            headers=_auth(toks[cap[step["team"]]]),
+        )
+        assert r.status_code == 200, r.text
+    assert len(pool) == 4
+
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+    assert view["status"] == "CLAIMING"
+    for team in ("RED", "BLUE"):
+        members = [p for p in view["players"] if p["team"] == team]
+        for player, hero in zip(members, view["picks"][team], strict=True):
+            assert (
+                client.post(
+                    f"/drafts/{draft_id}/claim",
+                    json={"hero": hero},
+                    headers=_auth(toks[player["id"]]),
+                ).status_code
+                == 200
+            )
+
+    final = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()
+    assert final["draft"]["status"] == "COMPLETE"
+    assert final["game_id"]
+
+
+def test_chaos_start_rejects_unequal_teams(client):
+    # 3v2 satisfies the lobby's balance rule (diff <= 1) that other modes run on,
+    # so this exercises chaos's stricter n-vs-n requirement rather than that one.
+    draft_id, toks = _chaos_lobby(client, ("Alice", "Bob", "Carol", "Dave", "Eve"))
+    client.post(f"/drafts/{draft_id}/team", json={"team": "RED"}, headers=_auth(toks["p3"]))
+    r = client.post(f"/drafts/{draft_id}/start", headers=_auth(toks["p1"]))
+    assert r.status_code == 409
+    assert "equal teams" in r.json()["detail"]
+
+
+def test_chaos_rejected_below_the_full_star_roster(client):
+    r = client.post(
+        "/drafts", json={"host_name": "Alice", "draft_mode": "chaos", "max_hero_stars": 3}
+    )
+    assert r.status_code == 400
+    assert "max_hero_stars" in r.json()["detail"]
+
+
+def test_chaos_cannot_be_selected_while_the_star_cap_is_low(client):
+    r = client.post("/drafts", json={"host_name": "Alice", "max_hero_stars": 2})
+    d = r.json()
+    rr = client.patch(
+        f"/drafts/{d['draft_id']}/settings",
+        json={"draft_mode": "chaos"},
+        headers=_auth(d["player_token"]),
+    )
+    assert rr.status_code == 400
+    view = client.get(f"/drafts/{d['draft_id']}", headers=_auth(d["player_token"])).json()
+    assert view["draft"]["draft_mode"] == "sequential_ban_pick"
+
+
+def test_star_cap_cannot_be_lowered_under_chaos(client):
+    r = client.post("/drafts", json={"host_name": "Alice", "draft_mode": "chaos"})
+    d = r.json()
+    rr = client.patch(
+        f"/drafts/{d['draft_id']}/settings",
+        json={"max_hero_stars": 2},
+        headers=_auth(d["player_token"]),
+    )
+    assert rr.status_code == 400
+
+
+def test_draft_coin_flip_winner_is_the_matchs_tie_breaker_team(client):
+    """Team A wins one coin flip, not two: the lobby's result carries into the game."""
+    # Both coins are random, so a single draft agrees half the time by chance.
+    # Repeat until seeing each side win the lobby flip, which no independent
+    # match flip survives.
+    seen = set()
+    for _ in range(12):
+        _draft_id, _toks, final = _run_full_draft(client)
+        first_team = final["draft"]["first_team"]
+        gv = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
+        assert gv.json()["view"]["tie_breaker_team"] == first_team
+        seen.add(first_team)
+    assert seen == {"RED", "BLUE"}
+
+
+def test_chaos_draft_coin_flip_winner_is_the_matchs_tie_breaker_team(client):
+    draft_id, toks = _chaos_lobby(client)
+    client.post(f"/drafts/{draft_id}/start", headers=_auth(toks["p1"]))
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+
+    cap = {p["team"]: p["id"] for p in view["players"] if p["is_captain"]}
+    pool = list(view["hero_pool"])
+    for step in view["sequence"]:
+        client.post(
+            f"/drafts/{draft_id}/action",
+            json={"hero": pool.pop(0)},
+            headers=_auth(toks[cap[step["team"]]]),
+        )
+    view = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()["draft"]
+    for team in ("RED", "BLUE"):
+        members = [p for p in view["players"] if p["team"] == team]
+        for player, hero in zip(members, view["picks"][team], strict=True):
+            client.post(
+                f"/drafts/{draft_id}/claim",
+                json={"hero": hero},
+                headers=_auth(toks[player["id"]]),
+            )
+
+    final = client.get(f"/drafts/{draft_id}", headers=_auth(toks["p1"])).json()
+    gv = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
+    assert gv.json()["view"]["tie_breaker_team"] == final["draft"]["first_team"]
+
+
+def test_draftable_pool_excludes_playtest_and_unrated_heroes(client):
+    """Two independent filters guard the pool, and each is the only guard for one case:
+    Cordelia is rated but flagged playtest, Knight is listed but unrated."""
+    from goa2.data.heroes.knight import create_knight
+    from goa2.data.heroes.registry import HeroRegistry, get_hero_difficulty_stars
+
+    HeroRegistry.register(create_knight())
+    assert "Knight" in HeroRegistry.list_heroes()  # the star guard is what must catch it
+    assert "Cordelia" in HeroRegistry.list_heroes(include_playtest=True)
+
+    r = client.post("/drafts", json={"host_name": "Alice"})
+    d = r.json()
+    did, host = d["draft_id"], d["player_token"]
+    toks = {"p1": host}
+    for name in ("Bob", "Carol", "Dave"):
+        jr = client.post(f"/drafts/{did}/join", json={"display_name": name})
+        toks[jr.json()["player_id"]] = jr.json()["player_token"]
+    for pid, team in (("p1", "RED"), ("p2", "RED"), ("p3", "BLUE"), ("p4", "BLUE")):
+        client.post(f"/drafts/{did}/team", json={"team": team}, headers=_auth(toks[pid]))
+    assert client.post(f"/drafts/{did}/start", headers=_auth(host)).status_code == 200
+
+    pool = client.get(f"/drafts/{did}", headers=_auth(host)).json()["draft"]["hero_pool"]
+    assert "Knight" not in pool
+    assert "Cordelia" not in pool
+    assert all(1 <= get_hero_difficulty_stars(h) <= 4 for h in pool)
