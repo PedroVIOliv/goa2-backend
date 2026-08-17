@@ -302,10 +302,6 @@ class MoveSequenceStep(GameStep):
     pass_through_obstacles: bool = False
     force_straight_line: bool = False
     force_full_distance: bool = False
-    # Wuk (Trample): offer normal destinations AND straight-line destinations
-    # reachable by ignoring obstacles, in one zone-aware list. No declaration of
-    # "trample mode" — through-effects key off the resulting straight-line move.
-    allow_straight_line_through_obstacles: bool = False
 
     def _get_effective_range(self, state: GameState, unit_id: str, range_val: int) -> int:
         """Get effective movement range, considering MOVEMENT_ZONE effects."""
@@ -393,12 +389,6 @@ class MoveSequenceStep(GameStep):
                     pass_through = True
                     break
 
-        # Trample: straight-line-through-obstacle destinations require the move
-        # itself to pass through obstacles (it only ever receives filter-approved
-        # hexes, so this stays safe for normal destinations too).
-        if self.allow_straight_line_through_obstacles:
-            pass_through = True
-
         # If we already have the destination in context, just move
         if context.get(self.destination_key):
             return StepResult(
@@ -418,78 +408,36 @@ class MoveSequenceStep(GameStep):
 
         from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter
 
-        filters: list[FilterCondition]
-        if self.allow_straight_line_through_obstacles:
-            # Trample: union of normal-reachable destinations and straight-line
-            # destinations reachable by ignoring obstacles. Both branches are
-            # zone-range capped; ObstacleFilter still bars landing on an obstacle.
-            from goa2.engine.filters_composite import AndFilter, OrFilter
-            from goa2.engine.filters_geometry import InStraightLineFilter, StraightLinePathFilter
+        # MovementPathFilter now always allows the current hex.
+        # We add OccupiedFilter(is_occupied=False, exclude_id=actor_id)
+        # to ensure other units block movement but the moving unit doesn't block itself.
+        filters: list[FilterCondition] = [
+            ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
+            MovementPathFilter(
+                range_val=effective_range,
+                unit_id=actor_id,
+                pass_through_obstacles=pass_through,
+            ),
+        ]
 
-            filters = [
-                OrFilter(
-                    filters=[
-                        AndFilter(
-                            filters=[
-                                ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
-                                MovementPathFilter(
-                                    range_val=effective_range,
-                                    unit_id=actor_id,
-                                    pass_through_obstacles=False,
-                                ),
-                            ]
-                        ),
-                        AndFilter(
-                            filters=[
-                                ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
-                                InStraightLineFilter(origin_id=actor_id),
-                                StraightLinePathFilter(
-                                    origin_id=actor_id, pass_through_obstacles=True
-                                ),
-                                MovementPathFilter(
-                                    range_val=effective_range,
-                                    unit_id=actor_id,
-                                    pass_through_obstacles=True,
-                                ),
-                            ]
-                        ),
-                    ]
-                )
-            ]
-        else:
-            # Determine filters.
-            # MovementPathFilter now always allows the current hex.
-            # We add OccupiedFilter(is_occupied=False, exclude_id=actor_id)
-            # to ensure other units block movement but the moving unit doesn't block itself.
-            filters = [
-                ObstacleFilter(is_obstacle=False, exclude_id=actor_id),
-                MovementPathFilter(
-                    range_val=effective_range,
-                    unit_id=actor_id,
+        if self.force_straight_line:
+            from goa2.engine.filters_geometry import (
+                InStraightLineFilter,
+                StraightLinePathFilter,
+            )
+
+            filters.append(InStraightLineFilter(origin_id=actor_id))
+            filters.append(
+                StraightLinePathFilter(
+                    origin_id=actor_id,
                     pass_through_obstacles=pass_through,
-                ),
-            ]
-
-            # Force straight line: add InStraightLineFilter + StraightLinePathFilter
-            if self.force_straight_line:
-                from goa2.engine.filters_geometry import (
-                    InStraightLineFilter,
-                    StraightLinePathFilter,
                 )
+            )
 
-                filters.append(InStraightLineFilter(origin_id=actor_id))
-                filters.append(
-                    StraightLinePathFilter(
-                        origin_id=actor_id,
-                        pass_through_obstacles=pass_through,
-                    )
-                )
+        if self.force_full_distance:
+            from goa2.engine.filters_hex import RangeFilter
 
-            # Force full distance: set min_range = max_range
-            if self.force_full_distance:
-                from goa2.engine.filters_hex import RangeFilter
-
-                filters.append(RangeFilter(min_range=effective_range, max_range=effective_range))
+            filters.append(RangeFilter(min_range=effective_range, max_range=effective_range))
 
         # If range is 0, MovementPathFilter will only allow current hex.
         # OccupiedFilter will also allow it because of exclude_id.
