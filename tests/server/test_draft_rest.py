@@ -22,7 +22,7 @@ def _run_full_draft(client):
     d = r.json()
     draft_id, host_tok = d["draft_id"], d["player_token"]
 
-    toks = {"p1": host_tok}
+    toks = {"p1": host_tok, "spectator": d["spectator_token"]}
     for name in ("Bob", "Carol", "Dave"):
         jr = client.post(f"/drafts/{draft_id}/join", json={"display_name": name})
         assert jr.status_code == 200
@@ -72,6 +72,21 @@ def test_full_draft_creates_playable_game(client):
     assert final["game_token"]
     gv = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
     assert gv.status_code == 200
+
+
+def test_draft_spectator_carries_over_to_game_spectator(client):
+    _draft_id, toks, _final = _run_full_draft(client)
+    view = client.get(f"/drafts/{_draft_id}", headers=_auth(toks["spectator"])).json()
+    assert view["game_id"]
+    assert view["game_token"]
+    assert view["game_token"] != _final["game_token"]
+
+    gv = client.get(f"/games/{view['game_id']}", headers=_auth(view["game_token"]))
+    assert gv.status_code == 200
+    assert (
+        client.post(f"/games/{view['game_id']}/pass", headers=_auth(view["game_token"])).status_code
+        == 403
+    )
 
 
 def test_modes_endpoint(client):

@@ -22,6 +22,7 @@ class ManagedDraft:
     player_tokens: dict[str, str] = field(default_factory=dict)
     player_to_token: dict[str, str] = field(default_factory=dict)
     player_game_tokens: dict[str, str] = field(default_factory=dict)
+    game_spectator_token: str = ""
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)

@@ -1612,7 +1612,8 @@ LOBBY  →  DRAFTING  →  CLAIMING  →  COMPLETE
 - **DRAFTING** — captains follow the resolved `sequence` of ban/pick actions.
 - **CLAIMING** — each player claims one of their team's drafted heroes.
 - **COMPLETE** — once everyone has claimed, the game is created; `game_id` and each player's
-  `game_token` become available on their scoped view.
+  `game_token` become available on their scoped view. A caller using the draft's spectator
+  token receives the created game's *spectator* token as their `game_token`.
 
 ### Tokens
 
@@ -1620,7 +1621,7 @@ LOBBY  →  DRAFTING  →  CLAIMING  →  COMPLETE
 |-------|--------|--------|
 | Host/player token (admin) | `POST /drafts` response (`player_token`, always player `p1`) | Full player rights **plus** host-only actions (start, randomize, set captain) |
 | Player token | `POST /drafts/{id}/join` response | Join a team, draft (if captain), claim a hero |
-| Spectator token | `POST /drafts` response (`spectator_token`) | Read-only `GET /drafts/{id}` |
+| Spectator token | `POST /drafts` response (`spectator_token`) | Read-only `GET /drafts/{id}`; on `COMPLETE` its `game_token` is the created game's spectator token |
 
 Send as `Authorization: Bearer <token>`, the same scheme as the game API.
 
@@ -1810,7 +1811,9 @@ Every mutating endpoint and `GET /drafts/{id}` return a `DraftViewResponse`:
 - `you` is the caller's own player record (omitted/`null` for spectators).
 - Once `status` is `COMPLETE`, `game_id` is set, and a player calling `GET /drafts/{id}` with
   their own token also receives their `game_token`. Use these to switch to the normal game flow:
-  `GET /games/{game_id}` with `Authorization: Bearer <game_token>`.
+  `GET /games/{game_id}` with `Authorization: Bearer <game_token>`. The draft's spectator token
+  gets the game's spectator token here, so a shared draft-spectator link carries straight into
+  read-only spectating of the match.
 
 To know whose turn it is during `DRAFTING`, read `sequence[current_index]`: the `team` field
 tells you which team acts, and its captain (the player with `is_captain: true` on that team)
@@ -1843,7 +1846,8 @@ claim, and the final game creation), the server pushes a player-scoped
 ```
 
 `STATE_UPDATE` carries the same player-scoping as the REST view, so once the draft is
-`COMPLETE` each player's socket receives their own `game_id` and `game_token`.
+`COMPLETE` each player's socket receives their own `game_id` and `game_token` — spectator
+sockets receive the game's spectator token.
 
 Inbound messages:
 

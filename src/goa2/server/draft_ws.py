@@ -22,16 +22,18 @@ router = APIRouter()
 def draft_view_payload(md: ManagedDraft, player_id: str, is_spectator: bool) -> dict[str, Any]:
     """Build the player-scoped draft view fields (shared by REST and WS)."""
     you = None
+    game_token = md.game_spectator_token or None
     if not is_spectator:
         you = next(
             (p.model_dump(mode="json") for p in md.state.players if p.id == player_id),
             None,
         )
+        game_token = md.player_game_tokens.get(player_id)
     return {
         "draft": md.state.model_dump(mode="json"),
         "you": you,
         "game_id": md.state.game_id,
-        "game_token": md.player_game_tokens.get(player_id),
+        "game_token": game_token,
     }
 
 

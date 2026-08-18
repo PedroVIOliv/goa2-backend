@@ -140,6 +140,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         if player.claimed_hero:
             hero_id = name_to_id[player.claimed_hero]
             md.player_game_tokens[player.id] = game.hero_to_token[hero_id]
+    md.game_spectator_token = game.spectator_token
     state.game_id = game.game_id
     state.status = DraftStatus.COMPLETE
 
