@@ -79,6 +79,7 @@ class TimeControlConfig(BaseModel):
 class ClockStatus(StrEnum):
     WAITING_FOR_PLAYERS = "WAITING_FOR_PLAYERS"
     SUSPENDED_FOR_INACTIVITY = "SUSPENDED_FOR_INACTIVITY"
+    PAUSED = "PAUSED"
     RUNNING = "RUNNING"
     FINISHED = "FINISHED"
 
@@ -114,6 +115,8 @@ class GameClockState(BaseModel):
     active_decision_hero_ids: list[str] = Field(default_factory=list)
     active_request_id: str | None = None
     credited_response_request_ids: list[str] = Field(default_factory=list)
+    pause_requested_by: str | None = None
+    paused_at_ms: int | None = None
     human_action_seen_this_turn: bool = False
     consecutive_automatic_turns: int = Field(default=0, ge=0)
     last_settled_at_ms: int | None = None
@@ -220,6 +223,21 @@ def suspend_game_clock_for_inactivity(clock: GameClockState, now_ms: int) -> Non
     """Pause an abandoned match at a shared-turn boundary."""
     settle_clock(clock, now_ms)
     clock.status = ClockStatus.SUSPENDED_FOR_INACTIVITY
+    clock.ready_hero_ids = []
+    clock.active_kind = None
+    clock.active_hero_ids = []
+    clock.active_decision_hero_ids = []
+    clock.active_request_id = None
+    clock.last_settled_at_ms = now_ms
+    clock.revision += 1
+
+
+def pause_game_clock(clock: GameClockState, now_ms: int, *, requested_by: str) -> None:
+    """Freeze a match the table voted to pause. Only a full ready check resumes it."""
+    settle_clock(clock, now_ms)
+    clock.status = ClockStatus.PAUSED
+    clock.pause_requested_by = requested_by
+    clock.paused_at_ms = now_ms
     clock.ready_hero_ids = []
     clock.active_kind = None
     clock.active_hero_ids = []
@@ -372,9 +390,16 @@ def public_clock_view(clock: GameClockState, now_ms: int) -> dict:
             "running_hero_ids": list(projected.active_hero_ids),
         }
     active_ids = set(projected.active_hero_ids)
+    pause = None
+    if projected.status == ClockStatus.PAUSED:
+        pause = {
+            "requested_by": projected.pause_requested_by,
+            "since_ms": projected.paused_at_ms,
+        }
     return {
         "status": projected.status.value,
         "server_now_ms": now_ms,
+        "pause": pause,
         "turn_key": {"round": projected.turn_round, "turn": projected.turn_number},
         "ready_hero_ids": list(projected.ready_hero_ids),
         "active": active,

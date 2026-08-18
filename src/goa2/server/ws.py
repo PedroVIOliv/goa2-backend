@@ -14,6 +14,7 @@ from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
+from goa2.domain.time_control import ClockStatus
 from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.overrides import OverrideRejectedError, apply_override_decision
@@ -34,6 +35,7 @@ from goa2.server.time_control import (
     finalize_timed_mutation,
     mark_human_action,
     now_ms,
+    pause_game_for_consensus,
     prepare_timed_mutation,
     reconcile_game_clock,
     set_player_ready,
@@ -562,7 +564,9 @@ async def _resolve_override(
         prepare_timed_mutation(game, registry=registry)
         rec_round, rec_turn = game.session.state.round, game.session.state.turn
         try:
-            if proposal.family == "rewind":
+            if proposal.family == "pause":
+                pause_game_for_consensus(game, proposal.proposer_hero_id)
+            elif proposal.family == "rewind":
                 if game.replay_recorder is None:
                     raise OverrideRejectedError(
                         "This game has no replay log to rewind", code="no_replay"
@@ -597,7 +601,9 @@ async def _resolve_override(
             else:
                 record["op"] = proposal.op
                 record["args"] = proposal.args
-            if game.replay_recorder:
+            # A pause mutates no GameState, so it is clock telemetry (a PAUSED
+            # clock event) rather than a replayable override decision.
+            if game.replay_recorder and proposal.family != "pause":
                 game.replay_recorder.record_override(record)
         finalize_timed_mutation(game, registry)  # reconcile + save + reschedule
         # Outcome first, then the fresh state, in one flush.
@@ -648,6 +654,14 @@ async def _handle_override_message(
     alone mutates nothing. The apply step runs its own prepare/finalize.
     """
     if msg_type == "PROPOSE_OVERRIDE":
+        clock = game.session.state.clock
+        if clock is not None and clock.status == ClockStatus.PAUSED:
+            raise ValueError("The match is paused; every player must ready up to resume")
+        if data.get("family") == "pause":
+            if clock is None:
+                raise ValueError("This match does not use time control")
+            if clock.status != ClockStatus.RUNNING:
+                raise ValueError("Only a running timed match can be paused")
         proposal = ov.create_proposal(game, hero_id, data)
         if proposal.family == "rewind" and game.replay_recorder is not None:
             target = proposal.to if proposal.to is not None else -1

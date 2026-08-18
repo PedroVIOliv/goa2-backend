@@ -24,6 +24,7 @@ from goa2.domain.time_control import (
     grant_initiative_bonus,
     grant_response_time,
     milliseconds_until_next_exhaustion,
+    pause_game_clock,
     settle_clock,
     start_game_clock,
     suspend_game_clock_for_inactivity,
@@ -90,9 +91,11 @@ def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -
     if clock.status not in {
         ClockStatus.WAITING_FOR_PLAYERS,
         ClockStatus.SUSPENDED_FOR_INACTIVITY,
+        ClockStatus.PAUSED,
     }:
         raise ValueError("The timed match is already running")
     resuming = clock.status == ClockStatus.SUSPENDED_FOR_INACTIVITY
+    unpausing = clock.status == ClockStatus.PAUSED
 
     ready_ids = set(clock.ready_hero_ids)
     if ready:
@@ -104,7 +107,9 @@ def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -
 
     if ready_ids == set(clock.players):
         start_game_clock(clock, at_ms)
-        _record_clock_event(game, "RESUMED" if resuming else "STARTED")
+        clock.pause_requested_by = None
+        clock.paused_at_ms = None
+        _record_clock_event(game, "RESUMED" if resuming or unpausing else "STARTED")
         if resuming:
             # Suspension happens after the engine has entered the next shared
             # turn but before its fresh pools are initialized. A completed
@@ -121,7 +126,10 @@ def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -
                 now_ms=at_ms,
             ):
                 _record_shared_turn_bank(game)
-        else:
+        elif not unpausing:
+            # A consensus pause can be granted mid-turn, so resuming from one
+            # opens no shared turn: that would refund the allowance already
+            # spent and grant a second Time Bank increment.
             _record_shared_turn_bank(game)
         reconcile_game_clock(game, at_ms)
         return True
@@ -138,6 +146,7 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
     if clock.status in {
         ClockStatus.WAITING_FOR_PLAYERS,
         ClockStatus.SUSPENDED_FOR_INACTIVITY,
+        ClockStatus.PAUSED,
     }:
         activate_clocks(clock, None, request_id=None, now_ms=at_ms)
         return
@@ -560,7 +569,10 @@ def prepare_timed_mutation(
     if clock is not None and clock.status in {
         ClockStatus.WAITING_FOR_PLAYERS,
         ClockStatus.SUSPENDED_FOR_INACTIVITY,
+        ClockStatus.PAUSED,
     }:
+        if clock.status == ClockStatus.PAUSED:
+            raise ValueError("Match is paused; every player must ready up to resume")
         if clock.status == ClockStatus.SUSPENDED_FOR_INACTIVITY:
             raise ValueError("Match suspended for inactivity; every player must ready again")
         raise ValueError("Waiting for every player to be ready before starting the timed match")
@@ -630,6 +642,17 @@ def stop_clock_for_accepted_decision(
         now_ms=timestamp,
         decision_hero_ids=clock.active_decision_hero_ids,
     )
+
+
+def pause_game_for_consensus(game: ManagedGame, hero_id: str, at_ms: int | None = None) -> None:
+    """Freeze a running timed match after the table voted to pause it."""
+    clock = game.session.state.clock
+    if clock is None:
+        raise ValueError("This match does not use time controls")
+    if clock.status != ClockStatus.RUNNING:
+        raise ValueError("Only a running timed match can be paused")
+    pause_game_clock(clock, now_ms() if at_ms is None else at_ms, requested_by=hero_id)
+    _record_clock_event(game, "PAUSED")
 
 
 def mark_human_action(game: ManagedGame) -> None:

@@ -13,6 +13,7 @@ from goa2.domain.time_control import (
     grant_initiative_bonus,
     grant_response_time,
     milliseconds_until_next_exhaustion,
+    pause_game_clock,
     public_clock_view,
     settle_clock,
     start_game_clock,
@@ -262,3 +263,49 @@ def test_public_view_extrapolates_without_mutating_persisted_state(
     assert view["players"]["hero_b"]["running"] is False
     assert clock.players["hero_a"].planning_allowance_ms == 10_000
     assert clock.last_settled_at_ms == 10_000
+
+
+def test_pause_stops_the_clock_and_records_who_asked(config: TimeControlConfig) -> None:
+    clock = _clock(config)
+    start_game_clock(clock, 10_000)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=10_000)
+
+    pause_game_clock(clock, 13_000, requested_by="hero_b")
+
+    assert clock.status == ClockStatus.PAUSED
+    assert clock.pause_requested_by == "hero_b"
+    assert clock.paused_at_ms == 13_000
+    # Elapsed time up to the pause is still charged; nothing accrues after.
+    assert clock.players["hero_a"].planning_allowance_ms == 7_000
+    assert clock.active_kind is None
+    assert clock.active_hero_ids == []
+    assert clock.ready_hero_ids == []
+
+
+def test_paused_clock_charges_nothing_while_frozen(config: TimeControlConfig) -> None:
+    clock = _clock(config)
+    start_game_clock(clock, 10_000)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=10_000)
+    pause_game_clock(clock, 13_000, requested_by="hero_b")
+
+    settle_clock(clock, 999_000)
+
+    assert clock.players["hero_a"].planning_allowance_ms == 7_000
+
+
+def test_public_view_reports_an_open_pause(config: TimeControlConfig) -> None:
+    clock = _clock(config)
+    start_game_clock(clock, 10_000)
+    pause_game_clock(clock, 12_000, requested_by="hero_a")
+
+    view = public_clock_view(clock, 20_000)
+
+    assert view["status"] == "PAUSED"
+    assert view["pause"] == {"requested_by": "hero_a", "since_ms": 12_000}
+
+
+def test_public_view_has_no_pause_block_while_running(config: TimeControlConfig) -> None:
+    clock = _clock(config)
+    start_game_clock(clock, 10_000)
+
+    assert public_clock_view(clock, 11_000)["pause"] is None

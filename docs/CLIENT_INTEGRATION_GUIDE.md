@@ -848,7 +848,7 @@ The `view` object returned by `GET /games/{game_id}` and WebSocket `STATE_UPDATE
 
 For a timed match, `time_control` is the immutable creation configuration and
 `clock` is a public snapshot containing `status`, `server_now_ms`, the shared
-`turn_key`, `ready_hero_ids`, active clock kind/targets, and every hero's
+`turn_key`, `ready_hero_ids`, `pause`, active clock kind/targets, and every hero's
 remaining Planning, Resolution, Initiative Bonus, Response, Upgrade, and Time
 Bank milliseconds. The Initiative Bonus is granted when the first primary
 Resolution request of a shared turn starts and is reset at the next shared
@@ -863,6 +863,34 @@ clock status becomes `SUSPENDED_FOR_INACTIVITY` before the next Planning phase.
 Deadline tasks stop and no more fallback choices are made. Every player must
 ready again through the same REST endpoint or WebSocket message; the completed
 ready check starts that pending shared turn with its normal fresh allowances.
+
+### Pausing a timed match
+
+The table can pause a running timed match by consensus (see
+[Consensus overrides](#consensus-overrides), `family: "pause"`). While the
+clock status is `PAUSED`:
+
+- The `clock` snapshot carries `"pause": {"requested_by": "<hero_id>",
+  "since_ms": <server ms>}`. It is `null` in every other status.
+- No time accrues, and no deadline can expire.
+- **The game is frozen, not just the clocks.** Every mutation — `COMMIT_CARD`,
+  `UNCOMMIT_CARD`, `PASS_TURN`, `FINISH_PLANNING`, `SUBMIT_INPUT`, `ROLLBACK`,
+  `advance` — is rejected with an error naming the pause, and no new override
+  may be proposed.
+- `SET_READY` is the only accepted action. Resuming requires **every** seated
+  hero to be ready, not a majority and not only the connected ones; render
+  `ready_hero_ids` as a roster so players can see who is still missing. The
+  match resumes the instant the last hero readies.
+
+A pause has **no expiry and no override**: if one player never readies up, the
+match stays paused indefinitely. Say so in the UI rather than implying the
+pause is temporary.
+
+Resuming from a pause does not open a new shared turn — allowances resume
+exactly where they stopped, and no Time Bank increment is granted. (Resuming
+from `SUSPENDED_FOR_INACTIVITY` does open the pending shared turn.) Pauses are
+recorded in clock telemetry as `PAUSED` / `RESUMED` events, not as replayable
+override decisions.
 
 ### Top-level fields
 
@@ -1843,13 +1871,14 @@ In addition to the standard error shape (`{"detail": "..."}`), draft endpoints c
 
 When the engine gets something wrong — refuses a legal move, resolves a defeat
 that should not have happened, wedges mid-action — the table can force the game
-into the state it should be in, by majority vote. Three families of override
-exist:
+into the state it should be in, by majority vote. The same negotiation also
+carries the table's request to pause a timed match. Four families exist:
 
 - **patch** — correct a wrong value (position, defeat, gold, life counters, …)
 - **unstick** — escape a wedged control flow (skip the pending input, abort the
   action, force the turn to end, fix the actor)
 - **rewind** — return the whole game to an earlier decision index
+- **pause** — freeze a running timed match until every player readies up
 
 Overrides are recorded as replay decisions and survive reconstruction; the
 negotiation itself (proposals, votes) is transient — it is **not** part of
@@ -1866,6 +1895,12 @@ negotiation itself (proposals, votes) is transient — it is **not** part of
   `GOA2_OVERRIDE_TIMEOUT_SECONDS`); expiry is a **rejection**.
 - The turn clock is paused while a proposal is open and resumes on resolution.
 - Propose/vote/cancel are WebSocket-only; there are no REST equivalents.
+
+`family: "pause"` takes no `op` and no `args`, and is accepted only in a timed
+match whose clock is `RUNNING`. It is granted by the same majority as any other
+override, but it is **not** ended by a vote: see
+[Pausing a timed match](#pausing-a-timed-match). It mutates no game state, so
+it is recorded as clock telemetry rather than a replay decision.
 
 ### WebSocket messages
 

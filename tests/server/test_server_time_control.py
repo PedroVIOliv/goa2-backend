@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from goa2.domain.input import SKIP, InputOption, InputRequest, InputRequestType
 from goa2.domain.models import GamePhase
+from goa2.domain.state import GameState
 from goa2.domain.time_control import ClockKind, ClockStatus, TimeControlConfig
 from goa2.domain.types import HeroID
 from goa2.engine.handler import push_steps
@@ -25,6 +26,7 @@ from goa2.server.time_control import (
     apply_due_timeouts,
     client_decision_timed_out,
     mark_human_action,
+    pause_game_for_consensus,
     prepare_timed_mutation,
     reconcile_game_clock,
     set_player_ready,
@@ -1077,3 +1079,138 @@ def test_each_shared_turn_snapshots_every_players_time_bank() -> None:
     # The increment is granted once as the new shared turn opens.
     assert snapshots[0]["bank"] == {"hero_arien": 30_000, "hero_wasp": 30_000}
     assert snapshots[1]["bank"] == {"hero_arien": 35_000, "hero_wasp": 35_000}
+
+
+def test_consensus_pause_freezes_the_clock_and_blocks_every_mutation() -> None:
+    game = _game(_config())
+    _start(game)
+    clock = game.session.state.clock
+    assert clock is not None
+
+    pause_game_for_consensus(game, "hero_arien", 5_000)
+
+    assert clock.status == ClockStatus.PAUSED
+    assert clock.pause_requested_by == "hero_arien"
+    assert clock.ready_hero_ids == []
+    assert clock.active_kind is None
+    with pytest.raises(ValueError, match="paused"):
+        prepare_timed_mutation(game, 6_000)
+
+
+def test_resume_from_pause_requires_every_seated_hero() -> None:
+    game = _game(_config())
+    _start(game)
+    clock = game.session.state.clock
+    assert clock is not None
+    pause_game_for_consensus(game, "hero_arien", 5_000)
+
+    assert not set_player_ready(game, "hero_arien", True, 6_000)
+    assert clock.status == ClockStatus.PAUSED
+
+    assert set_player_ready(game, "hero_wasp", True, 7_000)
+    assert clock.status == ClockStatus.RUNNING
+    assert clock.pause_requested_by is None
+    assert clock.paused_at_ms is None
+
+
+def test_resume_from_pause_keeps_spent_allowances_and_the_open_turn() -> None:
+    game = _game(_config())
+    _start(game, 0)
+    clock = game.session.state.clock
+    assert clock is not None
+    reconcile_game_clock(game, 4_000)  # charge 4s of the Planning allowance
+    spent = clock.players["hero_arien"].planning_allowance_ms
+    bank = clock.players["hero_arien"].time_bank_ms
+    assert spent == 6_000
+
+    pause_game_for_consensus(game, "hero_arien", 4_000)
+    set_player_ready(game, "hero_arien", True, 60_000)
+    set_player_ready(game, "hero_wasp", True, 60_000)
+
+    # A pause can land mid-turn, so resuming must not open a new shared turn:
+    # that would refund the spent allowance and hand out a Time Bank increment.
+    assert clock.players["hero_arien"].planning_allowance_ms == spent
+    assert clock.players["hero_arien"].time_bank_ms == bank
+    assert (clock.turn_round, clock.turn_number) == (1, 1)
+
+
+def test_pause_and_resume_are_recorded() -> None:
+    game = _game(_config())
+    _start(game)
+
+    pause_game_for_consensus(game, "hero_arien", 5_000)
+    set_player_ready(game, "hero_arien", True, 6_000)
+    set_player_ready(game, "hero_wasp", True, 6_000)
+
+    assert _clock_events(game) == ["STARTED", "PAUSED", "RESUMED"]
+
+
+def test_pause_survives_a_persistence_round_trip() -> None:
+    game = _game(_config())
+    _start(game)
+    clock = game.session.state.clock
+    assert clock is not None
+    pause_game_for_consensus(game, "hero_arien", 5_000)
+
+    restored = GameState.model_validate(game.session.state.model_dump(mode="json")).clock
+
+    assert restored is not None
+    assert restored.status == ClockStatus.PAUSED
+    assert restored.pause_requested_by == "hero_arien"
+    assert restored.paused_at_ms == 5_000
+
+
+def test_resume_from_pause_keeps_a_pending_response_clock_intact() -> None:
+    game = _game(_config(response_grant_seconds=15))
+    _start(game)
+    state = game.session.state
+    clock = state.clock
+    assert clock is not None
+    state.phase = GamePhase.RESOLUTION
+    state.resolution_owner_id = HeroID("hero_arien")
+    request = InputRequest(
+        id="defense-1",
+        request_type=InputRequestType.SELECT_CARD_OR_PASS,
+        player_id="hero_wasp",
+    )
+    game.last_result = SessionResult(
+        result_type=SessionResultType.INPUT_NEEDED,
+        input_request=request,
+        current_phase=GamePhase.RESOLUTION,
+    )
+    reconcile_game_clock(game, 0)
+    reconcile_game_clock(game, 6_000)  # burn 6s of Wasp's Response time
+    wasp = clock.players["hero_wasp"]
+    assert wasp.response_time_ms == 9_000
+
+    pause_game_for_consensus(game, "hero_wasp", 6_000)
+    set_player_ready(game, "hero_arien", True, 600_000)
+    set_player_ready(game, "hero_wasp", True, 600_000)
+
+    # The same request is still pending, so it must not be granted a second
+    # Response allowance, and the 10 minutes spent paused cost nothing.
+    assert clock.players["hero_wasp"].response_time_ms == 9_000
+    assert clock.active_kind == ClockKind.RESPONSE
+    assert clock.active_request_id == "defense-1"
+
+
+def test_the_pause_vote_itself_costs_the_proposer_nothing() -> None:
+    game = _game(_config(planning_allowance_seconds=30))
+    _start(game, 0)
+    clock = game.session.state.clock
+    assert clock is not None
+    reconcile_game_clock(game, 20_000)
+    assert clock.players["hero_arien"].planning_allowance_ms == 10_000
+
+    # Opening the proposal stops every personal clock at that instant.
+    game.pending_override = object()
+    reconcile_game_clock(game, 20_000)
+    reconcile_game_clock(game, 25_000)  # five seconds of voting
+    assert clock.players["hero_arien"].planning_allowance_ms == 10_000
+
+    game.pending_override = None
+    pause_game_for_consensus(game, "hero_arien", 25_000)
+    set_player_ready(game, "hero_arien", True, 900_000)
+    set_player_ready(game, "hero_wasp", True, 900_000)
+
+    assert clock.players["hero_arien"].planning_allowance_ms == 10_000

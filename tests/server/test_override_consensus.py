@@ -420,3 +420,165 @@ def test_view_payload_has_no_override_state(client, game_data):
         initial = ws_a.receive_json()
         # Override negotiation state deliberately stays off the view.
         assert "pending_override" not in initial["view"]
+
+
+# ---- Consensus pause -------------------------------------------------------
+
+
+def test_pause_proposal_carries_no_op():
+    game = _fake_game(["hero_a", "hero_b", "hero_c"])
+    p = create_proposal(game, "hero_a", {"family": "pause"})
+    assert p.family == "pause"
+    assert p.op is None
+    assert p.args == {}
+    assert p.threshold() == 2
+    assert p.summary
+
+
+def test_pause_proposal_rejects_a_stray_op():
+    game = _fake_game(["hero_a", "hero_b"])
+    with pytest.raises(ValueError):
+        create_proposal(game, "hero_a", {"family": "pause", "op": "set_gold"})
+
+
+@pytest.fixture
+def timed_game_data(client):
+    return client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "time_control": {
+                "planning_allowance_seconds": 60,
+                "resolution_allowance_seconds": 60,
+                "response_grant_seconds": 15,
+                "initial_time_bank_seconds": 30,
+                "time_bank_increment_seconds": 5,
+                "max_time_bank_seconds": 60,
+                "upgrade_allowance_seconds": 10,
+            },
+        },
+    ).json()
+
+
+def _ready_up(ws_a, ws_w):
+    """Complete the pre-match ready check so the clock is RUNNING."""
+    ws_a.send_json({"type": "SET_READY", "ready": True})
+    _drain_until(ws_a, "READY_UPDATED")
+    ws_w.send_json({"type": "SET_READY", "ready": True})
+    _drain_until(ws_w, "READY_UPDATED")
+
+
+def test_agreed_pause_freezes_the_match(client, timed_game_data):
+    gid = timed_game_data["game_id"]
+    t_a = _token_for(timed_game_data, "hero_arien")
+    t_w = _token_for(timed_game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        _ready_up(ws_a, ws_w)
+
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        assert _drain_until(ws_w, "OVERRIDE_RESOLVED")["outcome"] == "applied"
+
+        clock = _drain_until(ws_w, "STATE_UPDATE")["view"]["clock"]
+        assert clock["status"] == "PAUSED"
+        assert clock["pause"]["requested_by"] == "hero_arien"
+
+        # The game itself is frozen, not just the clocks.
+        ws_a.send_json({"type": "COMMIT_CARD", "card_id": "arien_tidal_wave"})
+        assert "paused" in _drain_until(ws_a, "ERROR")["detail"]
+
+
+def test_a_minority_cannot_pause(client, timed_game_data):
+    gid = timed_game_data["game_id"]
+    t_a = _token_for(timed_game_data, "hero_arien")
+    t_w = _token_for(timed_game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        _ready_up(ws_a, ws_w)
+
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": False})
+
+        assert _drain_until(ws_w, "OVERRIDE_RESOLVED")["outcome"] == "rejected"
+        ws_a.send_json({"type": "GET_VIEW"})
+        assert _drain_until(ws_a, "STATE_UPDATE")["view"]["clock"]["status"] == "RUNNING"
+
+
+def test_every_hero_must_ready_up_to_resume(client, timed_game_data):
+    gid = timed_game_data["game_id"]
+    t_a = _token_for(timed_game_data, "hero_arien")
+    t_w = _token_for(timed_game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        _ready_up(ws_a, ws_w)
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        _drain_until(ws_w, "OVERRIDE_RESOLVED")
+        _drain_until(ws_w, "STATE_UPDATE")
+
+        ws_a.send_json({"type": "SET_READY", "ready": True})
+        _drain_until(ws_a, "READY_UPDATED")
+        update = _drain_until(ws_a, "STATE_UPDATE")
+        assert update["view"]["clock"]["status"] == "PAUSED"
+        assert update["view"]["clock"]["ready_hero_ids"] == ["hero_arien"]
+
+        ws_w.send_json({"type": "SET_READY", "ready": True})
+        _drain_until(ws_w, "READY_UPDATED")
+        assert _drain_until(ws_w, "STATE_UPDATE")["view"]["clock"]["status"] == "RUNNING"
+
+
+def test_no_override_may_be_proposed_while_paused(client, timed_game_data):
+    gid = timed_game_data["game_id"]
+    t_a = _token_for(timed_game_data, "hero_arien")
+    t_w = _token_for(timed_game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        _ready_up(ws_a, ws_w)
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        _drain_until(ws_w, "OVERRIDE_RESOLVED")
+
+        ws_a.send_json(
+            {"type": "PROPOSE_OVERRIDE", "family": "unstick", "op": "abort_action", "args": {}}
+        )
+        assert "paused" in _drain_until(ws_a, "ERROR")["detail"]
+
+
+def test_pause_is_rejected_in_an_untimed_match(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}"),
+    ):
+        ws_a.receive_json()
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        assert "time control" in _drain_until(ws_a, "ERROR")["detail"]

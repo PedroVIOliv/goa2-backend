@@ -30,8 +30,8 @@ def override_proposal_timeout_seconds() -> int:
 class OverrideProposal:
     id: str
     proposer_hero_id: str
-    family: str  # "patch" | "unstick" | "rewind"
-    op: str | None  # None for rewind
+    family: str  # "patch" | "unstick" | "rewind" | "pause"
+    op: str | None  # None for rewind and pause
     args: dict[str, Any]
     to: int | None  # rewind target decision index
     summary: str
@@ -75,13 +75,17 @@ def create_proposal(
         raise ValueError("Another override proposal is already open")
 
     family = data.get("family")
-    if family not in ("patch", "unstick", "rewind"):
-        raise ValueError("family must be patch, unstick, or rewind")
+    if family not in ("patch", "unstick", "rewind", "pause"):
+        raise ValueError("family must be patch, unstick, rewind, or pause")
 
     op_name: str | None = None
     args: dict[str, Any] = {}
     to: int | None = None
-    if family == "rewind":
+    if family == "pause":
+        if data.get("op") or data.get("args"):
+            raise ValueError("pause proposals take no op or args")
+        summary = "Pause the match"
+    elif family == "rewind":
         raw_to = data.get("to")
         if not isinstance(raw_to, int) or isinstance(raw_to, bool) or raw_to < 0:
             raise ValueError("rewind requires a non-negative integer 'to'")
