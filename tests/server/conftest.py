@@ -19,6 +19,20 @@ _ISOLATED_DIRS = {
 
 
 @pytest.fixture(autouse=True)
+def _no_worker_prewarm():
+    """Server tests build hundreds of apps; don't spawn worker processes for each."""
+    previous = os.environ.get("GOA2_PREWARM_WORKERS")
+    os.environ["GOA2_PREWARM_WORKERS"] = "0"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("GOA2_PREWARM_WORKERS", None)
+        else:
+            os.environ["GOA2_PREWARM_WORKERS"] = previous
+
+
+@pytest.fixture(autouse=True)
 def _isolate_data_dirs(tmp_path_factory):
     """Point every server data directory at a fresh temp dir, per test."""
     previous = {var: os.environ.get(var) for var in _ISOLATED_DIRS}

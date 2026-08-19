@@ -31,7 +31,7 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.routes_overrides import router as overrides_router
 from goa2.server.time_control import resume_timers, stop_timers
-from goa2.server.workers import shutdown_heavy_pool
+from goa2.server.workers import prewarm_heavy_pool, shutdown_heavy_pool
 from goa2.server.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
@@ -81,9 +81,21 @@ async def lifespan(app: FastAPI):
     await resume_timers(registry)
 
     cleanup_task = asyncio.create_task(_cleanup_loop(registry))
+    # Background, never awaited: a worker takes seconds to spawn, and blocking
+    # startup on it would delay every restart to spare the first rewind.
+    # Off by default under tests, which build hundreds of apps.
+    warmup_task = (
+        asyncio.create_task(prewarm_heavy_pool())
+        if os.environ.get("GOA2_PREWARM_WORKERS", "1") != "0"
+        else None
+    )
     try:
         yield
     finally:
+        if warmup_task is not None:
+            warmup_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await warmup_task
         shutdown_heavy_pool()
         await stop_timers(registry)
         cleanup_task.cancel()

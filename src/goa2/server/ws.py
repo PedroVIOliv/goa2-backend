@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from concurrent.futures.process import BrokenProcessPool
 from typing import Any
 from uuid import uuid4
 
@@ -587,7 +588,7 @@ async def _resolve_override(
                 if result is not None:
                     game.last_result = result
                     events = [ev.model_dump() for ev in result.events]
-        except (OverrideRejectedError, ValueError) as exc:
+        except (OverrideRejectedError, ValueError, BrokenProcessPool) as exc:
             outcome = "rejected"
             code = getattr(exc, "code", "invalid_op")
             reason = {"code": code, "message": str(exc)}
@@ -608,7 +609,11 @@ async def _resolve_override(
             # clock event) rather than a replayable override decision.
             if game.replay_recorder and proposal.family != "pause":
                 game.replay_recorder.record_override(record)
-        finalize_timed_mutation(game, registry)  # reconcile + save + reschedule
+        finally:
+            # Clocks are paused by prepare_timed_mutation above; leaving them
+            # that way strands the match, so reconcile even on an unforeseen
+            # failure.
+            finalize_timed_mutation(game, registry)  # reconcile + save + reschedule
         # Outcome first, then the fresh state, in one flush.
         messages.extend(
             _override_broadcast_to_all(game, ov.resolved_msg(proposal, outcome, reason))

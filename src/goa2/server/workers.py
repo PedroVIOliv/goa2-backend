@@ -36,6 +36,10 @@ def _init_worker() -> None:
     register_all_effects()
 
 
+def _max_workers() -> int:
+    return int(os.environ.get("GOA2_HEAVY_WORKERS", "2"))
+
+
 def get_heavy_pool() -> ProcessPoolExecutor:
     """The shared pool, created on first use.
 
@@ -46,7 +50,7 @@ def get_heavy_pool() -> ProcessPoolExecutor:
     global _pool
     if _pool is None:
         _pool = ProcessPoolExecutor(
-            max_workers=int(os.environ.get("GOA2_HEAVY_WORKERS", "2")),
+            max_workers=_max_workers(),
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_init_worker,
         )
@@ -60,6 +64,16 @@ async def run_heavy(fn: Callable[..., T], *args: Any) -> T:
     """
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(get_heavy_pool(), fn, *args)
+
+
+async def prewarm_heavy_pool() -> None:
+    """Start the workers before anyone needs them.
+
+    A worker costs seconds to spawn and import the engine, and the pool only
+    starts one when work arrives — so without this the very first rewind pays
+    that on top of its own runtime. One trivial job per worker forces them up.
+    """
+    await asyncio.gather(*(run_heavy(os.getpid) for _ in range(_max_workers())))
 
 
 def shutdown_heavy_pool() -> None:

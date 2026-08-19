@@ -56,3 +56,21 @@ def test_worker_has_the_card_effect_registry_populated():
 
     effect = asyncio.run(run_heavy(CardEffectRegistry.get, "liquid_leap"))
     assert effect is not None
+
+
+def test_prewarm_starts_the_workers():
+    """Pre-warming pays the ~3s worker spawn at boot, not on the first rewind."""
+    import time as _time
+
+    from goa2.server.workers import prewarm_heavy_pool
+
+    shutdown_heavy_pool()
+
+    async def scenario():
+        await prewarm_heavy_pool()
+        started = _time.perf_counter()
+        await run_heavy(os.getpid)
+        return (_time.perf_counter() - started) * 1000
+
+    after_prewarm_ms = asyncio.run(scenario())
+    assert after_prewarm_ms < 200, f"call took {after_prewarm_ms:.0f}ms — pool was still cold"
