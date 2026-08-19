@@ -19,17 +19,23 @@ _ISOLATED_DIRS = {
 
 
 @pytest.fixture(autouse=True)
-def _no_worker_prewarm():
-    """Server tests build hundreds of apps; don't spawn worker processes for each."""
-    previous = os.environ.get("GOA2_PREWARM_WORKERS")
+def _no_worker_subprocesses():
+    """Server tests build hundreds of apps; don't spawn worker processes for each.
+
+    Replay verification at game over would spawn one too, for every finished
+    fixture game.
+    """
+    previous = {v: os.environ.get(v) for v in ("GOA2_PREWARM_WORKERS", "GOA2_VERIFY_REPLAYS")}
     os.environ["GOA2_PREWARM_WORKERS"] = "0"
+    os.environ["GOA2_VERIFY_REPLAYS"] = "0"
     try:
         yield
     finally:
-        if previous is None:
-            os.environ.pop("GOA2_PREWARM_WORKERS", None)
-        else:
-            os.environ["GOA2_PREWARM_WORKERS"] = previous
+        for var, prev in previous.items():
+            if prev is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = prev
 
 
 @pytest.fixture(autouse=True)

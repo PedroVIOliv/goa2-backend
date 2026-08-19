@@ -1,0 +1,121 @@
+{"v": 1, "type": "setup", "game_id": "fd5183e6658c", "map": "forgotten_island", "red": ["Mrak", "Swift"], "blue": ["Whisper", "Garrus"], "game_type": "LONG", "cheats": false, "seed": 336717934228688078863354033416337251140, "tie_breaker_team": "RED", "time_control": null, "engine": "7d94633", "created_at": 1787093603.3695982, "ts": 1787093603.369605}
+{"type": "commit", "r": 1, "t": 1, "hero": "hero_swift", "card": "suppress", "ts": 1787093659.6655467}
+{"type": "uncommit", "r": 1, "t": 1, "hero": "hero_swift", "ts": 1787093664.548935}
+{"type": "commit", "r": 1, "t": 1, "hero": "hero_swift", "card": "suppress", "ts": 1787093685.9534988}
+{"type": "commit", "r": 1, "t": 1, "hero": "hero_garrus", "card": "hold_ground", "ts": 1787093756.0218403}
+{"type": "commit", "r": 1, "t": 1, "hero": "hero_whisper", "card": "shadow_step", "ts": 1787093759.0549178}
+{"type": "commit", "r": 1, "t": 1, "hero": "hero_mrak", "card": "treacherous_ground", "ts": 1787093884.8277757}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_mrak", "sel": "FAST_TRAVEL", "ts": 1787093892.989099}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_mrak", "sel": {"q": -3, "r": 0, "s": 3}, "ts": 1787093903.9677365}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_mrak", "sel": "CONFIRM", "ts": 1787093910.258673}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_garrus", "sel": "FAST_TRAVEL", "ts": 1787093913.3973227}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_garrus", "sel": {"q": 6, "r": -7, "s": 1}, "ts": 1787093924.1849904}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_garrus", "sel": "CONFIRM", "ts": 1787093925.5416234}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_swift", "sel": "FAST_TRAVEL", "ts": 1787093942.0802026}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_swift", "sel": {"q": 3, "r": -11, "s": 8}, "ts": 1787094059.9216785}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_swift", "sel": "CONFIRM", "ts": 1787094061.7141027}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_whisper", "sel": "FAST_TRAVEL", "ts": 1787094067.7565062}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_whisper", "sel": {"q": 5, "r": -4, "s": -1}, "ts": 1787094070.5215645}
+{"type": "input", "r": 1, "t": 1, "hero": "hero_whisper", "sel": "CONFIRM", "ts": 1787094074.3719492}
+{"type": "commit", "r": 1, "t": 2, "hero": "hero_garrus", "card": "trace", "ts": 1787094145.3848326}
+{"type": "commit", "r": 1, "t": 2, "hero": "hero_swift", "card": "steam_jump", "ts": 1787094185.0820546}
+{"type": "commit", "r": 1, "t": 2, "hero": "hero_whisper", "card": "seeds_of_fear", "ts": 1787094224.2859023}
+{"type": "commit", "r": 1, "t": 2, "hero": "hero_mrak", "card": "boulder_rush", "ts": 1787094243.2181573}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_whisper", "sel": "MOVEMENT", "ts": 1787094251.6830618}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_whisper", "sel": {"q": 3, "r": -3, "s": 0}, "ts": 1787094254.0288026}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_whisper", "sel": "CONFIRM", "ts": 1787094255.5812027}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": "SKILL", "ts": 1787094261.9856408}
+{"type": "rollback", "r": 1, "t": 2, "hero": "hero_swift", "ts": 1787094275.680866}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": "FAST_TRAVEL", "ts": 1787094276.9915328}
+{"type": "rollback", "r": 1, "t": 2, "hero": "hero_swift", "ts": 1787094289.3915787}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": "SKILL", "ts": 1787094292.0894976}
+{"type": "rollback", "r": 1, "t": 2, "hero": "hero_swift", "ts": 1787094340.7667909}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": "FAST_TRAVEL", "ts": 1787094355.2061741}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": {"q": -2, "r": -6, "s": 8}, "ts": 1787094357.98544}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_swift", "sel": "CONFIRM", "ts": 1787094361.3016632}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_mrak", "sel": "MOVEMENT", "ts": 1787094380.8794107}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_mrak", "sel": {"q": -1, "r": -1, "s": 2}, "ts": 1787094395.930013}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_mrak", "sel": "CONFIRM", "ts": 1787094404.9777021}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_garrus", "sel": "MOVEMENT", "ts": 1787094409.8827136}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_garrus", "sel": {"q": 2, "r": -6, "s": 4}, "ts": 1787094413.7198694}
+{"type": "input", "r": 1, "t": 2, "hero": "hero_garrus", "sel": "CONFIRM", "ts": 1787094416.405536}
+{"type": "commit", "r": 1, "t": 3, "hero": "hero_swift", "card": "snipe", "ts": 1787094516.7537427}
+{"type": "uncommit", "r": 1, "t": 3, "hero": "hero_swift", "ts": 1787094524.7047658}
+{"type": "commit", "r": 1, "t": 3, "hero": "hero_garrus", "card": "angry_strike", "ts": 1787094526.4082572}
+{"type": "commit", "r": 1, "t": 3, "hero": "hero_swift", "card": "snipe", "ts": 1787094532.3137412}
+{"type": "commit", "r": 1, "t": 3, "hero": "hero_mrak", "card": "seismic_slam", "ts": 1787094540.9627404}
+{"type": "commit", "r": 1, "t": 3, "hero": "hero_whisper", "card": "crimson_trail", "ts": 1787094576.6364765}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_garrus", "sel": "ATTACK", "ts": 1787094602.5252244}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_garrus", "sel": "minion_44", "ts": 1787094604.4921691}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_garrus", "sel": "CONFIRM", "ts": 1787094606.361414}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_whisper", "sel": "ATTACK", "ts": 1787094609.3463442}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_whisper", "sel": "minion_43", "ts": 1787094611.5060472}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_whisper", "sel": "CONFIRM", "ts": 1787094613.4545224}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_swift", "sel": "ATTACK", "ts": 1787094633.704395}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_swift", "sel": "hero_garrus", "ts": 1787094635.245923}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_garrus", "sel": "menace", "ts": 1787094646.3751388}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_mrak", "sel": "MOVEMENT", "ts": 1787094655.9369256}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_mrak", "sel": {"q": 0, "r": -4, "s": 4}, "ts": 1787094693.8612442}
+{"type": "input", "r": 1, "t": 3, "hero": "hero_mrak", "sel": "CONFIRM", "ts": 1787094695.1238809}
+{"type": "commit", "r": 1, "t": 4, "hero": "hero_swift", "card": "reload", "ts": 1787094713.984183}
+{"type": "commit", "r": 1, "t": 4, "hero": "hero_garrus", "card": "chilling_howl", "ts": 1787094730.6058044}
+{"type": "commit", "r": 1, "t": 4, "hero": "hero_whisper", "card": "swift_justice", "ts": 1787094760.7123327}
+{"type": "commit", "r": 1, "t": 4, "hero": "hero_mrak", "card": "fissure", "ts": 1787094802.5543878}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "SKILL", "ts": 1787094808.4985733}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "trace", "ts": 1787094816.004386}
+{"type": "rollback", "r": 1, "t": 4, "hero": "hero_garrus", "ts": 1787094821.333829}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "SKILL", "ts": 1787094828.2729197}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "trace", "ts": 1787094859.6371663}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "CONFIRM", "ts": 1787094860.9424202}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": "MOVEMENT", "ts": 1787094869.2120166}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": {"q": 2, "r": -3, "s": 1}, "ts": 1787094872.7425122}
+{"type": "rollback", "r": 1, "t": 4, "hero": "hero_whisper", "ts": 1787094877.0319948}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": "MOVEMENT", "ts": 1787094885.7663863}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": {"q": 2, "r": -2, "s": 0}, "ts": 1787094886.8971515}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": "CONFIRM", "ts": 1787094889.2174299}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": "ATTACK", "ts": 1787094891.2538173}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": "minion_42", "ts": 1787094892.5455058}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": "CONFIRM", "ts": 1787094894.0784516}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_swift", "sel": "SKILL", "ts": 1787094896.378603}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_swift", "sel": "1", "ts": 1787094900.4527307}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_swift", "sel": "hero_garrus", "ts": 1787094902.2308478}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": "PASS", "ts": 1787094905.9912183}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": "minion_47", "ts": 1787094926.066667}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_swift", "sel": {"hero_id": "hero_swift", "card_id": "prepared_shot"}, "ts": 1787094985.5201027}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_garrus", "sel": {"hero_id": "hero_garrus", "card_id": "blunt_force"}, "ts": 1787094993.137129}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": {"hero_id": "hero_mrak", "card_id": "rolling_stone"}, "ts": 1787095074.9406996}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_mrak", "sel": {"hero_id": "hero_mrak", "card_id": "seismic_assault"}, "ts": 1787095081.9972382}
+{"type": "input", "r": 1, "t": 4, "hero": "hero_whisper", "sel": {"hero_id": "hero_whisper", "card_id": "cruel_twist"}, "ts": 1787095123.6149828}
+{"type": "commit", "r": 2, "t": 1, "hero": "hero_mrak", "card": "rolling_stone", "ts": 1787095199.4626086}
+{"type": "commit", "r": 2, "t": 1, "hero": "hero_swift", "card": "bounce", "ts": 1787095239.515207}
+{"type": "uncommit", "r": 2, "t": 1, "hero": "hero_swift", "ts": 1787095253.2003622}
+{"type": "commit", "r": 2, "t": 1, "hero": "hero_swift", "card": "bounce", "ts": 1787095262.0827796}
+{"type": "commit", "r": 2, "t": 1, "hero": "hero_whisper", "card": "crimson_trail", "ts": 1787095315.195063}
+{"type": "commit", "r": 2, "t": 1, "hero": "hero_garrus", "card": "hold_ground", "ts": 1787095319.5493274}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_swift", "sel": "SKILL", "ts": 1787095325.9909625}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_swift", "sel": {"q": 0, "r": -8, "s": 8}, "ts": 1787095327.5388825}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_swift", "sel": "CONFIRM", "ts": 1787095329.513101}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_whisper", "sel": "MOVEMENT", "ts": 1787095360.3433328}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_whisper", "sel": {"q": -2, "r": 0, "s": 2}, "ts": 1787095362.8312595}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_whisper", "sel": "CONFIRM", "ts": 1787095364.9943686}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_mrak", "sel": "SKILL", "ts": 1787095367.0967848}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_mrak", "sel": {"q": 4, "r": -4, "s": 0}, "ts": 1787095370.223024}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_mrak", "sel": "CONFIRM", "ts": 1787095372.0466523}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": "RESPAWN", "ts": 1787095376.020731}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": {"q": 8, "r": -2, "s": -6}, "ts": 1787095377.7062519}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": "FAST_TRAVEL", "ts": 1787095380.220767}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": {"q": -1, "r": 3, "s": -2}, "ts": 1787095381.9176807}
+{"type": "rollback", "r": 2, "t": 1, "hero": "hero_garrus", "ts": 1787095386.9630196}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": "RESPAWN", "ts": 1787095421.3674505}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": {"q": 9, "r": -4, "s": -5}, "ts": 1787095424.2627864}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": "FAST_TRAVEL", "ts": 1787095429.3413177}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": {"q": 5, "r": -3, "s": -2}, "ts": 1787095595.2473433}
+{"type": "input", "r": 2, "t": 1, "hero": "hero_garrus", "sel": "CONFIRM", "ts": 1787095596.8447227}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_swift", "card": "steam_jump", "ts": 1787095768.30032}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_mrak", "card": "seismic_assault", "ts": 1787095830.7227025}
+{"type": "uncommit", "r": 2, "t": 2, "hero": "hero_swift", "ts": 1787095847.0024405}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_whisper", "card": "swift_justice", "ts": 1787095884.8157423}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_swift", "card": "steam_jump", "ts": 1787095893.5587335}
+{"type": "uncommit", "r": 2, "t": 2, "hero": "hero_swift", "ts": 1787095901.8311741}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_swift", "card": "steam_jump", "ts": 1787095913.4439275}
+{"type": "commit", "r": 2, "t": 2, "hero": "hero_garrus", "card": "menace", "ts": 1787096026.4705298}

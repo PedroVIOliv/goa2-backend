@@ -30,7 +30,11 @@ from goa2.server.errors import (
     validate_simultaneous_input_scope,
 )
 from goa2.server.registry import GameRegistry, ManagedGame
-from goa2.server.replay import load_replay, rebuild_session_for_rewind
+from goa2.server.replay import (
+    load_replay,
+    rebuild_session_for_rewind,
+    verify_replay_in_background,
+)
 from goa2.server.time_control import (
     client_decision_timed_out,
     finalize_timed_mutation,
@@ -285,6 +289,7 @@ def _log_ws_result(game: ManagedGame, result) -> None:
         gl.log_input_request(result.input_request.to_dict())
     if result.winner:
         gl.log_game_over(result.winner)
+        _verify_finished_replay(game)
 
 
 async def _handle_submit_input(
@@ -448,6 +453,12 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
         game.game_logger.log_pass_turn(hero_id)
     _log_ws_result(game, result)
     return _action_result_message(game, result, hero_id)
+
+
+def _verify_finished_replay(game: ManagedGame) -> None:
+    """Check the finished game's log reconstructs, in the background."""
+    if game.replay_recorder is not None:
+        verify_replay_in_background(str(game.replay_recorder.path), game.game_id)
 
 
 async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:

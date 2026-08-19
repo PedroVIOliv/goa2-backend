@@ -64,6 +64,7 @@ retention (default 30 days) and are NOT deleted when a game's save is removed.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -78,6 +79,7 @@ from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
 from goa2.server.map_paths import resolve_map_path
+from goa2.server.workers import run_heavy
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +409,88 @@ def replay_game(
             _apply_decision(session, decision)
 
     return session
+
+
+def verify_replay(path: str) -> dict[str, Any]:
+    """Reconstruct a replay from its own log and report whether it survives.
+
+    A log that cannot be replayed is useless for sharing, viewing and rewinding,
+    and the failure is otherwise invisible until someone tries months later.
+    Never raises: the caller wants a verdict, not an exception.
+    """
+    try:
+        setup, decisions = load_replay(path)
+    except Exception as exc:
+        return {"ok": False, "applied": 0, "total": 0, "at": None, "error": str(exc)}
+
+    try:
+        session = build_session_from_setup(setup)
+    except Exception as exc:
+        return {"ok": False, "applied": 0, "total": len(decisions), "at": None, "error": str(exc)}
+
+    applied = 0
+    for index, decision in enumerate(decisions):
+        try:
+            if decision.get("type") == "ov_rewind":
+                session = build_session_from_setup(setup)
+                for earlier in effective_decisions(decisions, int(decision["to"])):
+                    _apply_decision(session, earlier)
+            else:
+                _apply_decision(session, decision)
+            applied += 1
+        except Exception as exc:
+            return {
+                "ok": False,
+                "applied": applied,
+                "total": len(decisions),
+                "at": index,
+                "error": str(exc),
+            }
+    return {"ok": True, "applied": applied, "total": len(decisions), "at": None, "error": None}
+
+
+_verification_tasks: set[Any] = set()
+
+
+def verify_replay_in_background(path: str, game_id: str) -> None:
+    """Check a finished game's log against itself, without blocking anything.
+
+    A log that cannot be replayed is dead weight — unshareable, unviewable,
+    unrewindable — and the failure is silent until someone tries. Checking at
+    game over is the last moment the answer is still cheap to act on.
+
+    Re-simulation is seconds of CPU, so it runs in a worker process. Failures
+    are logged, never raised: a bad log must not disturb the game that just
+    ended.
+    """
+    if os.environ.get("GOA2_VERIFY_REPLAYS", "1") == "0":
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return  # no loop (sync context); verification is best-effort
+
+    async def _run() -> None:
+        try:
+            result = await run_heavy(verify_replay, path)
+        except Exception:
+            logger.exception("Replay verification errored for game %s", game_id)
+            return
+        if result["ok"]:
+            logger.info("Replay verified for game %s (%d decisions)", game_id, result["total"])
+        else:
+            logger.error(
+                "Replay for game %s does NOT reconstruct: failed at decision %s of %s: %s",
+                game_id,
+                result["at"],
+                result["total"],
+                result["error"],
+            )
+
+    task = loop.create_task(_run())
+    # Hold a reference; a bare create_task can be garbage collected mid-flight.
+    _verification_tasks.add(task)
+    task.add_done_callback(_verification_tasks.discard)
 
 
 def rebuild_session_for_rewind(path: str, target_index: int) -> GameSession:

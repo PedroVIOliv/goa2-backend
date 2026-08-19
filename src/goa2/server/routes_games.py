@@ -34,6 +34,7 @@ from goa2.server.models import (
     ReadyRequest,
     SubmitInputRequest,
 )
+from goa2.server.replay import verify_replay_in_background
 from goa2.server.time_control import (
     client_decision_timed_out,
     finalize_timed_mutation,
@@ -81,6 +82,8 @@ def _log_result(
         gl.log_input_request(result.input_request.to_dict())
     if result.winner:
         gl.log_game_over(result.winner)
+        if game.replay_recorder is not None:
+            verify_replay_in_background(str(game.replay_recorder.path), game.game_id)
 
 
 def _result_to_response(
