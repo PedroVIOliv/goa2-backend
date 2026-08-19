@@ -332,10 +332,11 @@ class SuggestionEffect(CardEffect):
             ),
             SelectStep(
                 target_type=TargetType.HEX,
-                prompt="Move that hero exactly 3 spaces in a straight line",
+                prompt="Move exactly 3 spaces in a straight line",
                 output_key=destination_key,
                 is_mandatory=True,
                 active_if_key=target_key,
+                override_player_id_key=target_key,
                 filters=[
                     RangeFilter(min_range=3, max_range=3, origin_key=target_key),
                     InStraightLineFilter(origin_key=target_key),

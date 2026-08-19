@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from goa2.domain.hex import Hex
 from goa2.domain.models import CardState, EffectType, StatType
 from goa2.domain.models.effect import DurationType
 from goa2.engine.effects import CardEffectRegistry
@@ -161,3 +162,34 @@ def test_shield_creates_one_active_card_bound_basic_only_immunity() -> None:
     push_steps(state, repeated)
     process_stack(state)
     assert len(state.active_effects) == 1
+
+
+def _line_state(spell_id: str):
+    spell = gydion_spell(spell_id)
+    spell.state = CardState.OUTSIDE_SPELLBOOK
+    return (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (2, 0, -2), (3, 0, -3), (4, 0, -4)])
+        .red_hero("hero_caster", at=(0, 0, 0), current_card=spell)
+        .blue_hero("hero_target", at=(1, 0, -1))
+        .with_actor("hero_caster")
+        .build()
+    ), spell
+
+
+def test_suggestion_lets_the_moved_hero_choose_their_own_destination() -> None:
+    state, spell = _line_state("suggestion")
+    effect = CardEffectRegistry.get_for_card(spell)
+    push_steps(state, effect.get_steps(state, state.get_hero("hero_caster"), spell))
+
+    target_request = process_stack(state)
+    assert target_request.input_request.player_id == "hero_caster"
+    state.execution_stack[-1].pending_input = {"selection": "hero_target"}
+
+    destination = process_stack(state)
+    assert destination.input_request is not None
+    assert destination.input_request.player_id == "hero_target"
+
+    state.execution_stack[-1].pending_input = {"selection": {"q": 4, "r": 0, "s": -4}}
+    process_stack(state)
+    assert state.get_position("hero_target") == Hex(q=4, r=0, s=-4)
