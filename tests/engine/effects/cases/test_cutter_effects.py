@@ -963,6 +963,29 @@ def test_walk_the_plank_defeat_adjacent_minion() -> None:
     assert _pos(state, "blue_minion") is None  # defeated/removed
 
 
+@pytest.mark.effect_contract
+def test_walk_the_plank_defeat_credits_cutter_the_bounty() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_cutter", at=(0, 0, 0), current_card=hero_card("Cutter", "walk_the_plank"))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor("hero_cutter")
+        .build()
+    )
+    cutter = state.get_hero("hero_cutter")
+    cutter.gold = 0
+    bounty = state.get_unit("blue_minion").value
+
+    run = run_card(state, "hero_cutter")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").finish()
+
+    assert cutter.gold == bounty
+
+
 @pytest.mark.effect_flow
 def test_walk_the_plank_defeat_excludes_immune_minion() -> None:
     from goa2.engine.rules import is_immune

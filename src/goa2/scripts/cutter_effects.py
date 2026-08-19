@@ -700,7 +700,7 @@ class WalkThePlankEffect(CardEffect):
                     RangeFilter(max_range=1),
                 ],
             ),
-            DefeatUnitStep(victim_key="plank_minion"),
+            DefeatUnitStep(victim_key="plank_minion", killer_id=str(hero.id)),
         ]
 
 

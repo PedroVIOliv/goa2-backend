@@ -513,6 +513,31 @@ def test_trample_crosses_hero_and_minion() -> None:
     assert state.entity_locations.get("em") is None  # defeated minion
 
 
+@pytest.mark.effect_contract
+def test_trample_defeat_credits_wuk_the_bounty() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .line_board(6)
+        .red_hero("hero_wuk", at=(0, 0, 0), current_card=hero_card("Wuk", "trample"))
+        .with_actor("hero_wuk")
+        .blue_minion("em", at=(1, 0, -1))
+        .build()
+    )
+    wuk = state.get_hero("hero_wuk")
+    wuk.gold = 0
+    bounty = state.get_unit("em").value
+
+    run = run_card(state, "hero_wuk")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("MOVEMENT")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(2)
+    run.expect_input(InputRequestType.SELECT_HEX).choose(Hex(q=2, r=0, s=-2))
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("em")
+    run.finish()
+
+    assert state.entity_locations.get("em") is None
+    assert wuk.gold == bounty
+
+
 @pytest.mark.effect_flow
 def test_trample_affects_all_crossed_heroes_without_choice() -> None:
     # Two enemy heroes crossed (no cards); both must be defeated with NO

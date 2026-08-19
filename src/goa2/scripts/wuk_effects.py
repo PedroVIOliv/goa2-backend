@@ -782,7 +782,9 @@ def _trample_steps(hero_id: str, move_range: int, max_minions: int) -> list[Game
                 ],
             )
         )
-        steps.append(DefeatUnitStep(victim_key=minion_key, active_if_key=minion_key))
+        steps.append(
+            DefeatUnitStep(victim_key=minion_key, active_if_key=minion_key, killer_id=hero_id)
+        )
 
     return steps
 
