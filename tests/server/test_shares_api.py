@@ -21,6 +21,7 @@ RED = ["Arien"]
 BLUE = ["Wasp"]
 FINISHED = "sharefin1"
 UNFINISHED = "shareopen1"
+REWOUND = "sharerewind1"
 
 
 def _hero_ids(state) -> list[str]:
@@ -58,6 +59,60 @@ def _record_game(game_id: str, *, finish: bool, seed: int = 42) -> None:
                 "voters": _hero_ids(live.state),
             }
         )
+
+
+_REWOUND_DEAD_CARD = ""
+_REWOUND_KEPT_CARD = ""
+
+
+def _record_rewound_game(game_id: str, seed: int = 42) -> None:
+    """Record a game whose table voted to rewind, then replayed the turn differently.
+
+    Decision 1 (the first Wasp commit) is rewound away by decision 2 and replaced
+    by decision 3, so the effective timeline is 0, 3, 4.
+    """
+    global _REWOUND_DEAD_CARD, _REWOUND_KEPT_CARD
+
+    state = GameSetup.create_game(_resolve_map_path(MAP), RED, BLUE, False, "QUICK", seed=seed)
+    live = GameSession(state)
+    rec = ReplayRecorder(game_id)
+    rec.record_setup(
+        map_name=MAP, red_heroes=RED, blue_heroes=BLUE, game_type="QUICK", cheats=False, seed=seed
+    )
+    red_id, blue_id = _hero_ids(live.state)[0], _hero_ids(live.state)[1]
+
+    card = live.state.get_hero(HeroID(red_id)).hand[0]
+    rec.record_commit(red_id, card.id, live.state.round, live.state.turn)
+    live.commit_card(HeroID(red_id), card)
+
+    blue_hand = live.state.get_hero(HeroID(blue_id)).hand
+    _REWOUND_DEAD_CARD, _REWOUND_KEPT_CARD = blue_hand[0].id, blue_hand[1].id
+
+    rec.record_commit(blue_id, _REWOUND_DEAD_CARD, live.state.round, live.state.turn)
+    rec.record_override(
+        {
+            "type": "ov_rewind",
+            "r": live.state.round,
+            "t": live.state.turn,
+            "hero": blue_id,
+            "to": 1,
+            "voters": [red_id, blue_id],
+        }
+    )
+    rec.record_commit(blue_id, _REWOUND_KEPT_CARD, live.state.round, live.state.turn)
+    live.commit_card(HeroID(blue_id), blue_hand[1])
+
+    rec.record_override(
+        {
+            "type": "ov_patch",
+            "r": live.state.round,
+            "t": live.state.turn,
+            "hero": red_id,
+            "op": "set_life_counters",
+            "args": {"team": "BLUE", "value": 0},
+            "voters": [red_id, blue_id],
+        }
+    )
 
 
 @pytest.fixture
@@ -296,3 +351,39 @@ def test_revoked_share_releases_the_pin(client):
     client.delete(f"/shares/{token}")
     removed = cleanup_old_replays(ttl_days=0)
     assert removed == 2
+
+
+# --- rewinds collapse into the shared timeline ----------------------------
+
+
+def test_a_rewound_game_bakes_its_final_timeline(client):
+    """A share is the game as it ended, not the dead branches it took to get there.
+
+    The rewound-away commit must be absent from the shared decision list, and
+    the surviving one present, so a viewer scrubs a clean monotonic timeline.
+    """
+    _record_rewound_game(REWOUND)
+
+    res = client.post(f"/replays/{REWOUND}/share")
+    assert res.status_code == 201, res.text
+
+    body = client.get(f"/shared/{res.json()['token']}").json()
+    types = [d["type"] for d in body["decisions"]]
+    assert "ov_rewind" not in types
+    assert types == ["commit", "commit", "ov_patch"]
+
+    cards = [d["card"] for d in body["decisions"] if d["type"] == "commit"]
+    assert _REWOUND_KEPT_CARD in cards
+    assert _REWOUND_DEAD_CARD not in cards
+
+
+def test_every_baked_position_of_a_rewound_game_is_reachable(client):
+    """Baking walks the collapsed list, so every index must render a position."""
+    _record_rewound_game(REWOUND)
+    token = client.post(f"/replays/{REWOUND}/share").json()["token"]
+
+    for n in range(4):
+        res = client.get(f"/shared/{token}/state?decision={n}")
+        assert res.status_code == 200, f"position {n}: {res.text}"
+        assert res.json()["position"]["decision_index"] == n
+    assert client.get(f"/shared/{token}/state").json()["winner"] is not None

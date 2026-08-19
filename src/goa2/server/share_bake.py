@@ -33,11 +33,13 @@ BakeResult = dict[str, Any]
 def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeResult:
     """Reconstruct a replay and bake every position. Runs in a child process.
 
+    Rewinds are collapsed away first, so indices in the baked artifact address
+    the effective timeline and do not line up with raw log indices.
+
     Returns one of:
       {"ok": True, "token": "..."}                     baked and published
       {"ok": False, "reason": "unfinished"}            game has no winner yet
       {"ok": False, "reason": "drift", "at": N, "error": "..."}   reconstruction failed
-      {"ok": False, "reason": "rewind"}                log contains an ov_rewind
 
     ``bake_in_subprocess`` adds {"ok": False, "reason": "crashed"} when the child
     dies without returning at all.
@@ -54,6 +56,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
     from goa2.server.replay import (
         _apply_decision,
         build_session_from_setup,
+        effective_decisions,
         load_replay,
         state_body,
         winner_of,
@@ -61,12 +64,13 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
 
     os.environ["GOA2_SHARE_DIR"] = share_dir
 
-    setup, decisions = load_replay(replay_path)
+    setup, raw = load_replay(replay_path)
+    # A share is the game as it ended. Collapsing rewinds here yields a linear
+    # timeline the forward walk below can bake, and never simulates a decision
+    # the table voted away.
+    decisions = effective_decisions(raw)
     session = build_session_from_setup(setup)
     applied = 0
-
-    if any(d.get("type") == "ov_rewind" for d in decisions):
-        return {"ok": False, "reason": "rewind"}
 
     def render(index: int) -> dict[str, Any]:
         nonlocal applied
