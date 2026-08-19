@@ -8,9 +8,21 @@ grants bug-report mutation.
 Storage mirrors ``bug_reports.py``: one directory per share under
 ``GOA2_SHARE_DIR`` (default ``data/shares``)::
 
-    data/shares/<token>/meta.json      setup, decision list, total, engine, game_id
-    data/shares/<token>/000.json.gz    baked view for decision 0
-    data/shares/<token>/249.json.gz    ...
+    data/shares/<token>/meta.json        setup, decision list, total, engine, game_id
+    data/shares/<token>/g0000.json.br    positions 0..K, brotli
+    data/shares/<token>/g0175.json.br    positions 175.., brotli
+    ...
+
+A group holds one full snapshot (its *keyframe*) plus an RFC 6902 JSON Patch per
+following position::
+
+    {"start": 175, "keyframe": {...}, "patches": [[op, ...], ...]}
+
+Consecutive positions differ by one decision, so a patch is ~1.7 KB against a
+~120 KB snapshot. Storing each position whole cost ~16.5 KB compressed; grouping
+brings a 703-position game from 10.5 MB to ~90 KB, and lets the client scrub the
+whole group without another request. The reader never expands a group — the
+bytes are served exactly as baked, so this path still parses no JSON.
 
 Why bake instead of reconstructing per request: a finished game's log never
 changes, so its positions are immutable. Reconstruction is *re-simulation* —
@@ -18,8 +30,8 @@ changes, so its positions are immutable. Reconstruction is *re-simulation* —
 seed (measured on the deployment target: 0.82 s to build the empty session plus
 18.4 ms per decision, i.e. ~5.4 s for a 249-decision game). That work is pure
 Python holding the GIL, so it competes with the event loop serving live games.
-Baking once at mint time (~6.6 s, ~3 MB gzipped) turns every subsequent read
-into a 12 KB file read with no engine work at all.
+Baking once at mint time turns every subsequent read into one small file read
+with no engine work at all.
 
 A baked share is fully self-contained: it does not read the ``.jsonl`` log, so
 it cannot fail on engine drift the way live reconstruction can.
@@ -39,9 +51,43 @@ import time
 from pathlib import Path
 from typing import Any
 
+import brotli
+import jsonpatch
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_SHARE_DIR = "data/shares"
+
+# Bumped when the on-disk layout changes. Shares baked before groups existed
+# carry no marker and are still served position-by-position.
+SHARE_FORMAT = 2
+
+# Brotli beats gzip here by ~1.7x because its window spans the whole group,
+# so the board topology repeated in every snapshot is visible to it (gzip's
+# 32 KB window cannot reach across a ~120 KB snapshot). Quality 9 rather than
+# 11: on the deployment target 11 costs 1.7 s per group against 47 ms, for 15%.
+_BROTLI_QUALITY = 9
+
+# Groups are stored only in brotli. A client that cannot take it gets one
+# transcoded per request — measured on the deployment target at 1 ms to
+# decompress plus 17 ms to gzip, on a path no browser has taken since brotli
+# became universal. Storing a gzip twin instead would cost 1.5x the brotli
+# bytes on every share forever to serve that path in zero.
+_GZIP_FALLBACK_LEVEL = 6
+
+# A group closes once its patches outweigh its keyframe, so no single request
+# ever costs more than ~2x the keyframe it is anchored on. Falls out at K~175.
+_BUDGET_MULTIPLE = 2
+
+# Sizing the group exactly at every position would recompress a growing blob
+# K times per group. Checking periodically against a cheap compression level
+# costs a fraction of that and moves a boundary by at most 7 positions.
+_CHECK_EVERY = 8
+_PROXY_LEVEL = 1
+
+# Hard ceiling regardless of budget, so one pathologically static stretch
+# cannot produce a group that must be downloaded in full to see its last position.
+_MAX_GROUP = 512
 
 # Tokens are secrets.token_urlsafe output: URL-safe base64 alphabet.
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -64,6 +110,14 @@ def _share_path(token: str) -> Path:
 
 def _position_name(index: int) -> str:
     return f"{index:03d}.json.gz"
+
+
+def _group_name(start: int, encoding: str) -> str:
+    return f"g{start:04d}.json.{encoding}"
+
+
+def _dumps(obj: Any) -> bytes:
+    return json.dumps(obj, separators=(",", ":")).encode()
 
 
 def bake_share(
@@ -96,13 +150,54 @@ def bake_share(
 
     staging = Path(tempfile.mkdtemp(prefix=f".{token}.", dir=root))
     try:
+        groups: list[dict[str, int]] = []
         size_bytes = 0
-        for index in range(len(decisions) + 1):
+
+        def flush(
+            start: int, keyframe: dict[str, Any], patches: list[list[dict[str, Any]]]
+        ) -> None:
+            nonlocal size_bytes
+            raw = _dumps({"start": start, "keyframe": keyframe, "patches": patches})
+            compressed = brotli.compress(raw, quality=_BROTLI_QUALITY)
+            (staging / _group_name(start, "br")).write_bytes(compressed)
+            size_bytes += len(compressed)
+            groups.append({"start": start, "count": len(patches) + 1})
+
+        start = 0
+        keyframe = render(0)
+        previous = keyframe
+        keyframe_raw = _dumps(keyframe)
+        keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
+        patches: list[list[dict[str, Any]]] = []
+        patches_raw: list[bytes] = []
+
+        def over_budget() -> bool:
+            if len(patches) >= _MAX_GROUP:
+                return True
+            if len(patches) % _CHECK_EVERY:
+                return False
+            blob = keyframe_raw + b"".join(patches_raw)
+            grown = len(gzip.compress(blob, _PROXY_LEVEL)) - keyframe_proxy
+            return grown > _BUDGET_MULTIPLE * keyframe_proxy
+
+        for index in range(1, len(decisions) + 1):
             body = render(index)
-            payload = json.dumps(body, separators=(",", ":")).encode()
-            blob = gzip.compress(payload, 6)
-            size_bytes += len(blob)
-            (staging / _position_name(index)).write_bytes(blob)
+            patch = jsonpatch.make_patch(previous, body).patch
+            previous = body
+            patches.append(patch)
+            patches_raw.append(_dumps(patch))
+            if over_budget():
+                # The patch that broke the budget is dropped and its target
+                # becomes the next keyframe, so no position is ever unreachable.
+                patches.pop()
+                patches_raw.pop()
+                flush(start, keyframe, patches)
+                start, keyframe = index, body
+                keyframe_raw = _dumps(body)
+                keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
+                patches, patches_raw = [], []
+
+        flush(start, keyframe, patches)
 
         if validate is not None and not validate():
             shutil.rmtree(staging, ignore_errors=True)
@@ -127,6 +222,11 @@ def bake_share(
             "total_decisions": len(decisions),
             "engine": setup.get("engine"),
             "created_at": time.time(),
+            "format": SHARE_FORMAT,
+            # Start index and length of every group, in order. The read path
+            # scans this to map a position to its file — the same kind of
+            # metadata lookup round/turn resolution already does.
+            "groups": groups,
             # Recorded at bake time so listing shares never stats hundreds of files.
             "size_bytes": size_bytes,
         }
@@ -154,12 +254,61 @@ def load_meta(token: str) -> dict[str, Any] | None:
 
 
 def position_path(token: str, index: int) -> Path | None:
-    """Path to a baked position's gzip file, or None if absent."""
+    """Path to a baked position's gzip file, or None if absent.
+
+    Only format 1 shares have these; groups replaced them.
+    """
     try:
         path = _share_path(token) / _position_name(index)
     except FileNotFoundError:
         return None
     return path if path.is_file() else None
+
+
+def is_grouped(meta: dict[str, Any]) -> bool:
+    """Whether this share stores keyframe groups rather than one file per position."""
+    return int(meta.get("format", 1)) >= 2
+
+
+def group_start_for(meta: dict[str, Any], index: int) -> int:
+    """Start index of the group holding ``index``.
+
+    Groups are contiguous and ordered, so the last one starting at or before the
+    target owns it. Falls back to 0 for a meta with no usable group list, which
+    keeps a damaged share serving its first group instead of erroring.
+    """
+    start = 0
+    for group in meta.get("groups") or []:
+        if int(group["start"]) <= index:
+            start = int(group["start"])
+        else:
+            break
+    return start
+
+
+def group_path(token: str, start: int) -> Path | None:
+    """Path to a baked group, or None if absent."""
+    try:
+        path = _share_path(token) / _group_name(start, "br")
+    except FileNotFoundError:
+        return None
+    return path if path.is_file() else None
+
+
+def read_group(token: str, start: int, *, accepts_brotli: bool) -> tuple[bytes, str] | None:
+    """Group bytes plus the Content-Encoding they are in, or None if absent.
+
+    Brotli clients get the stored bytes untouched, which is the whole point of
+    baking: the read path compresses nothing and parses nothing. Anything else
+    is transcoded here rather than kept on disk.
+    """
+    path = group_path(token, start)
+    if path is None:
+        return None
+    stored = path.read_bytes()
+    if accepts_brotli:
+        return stored, "br"
+    return gzip.compress(brotli.decompress(stored), _GZIP_FALLBACK_LEVEL), "gzip"
 
 
 def revoke_share(token: str) -> bool:

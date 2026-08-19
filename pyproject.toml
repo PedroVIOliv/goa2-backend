@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "brotli>=1.2.0",
     "fastapi>=0.122.0",
+    "jsonpatch>=1.33",
     "pydantic>=2.12.5",
     "python-dotenv>=1.0",
     "uvicorn[standard]>=0.38.0",
@@ -42,6 +44,10 @@ python_version = "3.11"
 strict = false
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["brotli.*", "jsonpatch.*"]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src/goa2"]

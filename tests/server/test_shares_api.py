@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 from pathlib import Path
 
+import brotli
+import jsonpatch
 import pytest
 from fastapi.testclient import TestClient
 
@@ -142,6 +145,23 @@ def _mint(client) -> str:
     return body["token"]
 
 
+def _fetch_position(client, token: str, query: str) -> dict:
+    """Read one position the way the frontend does: fetch a group, apply patches.
+
+    The response is a whole group, so this mirrors the client contract rather
+    than hiding it — a test that broke reconstruction would otherwise pass.
+    """
+    res = client.get(f"/shared/{token}/state?{query}", headers={"Accept-Encoding": "br"})
+    assert res.status_code == 200, res.text
+    # httpx decodes Content-Encoding transparently, exactly as a browser does.
+    group = res.json()
+    target = int(res.headers["x-replay-position"])
+    body = group["keyframe"]
+    for patch in group["patches"][: target - group["start"]]:
+        body = jsonpatch.JsonPatch(patch).apply(body)
+    return body
+
+
 def _strip_volatile(obj):
     """Drop non-deterministic instance identifiers (step_id = id(object()))."""
     if isinstance(obj, dict):
@@ -245,7 +265,7 @@ def test_every_baked_position_matches_dynamic_reconstruction(client):
     assert len(total["decisions"]) == 3
 
     for n in range(4):
-        baked = client.get(f"/shared/{token}/state?decision={n}").json()
+        baked = _fetch_position(client, token, f"decision={n}")
         live = client.get(f"/replays/{FINISHED}/state?decision={n}").json()
         assert _strip_volatile(baked) == _strip_volatile(live), f"mismatch at decision {n}"
 
@@ -261,31 +281,58 @@ def test_shared_meta_matches_replay_meta(client):
 # --- public serving -------------------------------------------------------
 
 
-def test_state_is_served_gzipped(client):
+def test_state_is_served_brotli_when_accepted(client):
     token = _mint(client)
-    # No automatic decompression, so the stored encoding is observable.
-    res = client.get(f"/shared/{token}/state?decision=0", headers={"Accept-Encoding": "identity"})
+    res = client.get(f"/shared/{token}/state?decision=0", headers={"Accept-Encoding": "br"})
+    assert res.status_code == 200
+    assert res.headers["content-encoding"] == "br"
+    assert res.headers["vary"] == "Accept-Encoding"
+    assert res.json()["start"] == 0
+
+
+def test_state_falls_back_to_gzip_without_brotli(client):
+    token = _mint(client)
+    res = client.get(f"/shared/{token}/state?decision=0", headers={"Accept-Encoding": "gzip"})
     assert res.status_code == 200
     assert res.headers["content-encoding"] == "gzip"
+    assert res.json()["start"] == 0
+
+
+def test_both_encodings_carry_identical_content(client):
+    token = _mint(client)
+    q = {"Accept-Encoding": "br"}, {"Accept-Encoding": "gzip"}
+    br, gz = (client.get(f"/shared/{token}/state?decision=0", headers=h) for h in q)
+    assert br.json() == gz.json()
+
+
+def test_only_brotli_is_stored(client):
+    """The gzip a non-brotli client gets is transcoded per request, not kept."""
+    token = _mint(client)
+    directory = Path(os.environ["GOA2_SHARE_DIR"]) / token
+    assert sorted(p.suffix for p in directory.glob("g*")) == [".br"]
+    assert (
+        client.get(f"/shared/{token}/state", headers={"Accept-Encoding": "gzip"}).status_code == 200
+    )
+    assert sorted(p.suffix for p in directory.glob("g*")) == [".br"]
 
 
 def test_state_clamps_out_of_range(client):
     token = _mint(client)
-    body = client.get(f"/shared/{token}/state?decision=999").json()
+    body = _fetch_position(client, token, "decision=999")
     assert body["position"]["decision_index"] == 3
     assert body["position"]["total_decisions"] == 3
 
 
 def test_state_defaults_to_end_of_game(client):
     token = _mint(client)
-    body = client.get(f"/shared/{token}/state").json()
+    body = _fetch_position(client, token, "")
     assert body["position"]["decision_index"] == 3
     assert body["winner"] is not None
 
 
 def test_round_jump_works_without_the_engine(client):
     token = _mint(client)
-    baked = client.get(f"/shared/{token}/state?round=1").json()
+    baked = _fetch_position(client, token, "round=1")
     live = client.get(f"/replays/{FINISHED}/state?round=1").json()
     assert baked["position"] == live["position"]
 
@@ -383,7 +430,112 @@ def test_every_baked_position_of_a_rewound_game_is_reachable(client):
     token = client.post(f"/replays/{REWOUND}/share").json()["token"]
 
     for n in range(4):
-        res = client.get(f"/shared/{token}/state?decision={n}")
-        assert res.status_code == 200, f"position {n}: {res.text}"
-        assert res.json()["position"]["decision_index"] == n
-    assert client.get(f"/shared/{token}/state").json()["winner"] is not None
+        body = _fetch_position(client, token, f"decision={n}")
+        assert body["position"]["decision_index"] == n
+    assert _fetch_position(client, token, "")["winner"] is not None
+
+
+# --- group layout ---------------------------------------------------------
+
+
+def _bulky_body(index: int) -> dict:
+    """A body big enough that patches are worth taking, changing a little per step.
+
+    Mirrors the real shape: a large mostly-static board plus a few volatile
+    fields, which is what makes the keyframe/patch trade pay.
+    """
+    tiles = {
+        f"{q},{r}": {"hex": [q, r], "zone": "mid", "occupant": None}
+        for q in range(20)
+        for r in range(20)
+    }
+    tiles[f"{index % 20},{index % 20}"]["occupant"] = f"minion_{index}"
+    return {
+        "view": {"board": {"tiles": tiles}, "round": index // 10, "turn": index % 10},
+        "position": {
+            "decision_index": index,
+            "round": index // 10,
+            "turn": index % 10,
+            "total_decisions": 400,
+        },
+        "winner": None,
+    }
+
+
+def _bake_stub(tmp_path, count: int) -> tuple[str, dict]:
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    token = shares.bake_share(
+        game_id="g",
+        setup={"engine": "test"},
+        decisions=[{"type": "commit", "r": i // 10, "t": i % 10} for i in range(count)],
+        render=_bulky_body,
+    )
+    assert token
+    return token, shares.load_meta(token)
+
+
+def test_a_long_game_is_split_into_several_groups(tmp_path):
+    _token, meta = _bake_stub(tmp_path, 400)
+    assert meta["format"] == 2
+    assert len(meta["groups"]) > 1, "400 positions should not fit in one group"
+    # Groups tile the timeline exactly: contiguous, ordered, covering every index.
+    assert meta["groups"][0]["start"] == 0
+    covered = 0
+    for group in meta["groups"]:
+        assert group["start"] == covered
+        covered += group["count"]
+    assert covered == 401
+
+
+def test_every_position_reconstructs_across_group_boundaries(tmp_path):
+    token, meta = _bake_stub(tmp_path, 400)
+    for group in meta["groups"]:
+        doc = json.loads(brotli.decompress(shares.group_path(token, group["start"]).read_bytes()))
+        body = doc["keyframe"]
+        assert body == _bulky_body(group["start"])
+        for offset, patch in enumerate(doc["patches"], start=1):
+            body = jsonpatch.JsonPatch(patch).apply(body)
+            assert body == _bulky_body(
+                group["start"] + offset
+            ), f"position {group['start'] + offset} does not reconstruct"
+
+
+def test_grouping_is_far_smaller_than_one_file_per_position(tmp_path):
+    token, _meta = _bake_stub(tmp_path, 400)
+    grouped = sum(p.stat().st_size for p in Path(tmp_path, token).glob("*.json.br"))
+    whole = sum(len(gzip.compress(json.dumps(_bulky_body(i)).encode(), 6)) for i in range(401))
+    assert grouped * 10 < whole, f"expected a large reduction, got {whole / grouped:.1f}x"
+
+
+def test_every_index_maps_into_a_group_that_contains_it(tmp_path):
+    _, meta = _bake_stub(tmp_path, 400)
+    spans = {g["start"]: g["count"] for g in meta["groups"]}
+    for index in range(401):
+        start = shares.group_start_for(meta, index)
+        assert start <= index < start + spans[start]
+
+
+# --- shares baked before groups existed -----------------------------------
+
+
+def test_format_1_shares_are_still_served(tmp_path, client):
+    """An artifact on disk from before this change must keep working untouched."""
+    token = "legacyToken123"
+    directory = Path(os.environ["GOA2_SHARE_DIR"]) / token
+    directory.mkdir(parents=True)
+    body = {"view": {}, "position": {"decision_index": 1, "total_decisions": 1}, "winner": "RED"}
+    for index in (0, 1):
+        (directory / f"{index:03d}.json.gz").write_bytes(
+            gzip.compress(json.dumps(body).encode(), 6)
+        )
+    (directory / "meta.json").write_text(
+        json.dumps(
+            {"token": token, "game_id": "old", "setup": {}, "decisions": [], "total_decisions": 1}
+        )
+    )
+
+    assert shares.is_grouped(shares.load_meta(token)) is False
+    res = client.get(f"/shared/{token}/state?decision=1")
+    assert res.status_code == 200
+    assert res.headers["content-encoding"] == "gzip"
+    assert res.json() == body
