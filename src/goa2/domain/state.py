@@ -13,6 +13,7 @@ from goa2.domain.models import (
     GamePhase,
     Hero,
     ResolutionStep,
+    StatType,
     Team,
     TeamColor,
     Token,
@@ -130,6 +131,14 @@ class GameState(BaseModel):
     pending_upgrades: dict[HeroID, int] = Field(
         default_factory=dict
     )  # Level Up Phase Buffer: HeroID -> Number of upgrades pending
+
+    upgrade_reveal_snapshot: dict[HeroID, dict[StatType, int]] = Field(
+        default_factory=dict
+    )  # Pre-Level-Up items per levelling hero. An upgrade applies the moment
+    # its owner picks, but no pick may be public before the phase ends, or a
+    # slow player reads the tucked items of a fast one. Views serve these
+    # values to every other player; ResolveUpgradesStep clears the map once
+    # nothing is pending.
 
     unresolved_hero_ids: list[HeroID] = Field(
         default_factory=list

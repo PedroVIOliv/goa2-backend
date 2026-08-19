@@ -2453,6 +2453,7 @@ class ResolveUpgradesStep(GameStep):
 
         if not state.pending_upgrades:
             logger.debug("   [PHASE] All upgrades complete.")
+            state.upgrade_reveal_snapshot.clear()
             return StepResult(is_finished=True, new_steps=[RoundResetStep()])
 
         broadcast_data = {}

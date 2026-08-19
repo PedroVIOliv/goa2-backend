@@ -281,6 +281,7 @@ class EndPhaseCleanupStep(GameStep):
 
                 if upgrades_this_round > 0:
                     state.pending_upgrades[hero.id] = upgrades_this_round
+                    state.upgrade_reveal_snapshot[hero.id] = dict(hero.items)
                 elif not unlocked_ultimate:
                     # Pity Coin: Players who did not Level Up gain 1 Gold.
                     # (Don't give pity coin if they unlocked ultimate)

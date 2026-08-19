@@ -596,3 +596,37 @@ def test_upgrade_input_accepts_legal_option(upgrade_state):
     h1 = upgrade_state.get_hero("h1")
     assert "r2a" in [c.id for c in h1.hand]
     assert "h1" not in upgrade_state.pending_upgrades  # slot consumed
+
+
+def test_level_up_snapshots_pre_upgrade_items(upgrade_state):
+    upgrade_state.get_hero("h1").items = {StatType.ATTACK: 1}
+
+    push_steps(upgrade_state, [EndPhaseCleanupStep()])
+    process_stack(upgrade_state)
+
+    assert upgrade_state.upgrade_reveal_snapshot["h1"] == {StatType.ATTACK: 1}
+
+
+def test_snapshot_survives_a_partial_upgrade_and_clears_at_the_end(upgrade_state):
+    push_steps(upgrade_state, [EndPhaseCleanupStep()])
+    process_stack(upgrade_state)
+    process_stack(upgrade_state)
+
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "r2a"}})
+    process_stack(upgrade_state)
+    assert "h1" in upgrade_state.upgrade_reveal_snapshot
+
+    submit_input(upgrade_state, {"selection": {"hero_id": "h1", "card_id": "b2a"}})
+    process_stack(upgrade_state)
+
+    assert upgrade_state.pending_upgrades == {}
+    assert upgrade_state.upgrade_reveal_snapshot == {}
+
+
+def test_no_level_up_leaves_no_snapshot(upgrade_state):
+    upgrade_state.get_hero("h1").gold = 0
+
+    push_steps(upgrade_state, [EndPhaseCleanupStep()])
+    process_stack(upgrade_state)
+
+    assert upgrade_state.upgrade_reveal_snapshot == {}

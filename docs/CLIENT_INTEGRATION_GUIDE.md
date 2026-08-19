@@ -1335,6 +1335,11 @@ of input is needed and what options fields are present.
 | `UPGRADE_PHASE` | `players` (special structure) | upgrade selection | Choose card upgrades |
 | `CONFIRM_PASSIVE` | `options` (`["YES", "NO"]`) | `"YES"` or `"NO"` | Confirm a passive ability |
 
+During `UPGRADE_PHASE`, another hero's `items` keep their pre-phase values so a
+pending chooser cannot read what the others took. They jump to their real values
+for everyone once the last upgrade is submitted; a hero always sees their own
+choice applied immediately.
+
 ### How to respond
 
 **Via REST:**

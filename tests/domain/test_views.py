@@ -903,3 +903,48 @@ class TestUnresolvedCardsView:
 
         assert len(cards) == 1
         assert cards[0]["hero_id"] == "hero_a"
+
+
+class TestUpgradeRevealMasking:
+    """A pending upgrade hides the chooser's tucked items from opponents."""
+
+    @pytest.fixture
+    def mid_upgrade_state(self, sample_state):
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+        hero_b.items = {StatType.ATTACK: 1}
+        sample_state.upgrade_reveal_snapshot[HeroID("hero_b")] = {}
+        return sample_state
+
+    def test_opponent_sees_pre_upgrade_items(self, mid_upgrade_state):
+        hero_b_view = build_view(mid_upgrade_state, for_hero_id=HeroID("hero_a"))["teams"]["BLUE"][
+            "heroes"
+        ][0]
+
+        assert hero_b_view["items"] == {}
+
+    def test_spectator_sees_pre_upgrade_items(self, mid_upgrade_state):
+        hero_b_view = build_view(mid_upgrade_state)["teams"]["BLUE"]["heroes"][0]
+
+        assert hero_b_view["items"] == {}
+
+    def test_chooser_sees_their_own_upgrade(self, mid_upgrade_state):
+        hero_b_view = build_view(mid_upgrade_state, for_hero_id=HeroID("hero_b"))["teams"]["BLUE"][
+            "heroes"
+        ][0]
+
+        assert hero_b_view["items"] == {StatType.ATTACK: 1}
+
+    def test_reveal_all_sees_the_upgrade(self, mid_upgrade_state):
+        hero_b_view = build_view(mid_upgrade_state, reveal_all=True)["teams"]["BLUE"]["heroes"][0]
+
+        assert hero_b_view["items"] == {StatType.ATTACK: 1}
+
+    def test_hero_without_a_snapshot_is_unmasked(self, mid_upgrade_state):
+        hero_a = mid_upgrade_state.get_hero(HeroID("hero_a"))
+        hero_a.items = {StatType.DEFENSE: 2}
+
+        hero_a_view = build_view(mid_upgrade_state, for_hero_id=HeroID("hero_b"))["teams"]["RED"][
+            "heroes"
+        ][0]
+
+        assert hero_a_view["items"] == {StatType.DEFENSE: 2}

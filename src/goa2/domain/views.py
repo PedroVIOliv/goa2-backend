@@ -198,6 +198,10 @@ def _build_hero_view(
     """
     is_own_hero = reveal_all or hero.id == for_hero_id
 
+    # Until the Level Up phase ends, another hero's items come from the
+    # pre-phase snapshot: a live item pip announces what they just picked.
+    upgrade_snapshot = None if is_own_hero else state.upgrade_reveal_snapshot.get(hero.id)
+
     # Whether this hero may still commit a second card (or call planning-done)
     # this turn — Emmitt's Alternative Timelines. Secret planning progress, so
     # only ever True for the genuine requesting hero, never for opponents.
@@ -222,7 +226,7 @@ def _build_hero_view(
         "team": hero.team.value if hero.team else None,
         "level": hero.level,
         "gold": hero.gold,
-        "items": hero.items,
+        "items": hero.items if upgrade_snapshot is None else upgrade_snapshot,
         # Gydion's Wish victory progress is per caster and public.
         "wish_cast_count": hero.wish_cast_count,
         # Rune slots (Snorri): public to all viewers, including opponents/spectators
