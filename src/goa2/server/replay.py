@@ -418,15 +418,38 @@ def verify_replay(path: str) -> dict[str, Any]:
     and the failure is otherwise invisible until someone tries months later.
     Never raises: the caller wants a verdict, not an exception.
     """
+    engines: dict[str, Any] = {
+        "recorded_engine": None,
+        "current_engine": _engine_revision(),
+        "engine_changed": False,
+    }
+
     try:
         setup, decisions = load_replay(path)
     except Exception as exc:
-        return {"ok": False, "applied": 0, "total": 0, "at": None, "error": str(exc)}
+        return {"ok": False, "applied": 0, "total": 0, "at": None, "error": str(exc), **engines}
+
+    # Fixing game logic invalidates replays of games that exercised the old
+    # behaviour, so a failure here is expected rather than mysterious — but
+    # only if the verdict says which engine wrote the log.
+    engines["recorded_engine"] = setup.get("engine")
+    engines["engine_changed"] = bool(
+        engines["recorded_engine"]
+        and engines["current_engine"] != "unknown"
+        and engines["recorded_engine"] != engines["current_engine"]
+    )
 
     try:
         session = build_session_from_setup(setup)
     except Exception as exc:
-        return {"ok": False, "applied": 0, "total": len(decisions), "at": None, "error": str(exc)}
+        return {
+            "ok": False,
+            "applied": 0,
+            "total": len(decisions),
+            "at": None,
+            "error": str(exc),
+            **engines,
+        }
 
     applied = 0
     for index, decision in enumerate(decisions):
@@ -445,8 +468,16 @@ def verify_replay(path: str) -> dict[str, Any]:
                 "total": len(decisions),
                 "at": index,
                 "error": str(exc),
+                **engines,
             }
-    return {"ok": True, "applied": applied, "total": len(decisions), "at": None, "error": None}
+    return {
+        "ok": True,
+        "applied": applied,
+        "total": len(decisions),
+        "at": None,
+        "error": None,
+        **engines,
+    }
 
 
 _verification_tasks: set[Any] = set()
@@ -479,12 +510,20 @@ def verify_replay_in_background(path: str, game_id: str) -> None:
         if result["ok"]:
             logger.info("Replay verified for game %s (%d decisions)", game_id, result["total"])
         else:
+            engine_note = (
+                f" (recorded on engine {result['recorded_engine']}, "
+                f"verifying on {result['current_engine']} — an engine change "
+                f"invalidates replays of games that exercised the old behaviour)"
+                if result.get("engine_changed")
+                else ""
+            )
             logger.error(
-                "Replay for game %s does NOT reconstruct: failed at decision %s of %s: %s",
+                "Replay for game %s does NOT reconstruct: failed at decision %s of %s: %s%s",
                 game_id,
                 result["at"],
                 result["total"],
                 result["error"],
+                engine_note,
             )
 
     task = loop.create_task(_run())

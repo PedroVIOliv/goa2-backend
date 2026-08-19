@@ -75,3 +75,23 @@ def test_scheduling_without_a_running_loop_is_a_noop(monkeypatch):
 
     monkeypatch.setenv("GOA2_VERIFY_REPLAYS", "1")
     replay_module.verify_replay_in_background("whatever.jsonl", "game1")
+
+
+def test_result_reports_which_engine_recorded_the_log():
+    """A failure after an engine change is expected, not mysterious.
+
+    Fixing game logic necessarily invalidates replays of games that exercised
+    the old behaviour, so the verdict has to say which engine wrote the log.
+    """
+    result = verify_replay(str(FIXTURES / "reconstructs_ok.jsonl"))
+    assert result["recorded_engine"] == "7d94633"
+    assert result["current_engine"]
+    assert result["engine_changed"] is True
+
+
+def test_engine_is_unchanged_when_the_shas_match(monkeypatch):
+    from goa2.server import replay as replay_module
+
+    monkeypatch.setattr(replay_module, "_engine_revision", lambda: "7d94633")
+    result = verify_replay(str(FIXTURES / "reconstructs_ok.jsonl"))
+    assert result["engine_changed"] is False
