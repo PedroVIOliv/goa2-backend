@@ -46,6 +46,7 @@ from goa2.server.visibility import (
     events_for_viewer,
     input_request_for_viewer,
 )
+from goa2.server.workers import run_heavy
 
 router = APIRouter()
 
@@ -571,8 +572,10 @@ async def _resolve_override(
                     raise OverrideRejectedError(
                         "This game has no replay log to rewind", code="no_replay"
                     )
-                new_session = rebuild_session_for_rewind(
-                    str(game.replay_recorder.path), proposal.to
+                # Replaying a match from its log takes seconds; run it in a
+                # worker process so the other tables keep their own core.
+                new_session = await run_heavy(
+                    rebuild_session_for_rewind, str(game.replay_recorder.path), proposal.to
                 )
                 game.session = new_session
                 if new_session.state.phase in (GamePhase.PLANNING, GamePhase.GAME_OVER):

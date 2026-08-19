@@ -31,6 +31,7 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.routes_overrides import router as overrides_router
 from goa2.server.time_control import resume_timers, stop_timers
+from goa2.server.workers import shutdown_heavy_pool
 from goa2.server.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        shutdown_heavy_pool()
         await stop_timers(registry)
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
