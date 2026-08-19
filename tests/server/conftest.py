@@ -14,6 +14,7 @@ _ISOLATED_DIRS = {
     "GOA2_SHARE_DIR": "shares",
     "GOA2_SAVE_DIR": "games",
     "GOA2_BUG_REPORT_DIR": "bug_reports",
+    "GOA2_LOG_DIR": "game_logs",
 }
 
 

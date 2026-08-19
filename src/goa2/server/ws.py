@@ -827,6 +827,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             request_id=request_id,
                         )
                         reply: dict[str, Any]
+                        engine_started = time.perf_counter()
                         try:
                             if lost_deadline_race:
                                 reply = {"type": "ERROR", "detail": "Decision already timed out"}
@@ -861,6 +862,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                 # an unexpected engine exception.
                                 finalize_timed_mutation(game, registry)
                             raise
+                        engine_ms = (time.perf_counter() - engine_started) * 1000
 
                         timer_event_dicts = [event.model_dump() for event in timer_events]
                         if timer_event_dicts and reply.get("type") == "ACTION_RESULT":
@@ -882,6 +884,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                     reply.get("events", []), game.session.state, hero_id
                                 ),
                             }
+                        fanout_started = time.perf_counter()
                         messages = (
                             _capture_broadcast(
                                 game,
@@ -890,9 +893,19 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             if msg_type in MUTATION_MESSAGE_TYPES
                             else []
                         )
+                        fanout_ms = (time.perf_counter() - fanout_started) * 1000
 
+                    send_started = time.perf_counter()
                     await websocket.send_json(sender_reply)
                     await _send_captured_broadcast(game, messages)
+                    if msg_type in MUTATION_MESSAGE_TYPES and game.game_logger:
+                        game.game_logger.log_timing(
+                            msg_type,
+                            engine_ms=engine_ms,
+                            fanout_ms=fanout_ms,
+                            send_ms=(time.perf_counter() - send_started) * 1000,
+                            clients=len(messages),
+                        )
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError, ValueError) as exc:
                 if game.game_logger:

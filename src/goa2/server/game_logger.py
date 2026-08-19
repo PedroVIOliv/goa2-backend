@@ -177,6 +177,42 @@ class GameLogger:
         self.logger.info("CLOCK: %s", event)
         self._add_event("CLOCK", {"event": event})
 
+    def log_timing(
+        self,
+        action: str,
+        engine_ms: float,
+        fanout_ms: float,
+        send_ms: float,
+        clients: int,
+    ) -> None:
+        """Record how long one mutation spent in the engine vs. getting to clients.
+
+        Splitting the phases is the point: it separates "the engine is slow"
+        from "the network is slow" without needing to reproduce the problem.
+        """
+        total_ms = round(engine_ms + fanout_ms + send_ms, 1)
+        engine_ms, fanout_ms, send_ms = (round(v, 1) for v in (engine_ms, fanout_ms, send_ms))
+        self.logger.info(
+            "TIMING: %s | engine=%sms fanout=%sms send=%sms total=%sms clients=%d",
+            action,
+            engine_ms,
+            fanout_ms,
+            send_ms,
+            total_ms,
+            clients,
+        )
+        self._add_event(
+            "TIMING",
+            {
+                "action": action,
+                "engine_ms": engine_ms,
+                "fanout_ms": fanout_ms,
+                "send_ms": send_ms,
+                "total_ms": total_ms,
+                "clients": clients,
+            },
+        )
+
     def log_ws_connect(self, hero_id: str | None, is_spectator: bool) -> None:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_CONNECT: %s", who)
