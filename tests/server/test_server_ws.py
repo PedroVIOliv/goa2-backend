@@ -275,6 +275,38 @@ def test_ws_ping_rejects_targets_that_are_not_on_the_table(client, game_data, ta
         assert detail in message["detail"]
 
 
+@pytest.mark.parametrize(
+    "phase, broadcast",
+    [
+        ("RESOLUTION", False),
+        ("LEVEL_UP", False),
+        ("PLANNING", True),
+        ("REVELATION", True),
+        ("CLEANUP", True),
+        ("GAME_OVER", True),
+    ],
+)
+def test_ws_ping_is_dropped_during_resolution_and_level_up(client, game_data, phase, broadcast):
+    from goa2.domain.models import GamePhase
+
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+    state = client.app.state.registry.get(game_id).session.state
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        initial = ws.receive_json()
+        ping_hex = next(iter(initial["view"]["board"]["tiles"].values()))["hex"]
+        state.phase = GamePhase(phase)
+
+        ws.send_json({"type": "PING", "target": {"kind": "HEX", "hex": ping_hex}})
+        # A blocked ping is dropped silently, so probe with a message that
+        # always answers to see whether anything preceded it.
+        ws.send_json({"type": "GET_VIEW"})
+
+        message = ws.receive_json()
+        assert message["type"] == ("PING" if broadcast else "STATE_UPDATE")
+
+
 # ---- Invalid JSON ----
 
 

@@ -57,6 +57,8 @@ router = APIRouter()
 
 PING_MIN_INTERVAL_SECONDS = 0.45
 PING_CARD_ZONES = frozenset({"CURRENT", "EXTRA", "PLAYED", "DISCARD", "ULTIMATE", "CAST"})
+# The table stays quiet while a turn or an upgrade is being resolved.
+PING_BLOCKED_PHASES = frozenset({GamePhase.RESOLUTION, GamePhase.LEVEL_UP})
 
 MUTATION_MESSAGE_TYPES = frozenset(
     {
@@ -800,6 +802,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 try:
                     async with game.outbound_lock:
                         async with game.lock:
+                            if game.session.state.phase in PING_BLOCKED_PHASES:
+                                continue
                             target = _normalize_ping_target(game, data)
                             ping_messages = _capture_ping(game, hero_id, target)
                         await _send_captured_broadcast(game, ping_messages)

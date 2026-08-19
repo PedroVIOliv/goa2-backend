@@ -583,6 +583,12 @@ clock, enter a replay, or produce a `STATE_UPDATE`. Only authenticated players
 may send them; players and spectators receive them. The server rate-limits each
 connection to one accepted ping every 450 ms.
 
+Pings are accepted only outside the `RESOLUTION` and `LEVEL_UP` phases, so the
+table stays quiet while a turn or an upgrade is being resolved. A ping sent
+during either phase is dropped silently — no broadcast and no `ERROR`, because
+the phase can change between a player aiming and sending. Clients should hide
+the ping affordance in those phases rather than rely on the drop.
+
 ```json
 {
   "type": "PING",
@@ -757,7 +763,8 @@ rejected with `Decision already timed out`.
 
 `PING` is the exception to the mutation pattern: it is itself broadcast to all
 connections, including the sender, and has no direct acknowledgement or
-following `STATE_UPDATE`.
+following `STATE_UPDATE`. A ping rejected for its phase produces
+nothing at all.
 
 ### Spectator restrictions
 
