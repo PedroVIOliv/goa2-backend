@@ -120,6 +120,61 @@ def _dumps(obj: Any) -> bytes:
     return json.dumps(obj, separators=(",", ":")).encode()
 
 
+def _write_groups(directory: Path, render: Any, positions: int) -> tuple[list[dict[str, int]], int]:
+    """Write every group for positions 0..positions-1 into ``directory``.
+
+    ``render(index) -> dict`` is called once per position, in order, so a caller
+    that can only walk forward (a replay being re-simulated) is never asked to
+    go back. Returns the group index for meta.json and the bytes written.
+    """
+    groups: list[dict[str, int]] = []
+    size_bytes = 0
+
+    def flush(start: int, keyframe: dict[str, Any], patches: list[list[dict[str, Any]]]) -> None:
+        nonlocal size_bytes
+        raw = _dumps({"start": start, "keyframe": keyframe, "patches": patches})
+        compressed = brotli.compress(raw, quality=_BROTLI_QUALITY)
+        (directory / _group_name(start, "br")).write_bytes(compressed)
+        size_bytes += len(compressed)
+        groups.append({"start": start, "count": len(patches) + 1})
+
+    start = 0
+    keyframe = render(0)
+    previous = keyframe
+    keyframe_raw = _dumps(keyframe)
+    keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
+    patches: list[list[dict[str, Any]]] = []
+    patches_raw: list[bytes] = []
+
+    def over_budget() -> bool:
+        if len(patches) >= _MAX_GROUP:
+            return True
+        if len(patches) % _CHECK_EVERY:
+            return False
+        blob = keyframe_raw + b"".join(patches_raw)
+        grown = len(gzip.compress(blob, _PROXY_LEVEL)) - keyframe_proxy
+        return grown > _BUDGET_MULTIPLE * keyframe_proxy
+
+    for index in range(1, positions):
+        body = render(index)
+        patches.append(jsonpatch.make_patch(previous, body).patch)
+        patches_raw.append(_dumps(patches[-1]))
+        previous = body
+        if over_budget():
+            # The patch that broke the budget is dropped and its target becomes
+            # the next keyframe, so no position is ever unreachable.
+            patches.pop()
+            patches_raw.pop()
+            flush(start, keyframe, patches)
+            start, keyframe = index, body
+            keyframe_raw = _dumps(body)
+            keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
+            patches, patches_raw = [], []
+
+    flush(start, keyframe, patches)
+    return groups, size_bytes
+
+
 def bake_share(
     *,
     game_id: str,
@@ -150,54 +205,7 @@ def bake_share(
 
     staging = Path(tempfile.mkdtemp(prefix=f".{token}.", dir=root))
     try:
-        groups: list[dict[str, int]] = []
-        size_bytes = 0
-
-        def flush(
-            start: int, keyframe: dict[str, Any], patches: list[list[dict[str, Any]]]
-        ) -> None:
-            nonlocal size_bytes
-            raw = _dumps({"start": start, "keyframe": keyframe, "patches": patches})
-            compressed = brotli.compress(raw, quality=_BROTLI_QUALITY)
-            (staging / _group_name(start, "br")).write_bytes(compressed)
-            size_bytes += len(compressed)
-            groups.append({"start": start, "count": len(patches) + 1})
-
-        start = 0
-        keyframe = render(0)
-        previous = keyframe
-        keyframe_raw = _dumps(keyframe)
-        keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
-        patches: list[list[dict[str, Any]]] = []
-        patches_raw: list[bytes] = []
-
-        def over_budget() -> bool:
-            if len(patches) >= _MAX_GROUP:
-                return True
-            if len(patches) % _CHECK_EVERY:
-                return False
-            blob = keyframe_raw + b"".join(patches_raw)
-            grown = len(gzip.compress(blob, _PROXY_LEVEL)) - keyframe_proxy
-            return grown > _BUDGET_MULTIPLE * keyframe_proxy
-
-        for index in range(1, len(decisions) + 1):
-            body = render(index)
-            patch = jsonpatch.make_patch(previous, body).patch
-            previous = body
-            patches.append(patch)
-            patches_raw.append(_dumps(patch))
-            if over_budget():
-                # The patch that broke the budget is dropped and its target
-                # becomes the next keyframe, so no position is ever unreachable.
-                patches.pop()
-                patches_raw.pop()
-                flush(start, keyframe, patches)
-                start, keyframe = index, body
-                keyframe_raw = _dumps(body)
-                keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
-                patches, patches_raw = [], []
-
-        flush(start, keyframe, patches)
+        groups, size_bytes = _write_groups(staging, render, len(decisions) + 1)
 
         if validate is not None and not validate():
             shutil.rmtree(staging, ignore_errors=True)
@@ -309,6 +317,47 @@ def read_group(token: str, start: int, *, accepts_brotli: bool) -> tuple[bytes, 
     if accepts_brotli:
         return stored, "br"
     return gzip.compress(brotli.decompress(stored), _GZIP_FALLBACK_LEVEL), "gzip"
+
+
+def migrate_share_to_groups(token: str) -> dict[str, Any] | None:
+    """Rebuild a format 1 share as keyframe groups, keeping its token and URL.
+
+    The positions are already baked, so this reads them back instead of
+    re-simulating: no engine, no replay log, and therefore no way for engine
+    drift to change a share that recipients may already be looking at.
+
+    The steps are ordered so an interrupted run always leaves a share that
+    serves correctly and a rerun finishes the job: groups are written first and
+    ignored by a format 1 reader, replacing meta.json is the atomic moment the
+    share becomes format 2, and only then are the old position files removed.
+
+    Returns the updated meta, or None if the token is unknown or already grouped.
+    """
+    meta = load_meta(token)
+    if meta is None or is_grouped(meta):
+        return None
+    directory = _share_path(token)
+
+    positions = int(meta["total_decisions"]) + 1
+    cache: dict[int, dict[str, Any]] = {}
+
+    def render(index: int) -> dict[str, Any]:
+        if index not in cache:
+            path = directory / _position_name(index)
+            cache[index] = json.loads(gzip.decompress(path.read_bytes()))
+            cache.pop(index - 2, None)
+        return cache[index]
+
+    groups, size_bytes = _write_groups(directory, render, positions)
+
+    meta = {**meta, "format": SHARE_FORMAT, "groups": groups, "size_bytes": size_bytes}
+    staged = directory / "meta.json.tmp"
+    staged.write_text(json.dumps(meta, indent=2))
+    os.replace(staged, directory / "meta.json")
+
+    for index in range(positions):
+        (directory / _position_name(index)).unlink(missing_ok=True)
+    return meta
 
 
 def revoke_share(token: str) -> bool:

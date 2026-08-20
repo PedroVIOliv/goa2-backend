@@ -539,3 +539,115 @@ def test_format_1_shares_are_still_served(tmp_path, client):
     assert res.status_code == 200
     assert res.headers["content-encoding"] == "gzip"
     assert res.json() == body
+
+
+# --- converting shares baked before groups existed ------------------------
+
+
+def _write_format_1_share(directory: Path, bodies: list[dict]) -> str:
+    """Lay out a share exactly as the old bake did: one gzip file per position."""
+    token = "legacyMigrate1"
+    share = directory / token
+    share.mkdir(parents=True)
+    for index, body in enumerate(bodies):
+        (share / f"{index:03d}.json.gz").write_bytes(gzip.compress(json.dumps(body).encode(), 6))
+    (share / "meta.json").write_text(
+        json.dumps(
+            {
+                "token": token,
+                "game_id": "old",
+                "setup": {"engine": "old"},
+                "decisions": [
+                    {"index": i, "type": "commit", "r": i // 10 + 1, "t": i % 10 + 1}
+                    for i in range(len(bodies) - 1)
+                ],
+                "total_decisions": len(bodies) - 1,
+                "size_bytes": 1234,
+            }
+        )
+    )
+    return token
+
+
+def _reconstruct_all(token: str, meta: dict) -> list[dict]:
+    out: list[dict] = []
+    for group in meta["groups"]:
+        doc = json.loads(brotli.decompress(shares.group_path(token, group["start"]).read_bytes()))
+        body = doc["keyframe"]
+        out.append(json.loads(json.dumps(body)))
+        for patch in doc["patches"]:
+            body = jsonpatch.JsonPatch(patch).apply(body)
+            out.append(json.loads(json.dumps(body)))
+    return out
+
+
+def test_migration_preserves_every_position(tmp_path):
+    """Converting must be lossless: the artifact is what recipients already see."""
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    bodies = [_bulky_body(i) for i in range(401)]
+    token = _write_format_1_share(tmp_path, bodies)
+
+    meta = shares.migrate_share_to_groups(token)
+    assert meta is not None
+    assert _reconstruct_all(token, meta) == bodies
+
+
+def test_migration_keeps_the_token_and_the_decision_list(tmp_path):
+    """Links already handed out must keep working, so nothing identifying moves."""
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    bodies = [_bulky_body(i) for i in range(60)]
+    token = _write_format_1_share(tmp_path, bodies)
+    before = shares.load_meta(token)
+
+    after = shares.migrate_share_to_groups(token)
+    assert after["token"] == token
+    assert after["decisions"] == before["decisions"]
+    assert after["game_id"] == before["game_id"]
+    assert after["setup"] == before["setup"]
+    assert (tmp_path / token).is_dir()
+
+
+def test_migration_removes_the_old_position_files(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    token = _write_format_1_share(tmp_path, [_bulky_body(i) for i in range(60)])
+    shares.migrate_share_to_groups(token)
+
+    share = tmp_path / token
+    assert list(share.glob("*.json.gz")) == []
+    assert list(share.glob("*.json.tmp")) == []
+    assert share.glob("g*.json.br")
+
+
+def test_migration_shrinks_the_share(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    bodies = [_bulky_body(i) for i in range(401)]
+    token = _write_format_1_share(tmp_path, bodies)
+    was = sum(p.stat().st_size for p in (tmp_path / token).glob("*.json.gz"))
+
+    meta = shares.migrate_share_to_groups(token)
+    assert meta["size_bytes"] * 10 < was
+
+
+def test_migration_is_safe_to_run_again(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    token = _write_format_1_share(tmp_path, [_bulky_body(i) for i in range(60)])
+    first = shares.migrate_share_to_groups(token)
+
+    assert shares.migrate_share_to_groups(token) is None
+    assert shares.load_meta(token)["groups"] == first["groups"]
+
+
+def test_migration_ignores_unknown_tokens(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    assert shares.migrate_share_to_groups("nosuchtoken") is None
+
+
+def test_a_migrated_share_serves_over_http(client):
+    """The whole point: the same URL keeps working, now group-at-a-time."""
+    bodies = [_bulky_body(i) for i in range(60)]
+    token = _write_format_1_share(Path(os.environ["GOA2_SHARE_DIR"]), bodies)
+    assert client.get(f"/shared/{token}/state?decision=5").json() == bodies[5]
+
+    shares.migrate_share_to_groups(token)
+    assert _fetch_position(client, token, "decision=5") == bodies[5]
+    assert _fetch_position(client, token, "decision=59") == bodies[59]
