@@ -545,3 +545,32 @@ def test_reconstruction_of_a_pre_coin_replay_still_flips_from_the_seed(seed):
         build_session_from_setup({**legacy, "tie_breaker_team": None}).state.tie_breaker_team
         is expected
     )
+
+
+def test_setup_header_records_player_names(tmp_path):
+    rec = ReplayRecorder("g1", str(tmp_path))
+    rec.record_setup(
+        map_name="forgotten_island",
+        red_heroes=["Arien"],
+        blue_heroes=["Wasp"],
+        game_type="LONG",
+        cheats=False,
+        seed=1,
+        player_names={"hero_arien": "Tuck"},
+    )
+    header = json.loads((tmp_path / "g1.jsonl").read_text().splitlines()[0])
+    assert header["player_names"] == {"hero_arien": "Tuck"}
+
+
+def test_setup_header_defaults_player_names_to_empty(tmp_path):
+    rec = ReplayRecorder("g2", str(tmp_path))
+    rec.record_setup(
+        map_name="forgotten_island",
+        red_heroes=["Arien"],
+        blue_heroes=["Wasp"],
+        game_type="LONG",
+        cheats=False,
+        seed=1,
+    )
+    header = json.loads((tmp_path / "g2.jsonl").read_text().splitlines()[0])
+    assert header["player_names"] == {}

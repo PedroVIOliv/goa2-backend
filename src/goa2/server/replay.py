@@ -165,6 +165,7 @@ class ReplayRecorder:
         seed: int,
         time_control: TimeControlConfig | None = None,
         tie_breaker_team: str | None = None,
+        player_names: dict[str, str] | None = None,
     ) -> None:
         """Write the setup header. No-op if the log already has a header."""
         if self.has_setup:
@@ -183,6 +184,9 @@ class ReplayRecorder:
                 # Absent in logs written before drafts supplied the coin; a reader
                 # that finds no key must fall back to flipping from the seed.
                 "tie_breaker_team": tie_breaker_team,
+                # Absent in logs written before player identity; readers that
+                # find no key treat it as an empty map.
+                "player_names": player_names or {},
                 "time_control": (
                     time_control.model_dump(mode="json") if time_control is not None else None
                 ),
