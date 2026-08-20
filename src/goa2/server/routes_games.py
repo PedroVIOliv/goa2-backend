@@ -188,6 +188,7 @@ async def set_ready(
                     state,
                 ),
                 winner=game.last_result.winner if game.last_result else None,
+                hero_names=game.hero_names,
             )
 
             # REST and WebSocket ready actions share the same public, atomic
@@ -221,6 +222,7 @@ async def get_game_view(
         input_request=input_request_for_viewer(ir, game.session.state, hero_id),
         awaiting_input=awaiting_input_hero_ids(ir, game.session.state),
         winner=winner,
+        hero_names=game.hero_names,
     )
 
 

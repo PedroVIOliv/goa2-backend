@@ -91,6 +91,9 @@ class GameViewResponse(BaseModel):
     # recipient whose `input_request` was withheld as private.
     awaiting_input: list[str] = []
     winner: str | None = None
+    # Display name per hero, static for the life of the match. Empty when the
+    # game was created without names.
+    hero_names: dict[str, str] = Field(default_factory=dict)
 
 
 class ActionResultResponse(BaseModel):
