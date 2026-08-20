@@ -35,6 +35,7 @@ from goa2.server.models import (
     SetTeamRequest,
     UpdateDraftSettingsRequest,
 )
+from goa2.server.player_names import resolve_player_names
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])
 
@@ -122,8 +123,13 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
     )
     session = GameSession(game_state)
     hero_ids = [h.id for team in game_state.teams.values() for h in team.heroes]
+    name_to_id = {h.name: h.id for team in game_state.teams.values() for h in team.heroes}
+    hero_names = resolve_player_names(
+        {p.claimed_hero: p.display_name for p in state.players if p.claimed_hero},
+        name_to_id,
+    )
     game_registry = request.app.state.registry
-    game = game_registry.create_game(session, hero_ids, game_id=game_id)
+    game = game_registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
     if game.replay_recorder:
         game.replay_recorder.record_setup(
             map_name=state.map_name,
@@ -134,8 +140,8 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             seed=seed,
             time_control=state.time_control,
             tie_breaker_team=game_state.tie_breaker_team.value,
+            player_names=hero_names,
         )
-    name_to_id = {h.name: h.id for team in game_state.teams.values() for h in team.heroes}
     for player in state.players:
         if player.claimed_hero:
             hero_id = name_to_id[player.claimed_hero]
