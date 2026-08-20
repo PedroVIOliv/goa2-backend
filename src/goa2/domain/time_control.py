@@ -29,13 +29,16 @@ class TimeControlConfig(BaseModel):
     # Consecutive shared turns with no accepted human decision before the
     # match suspends. Zero deliberately disables abandonment suspension.
     automatic_turn_limit: int = Field(default=2, ge=0, le=100)
+    # When false the clocks are advisory: nothing is decided for a player who
+    # runs out, and the overrun accumulates instead. A default keeps older
+    # saved configurations enforcing, as they were written.
+    enforce_timeouts: bool = True
 
     @model_validator(mode="after")
     def validate_bank_cap(self) -> TimeControlConfig:
         if self.max_time_bank_seconds < self.initial_time_bank_seconds:
             raise ValueError(
-                "max_time_bank_seconds must be greater than or equal to "
-                "initial_time_bank_seconds"
+                "max_time_bank_seconds must be greater than or equal to initial_time_bank_seconds"
             )
         return self
 
@@ -98,12 +101,19 @@ class PlayerClockState(BaseModel):
     response_time_ms: int = Field(default=0, ge=0)
     upgrade_allowance_ms: int = Field(default=0, ge=0)
     time_bank_ms: int = Field(default=0, ge=0)
+    # Time spent after every pool ran dry, in an advisory match. Rendered as a
+    # negative bank; kept apart so each pool keeps its own non-negative floor.
+    overrun_ms: int = Field(default=0, ge=0)
     planning_complete: bool = False
     planning_locked_by_timeout: bool = False
 
 
 class GameClockState(BaseModel):
     status: ClockStatus = ClockStatus.WAITING_FOR_PLAYERS
+    # Copied from the config at creation. Settling only ever receives the
+    # clock, and the config cannot change mid-match, so carrying the flag here
+    # beats threading the config through every call site.
+    enforce_timeouts: bool = True
     ready_hero_ids: list[str] = Field(default_factory=list)
     turn_round: int
     turn_number: int
@@ -134,6 +144,7 @@ def create_game_clock(
     return GameClockState(
         turn_round=round_number,
         turn_number=turn_number,
+        enforce_timeouts=config.enforce_timeouts,
         players={
             str(hero_id): PlayerClockState(
                 planning_allowance_ms=config.planning_allowance_ms,
@@ -189,9 +200,15 @@ def begin_shared_turn(
         player.upgrade_allowance_ms = 0
         player.planning_complete = False
         player.planning_locked_by_timeout = False
+        # A negative bank is a debt: the increment repays it before it refills
+        # the reserve, so an overrun is cleared by playing on rather than
+        # shadowing the player for the rest of the match.
+        credit = config.time_bank_increment_ms
+        repaid = min(player.overrun_ms, credit)
+        player.overrun_ms -= repaid
         player.time_bank_ms = min(
             config.max_time_bank_ms,
-            player.time_bank_ms + config.time_bank_increment_ms,
+            player.time_bank_ms + credit - repaid,
         )
     clock.active_kind = None
     clock.active_hero_ids = []
@@ -327,7 +344,13 @@ def usable_time_ms(player: PlayerClockState, kind: ClockKind) -> int:
     return sum(int(getattr(player, field)) for field in _spending_fields(kind))
 
 
-def spend_time(player: PlayerClockState, kind: ClockKind, elapsed_ms: int) -> None:
+def spend_time(
+    player: PlayerClockState,
+    kind: ClockKind,
+    elapsed_ms: int,
+    *,
+    allow_overrun: bool = False,
+) -> None:
     remaining = max(0, elapsed_ms)
     for field in _spending_fields(kind):
         available = int(getattr(player, field))
@@ -336,6 +359,8 @@ def spend_time(player: PlayerClockState, kind: ClockKind, elapsed_ms: int) -> No
         remaining -= used
         if remaining == 0:
             break
+    if remaining and allow_overrun:
+        player.overrun_ms += remaining
 
 
 def settle_clock(clock: GameClockState, now_ms: int) -> int:
@@ -346,7 +371,12 @@ def settle_clock(clock: GameClockState, now_ms: int) -> int:
         for hero_id in clock.active_hero_ids:
             player = clock.players.get(hero_id)
             if player is not None:
-                spend_time(player, clock.active_kind, elapsed)
+                spend_time(
+                    player,
+                    clock.active_kind,
+                    elapsed,
+                    allow_overrun=not clock.enforce_timeouts,
+                )
     clock.last_settled_at_ms = now_ms
     return elapsed
 
@@ -363,6 +393,9 @@ def exhausted_active_hero_ids(clock: GameClockState) -> list[str]:
 
 
 def milliseconds_until_next_exhaustion(clock: GameClockState) -> int | None:
+    """When the next active player runs dry, or None if nothing acts on it."""
+    if not clock.enforce_timeouts:
+        return None
     if (
         clock.status != ClockStatus.RUNNING
         or clock.active_kind is None
@@ -398,6 +431,7 @@ def public_clock_view(clock: GameClockState, now_ms: int) -> dict:
         }
     return {
         "status": projected.status.value,
+        "enforce_timeouts": projected.enforce_timeouts,
         "server_now_ms": now_ms,
         "pause": pause,
         "turn_key": {"round": projected.turn_round, "turn": projected.turn_number},

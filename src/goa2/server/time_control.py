@@ -172,7 +172,8 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
             clock.consecutive_automatic_turns + 1 if completed_automatically else 0
         )
         if (
-            config.automatic_turn_limit > 0
+            clock.enforce_timeouts
+            and config.automatic_turn_limit > 0
             and clock.consecutive_automatic_turns >= config.automatic_turn_limit
         ):
             suspend_game_clock_for_inactivity(clock, at_ms)
@@ -495,6 +496,12 @@ def apply_due_timeouts(
     """Settle elapsed time and apply every decision due at ``at_ms``."""
     clock = game.session.state.clock
     if clock is None or clock.status != ClockStatus.RUNNING:
+        return []
+    if not clock.enforce_timeouts:
+        # Advisory clocks charge the elapsed time and stop there: the overrun
+        # is the whole output. No deadline is armed for them either, so the
+        # only callers that reach this are the opportunistic mutation paths.
+        settle_clock(clock, at_ms)
         return []
     chooser = rng or random.SystemRandom()
     emitted: list[GameEvent] = []

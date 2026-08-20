@@ -69,7 +69,8 @@ Games are untimed unless creation (or draft-lobby settings) includes an explicit
   "time_bank_increment_seconds": 10,
   "max_time_bank_seconds": 240,
   "upgrade_allowance_seconds": 45,
-  "automatic_turn_limit": 2
+  "automatic_turn_limit": 2,
+  "enforce_timeouts": true
 }
 ```
 
@@ -80,7 +81,9 @@ primary Resolution actor in each shared turn. It is spendable only by that
 actor's primary Resolution clock; it is not part of the Time Bank and cannot
 be spent during Response prompts. The automatic limit counts consecutive
 shared turns completed without an accepted human gameplay decision; `0`
-disables inactivity suspension. A timed game stays in its public ready check until
+disables inactivity suspension. `enforce_timeouts` (default `true`) decides
+what running out means — see [Advisory clocks](#advisory-clocks). A timed game
+stays in its public ready check until
 every player readies through `POST /games/{game_id}/ready` with
 `{"ready":true}`, or the WebSocket `SET_READY` message below. Game decisions
 are rejected until then. Disconnecting does not pause a running clock.
@@ -882,7 +885,8 @@ For a timed match, `time_control` is the immutable creation configuration and
 `clock` is a public snapshot containing `status`, `server_now_ms`, the shared
 `turn_key`, `ready_hero_ids`, `pause`, active clock kind/targets, and every hero's
 remaining Planning, Resolution, Initiative Bonus, Response, Upgrade, and Time
-Bank milliseconds. The Initiative Bonus is granted when the first primary
+Bank milliseconds, plus `overrun_ms` (see [Advisory clocks](#advisory-clocks)).
+The Initiative Bonus is granted when the first primary
 Resolution request of a shared turn starts and is reset at the next shared
 turn.
 Clients should extrapolate running values from `server_now_ms`; the server does
@@ -895,6 +899,31 @@ clock status becomes `SUSPENDED_FOR_INACTIVITY` before the next Planning phase.
 Deadline tasks stop and no more fallback choices are made. Every player must
 ready again through the same REST endpoint or WebSocket message; the completed
 ready check starts that pending shared turn with its normal fresh allowances.
+
+### Advisory clocks
+
+A match created with `"enforce_timeouts": false` uses its clocks as an
+informational management tool rather than a competitive rule. Everything about
+the clocks is unchanged — the ready check still gates the start, time is still
+charged, pause still works — except what happens at zero:
+
+- **No decision is ever made for a player.** No `TIMER_EXPIRED` event, no
+  automatic commit, input or upgrade, no `timer_timeout` replay record, and no
+  `planning_locked_by_timeout`. The turn simply waits.
+- **The clock keeps counting.** Once every pool is empty, the elapsed time
+  accrues to that hero's `overrun_ms` instead of being discarded. Render the
+  Time Bank as `time_bank_ms - overrun_ms`, so a hero 30 seconds past zero
+  reads `-0:30`. Only one of the two is ever non-zero.
+- **The overrun is a debt, not a scar.** The next shared turn's Time Bank
+  increment repays it before it refills the reserve, so a hero who overran
+  once returns to a positive bank by playing on.
+- **Inactivity suspension does not apply.** It counts fully automatic turns,
+  and none occur; an abandoned advisory match stays `RUNNING` until someone
+  acts, the table pauses it, or it ages out of the server.
+
+The flag is fixed for the match and reported on the clock snapshot as
+`enforce_timeouts`, so a client can tell the two modes apart without holding
+onto the creation config.
 
 ### Pausing a timed match
 

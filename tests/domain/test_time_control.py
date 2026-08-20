@@ -309,3 +309,99 @@ def test_public_view_has_no_pause_block_while_running(config: TimeControlConfig)
     start_game_clock(clock, 10_000)
 
     assert public_clock_view(clock, 11_000)["pause"] is None
+
+
+# ---------------------------------------------------------------------------
+# Advisory clocks (enforce_timeouts=False)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def advisory_config(config: TimeControlConfig) -> TimeControlConfig:
+    return config.model_copy(update={"enforce_timeouts": False})
+
+
+def test_enforce_timeouts_defaults_on_for_older_saved_configurations() -> None:
+    config = TimeControlConfig.model_validate(
+        {
+            "planning_allowance_seconds": 10,
+            "resolution_allowance_seconds": 20,
+            "response_grant_seconds": 5,
+            "initial_time_bank_seconds": 30,
+            "time_bank_increment_seconds": 7,
+            "max_time_bank_seconds": 40,
+            "upgrade_allowance_seconds": 12,
+        }
+    )
+    assert config.enforce_timeouts is True
+    assert create_game_clock(config, ["hero_a"], round_number=1, turn_number=1).enforce_timeouts
+
+
+def test_enforcing_clock_stops_at_zero_and_records_no_overrun(
+    config: TimeControlConfig,
+) -> None:
+    clock = _clock(config)
+    start_game_clock(clock, 0)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=0)
+
+    settle_clock(clock, 100_000)  # 40s of pools, 100s elapsed
+    player = clock.players["hero_a"]
+    assert player.planning_allowance_ms == 0
+    assert player.time_bank_ms == 0
+    assert player.overrun_ms == 0
+
+
+def test_advisory_clock_banks_the_overrun_past_zero(
+    advisory_config: TimeControlConfig,
+) -> None:
+    clock = _clock(advisory_config)
+    start_game_clock(clock, 0)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=0)
+
+    settle_clock(clock, 100_000)
+    player = clock.players["hero_a"]
+    assert player.planning_allowance_ms == 0
+    assert player.time_bank_ms == 0
+    assert player.overrun_ms == 60_000  # 100s spent against 40s of pools
+
+    settle_clock(clock, 105_000)
+    assert player.overrun_ms == 65_000  # keeps counting
+
+
+def test_advisory_clock_schedules_no_exhaustion_deadline(
+    advisory_config: TimeControlConfig,
+) -> None:
+    clock = _clock(advisory_config)
+    start_game_clock(clock, 0)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=0)
+    assert milliseconds_until_next_exhaustion(clock) is None
+    # Exhaustion itself is still observable; only the deadline is withheld.
+    settle_clock(clock, 100_000)
+    assert exhausted_active_hero_ids(clock) == ["hero_a"]
+
+
+def test_bank_increment_repays_an_overrun_before_refilling(
+    advisory_config: TimeControlConfig,
+) -> None:
+    clock = _clock(advisory_config)
+    player = clock.players["hero_a"]
+    player.time_bank_ms = 0
+    player.overrun_ms = 4_000
+
+    begin_shared_turn(clock, advisory_config, round_number=1, turn_number=2, now_ms=0)
+    assert player.overrun_ms == 0  # 7s increment clears the 4s debt
+    assert player.time_bank_ms == 3_000
+
+    player.overrun_ms = 20_000
+    begin_shared_turn(clock, advisory_config, round_number=1, turn_number=3, now_ms=0)
+    assert player.overrun_ms == 13_000  # still in debt, bank untouched
+    assert player.time_bank_ms == 3_000
+
+
+def test_public_view_reports_the_overrun(advisory_config: TimeControlConfig) -> None:
+    clock = _clock(advisory_config)
+    start_game_clock(clock, 0)
+    activate_clocks(clock, ClockKind.PLANNING, ["hero_a"], request_id=None, now_ms=0)
+    view = public_clock_view(clock, 100_000)
+    assert view["enforce_timeouts"] is False
+    assert view["players"]["hero_a"]["overrun_ms"] == 60_000
