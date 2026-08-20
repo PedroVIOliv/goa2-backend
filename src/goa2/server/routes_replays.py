@@ -143,6 +143,7 @@ def list_replays() -> list[dict[str, Any]]:
                 "map": header.get("map"),
                 "red": header.get("red", []),
                 "blue": header.get("blue", []),
+                "player_names": header.get("player_names", {}),
                 "game_type": header.get("game_type"),
                 "cheats": header.get("cheats", False),
                 "seed": header.get("seed"),

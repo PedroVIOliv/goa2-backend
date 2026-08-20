@@ -297,3 +297,37 @@ def _strip_volatile(obj):
     if isinstance(obj, list):
         return [_strip_volatile(v) for v in obj]
     return obj
+
+
+def test_list_replays_carries_player_names(client_with_replay):
+    """The browse page needs names too, not just the opened replay."""
+    row = client_with_replay.get("/replays").json()[0]
+    assert row["player_names"] == {}
+
+
+def test_list_replays_reports_recorded_player_names():
+    routes_replays._CACHE.clear()
+    prev = os.environ.get("GOA2_REPLAY_API")
+    os.environ["GOA2_REPLAY_API"] = "1"
+    try:
+        state = GameSetup.create_game(_resolve_map_path(MAP), RED, BLUE, False, "QUICK", seed=42)
+        live = GameSession(state)
+        rec = ReplayRecorder(GAME_ID)
+        rec.record_setup(
+            map_name=MAP,
+            red_heroes=RED,
+            blue_heroes=BLUE,
+            game_type="QUICK",
+            cheats=False,
+            seed=42,
+            player_names={_hero_ids(live.state)[0]: "Tuck"},
+        )
+        with TestClient(create_app()) as client:
+            row = client.get("/replays").json()[0]
+            assert row["player_names"] == {_hero_ids(live.state)[0]: "Tuck"}
+    finally:
+        routes_replays._CACHE.clear()
+        if prev is None:
+            os.environ.pop("GOA2_REPLAY_API", None)
+        else:
+            os.environ["GOA2_REPLAY_API"] = prev
