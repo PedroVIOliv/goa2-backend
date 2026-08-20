@@ -249,6 +249,21 @@ The `awaiting_input` array names every hero the pending request is waiting on, a
 
 The `winner` key is only present when game has ended (`view.phase === "GAME_OVER"`). Its value is `"RED"` or `"BLUE"` for a team victory, or the winning hero ID (for example, `"hero_cutter"`) for an individual victory. Check for its presence with `response.get("winner")` rather than assuming it exists.
 
+### `GET /games/{game_id}/spectator-token`
+
+The match's watch-only token, for anyone already in it (player or spectator).
+Watching reveals nothing a seat at the table does not, so no table vote is
+needed — unlike a *player* token, which goes through the
+[`reveal_player`](#consensus-overrides) consensus override.
+
+**Response:** `200 OK`
+
+```json
+{ "game_id": "a1b2c3d4e5f6", "spectator_token": "9f2c…" }
+```
+
+Build the invite as `<origin>/game/{game_id}?token={spectator_token}`.
+
 ### `POST /games/{game_id}/ready`
 
 Set the authenticated hero's readiness during a timed match's initial ready
@@ -691,6 +706,16 @@ opaque `ping_id` lets clients animate overlapping/repeated pings independently.
     "hex": {"q": 0, "r": -2, "s": 2}
   }
 }
+```
+
+#### `PLAYER_LINK_REVEALED`
+
+Sent to player connections only, after the table approves a
+[`reveal_player`](#consensus-overrides) override. Pair it with the game ID to
+build the substitute's link: `<origin>/game/{game_id}?token={token}`.
+
+```json
+{"type": "PLAYER_LINK_REVEALED", "hero_id": "hero_wasp", "token": "9f2c…"}
 ```
 
 #### `READY_UPDATED`
@@ -1888,13 +1913,16 @@ In addition to the standard error shape (`{"detail": "..."}`), draft endpoints c
 When the engine gets something wrong — refuses a legal move, resolves a defeat
 that should not have happened, wedges mid-action — the table can force the game
 into the state it should be in, by majority vote. The same negotiation also
-carries the table's request to pause a timed match. Four families exist:
+carries the table's request to pause a timed match, and its decision to hand a
+seat to a substitute. Five families exist:
 
 - **patch** — correct a wrong value (position, defeat, gold, life counters, …)
 - **unstick** — escape a wedged control flow (skip the pending input, abort the
   action, force the turn to end, fix the actor)
 - **rewind** — return the whole game to an earlier decision index
 - **pause** — freeze a running timed match until every player readies up
+- **reveal_player** — disclose one hero's player token so a substitute can take
+  the seat
 
 Overrides are recorded as replay decisions and survive reconstruction; the
 negotiation itself (proposals, votes) is transient — it is **not** part of
@@ -1918,6 +1946,23 @@ override, but it is **not** ended by a vote: see
 [Pausing a timed match](#pausing-a-timed-match). It mutates no game state, so
 it is recorded as clock telemetry rather than a replay decision.
 
+`family: "reveal_player"` takes `args: {"hero_id": "<hero_id>"}` and no `op`.
+A player token is a seat at the table, so the disclosure needs the same
+majority as any other override — unlike the spectator token, which any
+participant reads on demand (see
+[`GET /games/{game_id}/spectator-token`](#get-gamesgame_idspectator-token)).
+It mutates no game state and is never recorded. Two departures from the other
+families follow from what it is for:
+
+- It **may** be proposed while the match is paused — a table that paused for a
+  missing player needs exactly this to un-pause.
+- On `applied`, the token goes out in a separate `PLAYER_LINK_REVEALED`
+  message sent **only to player connections**. Spectators see the vote and its
+  outcome, never the token.
+
+The revealed token is the hero's existing one: it is not rotated, so whoever
+still holds the old link keeps the seat too.
+
 ### WebSocket messages
 
 Client → server:
@@ -1927,6 +1972,9 @@ Client → server:
  "args": {"entity_id": "minion_4", "hex": {"q": 1, "r": -2, "s": 1}}}
 
 {"type": "PROPOSE_OVERRIDE", "family": "rewind", "to": 47}
+
+{"type": "PROPOSE_OVERRIDE", "family": "reveal_player",
+ "args": {"hero_id": "hero_wasp"}}
 
 {"type": "VOTE_OVERRIDE", "proposal_id": "abc123", "approve": true}
 
@@ -1980,7 +2028,12 @@ occupied), the outcome is `rejected` **with** a structured `reason`:
 No `reason` field means the proposal was outvoted, cancelled, or expired.
 
 On `applied`, every connection receives the `OVERRIDE_RESOLVED` message first,
-immediately followed by a fresh `STATE_UPDATE`.
+immediately followed by a fresh `STATE_UPDATE`. An applied `reveal_player`
+changes no state, so it is followed by the token instead — to players only:
+
+```json
+{"type": "PLAYER_LINK_REVEALED", "hero_id": "hero_wasp", "token": "9f2c…"}
+```
 
 **After an applied patch, any in-flight `SUBMIT_INPUT` may be rejected** with a
 request-id mismatch error: the pending input request is re-derived against the

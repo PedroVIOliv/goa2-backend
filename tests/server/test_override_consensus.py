@@ -19,6 +19,8 @@ def _fake_game(connected: list[str]):
     recorder = SimpleNamespace(path="/nonexistent.jsonl")
     return SimpleNamespace(
         player_tokens=player_tokens,
+        hero_to_token={h: t for t, h in player_tokens.items()},
+        hero_names={},
         ws_connections=ws_connections,
         pending_override=None,
         replay_recorder=recorder,
@@ -114,6 +116,17 @@ def test_rewind_family_needs_no_op():
     # where the recorder path is real; here only shape validation applies.
     p = create_proposal(game, "hero_a", {"family": "rewind", "to": 3})
     assert p.family == "rewind" and p.op is None and p.to == 3
+
+
+def test_reveal_player_needs_a_hero_from_this_match():
+    game = _fake_game(["hero_a", "hero_b"])
+    p = create_proposal(
+        game, "hero_a", {"family": "reveal_player", "args": {"hero_id": "hero_offline"}}
+    )
+    assert p.family == "reveal_player" and p.op is None
+    assert p.args == {"hero_id": "hero_offline"}
+    with pytest.raises(ValueError):
+        create_proposal(game, "hero_a", {"family": "reveal_player", "args": {"hero_id": "nope"}})
 
 
 def test_disconnected_proposer_rejected():
@@ -582,3 +595,132 @@ def test_pause_is_rejected_in_an_untimed_match(client, game_data):
         ws_a.receive_json()
         ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
         assert "time control" in _drain_until(ws_a, "ERROR")["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Sharing links
+# ---------------------------------------------------------------------------
+
+
+def test_spectator_token_is_readable_without_a_vote(client, game_data):
+    gid = game_data["game_id"]
+    resp = client.get(
+        f"/games/{gid}/spectator-token",
+        headers={"Authorization": f"Bearer {_token_for(game_data, 'hero_arien')}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "game_id": gid,
+        "spectator_token": game_data["spectator_token"],
+    }
+
+
+def test_spectator_token_needs_a_token_for_this_game(client, game_data):
+    gid = game_data["game_id"]
+    assert client.get(f"/games/{gid}/spectator-token").status_code == 401
+    assert (
+        client.get(
+            f"/games/{gid}/spectator-token", headers={"Authorization": "Bearer nope"}
+        ).status_code
+        == 401
+    )
+
+
+def test_agreed_reveal_sends_the_player_token_to_players_only(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+        client.websocket_connect(f"/games/{gid}/ws?token={game_data['spectator_token']}") as ws_s,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        ws_s.receive_json()
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "reveal_player",
+                "args": {"hero_id": "hero_wasp"},
+            }
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        # Spectators watch the negotiation like any other proposal.
+        _drain_until(ws_s, "OVERRIDE_PROPOSED")
+
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        assert _drain_until(ws_w, "OVERRIDE_RESOLVED")["outcome"] == "applied"
+        assert _drain_until(ws_a, "PLAYER_LINK_REVEALED") == {
+            "type": "PLAYER_LINK_REVEALED",
+            "hero_id": "hero_wasp",
+            "token": t_w,
+        }
+        assert _drain_until(ws_w, "PLAYER_LINK_REVEALED")["token"] == t_w
+
+        resolved = _drain_until(ws_s, "OVERRIDE_RESOLVED")
+        assert resolved["outcome"] == "applied"
+        ws_s.send_json({"type": "GET_VIEW"})
+        follow_up = ws_s.receive_json()
+        assert follow_up["type"] != "PLAYER_LINK_REVEALED"
+
+
+def test_outvoted_reveal_hands_out_nothing(client, game_data):
+    gid = game_data["game_id"]
+    t_a = _token_for(game_data, "hero_arien")
+    t_w = _token_for(game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "reveal_player",
+                "args": {"hero_id": "hero_wasp"},
+            }
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": False})
+        assert _drain_until(ws_a, "OVERRIDE_RESOLVED")["outcome"] == "rejected"
+        ws_a.send_json({"type": "GET_VIEW"})
+        assert ws_a.receive_json()["type"] != "PLAYER_LINK_REVEALED"
+
+
+def test_reveal_may_be_proposed_while_the_match_is_paused(client, timed_game_data):
+    """The seat is needed precisely when a missing player has frozen the match."""
+    gid = timed_game_data["game_id"]
+    t_a = _token_for(timed_game_data, "hero_arien")
+    t_w = _token_for(timed_game_data, "hero_wasp")
+    with (
+        client.websocket_connect(f"/games/{gid}/ws?token={t_a}") as ws_a,
+        client.websocket_connect(f"/games/{gid}/ws?token={t_w}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+        _ready_up(ws_a, ws_w)
+        ws_a.send_json({"type": "PROPOSE_OVERRIDE", "family": "pause"})
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        _drain_until(ws_w, "OVERRIDE_RESOLVED")
+
+        ws_a.send_json(
+            {
+                "type": "PROPOSE_OVERRIDE",
+                "family": "reveal_player",
+                "args": {"hero_id": "hero_wasp"},
+            }
+        )
+        pid = _drain_until(ws_a, "OVERRIDE_PROPOSED")["proposal_id"]
+        _drain_until(ws_w, "OVERRIDE_PROPOSED")
+        ws_w.send_json({"type": "VOTE_OVERRIDE", "proposal_id": pid, "approve": True})
+        assert _drain_until(ws_a, "OVERRIDE_RESOLVED")["outcome"] == "applied"
+        assert _drain_until(ws_a, "PLAYER_LINK_REVEALED")["token"] == t_w
+        # The pause survives the reveal.
+        ws_a.send_json({"type": "GET_VIEW"})
+        assert _drain_until(ws_a, "STATE_UPDATE")["view"]["clock"]["status"] == "PAUSED"

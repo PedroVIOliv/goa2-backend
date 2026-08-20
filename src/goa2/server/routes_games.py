@@ -32,6 +32,7 @@ from goa2.server.models import (
     GiveGoldRequest,
     PlayerToken,
     ReadyRequest,
+    SpectatorLinkResponse,
     SubmitInputRequest,
 )
 from goa2.server.player_names import resolve_player_names
@@ -203,6 +204,22 @@ async def set_ready(
 
         await _send_captured_broadcast(game, messages)
     return response
+
+
+@router.get("/{game_id}/spectator-token", response_model=SpectatorLinkResponse)
+async def get_spectator_token(
+    game_id: str,
+    player: PlayerDep,
+    registry: RegistryDep,
+) -> SpectatorLinkResponse:
+    """The watch-only token, for anyone already in the match.
+
+    Spectating reveals nothing a seat at the table doesn't, so this needs no
+    table consensus — unlike revealing a *player* token, which hands over a
+    seat and goes through the override vote.
+    """
+    game = registry.get(game_id)
+    return SpectatorLinkResponse(game_id=game.game_id, spectator_token=game.spectator_token)
 
 
 @router.get("/{game_id}", response_model=GameViewResponse)
