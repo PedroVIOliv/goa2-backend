@@ -523,3 +523,13 @@ def test_draftable_pool_excludes_playtest_and_unrated_heroes(client):
     assert "Knight" not in pool
     assert "Cordelia" not in pool
     assert all(1 <= get_hero_difficulty_stars(h) <= 4 for h in pool)
+
+
+def test_game_created_from_draft_carries_player_names(client):
+    _draft_id, _toks, final = _run_full_draft(client)
+
+    view = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
+    hero_names = view.json()["hero_names"]
+
+    # _run_full_draft seats Alice, Bob, Carol and Dave on two teams of two.
+    assert set(hero_names.values()) == {"Alice", "Bob", "Carol", "Dave"}

@@ -34,6 +34,7 @@ from goa2.server.models import (
     ReadyRequest,
     SubmitInputRequest,
 )
+from goa2.server.player_names import resolve_player_names
 from goa2.server.replay import verify_replay_in_background
 from goa2.server.time_control import (
     client_decision_timed_out,
@@ -131,7 +132,10 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
         for hero in team.heroes:
             hero_ids.append(hero.id)
 
-    game = registry.create_game(session, hero_ids, game_id=game_id)
+    name_to_id = {h.name: h.id for team in state.teams.values() for h in team.heroes}
+    hero_names = resolve_player_names(body.player_names, name_to_id)
+
+    game = registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
 
     if game.game_logger:
         game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
@@ -144,6 +148,7 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
             cheats=body.cheats_enabled,
             seed=seed,
             time_control=body.time_control,
+            player_names=hero_names,
         )
 
     return CreateGameResponse(
@@ -183,6 +188,7 @@ async def set_ready(
                     state,
                 ),
                 winner=game.last_result.winner if game.last_result else None,
+                hero_names=game.hero_names,
             )
 
             # REST and WebSocket ready actions share the same public, atomic
@@ -216,6 +222,7 @@ async def get_game_view(
         input_request=input_request_for_viewer(ir, game.session.state, hero_id),
         awaiting_input=awaiting_input_hero_ids(ir, game.session.state),
         winner=winner,
+        hero_names=game.hero_names,
     )
 
 

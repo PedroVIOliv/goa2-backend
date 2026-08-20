@@ -1017,3 +1017,23 @@ def test_uncommit_after_lock_in_is_409(client, game_data):
 
     resp = client.post(f"/games/{game_id}/uncommit", headers=_auth(a_token))
     assert resp.status_code == 409
+
+
+def test_create_game_accepts_player_names(client):
+    resp = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": ["Arien"],
+            "blue_heroes": ["Wasp"],
+            "player_names": {"Arien": "Tuck", "Wasp": "Wisdom"},
+        },
+    )
+    assert resp.status_code == 201
+    game = client.app.state.registry.get(resp.json()["game_id"])
+    assert game.hero_names == {"hero_arien": "Tuck", "hero_wasp": "Wisdom"}
+
+
+def test_create_game_without_player_names_stores_none(client, game_data):
+    game = client.app.state.registry.get(game_data["game_id"])
+    assert game.hero_names == {}

@@ -77,3 +77,13 @@ def test_registry_len(registry, session):
     assert len(registry) == 0
     registry.create_game(session, ["hero_arien"])
     assert len(registry) == 1
+
+
+def test_create_game_stores_hero_names(registry, session):
+    game = registry.create_game(session, ["hero_arien"], hero_names={"hero_arien": "Tuck"})
+    assert game.hero_names == {"hero_arien": "Tuck"}
+
+
+def test_create_game_defaults_to_no_hero_names(registry, session):
+    game = registry.create_game(session, ["hero_arien"])
+    assert game.hero_names == {}

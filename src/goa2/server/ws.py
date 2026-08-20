@@ -201,6 +201,10 @@ def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any
     msg["awaiting_input"] = awaiting_input_hero_ids(ir, game.session.state)
     if winner:
         msg["winner"] = winner
+    # Omitted when empty, matching this builder's convention for falsy keys.
+    # The client retains the last non-empty map it saw.
+    if game.hero_names:
+        msg["hero_names"] = game.hero_names
     return msg
 
 

@@ -7,8 +7,22 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from goa2.domain.time_control import TimeControlConfig
+from goa2.server.player_names import MAX_PLAYER_NAME_LENGTH
 
 # -- Requests --
+
+
+def _normalize_lobby_name(v: str) -> str:
+    """Trim and cap a lobby name to what a status plaque can hold.
+
+    Truncating rather than rejecting keeps an over-long name from blocking a
+    join, and normalizing here means the lobby displays the same string that
+    later reaches the plaque instead of silently shortening it at game start.
+    """
+    cleaned = v.strip()[:MAX_PLAYER_NAME_LENGTH]
+    if not cleaned:
+        raise ValueError("name must not be blank")
+    return cleaned
 
 
 class CreateGameRequest(BaseModel):
@@ -18,6 +32,8 @@ class CreateGameRequest(BaseModel):
     cheats_enabled: bool = False
     game_type: str = "LONG"
     time_control: TimeControlConfig | None = None
+    # Keyed by the same hero identifier used in red_heroes/blue_heroes.
+    player_names: dict[str, str] = Field(default_factory=dict)
 
 
 class ReadyRequest(BaseModel):
@@ -89,6 +105,9 @@ class GameViewResponse(BaseModel):
     # recipient whose `input_request` was withheld as private.
     awaiting_input: list[str] = []
     winner: str | None = None
+    # Display name per hero, static for the life of the match. Empty when the
+    # game was created without names.
+    hero_names: dict[str, str] = Field(default_factory=dict)
 
 
 class ActionResultResponse(BaseModel):
@@ -133,6 +152,8 @@ class CreateDraftRequest(BaseModel):
     max_hero_stars: int = 4
     time_control: TimeControlConfig | None = None
 
+    _normalize = field_validator("host_name")(_normalize_lobby_name)
+
 
 class UpdateDraftSettingsRequest(BaseModel):
     """Host-only, LOBBY-only. Any omitted field is left unchanged."""
@@ -148,6 +169,8 @@ class UpdateDraftSettingsRequest(BaseModel):
 
 class JoinDraftRequest(BaseModel):
     display_name: str
+
+    _normalize = field_validator("display_name")(_normalize_lobby_name)
 
 
 class SetTeamRequest(BaseModel):

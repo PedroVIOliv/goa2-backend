@@ -984,3 +984,15 @@ def test_ws_spectator_cannot_uncommit(client, game_data):
         ws.send_json({"type": "UNCOMMIT_CARD"})
         msg = ws.receive_json()
         assert msg["type"] == "ERROR"
+
+
+def test_state_update_carries_hero_names(client, game_data):
+    # Set the names on the registry rather than at creation: this task owns the
+    # transport, not where the names came from.
+    client.app.state.registry.get(game_data["game_id"]).hero_names = {"hero_arien": "Tuck"}
+    token = _token_for(game_data, "hero_arien")
+
+    with client.websocket_connect(f"/games/{game_data['game_id']}/ws?token={token}") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "STATE_UPDATE"
+        assert msg["hero_names"] == {"hero_arien": "Tuck"}

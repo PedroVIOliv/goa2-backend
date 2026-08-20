@@ -28,6 +28,9 @@ class ManagedGame:
     player_tokens: dict[str, str]  # token -> hero_id
     spectator_token: str
     hero_to_token: dict[str, str]  # hero_id -> token (reverse)
+    # Display name per hero, from the draft lobby or manual creation. Empty is
+    # the normal case for a game created without names.
+    hero_names: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     outbound_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -70,7 +73,11 @@ class GameRegistry:
         self._save_dir = save_dir
 
     def create_game(
-        self, session: GameSession, hero_ids: list[str], game_id: str | None = None
+        self,
+        session: GameSession,
+        hero_ids: list[str],
+        game_id: str | None = None,
+        hero_names: dict[str, str] | None = None,
     ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
         game_id = game_id or uuid.uuid4().hex[:12]
@@ -89,6 +96,7 @@ class GameRegistry:
             player_tokens=player_tokens,
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
+            hero_names=hero_names or {},
             game_logger=create_game_logger(game_id),
             replay_recorder=create_replay_recorder(game_id),
         )
@@ -145,6 +153,7 @@ class GameRegistry:
                 player_tokens=game.player_tokens,
                 spectator_token=game.spectator_token,
                 hero_to_token=game.hero_to_token,
+                hero_names=game.hero_names,
                 created_at=game.created_at,
                 save_dir=self._save_dir,
                 rollback_snapshot=game.session._rollback_snapshot,
@@ -171,6 +180,7 @@ class GameRegistry:
                 player_tokens=data["player_tokens"],
                 spectator_token=data["spectator_token"],
                 hero_to_token=data["hero_to_token"],
+                hero_names=data["hero_names"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
