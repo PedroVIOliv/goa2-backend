@@ -557,6 +557,19 @@ def _override_broadcast_to_all(game: ManagedGame, msg: dict[str, Any]) -> Captur
     return messages
 
 
+def _player_link_messages(game: ManagedGame, hero_id: str) -> CapturedBroadcast:
+    """Hand the approved player token to the players only.
+
+    Spectators watch the vote like any other, but the token is a seat at the
+    table: it never goes out on a spectator connection.
+    """
+    token = game.hero_to_token.get(hero_id)
+    if token is None:
+        return []
+    msg = {"type": "PLAYER_LINK_REVEALED", "hero_id": hero_id, "token": token}
+    return [(tok, ws_conn, dict(msg)) for tok, ws_conn in list(game.ws_connections.items())]
+
+
 async def _resolve_override(
     game: ManagedGame,
     registry: GameRegistry,
@@ -578,6 +591,17 @@ async def _resolve_override(
 
     messages: CapturedBroadcast = []
     events: list[dict[str, Any]] | None = None
+
+    if outcome == "applied" and proposal.family == "reveal_player":
+        # A reveal mutates no GameState and charges nobody's clock, so it skips
+        # the timed-mutation dance — which also lets the table recover a seat
+        # while the match is paused for the very player who left.
+        reconcile_game_clock(game, now_ms())
+        messages.extend(
+            _override_broadcast_to_all(game, ov.resolved_msg(proposal, outcome, reason))
+        )
+        messages.extend(_player_link_messages(game, str(proposal.args["hero_id"])))
+        return messages
 
     if outcome == "applied":
         prepare_timed_mutation(game, registry=registry)
@@ -680,9 +704,10 @@ async def _handle_override_message(
     """
     if msg_type == "PROPOSE_OVERRIDE":
         clock = game.session.state.clock
-        if clock is not None and clock.status == ClockStatus.PAUSED:
+        family = data.get("family")
+        if clock is not None and clock.status == ClockStatus.PAUSED and family != "reveal_player":
             raise ValueError("The match is paused; every player must ready up to resume")
-        if data.get("family") == "pause":
+        if family == "pause":
             if clock is None:
                 raise ValueError("This match does not use time control")
             if clock.status != ClockStatus.RUNNING:

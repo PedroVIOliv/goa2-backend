@@ -26,12 +26,15 @@ def override_proposal_timeout_seconds() -> int:
         return 120
 
 
+FAMILIES = ("patch", "unstick", "rewind", "pause", "reveal_player")
+
+
 @dataclass
 class OverrideProposal:
     id: str
     proposer_hero_id: str
-    family: str  # "patch" | "unstick" | "rewind" | "pause"
-    op: str | None  # None for rewind and pause
+    family: str  # one of FAMILIES
+    op: str | None  # None for rewind, pause and reveal_player
     args: dict[str, Any]
     to: int | None  # rewind target decision index
     summary: str
@@ -68,6 +71,11 @@ def connected_hero_ids(game: ManagedGame) -> list[str]:
     )
 
 
+def _hero_label(game: ManagedGame, hero_id: str) -> str:
+    """The player's own name when the lobby collected one, else the hero's."""
+    return game.hero_names.get(hero_id) or hero_id.removeprefix("hero_").replace("_", " ").title()
+
+
 def create_proposal(
     game: ManagedGame, proposer_hero_id: str, data: dict[str, Any]
 ) -> OverrideProposal:
@@ -75,8 +83,8 @@ def create_proposal(
         raise ValueError("Another override proposal is already open")
 
     family = data.get("family")
-    if family not in ("patch", "unstick", "rewind", "pause"):
-        raise ValueError("family must be patch, unstick, rewind, or pause")
+    if family not in FAMILIES:
+        raise ValueError("family must be one of: " + ", ".join(FAMILIES))
 
     op_name: str | None = None
     args: dict[str, Any] = {}
@@ -85,6 +93,13 @@ def create_proposal(
         if data.get("op") or data.get("args"):
             raise ValueError("pause proposals take no op or args")
         summary = "Pause the match"
+    elif family == "reveal_player":
+        raw_args = data.get("args") or {}
+        hero_id = str(raw_args.get("hero_id", ""))
+        if hero_id not in game.hero_to_token:
+            raise ValueError("reveal_player requires a hero_id from this match")
+        args = {"hero_id": hero_id}
+        summary = f"Share {_hero_label(game, hero_id)}'s player link"
     elif family == "rewind":
         raw_to = data.get("to")
         if not isinstance(raw_to, int) or isinstance(raw_to, bool) or raw_to < 0:

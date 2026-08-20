@@ -96,6 +96,11 @@ class CreateGameResponse(BaseModel):
     spectator_token: str
 
 
+class SpectatorLinkResponse(BaseModel):
+    game_id: str
+    spectator_token: str
+
+
 class GameViewResponse(BaseModel):
     """Wraps the dict returned by build_view."""
 
