@@ -7,10 +7,14 @@ of creation keys by ``hero_id``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 MAX_PLAYER_NAME_LENGTH = 20
 
 
-def resolve_player_names(submitted: dict[str, str], name_to_id: dict[str, str]) -> dict[str, str]:
+def resolve_player_names(
+    submitted: Mapping[str, str], name_to_id: Mapping[str, str]
+) -> dict[str, str]:
     """Map ``{hero name: display name}`` to ``{hero_id: display name}``.
 
     A name for a hero absent from the game is dropped: it cannot affect play,

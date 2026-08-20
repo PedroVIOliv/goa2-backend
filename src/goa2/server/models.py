@@ -18,6 +18,8 @@ class CreateGameRequest(BaseModel):
     cheats_enabled: bool = False
     game_type: str = "LONG"
     time_control: TimeControlConfig | None = None
+    # Keyed by the same hero identifier used in red_heroes/blue_heroes.
+    player_names: dict[str, str] = Field(default_factory=dict)
 
 
 class ReadyRequest(BaseModel):
