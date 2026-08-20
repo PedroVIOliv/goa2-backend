@@ -3,6 +3,7 @@
 Tests that games survive server restarts via auto-save and restore.
 """
 
+import json
 import os
 
 from fastapi.testclient import TestClient
@@ -325,3 +326,43 @@ def test_no_persistence_when_save_dir_unset(tmp_path):
 
     # No files should be created anywhere for this test
     # (registry has save_dir="" which is falsy, so save_game is a no-op)
+
+
+def test_hero_names_survive_restart(tmp_path):
+    save_dir = str(tmp_path)
+
+    with _make_client(save_dir) as client1:
+        resp = client1.post(
+            "/games",
+            json={
+                "map_name": "forgotten_island",
+                "red_heroes": ["Arien"],
+                "blue_heroes": ["Wasp"],
+                "player_names": {"Arien": "Tuck"},
+            },
+        )
+        data = resp.json()
+        token = _token_for(data, "hero_arien")
+
+    with _make_client(save_dir) as client2:
+        view = client2.get(f"/games/{data['game_id']}", headers=_auth(token))
+        assert view.json()["hero_names"] == {"hero_arien": "Tuck"}
+
+
+def test_saves_written_before_hero_names_still_load(tmp_path):
+    """A save file predating this feature is valid; it simply has no names."""
+    save_dir = str(tmp_path)
+
+    with _make_client(save_dir) as client1:
+        data = _create_game(client1)
+        token = _token_for(data, "hero_arien")
+
+    path = tmp_path / f"{data['game_id']}.json"
+    payload = json.loads(path.read_text())
+    del payload["hero_names"]
+    path.write_text(json.dumps(payload))
+
+    with _make_client(save_dir) as client2:
+        view = client2.get(f"/games/{data['game_id']}", headers=_auth(token))
+        assert view.status_code == 200
+        assert view.json()["hero_names"] == {}

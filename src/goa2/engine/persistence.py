@@ -34,6 +34,7 @@ def save_game(
     hero_to_token: dict[str, str],
     created_at: float,
     save_dir: str,
+    hero_names: dict[str, str] | None = None,
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
 ) -> Path:
@@ -44,6 +45,7 @@ def save_game(
         "player_tokens": player_tokens,
         "spectator_token": spectator_token,
         "hero_to_token": hero_to_token,
+        "hero_names": hero_names or {},
         "created_at": created_at,
         "state": state.model_dump(mode="json"),
         "rollback_snapshot": rollback_snapshot,
@@ -112,6 +114,9 @@ def load_game(file_path: str) -> dict[str, Any]:
         "player_tokens": payload["player_tokens"],
         "spectator_token": payload["spectator_token"],
         "hero_to_token": payload["hero_to_token"],
+        # Absent from saves written before player identity existed; an empty
+        # map is the correct reading of such a file, so no version bump.
+        "hero_names": payload.get("hero_names", {}),
         "created_at": payload["created_at"],
         "last_result": last_result,
     }
