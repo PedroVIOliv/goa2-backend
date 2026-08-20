@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from goa2.domain.input import SKIP, InputOption, InputRequest, InputRequestType
 from goa2.domain.models import GamePhase
 from goa2.domain.state import GameState
-from goa2.domain.time_control import ClockKind, ClockStatus, TimeControlConfig
+from goa2.domain.time_control import (
+    ClockKind,
+    ClockStatus,
+    TimeControlConfig,
+    milliseconds_until_next_exhaustion,
+)
 from goa2.domain.types import HeroID
 from goa2.engine.handler import push_steps
 from goa2.engine.session import GameSession, SessionResult, SessionResultType
@@ -35,8 +40,8 @@ from goa2.server.time_control import (
 from goa2.server.visibility import events_for_viewer
 
 
-def _config(**overrides: int) -> TimeControlConfig:
-    values = {
+def _config(**overrides: int | bool) -> TimeControlConfig:
+    values: dict[str, int | bool] = {
         "planning_allowance_seconds": 10,
         "resolution_allowance_seconds": 20,
         "response_grant_seconds": 15,
@@ -1214,3 +1219,79 @@ def test_the_pause_vote_itself_costs_the_proposer_nothing() -> None:
     set_player_ready(game, "hero_wasp", True, 900_000)
 
     assert clock.players["hero_arien"].planning_allowance_ms == 10_000
+
+
+# ---------------------------------------------------------------------------
+# Advisory clocks: informative, never enforcing
+# ---------------------------------------------------------------------------
+
+
+def test_advisory_planning_overrun_plays_nothing_for_the_player() -> None:
+    game = _game(
+        _config(
+            enforce_timeouts=False,
+            planning_allowance_seconds=1,
+            initial_time_bank_seconds=0,
+            max_time_bank_seconds=0,
+        )
+    )
+    _start(game)
+    state = game.session.state
+    clock = state.clock
+    assert clock is not None
+
+    assert apply_due_timeouts(game, 60_000) == []
+    assert state.pending_inputs.get(HeroID("hero_arien")) is None
+    assert not clock.players["hero_arien"].planning_locked_by_timeout
+    assert "hero_arien" in clock.active_hero_ids  # still their decision to make
+    assert clock.players["hero_arien"].overrun_ms == 59_000
+    assert game.replay_recorder is not None
+    replay = game.replay_recorder.path.read_text().splitlines()
+    assert not any(json.loads(line)["type"] == "timer_timeout" for line in replay)
+
+
+def test_advisory_match_arms_no_deadline() -> None:
+    game = _game(_config(enforce_timeouts=False, planning_allowance_seconds=1))
+    _start(game)
+    clock = game.session.state.clock
+    assert clock is not None
+    assert milliseconds_until_next_exhaustion(clock) is None
+
+
+def test_advisory_match_never_suspends_for_inactivity() -> None:
+    """Nothing plays a turn automatically, so the abandonment net never applies."""
+    game = _game(_config(enforce_timeouts=False, automatic_turn_limit=1))
+    _start(game)
+    state = game.session.state
+    clock = state.clock
+    assert clock is not None
+
+    for turn in range(2, 6):
+        state.turn = turn
+        reconcile_game_clock(game, turn * 1_000)
+
+    assert clock.status == ClockStatus.RUNNING
+    assert (clock.turn_round, clock.turn_number) == (1, 5)
+
+
+def test_advisory_overrun_survives_a_save_and_restore(tmp_path) -> None:
+    game = _game(
+        _config(
+            enforce_timeouts=False,
+            planning_allowance_seconds=1,
+            initial_time_bank_seconds=0,
+            max_time_bank_seconds=0,
+        )
+    )
+    _start(game)
+    registry = GameRegistry(save_dir=str(tmp_path))
+    registry._games[game.game_id] = game
+    prepare_timed_mutation(game, 30_000)
+    registry.save_game(game.game_id)
+
+    restored = GameRegistry(save_dir=str(tmp_path))
+    assert restored.restore_all() == 1
+    clock = restored.get(game.game_id).session.state.clock
+    assert clock is not None
+    assert clock.enforce_timeouts is False
+    assert clock.players["hero_arien"].overrun_ms == 29_000
