@@ -56,6 +56,20 @@ from goa2.server.workers import run_heavy
 router = APIRouter()
 
 PING_MIN_INTERVAL_SECONDS = 0.45
+POINTER_MIN_INTERVAL_SECONDS = 0.06
+POINTER_ZONES = frozenset(
+    {
+        "COMMIT",
+        "PLAYED",
+        "ULTIMATE",
+        "DECK",
+        "DISCARD",
+        "SPELLBOOK",
+        "STATUS",
+        "WISH",
+        "SHEET",
+    }
+)
 PING_CARD_ZONES = frozenset({"CURRENT", "EXTRA", "PLAYED", "DISCARD", "ULTIMATE", "CAST"})
 # The table stays quiet while a turn or an upgrade is being resolved.
 PING_BLOCKED_PHASES = frozenset({GamePhase.RESOLUTION, GamePhase.LEVEL_UP})
@@ -800,6 +814,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
         game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
 
     last_ping_at = 0.0
+    last_pointer_at = 0.0
     try:
         while True:
             raw = await websocket.receive_text()
@@ -839,6 +854,55 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 except ValueError as exc:
                     async with game.outbound_lock:
                         await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                continue
+
+            # Pointer presence: the same ephemeral relay contract as pings.
+            # Two payload shapes: raw 3D-table world coordinates (valid over
+            # the shared map) or a semantic board-zone target — each client
+            # lays hero boards out differently, so only "whose board, which
+            # zone" is meaningful over seats. No game-state validation.
+            if msg_type == "POINTER":
+                pointer_at = time.monotonic()
+                if pointer_at - last_pointer_at < POINTER_MIN_INTERVAL_SECONDS:
+                    continue
+                last_pointer_at = pointer_at
+                message: dict[str, Any] = {"type": "POINTER", "hero_id": hero_id}
+                if data.get("hidden") is True:
+                    message["hidden"] = True
+                else:
+                    x = data.get("x")
+                    z = data.get("z")
+                    target_hero_id = data.get("target_hero_id")
+                    zone = data.get("zone")
+                    if x is not None or z is not None:
+                        if type(x) not in (int, float) or type(z) not in (int, float):
+                            continue
+                        if not (-100.0 <= x <= 100.0 and -100.0 <= z <= 100.0):
+                            continue
+                        message["x"] = x
+                        message["z"] = z
+                    elif (
+                        isinstance(target_hero_id, str)
+                        and isinstance(zone, str)
+                        and zone in POINTER_ZONES
+                        and len(target_hero_id) <= 64
+                        and target_hero_id.startswith("hero_")
+                    ):
+                        message["target_hero_id"] = target_hero_id
+                        message["zone"] = zone
+                    else:
+                        continue
+                pointer_messages: CapturedBroadcast = [
+                    (tok, ws_conn, dict(message))
+                    for tok, ws_conn in list(game.ws_connections.items())
+                    if tok != token
+                ]
+                pointer_messages.extend(
+                    (None, ws_conn, dict(message))
+                    for ws_conn in list(game.spectator_ws_connections.values())
+                )
+                async with game.outbound_lock:
+                    await _send_captured_broadcast(game, pointer_messages)
                 continue
 
             if msg_type in ("PROPOSE_OVERRIDE", "VOTE_OVERRIDE", "CANCEL_OVERRIDE"):

@@ -1,6 +1,7 @@
 """WebSocket integration tests."""
 
 import os
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -182,6 +183,62 @@ def test_ws_get_view(client, game_data):
 
 
 # ---- Ephemeral table pings ----
+
+
+def test_ws_pointer_relays_points_and_zone_targets_to_others_only(client, game_data):
+    game_id = game_data["game_id"]
+    arien_token = _token_for(game_data, "hero_arien")
+    wasp_token = _token_for(game_data, "hero_wasp")
+
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws_a,
+        client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+
+        ws_a.send_json({"type": "POINTER", "x": 1.5, "z": -2.25})
+        message = ws_w.receive_json()
+        assert message == {"type": "POINTER", "hero_id": "hero_arien", "x": 1.5, "z": -2.25}
+
+        time.sleep(0.07)
+        ws_a.send_json({"type": "POINTER", "target_hero_id": "hero_wasp", "zone": "DISCARD"})
+        message = ws_w.receive_json()
+        assert message["type"] == "POINTER"
+        assert message["hero_id"] == "hero_arien"
+        assert message["target_hero_id"] == "hero_wasp"
+        assert message["zone"] == "DISCARD"
+
+
+def test_ws_pointer_drops_invalid_payloads(client, game_data):
+    game_id = game_data["game_id"]
+    arien_token = _token_for(game_data, "hero_arien")
+    wasp_token = _token_for(game_data, "hero_wasp")
+
+    with (
+        client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as ws_a,
+        client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as ws_w,
+    ):
+        ws_a.receive_json()
+        ws_w.receive_json()
+
+        for payload in (
+            {"type": "POINTER"},
+            {"type": "POINTER", "x": 1.5},
+            {"type": "POINTER", "target_hero_id": "not_a_hero", "zone": "DISCARD"},
+            {"type": "POINTER", "target_hero_id": "hero_wasp", "zone": "NOT_A_ZONE"},
+        ):
+            ws_a.send_json(payload)
+            time.sleep(0.07)
+
+        # Only the final valid pointer gets through; every invalid one is
+        # silently dropped rather than relayed or answered with an error.
+        ws_a.send_json({"type": "POINTER", "hidden": True})
+        assert ws_w.receive_json() == {
+            "type": "POINTER",
+            "hero_id": "hero_arien",
+            "hidden": True,
+        }
 
 
 def test_ws_ping_broadcasts_authenticated_identity_to_players_and_spectators(client, game_data):
