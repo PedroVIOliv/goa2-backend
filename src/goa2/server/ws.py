@@ -67,6 +67,7 @@ POINTER_ZONES = frozenset(
         "SPELLBOOK",
         "STATUS",
         "WISH",
+        "HAND",
         "SHEET",
     }
 )

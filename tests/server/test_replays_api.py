@@ -289,6 +289,18 @@ def test_build_view_hides_other_hands_by_default():
     assert len(hand_of(omni, str(me))) > 0
     assert len(hand_of(omni, other)) > 0
 
+    # The count is public even though the cards are not: clients draw a fan
+    # of card backs for every opponent's held hand.
+    def hero_view(view, hid):
+        for team in view["teams"].values():
+            for h in team["heroes"]:
+                if h["id"] == hid:
+                    return h
+        raise AssertionError(hid)
+
+    assert hero_view(scoped, str(me))["hand_size"] == len(hand_of(scoped, str(me)))
+    assert hero_view(scoped, other)["hand_size"] == len(hand_of(omni, other))
+
 
 def _strip_volatile(obj):
     """Drop non-deterministic instance identifiers (step_id = id(object()))."""

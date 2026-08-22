@@ -193,7 +193,7 @@ def _build_hero_view(
 
     Visibility:
     - If hero.id == for_hero_id (or reveal_all): Show all cards (hand, deck, played, current_turn)
-    - Otherwise: Hand is empty, other card arrays show faceup cards, facedown cards hide sensitive fields
+    - Otherwise: Hand is empty (count exposed via hand_size), other card arrays show faceup cards, facedown cards hide sensitive fields
     - Discard pile: Always visible (public info)
     """
     is_own_hero = reveal_all or hero.id == for_hero_id
@@ -235,6 +235,8 @@ def _build_hero_view(
         "hand": (
             [_build_card_view(card, is_own_hero=True) for card in hero.hand] if is_own_hero else []
         ),
+        # Public count so other clients can draw the held-hand fan of card backs.
+        "hand_size": len(hero.hand),
         # Deck: Own hero sees full deck, others see count only
         "deck": (
             [_build_card_view(card, is_own_hero=is_own_hero) for card in hero.deck]
