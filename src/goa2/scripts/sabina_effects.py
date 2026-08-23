@@ -488,6 +488,35 @@ class UnwaveringResolveEffect(CardEffect):
 # =============================================================================
 
 
+def _targeting_time_adjacent_attack(hero_id: str, stats: CardStats) -> list[GameStep]:
+    """Attack a selected target while preserving its targeting-time adjacency."""
+    return [
+        SelectStep(
+            target_type=TargetType.UNIT,
+            prompt="Select Attack Target",
+            output_key="victim_id",
+            filters=[
+                RangeFilter(max_range=stats.range),
+                TeamFilter(relation="ENEMY"),
+            ],
+            is_mandatory=True,
+        ),
+        # The target may be defeated and removed by the attack, so this must
+        # be evaluated before AttackSequenceStep resolves combat.
+        CheckAdjacencyStep(
+            unit_a_id=hero_id,
+            unit_b_key="victim_id",
+            output_key="was_adjacent",
+        ),
+        AttackSequenceStep(
+            damage=stats.primary_value,
+            range_val=stats.range,
+            is_ranged=True,
+            target_id_key="victim_id",
+        ),
+    ]
+
+
 @register_effect("shootout")
 class ShootoutEffect(CardEffect):
     """
@@ -500,19 +529,9 @@ class ShootoutEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Attack target in range
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=stats.range,
-                is_ranged=True,
-            ),
-            # 2. Check if victim was adjacent after attack
-            CheckAdjacencyStep(
-                unit_a_id=hero.id,
-                unit_b_key="victim_id",
-                output_key="was_adjacent",
-            ),
-            # 3. Select an enemy minion adjacent to you (optional, only if adjacent)
+            *_targeting_time_adjacent_attack(str(hero.id), stats),
+            # Select an enemy minion adjacent to you (optional, only if the
+            # attack target was adjacent when it was selected).
             SelectStep(
                 target_type=TargetType.UNIT,
                 filters=[
@@ -729,19 +748,9 @@ class BulletHellEffect(CardEffect):
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
         return [
-            # 1. Attack target in range
-            AttackSequenceStep(
-                damage=stats.primary_value,
-                range_val=stats.range,
-                is_ranged=True,
-            ),
-            # 2. Check if victim was adjacent after attack
-            CheckAdjacencyStep(
-                unit_a_id=hero.id,
-                unit_b_key="victim_id",
-                output_key="was_adjacent",
-            ),
-            # 3. Select up to 2 enemy minions adjacent to you
+            *_targeting_time_adjacent_attack(str(hero.id), stats),
+            # Select up to 2 enemy minions adjacent to you (only if the attack
+            # target was adjacent when it was selected).
             MultiSelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Select enemy minions adjacent to you to remove.",
