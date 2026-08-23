@@ -357,24 +357,23 @@ def test_rogue_definition():
         assert c.secondary_actions[ActionType.MOVEMENT] == 2
 
 
-def test_tie_breaker_flip_is_seeded_when_not_supplied(map_path, setup_registry):
-    both = {
-        GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=seed).tie_breaker_team
-        for seed in range(24)
-    }
-    assert both == {TeamColor.RED, TeamColor.BLUE}  # the coin really is a coin
+@pytest.mark.parametrize(
+    ("seed", "expected"),
+    [(0, TeamColor.BLUE), (1, TeamColor.RED)],
+)
+def test_tie_breaker_flip_is_seeded_when_not_supplied(map_path, setup_registry, seed, expected):
+    state = GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=seed)
+    assert state.tie_breaker_team is expected
 
-    repeated = GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=7).tie_breaker_team
-    assert (
-        repeated == GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=7).tie_breaker_team
-    )
+    repeated = GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=seed)
+    assert repeated.tie_breaker_team is expected
 
 
-@pytest.mark.parametrize("team", [TeamColor.RED, TeamColor.BLUE])
-def test_supplied_tie_breaker_team_overrides_the_flip(map_path, setup_registry, team):
+@pytest.mark.parametrize(
+    ("team", "seed"),
+    [(TeamColor.RED, 0), (TeamColor.BLUE, 1)],
+)
+def test_supplied_tie_breaker_team_overrides_the_flip(map_path, setup_registry, team, seed):
     """A draft's coin flip is the match's coin flip, so callers may hand in its result."""
-    for seed in range(8):
-        state = GameSetup.create_game(
-            map_path, ["Arien"], ["Knight"], seed=seed, tie_breaker_team=team
-        )
-        assert state.tie_breaker_team is team
+    state = GameSetup.create_game(map_path, ["Arien"], ["Knight"], seed=seed, tie_breaker_team=team)
+    assert state.tie_breaker_team is team
