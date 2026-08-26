@@ -99,6 +99,7 @@ def test_displacement_prompt(displacement_state):
     # Should request input
     assert req is not None
     assert req["type"] == "SELECT_HEX"
+    assert req["player_id"] == "team:RED"
     assert len(req["valid_hexes"]) == 2
     assert Hex(q=1, r=0, s=-1).model_dump() in req["valid_hexes"]
     assert Hex(q=1, r=-1, s=0).model_dump() in req["valid_hexes"]
@@ -181,3 +182,25 @@ def test_displacement_multi_unit_selection(displacement_state):
     process_stack(displacement_state)  # PlaceUnit
 
     assert displacement_state.entity_locations.get("m_disp") == Hex(q=2, r=0, s=-2)
+
+
+def test_displacement_prompts_are_addressed_to_the_whole_team(displacement_state):
+    """Both displacement prompts go to the team, not to whoever is listed first.
+
+    Addressing one hero stalls the game whenever that player is disconnected,
+    and the prompt already says "Team ...".
+    """
+    m_disp_2 = Minion(id="m_disp_2", name="Displaced2", type=MinionType.MELEE, team=TeamColor.RED)
+    displacement_state.teams[TeamColor.RED].minions.append(m_disp_2)
+
+    step = ResolveDisplacementStep(
+        displacements=[
+            ("m_disp", Hex(q=0, r=0, s=0)),
+            ("m_disp_2", Hex(q=1, r=-1, s=0)),
+        ]
+    )
+    push_steps(displacement_state, [step])
+
+    ordering = process_stack(displacement_state).input_request
+    assert ordering is not None
+    assert ordering["player_id"] == "team:RED"

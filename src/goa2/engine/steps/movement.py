@@ -1611,19 +1611,14 @@ class ResolveDisplacementStep(GameStep):
         if len(active_group) > 1:
             options = [u[0] for u in active_group]
             unit_obj = state.get_unit(UnitID(options[0]))
-            team = unit_obj.team if unit_obj else TeamColor.RED
-
-            delegate_id = "unknown"
-            team_obj = state.teams.get(team) if team else None
-            if team_obj and team_obj.heroes:
-                delegate_id = team_obj.heroes[0].id
+            team = unit_obj.team if unit_obj and unit_obj.team else TeamColor.RED
 
             return StepResult(
                 requires_input=True,
                 input_request=create_input_request(
                     request_type=InputRequestType.SELECT_UNIT,
-                    player_id=delegate_id,
-                    prompt=f"Team {team.name if team else 'Unknown'}, choose which displaced unit to place first.",
+                    player_id=f"team:{team.value}",
+                    prompt=f"Team {team.name}, choose which displaced unit to place first.",
                     options=options,
                 ),
             )
@@ -1676,21 +1671,14 @@ class ResolveDisplacementStep(GameStep):
             )
 
         unit_obj = state.get_unit(UnitID(uid))
-        team = unit_obj.team if unit_obj else TeamColor.RED
-
-        delegate_id = "unknown"
-        # Safely access state.teams with team key
-        if team:
-            team_obj = state.teams.get(team)
-            if team_obj and team_obj.heroes:
-                delegate_id = team_obj.heroes[0].id
+        team = unit_obj.team if unit_obj and unit_obj.team else TeamColor.RED
 
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
-                player_id=delegate_id,
-                prompt=f"Team {team.name if team else 'Unknown'}, choose displacement for {unit_obj.name if unit_obj else uid}.",
+                player_id=f"team:{team.value}",
+                prompt=f"Team {team.name}, choose displacement for {unit_obj.name if unit_obj else uid}.",
                 options=candidates,
                 context_unit_id=uid,
             ),
