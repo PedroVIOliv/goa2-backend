@@ -687,6 +687,75 @@ def test_delete_nonexistent_save(save_dir):
 
 
 # ---------------------------------------------------------------------------
+# Atomic write guarantees
+# ---------------------------------------------------------------------------
+
+
+def _save(state, save_dir, game_id="atomic", **kwargs):
+    return save_game(
+        game_id=game_id,
+        state=state,
+        player_tokens={},
+        spectator_token="s",
+        hero_to_token={},
+        created_at=0,
+        save_dir=save_dir,
+        **kwargs,
+    )
+
+
+def test_save_writes_the_document_in_one_call(full_state, save_dir, monkeypatch):
+    """The save is serialized whole, then written once.
+
+    json.dump() streams the document through thousands of small writes, which
+    made saving ~5x more expensive than it needs to be — and saving runs after
+    every game mutation. This guards the fix against being reverted.
+    """
+    writes: list[int] = []
+    real_fdopen = os.fdopen
+
+    class CountingFile:
+        def __init__(self, f):
+            self._f = f
+
+        def write(self, s):
+            writes.append(len(s))
+            return self._f.write(s)
+
+        def __enter__(self):
+            self._f.__enter__()
+            return self
+
+        def __exit__(self, *exc):
+            return self._f.__exit__(*exc)
+
+    monkeypatch.setattr(os, "fdopen", lambda *a, **kw: CountingFile(real_fdopen(*a, **kw)))
+    _save(full_state, save_dir)
+
+    assert len(writes) == 1, f"expected a single write, got {len(writes)}"
+    assert sorted(os.listdir(save_dir)) == ["atomic.json"]
+
+
+def test_failed_save_preserves_previous_file_and_leaves_no_temp(full_state, save_dir):
+    """An unserializable payload must not damage the save already on disk.
+
+    The whole document is serialized before the target is touched, so a
+    serialization error cannot leave a truncated save or a stray temp file.
+    """
+    target = _save(full_state, save_dir)
+    intact = target.read_text()
+
+    with pytest.raises(TypeError):
+        _save(full_state, save_dir, rollback_snapshot={"not_json": object()})
+
+    assert target.read_text() == intact
+    assert sorted(os.listdir(save_dir)) == ["atomic.json"]
+
+    # And the surviving file is still loadable.
+    assert load_game(str(target))["game_id"] == "atomic"
+
+
+# ---------------------------------------------------------------------------
 # Mid-resolution round-trip (full game state)
 # ---------------------------------------------------------------------------
 
