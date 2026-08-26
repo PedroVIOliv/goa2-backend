@@ -1,0 +1,2195 @@
+{
+  "zone_definitions": [
+    {
+      "id": "RedBase",
+      "label": "RedBase",
+      "color": "#ff8800"
+    },
+    {
+      "id": "RedABeach",
+      "label": "RedABeach",
+      "color": "#ffbd7a"
+    },
+    {
+      "id": "MidA",
+      "label": "MidA",
+      "color": "#ffca0a"
+    },
+    {
+      "id": "BlueABeach",
+      "label": "BlueABeach",
+      "color": "#feb067"
+    },
+    {
+      "id": "BlueBase",
+      "label": "BlueBase",
+      "color": "#0033ff"
+    },
+    {
+      "id": "BlueBBeach",
+      "label": "BlueBBeach",
+      "color": "#388eff"
+    },
+    {
+      "id": "MidB",
+      "label": "MidB",
+      "color": "#f4cd35"
+    },
+    {
+      "id": "RedBBeach",
+      "label": "RedBBeach",
+      "color": "#4db6ac"
+    },
+    {
+      "id": "Jungle",
+      "label": "Jungle",
+      "color": "#2e7d32"
+    }
+  ],
+  "hex_map": [
+    {
+      "q": -7,
+      "r": 9,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 9,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 9,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 9,
+      "s": -5,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": -3,
+      "r": 9,
+      "s": -6,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 9,
+      "s": -7,
+      "zone_id": "BlueBase",
+      "tags": [
+        "BlueHeroSpawn"
+      ]
+    },
+    {
+      "q": -1,
+      "r": 8,
+      "s": -7,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 8,
+      "s": -6,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 8,
+      "s": -5,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 8,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 8,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 8,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 8,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 8,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -9,
+      "r": 8,
+      "s": 1,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 8,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 7,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": -9,
+      "r": 7,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 7,
+      "s": 1,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 7,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 7,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 7,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": -4,
+      "r": 7,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 7,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 7,
+      "s": -5,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 7,
+      "s": -6,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": 7,
+      "s": -7,
+      "zone_id": "BlueBase",
+      "tags": [
+        "BlueHeroSpawn"
+      ]
+    },
+    {
+      "q": 1,
+      "r": 7,
+      "s": -8,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 7,
+      "s": -9,
+      "zone_id": "BlueBase",
+      "tags": [
+        "BlueHeroSpawn"
+      ]
+    },
+    {
+      "q": 3,
+      "r": 7,
+      "s": -10,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 6,
+      "s": -9,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 6,
+      "s": -8,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": 6,
+      "s": -7,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": 6,
+      "s": -6,
+      "zone_id": "BlueBase",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 6,
+      "s": -5,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 6,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 6,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 6,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 6,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": -6,
+      "r": 6,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 6,
+      "s": 1,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 6,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 6,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 5,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 5,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 5,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 5,
+      "s": 1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 5,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": -3,
+      "r": 5,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 5,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 5,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 1,
+      "r": 5,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 5,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 5,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": 5,
+      "s": -9,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": 5,
+      "r": 4,
+      "s": -9,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": 4,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 4,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 4,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 1,
+      "r": 4,
+      "s": -5,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": 4,
+      "s": -4,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 4,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -2,
+      "r": 4,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 4,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 4,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 4,
+      "s": 1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 4,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 4,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 4,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 4,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": -9,
+      "r": 3,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 3,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -7,
+      "r": 3,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": -6,
+      "r": 3,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 3,
+      "s": 2,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 3,
+      "s": 1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 3,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 3,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 3,
+      "s": -2,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": 3,
+      "s": -3,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": 3,
+      "s": -4,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 3,
+      "s": -5,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": 3,
+      "r": 3,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": 3,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": 5,
+      "r": 3,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": 3,
+      "s": -9,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": 2,
+      "s": -9,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": 2,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": 2,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": 2,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 2,
+      "s": -5,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 2,
+      "s": 3,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 2,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 2,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": -8,
+      "r": 2,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 2,
+      "s": 7,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 1,
+      "s": 8,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 1,
+      "s": 7,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -7,
+      "r": 1,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 1,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 1,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 1,
+      "s": 3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 1,
+      "s": -4,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": 1,
+      "s": -5,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": 1,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": 6,
+      "r": 1,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": 7,
+      "r": 1,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": 1,
+      "s": -9,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 8,
+      "r": 0,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": 6,
+      "r": 0,
+      "s": -6,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": 0,
+      "s": -5,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": 0,
+      "s": -3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "s": -2,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "s": -1,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": 0,
+      "s": 0,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": 0,
+      "s": 1,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": 0,
+      "s": 2,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": 0,
+      "s": 3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 0,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": 0,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 0,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": -1,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": -7,
+      "r": -1,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": -1,
+      "s": 6,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -1,
+      "s": 4,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -1,
+      "s": 3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "s": 2,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "s": 1,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "s": 0,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -1,
+      "s": -1,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -1,
+      "s": -2,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -1,
+      "s": -3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -1,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -1,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -1,
+      "s": -8,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -2,
+      "s": -8,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -2,
+      "s": -7,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -2,
+      "s": -6,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -2,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -2,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -2,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -2,
+      "s": -2,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -2,
+      "s": 4,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -2,
+      "s": 5,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": -2,
+      "s": 6,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": -2,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": -6,
+      "r": -2,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": -7,
+      "r": -2,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": -2,
+      "s": 10,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -7,
+      "r": -3,
+      "s": 10,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": -3,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": -3,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": -3,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -3,
+      "s": 6,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -3,
+      "s": 5,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -3,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -3,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -3,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": 8,
+      "r": -3,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -3,
+      "s": -6,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -3,
+      "s": -7,
+      "zone_id": "MidA",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": 10,
+      "r": -4,
+      "s": -6,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -4,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -4,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 7,
+      "r": -4,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": 6,
+      "r": -4,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -4,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -4,
+      "s": 0,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -4,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -4,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -4,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": -4,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": -4,
+      "s": 5,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -4,
+      "s": 6,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": -3,
+      "r": -4,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": -4,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": -5,
+      "r": -4,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": -4,
+      "s": 10,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": -5,
+      "s": 10,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": -5,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -5,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -5,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -1,
+      "r": -5,
+      "s": 6,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": -5,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -5,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 2,
+      "r": -5,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -5,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -5,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -5,
+      "s": 0,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -5,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -5,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -5,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -5,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": 10,
+      "r": -5,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -6,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -6,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -6,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -6,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -6,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -6,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": [
+        "BlueRangedSpawn"
+      ]
+    },
+    {
+      "q": 3,
+      "r": -6,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -6,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -6,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -1,
+      "r": -6,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -6,
+      "s": 8,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -6,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": -6,
+      "s": 10,
+      "zone_id": "RedBBeach",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": -2,
+      "r": -7,
+      "s": 9,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": -1,
+      "r": -7,
+      "s": 8,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": -7,
+      "s": 7,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -7,
+      "s": 6,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -7,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -7,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -7,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -7,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": [
+        "BlueHeavySpawn"
+      ]
+    },
+    {
+      "q": 6,
+      "r": -7,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -7,
+      "s": 0,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -7,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -7,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -7,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -8,
+      "s": -3,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -8,
+      "s": -2,
+      "zone_id": "MidA",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": 9,
+      "r": -8,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -8,
+      "s": 0,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -8,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -8,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -8,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": [
+        "RedHeavySpawn"
+      ]
+    },
+    {
+      "q": 4,
+      "r": -8,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -8,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -8,
+      "s": 6,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 1,
+      "r": -8,
+      "s": 7,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 0,
+      "r": -8,
+      "s": 8,
+      "zone_id": "RedBase",
+      "tags": [
+        "RedHeroSpawn"
+      ]
+    },
+    {
+      "q": -1,
+      "r": -8,
+      "s": 9,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": -2,
+      "r": -8,
+      "s": 10,
+      "zone_id": "RedBase",
+      "tags": [
+        "RedHeroSpawn"
+      ]
+    },
+    {
+      "q": 2,
+      "r": -9,
+      "s": 7,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 3,
+      "r": -9,
+      "s": 6,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -9,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -9,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -9,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": -9,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 8,
+      "r": -9,
+      "s": 1,
+      "zone_id": "RedABeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 8,
+      "r": -10,
+      "s": 2,
+      "zone_id": "RedABeach",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": 7,
+      "r": -10,
+      "s": 3,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -10,
+      "s": 4,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -10,
+      "s": 5,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 4,
+      "r": -10,
+      "s": 6,
+      "zone_id": "RedABeach",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": 3,
+      "r": -10,
+      "s": 7,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 5,
+      "r": -1,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": -4,
+      "r": 0,
+      "s": 4,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": -6,
+      "r": -1,
+      "s": 7,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": 12,
+      "r": -8,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 12,
+      "r": -7,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": 12,
+      "r": -6,
+      "s": -6,
+      "zone_id": "MidA",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": 12,
+      "r": -5,
+      "s": -7,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -7,
+      "s": -4,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -6,
+      "s": -5,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -5,
+      "s": -6,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -4,
+      "s": -7,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 11,
+      "r": -3,
+      "s": -8,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 9,
+      "r": -9,
+      "s": 0,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 7,
+      "r": 0,
+      "s": -7,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": -8,
+      "r": 9,
+      "s": -1,
+      "zone_id": "BlueBBeach",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": -10,
+      "r": 6,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 5,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 4,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 3,
+      "s": 7,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 3,
+      "s": 8,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -10,
+      "r": 2,
+      "s": 8,
+      "zone_id": "MidB",
+      "tags": [
+        "RedRangedSpawn"
+      ]
+    },
+    {
+      "q": -10,
+      "r": 1,
+      "s": 9,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 2,
+      "s": 9,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 4,
+      "s": 7,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 5,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 6,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -11,
+      "r": 7,
+      "s": 4,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -12,
+      "r": 7,
+      "s": 5,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -12,
+      "r": 6,
+      "s": 6,
+      "zone_id": "MidB",
+      "tags": [
+        "BlueMeleeSpawn"
+      ]
+    },
+    {
+      "q": -12,
+      "r": 5,
+      "s": 7,
+      "zone_id": "MidB",
+      "tags": [
+        "RedMeleeSpawn"
+      ]
+    },
+    {
+      "q": -12,
+      "r": 4,
+      "s": 8,
+      "zone_id": "MidB",
+      "tags": []
+    },
+    {
+      "q": -9,
+      "r": 0,
+      "s": 9,
+      "zone_id": "RedBBeach",
+      "tags": []
+    },
+    {
+      "q": 6,
+      "r": -6,
+      "s": 0,
+      "zone_id": "RedABeach",
+      "tags": []
+    },
+    {
+      "q": 10,
+      "r": -9,
+      "s": -1,
+      "zone_id": "MidA",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 1,
+      "s": -3,
+      "zone_id": "Jungle",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": 2,
+      "s": -4,
+      "zone_id": "BlueABeach",
+      "tags": []
+    },
+    {
+      "q": -5,
+      "r": 5,
+      "s": 0,
+      "zone_id": "BlueBBeach",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -8,
+      "s": 11,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": -3,
+      "r": -7,
+      "s": 10,
+      "zone_id": "RedBase",
+      "tags": []
+    },
+    {
+      "q": 2,
+      "r": -10,
+      "s": 8,
+      "zone_id": "RedBase",
+      "tags": [
+        "RedHeroSpawn"
+      ]
+    },
+    {
+      "q": 1,
+      "r": -9,
+      "s": 8,
+      "zone_id": "RedBase",
+      "tags": []
+    }
+  ],
+  "lanes": {
+    "lane_1": [
+      "RedBase",
+      "RedABeach",
+      "MidA",
+      "BlueABeach",
+      "BlueBase"
+    ],
+    "lane_2": [
+      "RedBase",
+      "RedBBeach",
+      "MidB",
+      "BlueBBeach",
+      "BlueBase"
+    ]
+  },
+  "battle_zones": {
+    "lane_1": "MidA",
+    "lane_2": "MidB"
+  }
+}
