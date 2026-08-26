@@ -204,3 +204,54 @@ def test_displacement_prompts_are_addressed_to_the_whole_team(displacement_state
     ordering = process_stack(displacement_state).input_request
     assert ordering is not None
     assert ordering["player_id"] == "team:RED"
+
+
+def test_displacement_order_is_chosen_by_spawn_point(displacement_state):
+    """Ordering is asked as a hex, because that is what the player can see.
+
+    A displaced unit sits in limbo with no board position, so a unit prompt
+    has nothing to point at. One unit is queued per blocked spawn point, so
+    its origin identifies it and is on the board.
+    """
+    m_disp_2 = Minion(id="m_disp_2", name="Displaced2", type=MinionType.MELEE, team=TeamColor.RED)
+    displacement_state.teams[TeamColor.RED].minions.append(m_disp_2)
+
+    first, second = Hex(q=0, r=0, s=0), Hex(q=1, r=-1, s=0)
+    push_steps(
+        displacement_state,
+        [ResolveDisplacementStep(displacements=[("m_disp", first), ("m_disp_2", second)])],
+    )
+
+    req = process_stack(displacement_state).input_request
+    assert req is not None
+    assert req["type"] == "SELECT_HEX"
+    assert first.model_dump() in req["valid_hexes"]
+    assert second.model_dump() in req["valid_hexes"]
+
+    # Answering with the second spawn point resolves that unit first, so it
+    # takes the single adjacent empty hex and the other is pushed further out.
+    displacement_state.execution_stack[-1].pending_input = {"selection": second.model_dump()}
+    for _ in range(10):
+        if not displacement_state.execution_stack:
+            break
+        process_stack(displacement_state)
+
+    assert displacement_state.entity_locations["m_disp_2"] == Hex(q=1, r=0, s=-1)
+    assert displacement_state.entity_locations["m_disp"] == Hex(q=2, r=0, s=-2)
+
+
+def test_displacement_falls_back_to_units_for_a_shared_origin(displacement_state):
+    """Two units from one hex cannot be told apart by origin, so name them."""
+    m_disp_2 = Minion(id="m_disp_2", name="Displaced2", type=MinionType.MELEE, team=TeamColor.RED)
+    displacement_state.teams[TeamColor.RED].minions.append(m_disp_2)
+
+    origin = Hex(q=0, r=0, s=0)
+    push_steps(
+        displacement_state,
+        [ResolveDisplacementStep(displacements=[("m_disp", origin), ("m_disp_2", origin)])],
+    )
+
+    req = process_stack(displacement_state).input_request
+    assert req is not None
+    assert req["type"] == "SELECT_UNIT"
+    assert set(req["valid_options"]) == {"m_disp", "m_disp_2"}

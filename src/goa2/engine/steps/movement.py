@@ -1590,28 +1590,56 @@ class ResolveDisplacementStep(GameStep):
         if not active_group:
             return StepResult(is_finished=True)
 
-        if self.pending_input:
-            sel_uid = self.pending_input.get("selection")
-            if sel_uid:
-                target_tuple = next((u for u in active_group if u[0] == sel_uid), None)
-                if target_tuple:
-                    remaining_active = [u for u in active_group if u[0] != sel_uid]
-                    remaining = remaining_active + (
-                        second_group if active_group is first_group else []
-                    )
+        # Guarded on the group size because the destination prompt below is also
+        # a hex: a single-unit group can only be answering that one.
+        if self.pending_input and len(active_group) > 1:
+            selection = self.pending_input.get("selection")
+            sel_hex = parse_hex_selection(selection)
+            if sel_hex is not None:
+                chosen = next(
+                    (i for i, (_, origin_i) in enumerate(active_group) if origin_i == sel_hex),
+                    None,
+                )
+            else:
+                chosen = next(
+                    (i for i, (uid_i, _) in enumerate(active_group) if uid_i == selection),
+                    None,
+                )
+            if chosen is not None:
+                remaining_active = [u for i, u in enumerate(active_group) if i != chosen]
+                remaining = remaining_active + (second_group if active_group is first_group else [])
 
-                    return StepResult(
-                        is_finished=True,
-                        new_steps=[
-                            ResolveDisplacementStep(displacements=[target_tuple]),
-                            ResolveDisplacementStep(displacements=remaining),
-                        ],
-                    )
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[
+                        ResolveDisplacementStep(displacements=[active_group[chosen]]),
+                        ResolveDisplacementStep(displacements=remaining),
+                    ],
+                )
 
         if len(active_group) > 1:
-            options = [u[0] for u in active_group]
-            unit_obj = state.get_unit(UnitID(options[0]))
+            origins = [origin for _, origin in active_group]
+            unit_obj = state.get_unit(UnitID(active_group[0][0]))
             team = unit_obj.team if unit_obj and unit_obj.team else TeamColor.RED
+
+            # A displaced unit waits in limbo with no board position, so a unit
+            # prompt has nothing to point at. One unit is queued per blocked
+            # spawn point, so the origin identifies it and is on the board —
+            # unless a caller queued two from the same hex, which no origin can
+            # tell apart.
+            if len(set(origins)) == len(origins):
+                return StepResult(
+                    requires_input=True,
+                    input_request=create_input_request(
+                        request_type=InputRequestType.SELECT_HEX,
+                        player_id=f"team:{team.value}",
+                        prompt=(
+                            f"Team {team.name}, choose which blocked spawn point "
+                            "to resolve first."
+                        ),
+                        options=origins,
+                    ),
+                )
 
             return StepResult(
                 requires_input=True,
@@ -1619,7 +1647,7 @@ class ResolveDisplacementStep(GameStep):
                     request_type=InputRequestType.SELECT_UNIT,
                     player_id=f"team:{team.value}",
                     prompt=f"Team {team.name}, choose which displaced unit to place first.",
-                    options=options,
+                    options=[uid for uid, _ in active_group],
                 ),
             )
 
