@@ -298,3 +298,71 @@ def test_high_ground_no_bonus_without_bounty(game_state):
     steps = effect.build_steps(game_state, hero, card, stats)
 
     assert steps[0].range_val == 2  # No bonus
+
+
+# =============================================================================
+# Bounty bonus through the real resolution path
+# =============================================================================
+
+
+def _movement_step(state, effect_id, tier=CardTier.II):
+    """Resolve a Bain movement card the way the engine does, via get_steps."""
+    from goa2.engine.effects import CardEffectRegistry
+
+    card = _make_movement_card(effect_id, effect_id, effect_id, tier=tier)
+    effect = CardEffectRegistry.get_for_card(card)
+    steps = effect.get_steps(state, state.get_hero("hero_bain"), card)
+    assert len(steps) == 1
+    assert isinstance(steps[0], MoveSequenceStep)
+    return steps[0]
+
+
+@pytest.mark.parametrize(
+    "effect_id,tier,base,bonus",
+    [
+        ("vantage_point", CardTier.II, 2, 1),
+        ("high_ground", CardTier.III, 2, 2),
+    ],
+)
+def test_bounty_bonus_applies_via_get_steps(game_state, effect_id, tier, base, bonus):
+    """The registered effect adds its bonus when a hero in play holds the bounty."""
+    assert _movement_step(game_state, effect_id, tier).range_val == base
+
+    game_state.get_marker(MarkerType.BOUNTY).place(
+        target_id="enemy_hero", value=0, source_id="hero_bain"
+    )
+    assert _movement_step(game_state, effect_id, tier).range_val == base + bonus
+
+
+def test_bounty_bonus_lapses_when_the_holder_is_defeated(game_state):
+    """A defeated holder returns the marker, so the bonus goes with it."""
+    game_state.get_marker(MarkerType.BOUNTY).place(
+        target_id="enemy_hero", value=0, source_id="hero_bain"
+    )
+    assert _movement_step(game_state, "vantage_point").range_val == 3
+
+    game_state.return_markers_from_hero("enemy_hero")
+    assert _movement_step(game_state, "vantage_point").range_val == 2
+
+
+def test_bounty_bonus_lapses_at_end_of_round(game_state):
+    """Markers return to supply at end of round, taking the bonus with them."""
+    game_state.get_marker(MarkerType.BOUNTY).place(
+        target_id="enemy_hero", value=0, source_id="hero_bain"
+    )
+    assert _movement_step(game_state, "high_ground", CardTier.III).range_val == 4
+
+    game_state.return_all_markers()
+    assert _movement_step(game_state, "high_ground", CardTier.III).range_val == 2
+
+
+def test_bounty_bonus_stacks_on_a_buffed_movement_stat(game_state):
+    """The bonus adds to the computed stat, not the printed one."""
+    from goa2.domain.models import StatType
+
+    game_state.get_hero("hero_bain").items[StatType.MOVEMENT] = 1
+    game_state.get_marker(MarkerType.BOUNTY).place(
+        target_id="enemy_hero", value=0, source_id="hero_bain"
+    )
+    # 2 printed + 1 item + 1 bounty
+    assert _movement_step(game_state, "vantage_point").range_val == 4
