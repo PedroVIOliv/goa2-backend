@@ -750,6 +750,12 @@ The `winner` key is only present when the game has ended (`view.phase === "GAME_
 
 The `events` key is only present on **broadcasts that follow a mutation**. It lets every connected client — including non-acting players and spectators — animate the action, not just the actor. Event metadata is projected independently for each recipient: hidden card IDs/names are `null` (or omitted from ID lists), and facedown mine placement reports `metadata.token_type: "mine"` to everyone except the token's owner. It is **absent** on the initial connection update and on `GET_VIEW` responses (there is nothing to animate), so treat it as optional with `msg.get("events", [])`. The view itself remains authoritative; events are for animation only.
 
+A mutation message may include an optional `client_action_id` containing 1–64
+ASCII letters, digits, dots, underscores, colons, or hyphens. The server echoes
+it on the direct response and on the acting player's subsequent `STATE_UPDATE`;
+it is never broadcast to opponents or spectators. Clients can use it to measure
+action-to-authoritative-update latency. Older clients may omit it.
+
 #### `ACTION_RESULT`
 
 Sent to the player who performed the action:

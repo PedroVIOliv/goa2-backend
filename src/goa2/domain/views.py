@@ -27,6 +27,7 @@ def build_view(
     *,
     reveal_all: bool = False,
     now_ms: int | None = None,
+    prebuilt_board_view: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
@@ -56,8 +57,12 @@ def build_view(
     for team_color, team in state.teams.items():
         teams_view[team_color.value] = _build_team_view(state, team, for_hero_id, reveal_all)
 
-    # Build board view (public info)
-    board_view = _build_board_view(state)
+    # The board is public and identical for every recipient. Broadcast callers
+    # may build it once from their locked state snapshot and reuse it while the
+    # private portions of each player view are materialized.
+    board_view = (
+        prebuilt_board_view if prebuilt_board_view is not None else _build_board_view(state)
+    )
 
     # Build effects view (public info)
     effects_view = _build_effects_view(state)

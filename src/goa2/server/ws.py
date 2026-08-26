@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from concurrent.futures.process import BrokenProcessPool
 from typing import Any
@@ -17,7 +18,7 @@ from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
 from goa2.domain.time_control import ClockStatus
 from goa2.domain.types import HeroID
-from goa2.domain.views import build_view
+from goa2.domain.views import _build_board_view, build_view
 from goa2.engine.overrides import OverrideRejectedError, apply_override_decision
 from goa2.engine.session import SessionResult
 from goa2.server import overrides as ov
@@ -87,6 +88,7 @@ MUTATION_MESSAGE_TYPES = frozenset(
         "SET_READY",
     }
 )
+CLIENT_ACTION_ID_RE = re.compile(r"[A-Za-z0-9._:-]{1,64}\Z")
 
 CapturedBroadcast = list[tuple[str | None, WebSocket, dict[str, Any]]]
 
@@ -200,10 +202,19 @@ def _action_result_message(
     }
 
 
-def _build_state_update(game: ManagedGame, hero_id: str | None) -> dict[str, Any]:
+def _build_state_update(
+    game: ManagedGame,
+    hero_id: str | None,
+    *,
+    board_view: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a STATE_UPDATE message for a specific player."""
     hero_id_typed = HeroID(hero_id) if hero_id else None
-    view = build_view(game.session.state, for_hero_id=hero_id_typed)
+    view = build_view(
+        game.session.state,
+        for_hero_id=hero_id_typed,
+        prebuilt_board_view=board_view,
+    )
     ir = game.last_result.input_request if game.last_result else None
     winner = game.last_result.winner if game.last_result else None
     msg: dict[str, Any] = {
@@ -235,24 +246,49 @@ async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
 def _capture_broadcast(
     game: ManagedGame,
     events: list[dict[str, Any]] | None = None,
+    *,
+    priority_token: str | None = None,
+    client_action_id: str | None = None,
+    timing: dict[str, float] | None = None,
 ) -> CapturedBroadcast:
     """Capture every recipient's scoped payload from one state snapshot.
 
     Callers must hold ``game.lock`` so no mutation can interleave while the
     player-specific views and event projections are being materialized.
     """
+    player_connections = list(game.ws_connections.items())
+    spectator_connections = list(game.spectator_ws_connections.values())
+    if not player_connections and not spectator_connections:
+        if timing is not None:
+            timing["board_ms"] = 0.0
+            timing["recipient_views_ms"] = 0.0
+        return []
+
+    if priority_token is not None:
+        player_connections.sort(key=lambda connection: connection[0] != priority_token)
+
+    capture_started = time.perf_counter()
+    board_started = time.perf_counter()
+    board_view = _build_board_view(game.session.state)
+    board_ms = (time.perf_counter() - board_started) * 1000
+
     messages: CapturedBroadcast = []
-    for token, ws in list(game.ws_connections.items()):
+    for token, ws in player_connections:
         hero_id = game.player_tokens.get(token)
-        msg = _build_state_update(game, hero_id)
+        msg = _build_state_update(game, hero_id, board_view=board_view)
         if events:
             msg["events"] = events_for_viewer(events, game.session.state, hero_id)
+        if token == priority_token and client_action_id is not None:
+            msg["client_action_id"] = client_action_id
         messages.append((token, ws, msg))
-    for ws in list(game.spectator_ws_connections.values()):
-        msg = _build_state_update(game, None)
+    for ws in spectator_connections:
+        msg = _build_state_update(game, None, board_view=board_view)
         if events:
             msg["events"] = events_for_viewer(events, game.session.state, None)
         messages.append((None, ws, msg))
+    if timing is not None:
+        timing["board_ms"] = board_ms
+        timing["recipient_views_ms"] = (time.perf_counter() - capture_started) * 1000 - board_ms
     return messages
 
 
@@ -921,8 +957,17 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         await websocket.send_json({"type": "ERROR", "detail": str(exc)})
                 continue
 
+            raw_client_action_id = data.get("client_action_id")
+            client_action_id = (
+                raw_client_action_id
+                if isinstance(raw_client_action_id, str)
+                and CLIENT_ACTION_ID_RE.fullmatch(raw_client_action_id)
+                else None
+            )
+            action_started = time.perf_counter()
             try:
                 async with game.outbound_lock:
+                    lock_wait_ms = (time.perf_counter() - action_started) * 1000
                     async with game.lock:
                         timer_events = (
                             prepare_timed_mutation(game, registry=registry)
@@ -1001,11 +1046,20 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                     reply.get("events", []), game.session.state, hero_id
                                 ),
                             }
+                        if client_action_id is not None:
+                            sender_reply = {
+                                **sender_reply,
+                                "client_action_id": client_action_id,
+                            }
                         fanout_started = time.perf_counter()
+                        fanout_timing: dict[str, float] = {}
                         messages = (
                             _capture_broadcast(
                                 game,
                                 reply.get("events") or timer_event_dicts,
+                                priority_token=token,
+                                client_action_id=client_action_id,
+                                timing=fanout_timing,
                             )
                             if msg_type in MUTATION_MESSAGE_TYPES
                             else []
@@ -1014,7 +1068,13 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
 
                     send_started = time.perf_counter()
                     await websocket.send_json(sender_reply)
-                    await _send_captured_broadcast(game, messages)
+                    actor_messages = messages[:1] if messages and messages[0][0] == token else []
+                    remaining_messages = messages[len(actor_messages) :]
+                    await _send_captured_broadcast(game, actor_messages)
+                    actor_update_ms = (
+                        (time.perf_counter() - action_started) * 1000 if actor_messages else None
+                    )
+                    await _send_captured_broadcast(game, remaining_messages)
                     if msg_type in MUTATION_MESSAGE_TYPES and game.game_logger:
                         game.game_logger.log_timing(
                             msg_type,
@@ -1022,6 +1082,11 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             fanout_ms=fanout_ms,
                             send_ms=(time.perf_counter() - send_started) * 1000,
                             clients=len(messages),
+                            lock_wait_ms=lock_wait_ms,
+                            board_ms=fanout_timing.get("board_ms", 0.0),
+                            recipient_views_ms=fanout_timing.get("recipient_views_ms", 0.0),
+                            actor_update_ms=actor_update_ms,
+                            action_id=client_action_id,
                         )
 
             except (NotYourTurnError, InvalidPhaseError, CardNotInHandError, ValueError) as exc:

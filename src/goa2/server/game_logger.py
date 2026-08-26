@@ -184,6 +184,12 @@ class GameLogger:
         fanout_ms: float,
         send_ms: float,
         clients: int,
+        *,
+        lock_wait_ms: float = 0.0,
+        board_ms: float = 0.0,
+        recipient_views_ms: float = 0.0,
+        actor_update_ms: float | None = None,
+        action_id: str | None = None,
     ) -> None:
         """Record how long one mutation spent in the engine vs. getting to clients.
 
@@ -191,15 +197,33 @@ class GameLogger:
         from "the network is slow" without needing to reproduce the problem.
         """
         total_ms = round(engine_ms + fanout_ms + send_ms, 1)
-        engine_ms, fanout_ms, send_ms = (round(v, 1) for v in (engine_ms, fanout_ms, send_ms))
+        engine_ms, fanout_ms, send_ms, lock_wait_ms, board_ms, recipient_views_ms = (
+            round(v, 1)
+            for v in (
+                engine_ms,
+                fanout_ms,
+                send_ms,
+                lock_wait_ms,
+                board_ms,
+                recipient_views_ms,
+            )
+        )
+        actor_update_ms = round(actor_update_ms, 1) if actor_update_ms is not None else None
         self.logger.info(
-            "TIMING: %s | engine=%sms fanout=%sms send=%sms total=%sms clients=%d",
+            "TIMING: %s | lock_wait=%sms engine=%sms board=%sms "
+            "recipient_views=%sms fanout=%sms actor_update=%sms send=%sms "
+            "total=%sms clients=%d action_id=%s",
             action,
+            lock_wait_ms,
             engine_ms,
+            board_ms,
+            recipient_views_ms,
             fanout_ms,
+            actor_update_ms,
             send_ms,
             total_ms,
             clients,
+            action_id or "-",
         )
         self._add_event(
             "TIMING",
@@ -210,6 +234,11 @@ class GameLogger:
                 "send_ms": send_ms,
                 "total_ms": total_ms,
                 "clients": clients,
+                "lock_wait_ms": lock_wait_ms,
+                "board_ms": board_ms,
+                "recipient_views_ms": recipient_views_ms,
+                "actor_update_ms": actor_update_ms,
+                "action_id": action_id,
             },
         )
 
