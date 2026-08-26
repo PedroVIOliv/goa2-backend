@@ -180,6 +180,7 @@ def _build_team_view(
     return {
         "color": team.color.value,
         "life_counters": team.life_counters,
+        "starting_life_counters": team.starting_life_counters,
         "heroes": [_build_hero_view(state, hero, for_hero_id, reveal_all) for hero in team.heroes],
         "minions": [_build_minion_view(minion) for minion in team.minions],
     }

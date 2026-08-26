@@ -396,6 +396,19 @@ class TestHeroScopedView:
         assert view_a["teams"]["BLUE"]["life_counters"] == 5
         assert view_b["teams"]["BLUE"]["life_counters"] == 5
 
+    def test_starting_life_counters_are_exposed(self, sample_state):
+        """Clients need the setup value to size the spent-counter track.
+
+        Deriving it from the first state a client happens to see collapses the
+        track to the current total whenever someone reloads mid-game.
+        """
+        sample_state.teams[TeamColor.RED].life_counters = 3
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+
+        assert view["teams"]["RED"]["life_counters"] == 3
+        assert view["teams"]["RED"]["starting_life_counters"] == 5
+
 
 class TestSpectatorView:
     """Tests for public/spectator view (for_hero_id=None)."""
