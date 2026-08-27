@@ -267,6 +267,32 @@ needed — unlike a *player* token, which goes through the
 
 Build the invite as `<origin>/game/{game_id}?token={spectator_token}`.
 
+### `POST /games/{game_id}/share`
+
+Create a durable public replay link for a finished match. This endpoint accepts
+only a player token belonging to the game; spectator tokens cannot mint shares.
+Minting is idempotent, so later requests for the same game return the original
+token and URL.
+
+**Response:** `201 Created`
+
+```json
+{ "token": "L9w2…", "url": "/shared/L9w2…" }
+```
+
+The `url` is relative to the API origin and can be opened without a player or
+admin credential. The request waits while the replay is reconstructed and
+baked; heavy replay operations are bounded and may queue behind another share
+or consensus rewind.
+
+**Error conditions:**
+
+- `403` — The bearer token belongs to another game, or is a spectator token.
+- `404` — The replay log is missing or unavailable.
+- `409` — The replay has no winner yet.
+- `422` — The replay log is malformed or cannot be reconstructed.
+- `500` — The replay worker process terminated unexpectedly.
+
 ### `POST /games/{game_id}/ready`
 
 Set the authenticated hero's readiness during a timed match's initial ready

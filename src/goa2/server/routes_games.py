@@ -32,11 +32,13 @@ from goa2.server.models import (
     GiveGoldRequest,
     PlayerToken,
     ReadyRequest,
+    ShareLinkResponse,
     SpectatorLinkResponse,
     SubmitInputRequest,
 )
 from goa2.server.player_names import resolve_player_names
 from goa2.server.replay import verify_replay_in_background
+from goa2.server.share_mint import mint_replay_share
 from goa2.server.time_control import (
     client_decision_timed_out,
     finalize_timed_mutation,
@@ -220,6 +222,26 @@ async def get_spectator_token(
     """
     game = registry.get(game_id)
     return SpectatorLinkResponse(game_id=game.game_id, spectator_token=game.spectator_token)
+
+
+@router.post("/{game_id}/share", response_model=ShareLinkResponse, status_code=201)
+async def create_player_share(
+    game_id: str,
+    player: PlayerDep,
+    registry: RegistryDep,
+) -> ShareLinkResponse:
+    """Bake a finished match replay into a durable, shareable link."""
+    if player.is_spectator:
+        raise HTTPException(status_code=403, detail="Spectators cannot create replay shares")
+    game = registry.get(game_id)
+    if game.replay_recorder is None:
+        raise HTTPException(status_code=404, detail="Replay not found")
+    if not game.session.state.is_game_over:
+        raise HTTPException(
+            status_code=409,
+            detail="Only finished games can be shared; this game has no winner yet",
+        )
+    return await mint_replay_share(game.replay_recorder.path, game_id)
 
 
 @router.get("/{game_id}", response_model=GameViewResponse)

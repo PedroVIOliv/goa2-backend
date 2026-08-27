@@ -6,10 +6,10 @@ and holds the GIL, so running it in the server process — whether inline or on 
 background thread, which shares the same GIL — stalls the event loop that serves
 live games over WebSocket.
 
-So the bake runs in a **separate process**. The request still waits for it, which
-keeps the API simple (no pending state, no polling, and "is this game finished?"
-is still answered before responding), but the interpreter serving live games is
-free the whole time.
+So the bake runs in a **separate process** through the server's bounded shared
+heavy-work pool. The request still waits for it, which keeps the API simple (no
+pending state, no polling, and "is this game finished?" is still answered before
+responding), but the interpreter serving live games is free the whole time.
 
 ``bake_replay_share`` is the child entry point: it must be a module-level
 function taking only picklable arguments, because the pool uses the ``spawn``
@@ -19,11 +19,9 @@ already has a threadpool running is a well-known source of deadlocks.
 
 from __future__ import annotations
 
-import concurrent.futures
-import multiprocessing
 from typing import Any
 
-__all__ = ["BakeResult", "bake_in_subprocess", "bake_replay_share"]
+__all__ = ["BakeResult", "bake_replay_share"]
 
 # What the child hands back. Plain data so it survives pickling, and so engine
 # exceptions never have to cross the process boundary as objects.
@@ -41,11 +39,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
       {"ok": False, "reason": "unfinished"}            game has no winner yet
       {"ok": False, "reason": "drift", "at": N, "error": "..."}   reconstruction failed
 
-    ``bake_in_subprocess`` adds {"ok": False, "reason": "crashed"} when the child
-    dies without returning at all.
     """
-    import os
-
     # A spawned child is a fresh interpreter: effects are registered as an import
     # side effect and must be re-registered here or every card resolves to nothing.
     from goa2.server.app import register_all_effects
@@ -61,8 +55,6 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
         state_body,
         winner_of,
     )
-
-    os.environ["GOA2_SHARE_DIR"] = share_dir
 
     setup, raw = load_replay(replay_path)
     # A share is the game as it ended. Collapsing rewinds here yields a linear
@@ -90,6 +82,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
             # Only known once every decision is applied, so it gates publication
             # rather than gating the walk.
             validate=lambda: winner_of(session.state) is not None,
+            share_dir=share_dir,
         )
     except Exception as e:
         # Any failure to reconstruct is the same answer to the caller: this log
@@ -106,21 +99,3 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
     if token is None:
         return {"ok": False, "reason": "unfinished"}
     return {"ok": True, "token": token}
-
-
-def bake_in_subprocess(replay_path: str, game_id: str, share_dir: str) -> BakeResult:
-    """Run ``bake_replay_share`` in a one-shot child process and return its result.
-
-    A fresh pool per mint costs a spawn (~1-2 s of interpreter startup) but keeps
-    no idle worker resident between the rare, deliberate share operations, and
-    leaves no executor lifecycle to manage across server restarts.
-    """
-    context = multiprocessing.get_context("spawn")
-    try:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=context) as pool:
-            return pool.submit(bake_replay_share, replay_path, game_id, share_dir).result()
-    except concurrent.futures.process.BrokenProcessPool:
-        # The child died outright — OOM killer, segfault, a hard interpreter
-        # crash. Nothing was returned, so report it as a bake failure rather
-        # than letting it surface as an unhandled 500.
-        return {"ok": False, "reason": "crashed"}

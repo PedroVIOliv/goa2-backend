@@ -1,9 +1,13 @@
 """Heavy game operations run off the event loop, in a separate process."""
 
 import asyncio
+import concurrent.futures
 import os
 import time
 
+import pytest
+
+from goa2.server import workers
 from goa2.server.workers import run_heavy, shutdown_heavy_pool
 
 
@@ -56,6 +60,29 @@ def test_worker_has_the_card_effect_registry_populated():
 
     effect = asyncio.run(run_heavy(CardEffectRegistry.get, "liquid_leap"))
     assert effect is not None
+
+
+def test_broken_pool_is_discarded_for_the_next_heavy_call(monkeypatch):
+    class BrokenExecutor(concurrent.futures.Executor):
+        def __init__(self):
+            self.was_shutdown = False
+
+        def submit(self, fn, /, *args, **kwargs):
+            future: concurrent.futures.Future[int] = concurrent.futures.Future()
+            future.set_exception(concurrent.futures.process.BrokenProcessPool("worker died"))
+            return future
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            self.was_shutdown = True
+
+    broken = BrokenExecutor()
+    monkeypatch.setattr(workers, "_pool", broken)
+
+    with pytest.raises(concurrent.futures.process.BrokenProcessPool):
+        asyncio.run(run_heavy(os.getpid))
+
+    assert workers._pool is None
+    assert broken.was_shutdown
 
 
 def test_prewarm_starts_the_workers():

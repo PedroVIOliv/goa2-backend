@@ -16,13 +16,16 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import os
+import threading
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from typing import Any, TypeVar
 
 T = TypeVar("T")
 
 _pool: ProcessPoolExecutor | None = None
+_pool_guard = threading.Lock()
 
 
 def _init_worker() -> None:
@@ -48,13 +51,24 @@ def get_heavy_pool() -> ProcessPoolExecutor:
     process that already has threads running.
     """
     global _pool
-    if _pool is None:
-        _pool = ProcessPoolExecutor(
-            max_workers=_max_workers(),
-            mp_context=multiprocessing.get_context("spawn"),
-            initializer=_init_worker,
-        )
-    return _pool
+    with _pool_guard:
+        if _pool is None:
+            _pool = ProcessPoolExecutor(
+                max_workers=_max_workers(),
+                mp_context=multiprocessing.get_context("spawn"),
+                initializer=_init_worker,
+            )
+        return _pool
+
+
+def _discard_heavy_pool(failed_pool: ProcessPoolExecutor) -> None:
+    """Forget a broken cached pool without clobbering a newer replacement."""
+    global _pool
+    with _pool_guard:
+        if _pool is not failed_pool:
+            return
+        _pool = None
+    failed_pool.shutdown(wait=False, cancel_futures=True)
 
 
 async def run_heavy(fn: Callable[..., T], *args: Any) -> T:
@@ -63,7 +77,15 @@ async def run_heavy(fn: Callable[..., T], *args: Any) -> T:
     ``fn`` and its arguments and result must all be picklable.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(get_heavy_pool(), fn, *args)
+    pool = get_heavy_pool()
+    try:
+        return await loop.run_in_executor(pool, fn, *args)
+    except BrokenProcessPool:
+        # ProcessPoolExecutor remains permanently broken after a worker dies.
+        # Drop only the failed instance so the next heavy job can create a
+        # fresh pool; a concurrent recovery may already have done so.
+        _discard_heavy_pool(pool)
+        raise
 
 
 async def prewarm_heavy_pool() -> None:
@@ -78,6 +100,8 @@ async def prewarm_heavy_pool() -> None:
 
 def shutdown_heavy_pool() -> None:
     global _pool
-    if _pool is not None:
-        _pool.shutdown(wait=False, cancel_futures=True)
+    with _pool_guard:
+        pool = _pool
         _pool = None
+    if pool is not None:
+        pool.shutdown(wait=False, cancel_futures=True)

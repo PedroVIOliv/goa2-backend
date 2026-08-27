@@ -143,9 +143,8 @@ def create_app() -> FastAPI:
         app.include_router(shares_admin_router)
 
     # Shared replays are mounted unconditionally: the share token is itself the
-    # credential and recipients are not admins. Only minting (on the admin
-    # replays router) can create one, so a server with no admin token configured
-    # can serve existing shares but never make new ones.
+    # credential and recipients are not admins. Minting is available to seated
+    # players through /games/{game_id}/share and to admins through /replays.
     app.include_router(shared_router)
 
     # CORS

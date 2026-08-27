@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
 import os
@@ -15,9 +16,11 @@ from fastapi.testclient import TestClient
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
 from goa2.engine.setup import GameSetup
-from goa2.server import routes_replays, shares
+from goa2.server import routes_replays, share_mint, shares
 from goa2.server.app import create_app
 from goa2.server.replay import ReplayRecorder, _resolve_map_path, cleanup_old_replays
+from goa2.server.share_bake import bake_replay_share
+from goa2.server.workers import run_heavy, shutdown_heavy_pool
 
 MAP = "forgotten_island"
 RED = ["Arien"]
@@ -119,8 +122,13 @@ def _record_rewound_game(game_id: str, seed: int = 42) -> None:
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """TestClient with the admin API enabled and both fixture games recorded."""
+
+    async def run_inline(fn, *args):
+        return fn(*args)
+
+    monkeypatch.setattr(share_mint, "run_heavy", run_inline)
     routes_replays._CACHE.clear()
     prev = os.environ.get("GOA2_REPLAY_API")
     os.environ["GOA2_REPLAY_API"] = "1"
@@ -174,6 +182,26 @@ def _strip_volatile(obj):
 # --- minting --------------------------------------------------------------
 
 
+def test_real_shared_worker_pool_can_bake_a_share():
+    """Keep spawn/pickling/worker initialization covered end to end."""
+    _record_game(FINISHED, finish=True)
+    replay_path = Path(os.environ["GOA2_REPLAY_DIR"]) / f"{FINISHED}.jsonl"
+    try:
+        result = asyncio.run(
+            run_heavy(
+                bake_replay_share,
+                str(replay_path),
+                FINISHED,
+                os.environ["GOA2_SHARE_DIR"],
+            )
+        )
+    finally:
+        shutdown_heavy_pool()
+
+    assert result["ok"] is True
+    assert shares.share_for_game(FINISHED)["token"] == result["token"]
+
+
 def test_mint_requires_a_finished_game(client):
     res = client.post(f"/replays/{UNFINISHED}/share")
     assert res.status_code == 409
@@ -224,6 +252,16 @@ def test_minting_twice_returns_the_same_share(client):
     second = _mint(client)
     assert first == second
     assert len(shares.list_shares()) == 1
+
+
+def test_existing_share_is_returned_when_original_replay_is_missing(client):
+    token = _mint(client)
+    (Path(os.environ["GOA2_REPLAY_DIR"]) / f"{FINISHED}.jsonl").unlink()
+
+    response = client.post(f"/replays/{FINISHED}/share")
+
+    assert response.status_code == 201
+    assert response.json() == {"token": token, "url": f"/shared/{token}"}
 
 
 # --- listing (drives the replay-list UI) ----------------------------------
@@ -472,6 +510,110 @@ def _bake_stub(tmp_path, count: int) -> tuple[str, dict]:
     )
     assert token
     return token, shares.load_meta(token)
+
+
+def test_new_share_has_constant_time_game_index(tmp_path, monkeypatch):
+    token, _meta = _bake_stub(tmp_path, 1)
+    index_path = shares._game_index_path(tmp_path, "g")
+    assert index_path.is_file()
+
+    def unexpected_scan():
+        pytest.fail("indexed lookup scanned every share")
+
+    monkeypatch.setattr(shares, "list_shares", unexpected_scan)
+    assert shares.share_for_game("g")["token"] == token
+
+
+def test_existing_unindexed_shares_are_migrated_once(tmp_path, monkeypatch):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    token = "existingShareToken"
+    directory = tmp_path / token
+    directory.mkdir()
+    (directory / "meta.json").write_text(
+        json.dumps(
+            {
+                "token": token,
+                "game_id": "existing-game",
+                "created_at": 1,
+                "decisions": [],
+            }
+        )
+    )
+    other_token = "otherExistingToken"
+    other_directory = tmp_path / other_token
+    other_directory.mkdir()
+    (other_directory / "meta.json").write_text(
+        json.dumps(
+            {
+                "token": other_token,
+                "game_id": "other-existing-game",
+                "created_at": 2,
+                "decisions": [],
+            }
+        )
+    )
+
+    assert not shares._game_index_path(tmp_path, "existing-game").exists()
+    assert shares.share_for_game("existing-game")["token"] == token
+    assert shares._game_index_path(tmp_path, "existing-game").is_file()
+
+    def unexpected_scan():
+        pytest.fail("migrated lookup scanned every share")
+
+    monkeypatch.setattr(shares, "list_shares", unexpected_scan)
+    assert shares.share_for_game("existing-game")["token"] == token
+    assert shares.share_for_game("other-existing-game")["token"] == other_token
+    assert shares.share_for_game("game-with-no-share") is None
+
+
+def test_stale_game_index_repairs_from_existing_share(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    token = "repairableShareToken"
+    directory = tmp_path / token
+    directory.mkdir()
+    (directory / "meta.json").write_text(
+        json.dumps(
+            {
+                "token": token,
+                "game_id": "repair-game",
+                "created_at": 1,
+                "decisions": [],
+            }
+        )
+    )
+    shares._write_game_index(tmp_path, "repair-game", "missingShareToken")
+
+    assert shares.share_for_game("repair-game")["token"] == token
+    index = json.loads(shares._game_index_path(tmp_path, "repair-game").read_text())
+    assert index == {"game_id": "repair-game", "token": token}
+
+
+def test_revoking_share_removes_its_game_index(tmp_path):
+    token, _meta = _bake_stub(tmp_path, 1)
+    index_path = shares._game_index_path(tmp_path, "g")
+    assert index_path.is_file()
+
+    assert shares.revoke_share(token)
+    assert not index_path.exists()
+
+
+def test_index_publication_failure_leaves_no_share_artifact(tmp_path, monkeypatch):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+
+    def fail_index(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(shares, "_write_game_index", fail_index)
+
+    with pytest.raises(OSError, match="disk full"):
+        shares.bake_share(
+            game_id="g",
+            setup={"engine": "test"},
+            decisions=[],
+            render=_bulky_body,
+        )
+
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_a_long_game_is_split_into_several_groups(tmp_path):

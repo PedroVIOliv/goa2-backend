@@ -24,8 +24,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from goa2.server import shares
 from goa2.server.admin import replay_api_enabled, require_admin
+from goa2.server.models import ShareLinkResponse
 from goa2.server.replay import (
     ReplayCursor,
     _replay_dir,
@@ -33,8 +33,7 @@ from goa2.server.replay import (
     load_replay,
     state_body,
 )
-from goa2.server.share_bake import bake_in_subprocess
-from goa2.server.shares import _share_dir
+from goa2.server.share_mint import mint_replay_share
 
 __all__ = ["replay_api_enabled", "router"]
 
@@ -64,11 +63,16 @@ _LOCKS: OrderedDict[str, threading.Lock] = OrderedDict()
 _LOCKS_GUARD = threading.Lock()
 
 
-def _replay_path(game_id: str) -> Path:
-    """Resolve a game_id to its replay file, rejecting path traversal."""
+def _replay_candidate_path(game_id: str) -> Path:
+    """Resolve a game id safely without requiring its replay to still exist."""
     if not game_id or "/" in game_id or "\\" in game_id or game_id.startswith("."):
         raise HTTPException(status_code=404, detail="Replay not found")
-    path = Path(_replay_dir()) / f"{game_id}.jsonl"
+    return Path(_replay_dir()) / f"{game_id}.jsonl"
+
+
+def _replay_path(game_id: str) -> Path:
+    """Resolve a game_id to its existing replay file, rejecting path traversal."""
+    path = _replay_candidate_path(game_id)
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Replay '{game_id}' not found")
     return path
@@ -181,46 +185,15 @@ def get_replay_meta(game_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/{game_id}/share", status_code=201)
-def create_share(game_id: str) -> dict[str, Any]:
+@router.post("/{game_id}/share", response_model=ShareLinkResponse, status_code=201)
+async def create_share(game_id: str) -> ShareLinkResponse:
     """Bake a finished game into a shareable artifact and return its token.
 
-    The bake runs in a child process (see server/share_bake.py): it re-simulates
-    the whole game, which is seconds of GIL-holding Python, and doing that in
-    this process would stall live games. The request still waits for the result,
-    so the API stays synchronous — no pending shares, no polling — while the
-    interpreter serving live games stays responsive.
+    Heavy work uses the same bounded process pool as consensus rewinds, so live
+    games remain responsive and simultaneous heavy operations queue safely.
     """
-    path = _replay_path(game_id)
-    try:
-        load_replay(str(path))  # fail fast on a malformed log, before spawning
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-
-    # Idempotent: a finished game's artifact can never change, so re-sharing
-    # returns the existing link rather than baking a second copy of it.
-    existing = shares.share_for_game(game_id)
-    if existing is not None:
-        return {"token": existing["token"], "url": f"/shared/{existing['token']}"}
-
-    result = bake_in_subprocess(str(path), game_id, _share_dir())
-
-    if not result["ok"]:
-        reason = result["reason"]
-        if reason == "unfinished":
-            raise HTTPException(
-                status_code=409,
-                detail="Only finished games can be shared; this game has no winner yet",
-            )
-        if reason == "crashed":
-            raise HTTPException(status_code=500, detail="The bake process died; check server logs")
-        raise HTTPException(
-            status_code=422,
-            detail=f"Replay reconstruction failed at decision {result['at']}: {result['error']}",
-        )
-
-    token = result["token"]
-    return {"token": token, "url": f"/shared/{token}"}
+    path = _replay_candidate_path(game_id)
+    return await mint_replay_share(path, game_id)
 
 
 @router.get("/{game_id}/state")

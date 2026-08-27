@@ -8,6 +8,7 @@ grants bug-report mutation.
 Storage mirrors ``bug_reports.py``: one directory per share under
 ``GOA2_SHARE_DIR`` (default ``data/shares``)::
 
+    data/shares/.by-game/<sha256(game_id)>.json   durable game -> token index
     data/shares/<token>/meta.json        setup, decision list, total, engine, game_id
     data/shares/<token>/g0000.json.br    positions 0..K, brotli
     data/shares/<token>/g0175.json.br    positions 175.., brotli
@@ -40,6 +41,7 @@ it cannot fail on engine drift the way live reconstruction can.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import logging
 import os
@@ -47,6 +49,7 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -91,13 +94,16 @@ _MAX_GROUP = 512
 
 # Tokens are secrets.token_urlsafe output: URL-safe base64 alphabet.
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_GAME_INDEX_DIR = ".by-game"
+_GAME_INDEX_READY = ".complete"
+_GAME_INDEX_BUILD_LOCK = threading.Lock()
 
 
 def _share_dir() -> str:
     return os.environ.get("GOA2_SHARE_DIR", DEFAULT_SHARE_DIR)
 
 
-def _share_path(token: str) -> Path:
+def _share_path_in(root: Path, token: str) -> Path:
     """Resolve a token to its share directory, rejecting path traversal.
 
     Raises FileNotFoundError for anything that is not a plausible token, so a
@@ -105,7 +111,75 @@ def _share_path(token: str) -> Path:
     """
     if not token or not _TOKEN_RE.match(token):
         raise FileNotFoundError(f"Share not found: {token!r}")
-    return Path(_share_dir()) / token
+    return root / token
+
+
+def _share_path(token: str) -> Path:
+    return _share_path_in(Path(_share_dir()), token)
+
+
+def _game_index_path(root: Path, game_id: str) -> Path:
+    """Path for a game id without exposing that id as a filesystem component."""
+    digest = hashlib.sha256(game_id.encode()).hexdigest()
+    return root / _GAME_INDEX_DIR / f"{digest}.json"
+
+
+def _game_index_ready_path(root: Path) -> Path:
+    return root / _GAME_INDEX_DIR / _GAME_INDEX_READY
+
+
+def _write_game_index(root: Path, game_id: str, token: str) -> None:
+    """Atomically point one game id at its current share token."""
+    target = _game_index_path(root, game_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staged = target.with_name(f".{target.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        staged.write_text(json.dumps({"game_id": game_id, "token": token}))
+        os.replace(staged, target)
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+def _remove_game_index(root: Path, game_id: str, token: str) -> None:
+    """Remove the index only when it still names the revoked token."""
+    path = _game_index_path(root, game_id)
+    try:
+        record = json.loads(path.read_text())
+    except FileNotFoundError:
+        return
+    except (OSError, json.JSONDecodeError):
+        path.unlink(missing_ok=True)
+        return
+    if record.get("game_id") != game_id or record.get("token") == token:
+        path.unlink(missing_ok=True)
+
+
+def _ensure_legacy_shares_indexed(root: Path) -> None:
+    """Build all missing pre-index mappings once, then mark migration complete."""
+    ready = _game_index_ready_path(root)
+    if ready.is_file():
+        return
+    with _GAME_INDEX_BUILD_LOCK:
+        if ready.is_file():
+            return
+        seen: set[str] = set()
+        # list_shares is newest-first; preserve the same winner if old storage
+        # somehow contains more than one live token for a game.
+        for meta in list_shares():
+            game_id = meta.get("game_id")
+            token = meta.get("token")
+            if not isinstance(game_id, str) or not isinstance(token, str) or game_id in seen:
+                continue
+            _write_game_index(root, game_id, token)
+            seen.add(game_id)
+
+        ready.parent.mkdir(parents=True, exist_ok=True)
+        staged = ready.with_name(f".{ready.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            staged.write_text("1")
+            os.replace(staged, ready)
+        finally:
+            staged.unlink(missing_ok=True)
 
 
 def _position_name(index: int) -> str:
@@ -182,6 +256,7 @@ def bake_share(
     decisions: list[dict[str, Any]],
     render: Any,
     validate: Any = None,
+    share_dir: str | None = None,
 ) -> str | None:
     """Bake every position of a finished game and return the new share token.
 
@@ -196,11 +271,14 @@ def bake_share(
     reconstruction pass, since whether the game finished is only known once every
     decision has been applied.
 
+    ``share_dir`` explicitly selects the publication root for worker callers;
+    omitting it preserves the process-configured default.
+
     The artifact is built in a temp directory and moved into place atomically, so
     a crash or full disk never leaves a half-written share readable.
     """
     token = secrets.token_urlsafe(32)
-    root = Path(_share_dir())
+    root = Path(share_dir or _share_dir())
     root.mkdir(parents=True, exist_ok=True)
 
     staging = Path(tempfile.mkdtemp(prefix=f".{token}.", dir=root))
@@ -239,17 +317,25 @@ def bake_share(
             "size_bytes": size_bytes,
         }
         (staging / "meta.json").write_text(json.dumps(meta, indent=2))
-        os.replace(staging, root / token)
+        # Publish the tiny index as an intent before the artifact rename. The
+        # per-game mint lock hides this short window from normal callers. If the
+        # worker dies before the rename, lookup sees a stale index and repairs
+        # it; if it dies after, the artifact is already discoverable in O(1).
+        _write_game_index(root, game_id, token)
+        try:
+            os.replace(staging, root / token)
+        except BaseException:
+            _remove_game_index(root, game_id, token)
+            raise
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
     return token
 
 
-def load_meta(token: str) -> dict[str, Any] | None:
-    """The share's meta.json, or None if the token is unknown or revoked."""
+def _load_meta_from(root: Path, token: str) -> dict[str, Any] | None:
     try:
-        path = _share_path(token) / "meta.json"
+        path = _share_path_in(root, token) / "meta.json"
     except FileNotFoundError:
         return None
     if not path.is_file():
@@ -259,6 +345,11 @@ def load_meta(token: str) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         logger.exception("Failed to read share meta for %s", token)
         return None
+
+
+def load_meta(token: str) -> dict[str, Any] | None:
+    """The share's meta.json, or None if the token is unknown or revoked."""
+    return _load_meta_from(Path(_share_dir()), token)
 
 
 def position_path(token: str, index: int) -> Path | None:
@@ -362,13 +453,17 @@ def migrate_share_to_groups(token: str) -> dict[str, Any] | None:
 
 def revoke_share(token: str) -> bool:
     """Delete a share directory. Returns False if it did not exist."""
+    root = Path(_share_dir())
+    meta = load_meta(token)
     try:
-        path = _share_path(token)
+        path = _share_path_in(root, token)
     except FileNotFoundError:
         return False
     if not path.is_dir():
         return False
     shutil.rmtree(path)
+    if meta is not None and isinstance(meta.get("game_id"), str):
+        _remove_game_index(root, meta["game_id"], token)
     return True
 
 
@@ -389,8 +484,72 @@ def list_shares() -> list[dict[str, Any]]:
 
 
 def share_for_game(game_id: str) -> dict[str, Any] | None:
-    """The newest live share for a game, if any."""
-    return next((m for m in list_shares() if m.get("game_id") == game_id), None)
+    """The newest live share for a game, using a durable constant-time index.
+
+    The first lookup missing an index performs one compatibility scan that
+    indexes every pre-index share and writes a completion marker. Later missing
+    lookups are constant-time. A stale or corrupt entry is repaired individually.
+    """
+    root = Path(_share_dir())
+    index_path = _game_index_path(root, game_id)
+    had_index = index_path.exists()
+
+    def indexed() -> dict[str, Any] | None:
+        try:
+            record = json.loads(index_path.read_text())
+        except FileNotFoundError:
+            return None
+        except (OSError, json.JSONDecodeError):
+            index_path.unlink(missing_ok=True)
+            return None
+
+        if isinstance(record, dict) and record.get("game_id") == game_id:
+            token = record.get("token")
+            if isinstance(token, str):
+                meta = _load_meta_from(root, token)
+                if (
+                    meta is not None
+                    and meta.get("game_id") == game_id
+                    and meta.get("token") == token
+                ):
+                    return meta
+        index_path.unlink(missing_ok=True)
+        return None
+
+    meta = indexed()
+    if meta is not None:
+        return meta
+
+    migration_failed = False
+    try:
+        if not _game_index_ready_path(root).is_file():
+            _ensure_legacy_shares_indexed(root)
+            return indexed()
+    except OSError:
+        logger.exception("Failed to build share index")
+        migration_failed = True
+
+    # An entry that existed but pointed at a missing/corrupt share may result
+    # from an interrupted deletion. Repair that exceptional case by scanning;
+    # an ordinary miss after migration returns above without a scan.
+    if not had_index and not migration_failed:
+        return None
+    existing = next(
+        (
+            m
+            for m in list_shares()
+            if m.get("game_id") == game_id and isinstance(m.get("token"), str)
+        ),
+        None,
+    )
+    if existing is not None:
+        try:
+            _write_game_index(root, game_id, existing["token"])
+        except OSError:
+            # The existing artifact is still authoritative. Returning it avoids
+            # a duplicate bake even if the optimization cannot be persisted.
+            logger.exception("Failed to index existing share for game %s", game_id)
+    return existing
 
 
 def shared_game_ids() -> set[str]:
