@@ -36,6 +36,11 @@ from goa2.server.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
 
+# Async play routinely goes days between turns, and the staleness clock counts
+# from the last persisted mutation — connecting, watching, and reconnecting do
+# not reset it.
+DEFAULT_GAME_TTL_DAYS = 5
+
 load_dotenv()
 
 
@@ -53,13 +58,20 @@ def register_all_effects():
 register_all_effects()
 
 
+def _game_ttl_days() -> int:
+    try:
+        return int(os.environ.get("GOA2_GAME_TTL_DAYS", DEFAULT_GAME_TTL_DAYS))
+    except ValueError:
+        return DEFAULT_GAME_TTL_DAYS
+
+
 async def _cleanup_loop(registry: GameRegistry):
-    """Periodically remove stale game saves (24h) and old replay logs (30d)."""
+    """Periodically remove stale game saves and old replay logs (30d)."""
     from goa2.server.replay import cleanup_old_replays
 
     while True:
         await asyncio.sleep(3600)  # Check every hour
-        removed = registry.cleanup_stale_games(max_age_seconds=86400)
+        removed = registry.cleanup_stale_games(max_age_seconds=_game_ttl_days() * 86400)
         if removed:
             logger.info("Cleanup: removed %d stale game(s)", removed)
         # Replays outlive game saves: retained for their own TTL (default 30d)
