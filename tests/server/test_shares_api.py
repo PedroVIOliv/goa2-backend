@@ -793,3 +793,62 @@ def test_a_migrated_share_serves_over_http(client):
     shares.migrate_share_to_groups(token)
     assert _fetch_position(client, token, "decision=5") == bodies[5]
     assert _fetch_position(client, token, "decision=59") == bodies[59]
+
+
+def test_unreadable_share_leaves_the_migration_to_be_retried(tmp_path):
+    """A failed read must not be recorded as a completed migration.
+
+    list_shares skips a share whose meta cannot be read, so marking the
+    migration done would strand that game outside the index forever — and its
+    next mint would bake a duplicate instead of returning the existing share.
+    """
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    good = tmp_path / "goodToken"
+    good.mkdir()
+    (good / "meta.json").write_text(
+        json.dumps({"token": "goodToken", "game_id": "readable", "created_at": 2})
+    )
+    broken = tmp_path / "brokenToken"
+    broken.mkdir()
+    (broken / "meta.json").write_text("{ not json")
+
+    assert shares.share_for_game("readable")["token"] == "goodToken"
+
+    # The readable share still got indexed; only the completion marker is held back.
+    assert shares._game_index_path(tmp_path, "readable").is_file()
+    assert not shares._game_index_ready_path(tmp_path).is_file()
+
+    # Once the corrupt share is readable, a later call completes the migration.
+    (broken / "meta.json").write_text(
+        json.dumps({"token": "brokenToken", "game_id": "wasBroken", "created_at": 1})
+    )
+    assert shares.share_for_game("wasBroken")["token"] == "brokenToken"
+    assert shares._game_index_ready_path(tmp_path).is_file()
+
+
+def test_revoking_only_removes_the_entry_naming_the_revoked_token(tmp_path):
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    shares._write_game_index(tmp_path, "aGame", "liveToken")
+    index_path = shares._game_index_path(tmp_path, "aGame")
+
+    shares._remove_game_index(tmp_path, "aGame", "supersededToken")
+    assert index_path.is_file(), "entry naming a still-live token was deleted"
+
+    shares._remove_game_index(tmp_path, "aGame", "liveToken")
+    assert not index_path.is_file(), "entry naming the revoked token survived"
+
+
+def test_revoking_leaves_an_entry_that_names_a_different_game(tmp_path):
+    """Only reachable on a digest collision, but the guard is written for it.
+
+    A record naming another game is that game's to manage; deleting it here
+    would drop a live share out of the index on someone else's revocation.
+    """
+    os.environ["GOA2_SHARE_DIR"] = str(tmp_path)
+    path = shares._game_index_path(tmp_path, "gameA")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"game_id": "gameB", "token": "gameBToken"}))
+
+    shares._remove_game_index(tmp_path, "gameA", "gameAToken")
+
+    assert path.is_file(), "deleted an index entry belonging to a different game"

@@ -150,7 +150,11 @@ def _remove_game_index(root: Path, game_id: str, token: str) -> None:
     except (OSError, json.JSONDecodeError):
         path.unlink(missing_ok=True)
         return
-    if record.get("game_id") != game_id or record.get("token") == token:
+    # A record naming a different game is not ours to delete; one naming a
+    # different token means a newer share already replaced this one.
+    if not isinstance(record, dict) or (
+        record.get("game_id") == game_id and record.get("token") == token
+    ):
         path.unlink(missing_ok=True)
 
 
@@ -165,13 +169,29 @@ def _ensure_legacy_shares_indexed(root: Path) -> None:
         seen: set[str] = set()
         # list_shares is newest-first; preserve the same winner if old storage
         # somehow contains more than one live token for a game.
-        for meta in list_shares():
+        metas = list_shares()
+        for meta in metas:
             game_id = meta.get("game_id")
             token = meta.get("token")
             if not isinstance(game_id, str) or not isinstance(token, str) or game_id in seen:
                 continue
             _write_game_index(root, game_id, token)
             seen.add(game_id)
+
+        # Revoking deletes the whole directory, so a surviving share directory
+        # that yielded no meta was unreadable rather than revoked. Marking the
+        # migration done would leave that game outside the index permanently,
+        # and its next mint would bake a second artifact instead of returning
+        # the existing one. Leave the marker off so a later call retries.
+        present = sum(1 for c in root.iterdir() if c.is_dir() and not c.name.startswith("."))
+        if len(metas) < present:
+            logger.warning(
+                "Share index migration incomplete: %d of %d shares unreadable; "
+                "leaving it to be retried",
+                present - len(metas),
+                present,
+            )
+            return
 
         ready.parent.mkdir(parents=True, exist_ok=True)
         staged = ready.with_name(f".{ready.name}.{secrets.token_hex(8)}.tmp")

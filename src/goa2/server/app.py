@@ -115,7 +115,21 @@ async def lifespan(app: FastAPI):
             await cleanup_task
 
 
+def _configure_logging() -> None:
+    """Give goa2's own records a handler.
+
+    Uvicorn configures only the ``uvicorn*`` loggers, so without this every
+    logger.info here reaches a root logger with no handler and is dropped —
+    including the reaper reporting which games it deleted. basicConfig is a
+    no-op once any handler exists, so this defers to pytest's capture and to
+    an embedding application instead of fighting either.
+    """
+    logging.basicConfig(format="%(levelname)s:     %(message)s")
+    logging.getLogger("goa2").setLevel(os.environ.get("GOA2_LOG_LEVEL", "INFO").upper())
+
+
 def create_app() -> FastAPI:
+    _configure_logging()
     app = FastAPI(title="GoA2 API", version="0.1.0", lifespan=lifespan)
 
     # Routers
