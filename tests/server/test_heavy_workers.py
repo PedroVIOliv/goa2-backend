@@ -101,3 +101,46 @@ def test_prewarm_starts_the_workers():
 
     after_prewarm_ms = asyncio.run(scenario())
     assert after_prewarm_ms < 200, f"call took {after_prewarm_ms:.0f}ms — pool was still cold"
+
+
+def test_job_rejected_by_a_shutdown_pool_is_retried_on_a_fresh_one(monkeypatch):
+    """A concurrent recovery must not fail an unrelated game's heavy job.
+
+    Discarding a broken pool shuts it down, so a caller that grabbed the same
+    pool but had not submitted yet gets RuntimeError from submit(). The job
+    never ran, so it is retried rather than surfaced to the game.
+    """
+
+    class ShutdownExecutor(concurrent.futures.Executor):
+        def __init__(self):
+            self.was_shutdown = False
+
+        def submit(self, fn, /, *args, **kwargs):
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            self.was_shutdown = True
+
+    rejected = ShutdownExecutor()
+    monkeypatch.setattr(workers, "_pool", rejected)
+
+    worker_pid = asyncio.run(run_heavy(os.getpid))
+
+    assert worker_pid != os.getpid()
+    assert rejected.was_shutdown
+
+
+def test_discarding_a_pool_leaves_other_queued_jobs_alone():
+    """cancel_futures would raise CancelledError in unrelated callers."""
+    cancelled: list[bool] = []
+
+    class RecordingExecutor(concurrent.futures.Executor):
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            cancelled.append(cancel_futures)
+
+    pool = RecordingExecutor()
+    workers._pool = pool
+    workers._discard_heavy_pool(pool)
+
+    assert cancelled == [False]
+    assert workers._pool is None

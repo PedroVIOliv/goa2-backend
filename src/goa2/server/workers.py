@@ -40,7 +40,11 @@ def _init_worker() -> None:
 
 
 def _max_workers() -> int:
-    return int(os.environ.get("GOA2_HEAVY_WORKERS", "2"))
+    # Three, not four: share bakes hold a worker for tens of seconds on a long
+    # game, and two concurrent mints must not leave a consensus rewind queued
+    # behind them. The fourth core stays free for the event loop, which serves
+    # every live table.
+    return int(os.environ.get("GOA2_HEAVY_WORKERS", "3"))
 
 
 def get_heavy_pool() -> ProcessPoolExecutor:
@@ -68,7 +72,10 @@ def _discard_heavy_pool(failed_pool: ProcessPoolExecutor) -> None:
         if _pool is not failed_pool:
             return
         _pool = None
-    failed_pool.shutdown(wait=False, cancel_futures=True)
+    # Queued jobs belong to other games. Cancelling them raises CancelledError
+    # in their callers, which nothing upstream handles; letting the broken pool
+    # fail them yields BrokenProcessPool, which callers already expect.
+    failed_pool.shutdown(wait=False)
 
 
 async def run_heavy(fn: Callable[..., T], *args: Any) -> T:
@@ -86,6 +93,13 @@ async def run_heavy(fn: Callable[..., T], *args: Any) -> T:
         # fresh pool; a concurrent recovery may already have done so.
         _discard_heavy_pool(pool)
         raise
+    except RuntimeError:
+        # Another caller discarded this pool between get_heavy_pool() and the
+        # submit above, so Executor.submit rejects the job. Nothing ran, which
+        # is what makes retrying safe here and not under BrokenProcessPool —
+        # there, the job itself may be what killed the worker.
+        _discard_heavy_pool(pool)
+        return await loop.run_in_executor(get_heavy_pool(), fn, *args)
 
 
 async def prewarm_heavy_pool() -> None:
