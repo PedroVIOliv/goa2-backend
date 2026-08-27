@@ -172,3 +172,47 @@ def test_concurrent_player_mints_bake_once_through_shared_pool(client, monkeypat
     assert len(replay_loads) == 1
     assert calls[0][0] is bake_replay_share
     assert len(shares.list_shares()) == 1
+
+
+def test_cancelled_waiter_does_not_cancel_or_duplicate_in_flight_mint(tmp_path, monkeypatch):
+    replay_path = tmp_path / "finished.jsonl"
+    replay_path.write_text("test replay")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    monkeypatch.setattr(shares, "share_for_game", lambda game_id: None)
+    monkeypatch.setattr(share_mint, "load_replay", lambda path: None)
+
+    async def controlled_run_heavy(fn, *args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            await release.wait()
+        return {"ok": True, "token": f"token-{calls}"}
+
+    monkeypatch.setattr(share_mint, "run_heavy", controlled_run_heavy)
+
+    async def exercise_cancellation():
+        first = asyncio.create_task(share_mint.mint_replay_share(replay_path, "game"))
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+
+        second = asyncio.create_task(share_mint.mint_replay_share(replay_path, "game"))
+        await asyncio.sleep(0)
+        assert calls == 1
+
+        release.set()
+        assert (await second).token == "token-1"
+
+        # Completion removes the producer slot, so a later mint performs the
+        # normal durable lookup and may start new work when no share is found.
+        await asyncio.sleep(0)
+        assert (await share_mint.mint_replay_share(replay_path, "game")).token == "token-2"
+        assert calls == 2
+
+    asyncio.run(exercise_cancellation())
