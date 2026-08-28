@@ -876,6 +876,47 @@ class TestUnresolvedCardsView:
         resolve_next_action(sample_state)
         assert str(sample_state.current_actor_id) == cards[0]["hero_id"]
 
+    def test_queue_follows_any_live_reversal_and_restores_when_it_dies(self, sample_state):
+        """The queue tracks the live rule, not who created it: NebKher copying
+        Reverse Time inverts it too, and it snaps back when the effect dies."""
+        from goa2.domain.models.effect import (
+            ActiveEffect,
+            DurationType,
+            EffectScope,
+            EffectType,
+            Shape,
+        )
+        from goa2.engine.effect_manager import EffectManager
+
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=3)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=7)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = [HeroID("hero_a"), HeroID("hero_b")]
+        sample_state.turn = 2
+        sample_state.active_effects.append(
+            ActiveEffect(
+                id="rev_copy",
+                source_id="hero_nebkher",  # the copier, not Emmitt
+                source_card_id="reverse_time",
+                effect_type=EffectType.REVERSED_INITIATIVE,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.NEXT_TURN,
+                is_active=True,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
+
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        assert [c["hero_id"] for c in view["unresolved_cards"]] == ["hero_a", "hero_b"]
+
+        EffectManager.expire_by_source(sample_state, "hero_nebkher")
+        view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
+        assert [c["hero_id"] for c in view["unresolved_cards"]] == ["hero_b", "hero_a"]
+
     def test_entry_structure(self, sample_state):
         """Each entry has hero_id, initiative, and card fields."""
         hero_a = sample_state.get_hero(HeroID("hero_a"))

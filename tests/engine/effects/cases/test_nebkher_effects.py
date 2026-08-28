@@ -1108,6 +1108,99 @@ def test_mind_grip_copied_jinx_passive_expires_with_its_turn_effect() -> None:
     assert result.input_request is None
 
 
+def _reverse_time_grip_state() -> GameState:
+    """NebKher in reach of an enemy whose previous slot holds an already-active
+    Reverse Time, plus a minion adjacent to NebKher for the copied attack."""
+    import goa2.scripts.emmitt_effects  # noqa: F401  (registers reverse_time)
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, r, -q - r) for q in range(6) for r in range(3)])
+        .red_hero(NEB, at=(2, 0, -2), current_card=hero_card("NebKher", "mind_grip"))
+        .blue_hero("hero_enemy", at=(4, 0, -4))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .with_actor(NEB)
+        .build()
+    )
+    neb = state.get_hero(NEB)
+    neb.played_cards = [_resolved_card("neb_prev")]
+    neb.resolved_turn_count = 1
+
+    reverse_time = hero_card("Emmitt", "reverse_time")
+    reverse_time.state = CardState.RESOLVED
+    reverse_time.is_facedown = False
+    reverse_time.is_active = True  # its owner turned it when the card resolved
+    enemy = state.get_hero("hero_enemy")
+    enemy.played_cards = [reverse_time]
+    enemy.resolved_turn_count = 1
+
+    state.turn = 2
+    state.active_effects.append(
+        ActiveEffect(
+            id="rev_owner",
+            source_id="hero_enemy",
+            source_card_id="reverse_time",
+            effect_type=EffectType.REVERSED_INITIATIVE,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.NEXT_TURN,
+            is_active=True,
+            created_at_turn=1,
+            created_at_round=1,
+        )
+    )
+    return state
+
+
+def _grip_reverse_time(state: GameState) -> None:
+    run = run_card(state, NEB)
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input(InputRequestType.SELECT_NUMBER).choose(1)  # perform bullet
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion")
+    run.finish()
+
+
+def _reversals(state: GameState) -> list[ActiveEffect]:
+    return [e for e in state.active_effects if e.effect_type == EffectType.REVERSED_INITIATIVE]
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_activates_an_already_active_card_for_itself() -> None:
+    """A card that is already turned can still be activated by the copier: he
+    gets his OWN instance (ruling), and the card that stays turned is the
+    owner's — NebKher never turns a card of his own.
+    """
+    state = _reverse_time_grip_state()
+    _grip_reverse_time(state)
+
+    by_source = {e.source_id: e for e in _reversals(state)}
+    assert set(by_source) == {"hero_enemy", NEB}
+    assert by_source[NEB].source_card_id == "reverse_time"
+    assert by_source[NEB].created_at_turn == 2  # the copy inverts the NEXT turn
+    assert by_source[NEB].is_active
+
+    owner_card = state.get_hero("hero_enemy").played_cards[0]
+    assert owner_card.is_active
+    assert state.get_hero(NEB).current_turn_card.id == "mind_grip"
+
+
+@pytest.mark.effect_contract
+def test_mind_grip_copy_lives_and_dies_on_its_own_source() -> None:
+    """The copy belongs to NebKher (defeat ends it, the owner's survives), but
+    both bind to the same card: that card leaving play ends them together."""
+    state = _reverse_time_grip_state()
+    _grip_reverse_time(state)
+
+    EffectManager.expire_by_source(state, NEB)
+    assert [e.source_id for e in _reversals(state)] == ["hero_enemy"]
+
+    state = _reverse_time_grip_state()
+    _grip_reverse_time(state)
+    EffectManager.expire_by_card(state, "reverse_time")
+    assert _reversals(state) == []
+
+
 @pytest.mark.effect_flow
 def test_mind_grip_defeat_bullet_removes_adjacent_minion() -> None:
     state = _mind_grip_state()

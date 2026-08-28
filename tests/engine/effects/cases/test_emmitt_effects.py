@@ -539,6 +539,73 @@ class TestReversedInitiativePrimitive:
         resolve_next_action(state)
         assert str(state.current_actor_id) == "hero_b"
 
+    def test_two_live_reversals_do_not_cancel_each_other(self):
+        """Inversion is a state, not a toggle: a copied Reverse Time living
+        alongside the original still means "lowest acts first"."""
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+        state.active_effects.append(
+            _reversal(created_turn=1).model_copy(
+                update={"id": "rev_copy", "source_id": "hero_nebkher"}
+            )
+        )
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_a"  # still lowest first
+
+    def test_order_restores_mid_turn_when_the_reversal_dies(self):
+        """The reversal is re-read before every action: kill it mid-turn and
+        the heroes still waiting act in normal order again."""
+        from goa2.engine.effect_manager import EffectManager
+        from goa2.engine.phases import resolve_next_action
+
+        state = _order_state(3, 9)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_a"  # lowest first
+
+        state.unresolved_hero_ids = ["hero_a", "hero_b"]
+        state.current_actor_id = None
+        EffectManager.expire_by_source(state, "hero_emmitt_src")
+        resolve_next_action(state)
+        assert str(state.current_actor_id) == "hero_b"  # highest first again
+
+    def test_reordering_played_slots_does_not_cancel_the_reversal(self):
+        """NebKher's Diabolical Laughter swaps slot positions "without
+        canceling active effects": the order stays inverted."""
+        from goa2.domain.models.enums import CardState
+        from goa2.engine.handler import process_stack, push_steps
+        from goa2.engine.phases import initiative_is_reversed
+        from goa2.engine.steps import SwapResolvedCardsStep
+
+        from ..builders import hero_card
+
+        state = _order_state(3, 9)
+        state.turn = 2
+        state.active_effects.append(_reversal(created_turn=1))
+
+        hero = state.get_hero("hero_a")
+        reverse_time = hero_card("Emmitt", "reverse_time")
+        reverse_time.state = CardState.RESOLVED
+        reverse_time.is_active = True
+        other = hero_card("Emmitt", "time_walk")
+        other.state = CardState.RESOLVED
+        hero.played_cards = [reverse_time, other]
+
+        state.execution_context.update({"swap_a": "reverse_time", "swap_b": "time_walk"})
+        push_steps(
+            state,
+            [SwapResolvedCardsStep(hero_id="hero_a", card_a_key="swap_a", card_b_key="swap_b")],
+        )
+        process_stack(state)
+
+        assert [c.id for c in hero.played_cards] == ["time_walk", "reverse_time"]
+        assert reverse_time.is_active
+        assert initiative_is_reversed(state)
+
     def test_ties_still_go_to_tie_breaker(self):
         from goa2.engine.phases import resolve_next_action
         from goa2.engine.steps import ResolveTieBreakerStep
