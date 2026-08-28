@@ -333,6 +333,25 @@ def _collect_after_cards_played_steps(state: GameState) -> list[GameStep]:
     return steps
 
 
+def initiative_is_reversed(state: GameState) -> bool:
+    """True while a live REVERSED_INITIATIVE effect (Emmitt's Reverse Time,
+    NEXT_TURN duration) inverts the acting order: lower computed initiative
+    acts first. Global rule; ignores immunity. Ties unchanged.
+
+    Shared with the view layer — the Up Next queue must list heroes in the
+    order they will actually act.
+    """
+    from goa2.domain.models.effect import EffectType
+
+    return any(
+        e.effect_type == EffectType.REVERSED_INITIATIVE
+        and e.is_active
+        and state.round == e.created_at_round
+        and state.turn == e.created_at_turn + 1
+        for e in state.active_effects
+    )
+
+
 def resolve_next_action(state: GameState):
     """
     Dynamically identifies the next actor based on current initiatives.
@@ -367,19 +386,9 @@ def resolve_next_action(state: GameState):
     if not candidates:
         return
 
-    # 2. Sort Descending — unless a live REVERSED_INITIATIVE effect (Emmitt's
-    # Reverse Time, NEXT_TURN duration) inverts the order: lower computed
-    # initiative acts first. Global rule; ignores immunity. Ties unchanged.
-    from goa2.domain.models.effect import EffectType
-
-    reversed_order = any(
-        e.effect_type == EffectType.REVERSED_INITIATIVE
-        and e.is_active
-        and state.round == e.created_at_round
-        and state.turn == e.created_at_turn + 1
-        for e in state.active_effects
-    )
-    candidates.sort(key=lambda x: x[1], reverse=not reversed_order)
+    # 2. Sort Descending — unless Reverse Time inverts the order. Same
+    # predicate the player-facing queue uses, so UI and engine never disagree.
+    candidates.sort(key=lambda x: x[1], reverse=not initiative_is_reversed(state))
 
     # 3. Identify Tied Group
     highest_init = candidates[0][1]

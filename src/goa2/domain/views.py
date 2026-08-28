@@ -162,9 +162,14 @@ def _build_unresolved_cards_view(
             }
         )
 
-    # Sort: highest initiative first, tie-breaker team favored among same initiative
+    # Sort in the order heroes will actually act: highest initiative first —
+    # lowest first while Emmitt's Reverse Time is live — with the tie-breaker
+    # team favored among equal initiatives.
+    from goa2.engine.phases import initiative_is_reversed
+
+    sign = 1 if initiative_is_reversed(state) else -1
     tie_breaker = state.tie_breaker_team
-    entries.sort(key=lambda e: (-e["initiative"], 0 if e["team"] == tie_breaker else 1))
+    entries.sort(key=lambda e: (sign * e["initiative"], 0 if e["team"] == tie_breaker else 1))
 
     # Remove internal team field before returning
     for entry in entries:

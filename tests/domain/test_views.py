@@ -837,6 +837,45 @@ class TestUnresolvedCardsView:
         assert cards[1]["hero_id"] == "hero_a"
         assert cards[1]["initiative"] == 3
 
+    def test_reversed_order_matches_the_engine(self, sample_state):
+        """While Emmitt's Reverse Time is live the queue lists the lowest
+        initiative first — the same hero the engine resolves next."""
+        from goa2.domain.models.effect import (
+            ActiveEffect,
+            DurationType,
+            EffectScope,
+            EffectType,
+            Shape,
+        )
+        from goa2.engine.phases import resolve_next_action
+
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=3)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=7)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.unresolved_hero_ids = [HeroID("hero_a"), HeroID("hero_b")]
+        sample_state.turn = 2
+        sample_state.active_effects.append(
+            ActiveEffect(
+                id="rev",
+                source_id="hero_emmitt",
+                effect_type=EffectType.REVERSED_INITIATIVE,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.NEXT_TURN,
+                is_active=True,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        )
+
+        cards = build_view(sample_state, for_hero_id=HeroID("hero_a"))["unresolved_cards"]
+        assert [c["hero_id"] for c in cards] == ["hero_a", "hero_b"]
+
+        resolve_next_action(sample_state)
+        assert str(sample_state.current_actor_id) == cards[0]["hero_id"]
+
     def test_entry_structure(self, sample_state):
         """Each entry has hero_id, initiative, and card fields."""
         hero_a = sample_state.get_hero(HeroID("hero_a"))
