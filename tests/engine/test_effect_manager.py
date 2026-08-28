@@ -544,11 +544,12 @@ class TestOneInstancePerCard:
 
 
 class TestEffectOwnership:
-    """``source_id`` is the hero who created the effect — not the card's owner.
+    """Defeat cancels the active effects on the defeated hero's own cards.
 
-    A card can be performed by someone else (NebKher's Mind Grip performs a card
-    in an enemy's turn slot). The effect belongs to the performer, so it ends
-    with the performer, not with the hero whose card carried the text.
+    Rulebook: "An Active effect on your card is cancelled … if you are
+    defeated." A card can be performed by someone else (NebKher's Mind Grip
+    performs a card in an enemy's turn slot) and the effect still sits on the
+    owner's card, so it ends with the owner — not with the performer.
     """
 
     def _state_with_performed_card(self, game_state):
@@ -578,17 +579,32 @@ class TestEffectOwnership:
             is_active=True,
         )
 
-    def test_defeating_the_card_owner_leaves_the_performers_effect(self, game_state):
+    def test_defeating_the_card_owner_ends_the_performers_effect(self, game_state):
         self._state_with_performed_card(game_state)
 
         EffectManager.expire_by_source(game_state, "hero_owner")
 
-        assert len(game_state.active_effects) == 1
+        assert game_state.active_effects == []
 
-    def test_defeating_the_performer_ends_the_effect(self, game_state):
+    def test_defeating_the_performer_leaves_the_effect_on_the_owners_card(self, game_state):
         self._state_with_performed_card(game_state)
 
         EffectManager.expire_by_source(game_state, "hero_performer")
+
+        assert len(game_state.active_effects) == 1
+
+    def test_a_cardless_effect_still_ends_with_its_creator(self, game_state):
+        """Engine-internal delayed triggers have no card to read an owner from."""
+        EffectManager.create_effect(
+            state=game_state,
+            source_id="hero_1",
+            effect_type=EffectType.TARGET_PREVENTION,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+        )
+
+        EffectManager.expire_by_source(game_state, "hero_1")
 
         assert game_state.active_effects == []
 

@@ -567,6 +567,19 @@ class GameState(BaseModel):
                     return hero.ultimate_card
         return None
 
+    def get_card_owner_id(self, card_id: str) -> HeroID | None:
+        """The hero whose card this is, wherever the card currently sits.
+
+        Ownership is what cancels a card's active effects when its owner is
+        defeated, and a card can be performed by someone else (NebKher's Mind
+        Grip), so the performer is not a usable stand-in.
+        """
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if self.get_card_for_hero(str(hero.id), card_id) is not None:
+                    return hero.id
+        return None
+
     def get_card_for_hero(self, hero_id: str, card_id: str) -> Card | None:
         """Find a normal or spell card belonging to one hero."""
         hero = self.get_hero(HeroID(hero_id))

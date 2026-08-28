@@ -1186,18 +1186,17 @@ def test_mind_grip_activates_an_already_active_card_for_itself() -> None:
 
 
 @pytest.mark.effect_contract
-def test_mind_grip_copy_lives_and_dies_on_its_own_source() -> None:
-    """The copy belongs to NebKher (defeat ends it, the owner's survives), but
-    both bind to the same card: that card leaving play ends them together."""
+def test_mind_grip_copy_ends_with_the_card_owner_not_the_copier() -> None:
+    """Both instances sit on the owner's card, so the owner's defeat cancels
+    both and NebKher's own defeat cancels neither — "an Active effect on your
+    card is cancelled if you are defeated"."""
     state = _reverse_time_grip_state()
     _grip_reverse_time(state)
 
     EffectManager.expire_by_source(state, NEB)
-    assert [e.source_id for e in _reversals(state)] == ["hero_enemy"]
+    assert {e.source_id for e in _reversals(state)} == {"hero_enemy", NEB}
 
-    state = _reverse_time_grip_state()
-    _grip_reverse_time(state)
-    EffectManager.expire_by_card(state, "reverse_time")
+    EffectManager.expire_by_source(state, "hero_enemy")
     assert _reversals(state) == []
 
 

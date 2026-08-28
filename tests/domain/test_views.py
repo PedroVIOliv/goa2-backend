@@ -913,7 +913,7 @@ class TestUnresolvedCardsView:
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
         assert [c["hero_id"] for c in view["unresolved_cards"]] == ["hero_a", "hero_b"]
 
-        EffectManager.expire_by_source(sample_state, "hero_nebkher")
+        EffectManager.expire_by_card(sample_state, "reverse_time")
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
         assert [c["hero_id"] for c in view["unresolved_cards"]] == ["hero_b", "hero_a"]
 

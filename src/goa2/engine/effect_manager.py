@@ -294,8 +294,8 @@ class EffectManager:
 
     @staticmethod
     def expire_by_source(state: GameState, source_id: str):
-        """Remove all effects from a specific source, e.g. a defeated hero
-        (premature removal).
+        """Remove the effects a defeated hero takes with them (premature
+        removal): the active effects on that hero's own cards.
 
         Intentionally does NOT collect or run ``finishing_steps``. Finishing
         steps are an effect's *natural* end-of-turn/round payload and only fire
@@ -305,18 +305,26 @@ class EffectManager:
         gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
         physical leftovers (tokens) are reclaimed by the normal round-end sweep.
 
-        Ownership is ``source_id`` — the hero who created the effect, never the
-        owner of the card it came from. A card can be performed by someone else
-        (NebKher's Mind Grip), and that effect belongs to the performer. Effects
+        Ownership follows the CARD: "an Active effect on your card is cancelled
+        if you are defeated" (rulebook). A card performed by someone else
+        (NebKher's Mind Grip) still carries its effect on the owner's card, so
+        the owner's defeat ends it and the performer's defeat does not. Effects
         registered against another unit (Hanu's Journey immunity) carry that unit
-        in ``subject_id``, so they still end with their creator.
+        in ``subject_id``, so they still end with their own card's owner.
+
+        Effects with no card — engine-internal delayed triggers — have no owner
+        to read, so they fall back to their creator.
 
         Token-bound effects are exempt: the token outlives its placer, so its
         effect does too (see ``_is_token_bound``).
         """
 
         def is_expiring(effect: ActiveEffect) -> bool:
-            return effect.source_id == source_id and not EffectManager._is_token_bound(effect)
+            if EffectManager._is_token_bound(effect):
+                return False
+            if effect.source_card_id:
+                return str(state.get_card_owner_id(effect.source_card_id)) == source_id
+            return effect.source_id == source_id
 
         affected_card_ids = {
             e.source_card_id for e in state.active_effects if is_expiring(e) and e.source_card_id
