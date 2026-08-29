@@ -187,7 +187,8 @@ class CreateEffectStep(GameStep):
             else None
         )
 
-        EffectManager.create_effect(
+        existing_effect_ids = {effect.id for effect in state.active_effects}
+        effect = EffectManager.create_effect(
             state=state,
             source_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
             source_card_id=card_id,
@@ -227,6 +228,9 @@ class CreateEffectStep(GameStep):
             isolated_hex=self.isolated_hex,
             named_color=named_color,
         )
+
+        if effect.id in existing_effect_ids:
+            return StepResult(is_finished=True)
 
         source = str(state.current_actor_id) if state.current_actor_id else "system"
         logger.debug(f"   [EFFECT] Created {self.effect_type.value} from {source}")
@@ -270,10 +274,9 @@ class ScheduleJourneyReturnStep(GameStep):
     Both hero ids are baked into the finishing steps as literals so the
     end-of-turn payload does not depend on the (by-then cleared) turn context.
 
-    Hanu owns both effects (``source_id``); the displaced hero is the immunity's
-    ``subject_id``. That split is what lets his defeat end the protection he
-    granted — the swap-back fizzles then too, so the displaced hero keeps the
-    position.
+    Hanu performs both effects (``source_id``); the displaced hero is the
+    immunity's ``subject_id``. Their defeat lifecycle follows the Journey card,
+    which Hanu normally owns, while ``source_id`` still drives team semantics.
     """
 
     type: StepType = StepType.SCHEDULE_JOURNEY_RETURN
@@ -297,8 +300,9 @@ class ScheduleJourneyReturnStep(GameStep):
 
         # (1) Displaced hero becomes immune to EVERYONE this turn (heavy-style):
         # blocks_friendly_actors so even its own allies cannot affect it.
-        # Hanu owns it (source_id) so his defeat ends it; the displaced hero is
-        # its subject, which is who it protects.
+        # Hanu performed it (source_id); the displaced hero is its subject. The
+        # Journey card owner controls defeat cancellation.
+        existing_effect_ids = {effect.id for effect in state.active_effects}
         EffectManager.create_effect(
             state=state,
             source_id=actor_id,
@@ -351,6 +355,9 @@ class ScheduleJourneyReturnStep(GameStep):
             is_active=True,
             finishing_steps=finishing,
         )
+
+        if {effect.id for effect in state.active_effects} == existing_effect_ids:
+            return StepResult(is_finished=True)
 
         return StepResult(
             is_finished=True,

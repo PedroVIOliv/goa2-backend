@@ -567,6 +567,14 @@ class GameState(BaseModel):
                     return hero.ultimate_card
         return None
 
+    def get_card_owner(self, card_id: str) -> Hero | None:
+        """Return the hero who owns a physical card, wherever that card is."""
+        for team in self.teams.values():
+            for hero in team.heroes:
+                if self.get_card_for_hero(str(hero.id), card_id) is not None:
+                    return hero
+        return None
+
     def get_card_for_hero(self, hero_id: str, card_id: str) -> Card | None:
         """Find a normal or spell card belonging to one hero."""
         hero = self.get_hero(HeroID(hero_id))

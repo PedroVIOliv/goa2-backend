@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 import goa2.scripts.cordelia_effects
+import goa2.scripts.emmitt_effects
 import goa2.scripts.gydion_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
@@ -886,6 +887,76 @@ def test_mind_grip_performs_enemy_previous_slot_action() -> None:
     # The chooser is routed to NebKher, not the card's owner.
     assert run.latest_request.player_id == NEB
     run.choose("HOLD").finish()
+
+
+@pytest.mark.effect_flow
+def test_mind_grip_does_not_reactivate_an_already_active_reverse_time() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, r, -q - r) for q in range(5) for r in range(2)])
+        .red_hero(NEB, at=(2, 0, -2), current_card=hero_card("NebKher", "mind_grip"))
+        .blue_hero(
+            "hero_enemy",
+            at=(4, 0, -4),
+            current_card=hero_card("Emmitt", "reverse_time"),
+        )
+        .red_minion("red_target", at=(3, 0, -3))
+        .blue_minion("blue_target", at=(2, 1, -3))
+        .with_actor("hero_enemy")
+        .build()
+    )
+
+    # Turn 1: the physical Reverse Time card creates its one active instance.
+    first = run_card(state, "hero_enemy")
+    first.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    first.expect_input(InputRequestType.SELECT_UNIT).choose("red_target")
+    first.finish()
+    enemy = state.get_hero("hero_enemy")
+    enemy.resolve_current_card()
+    assert enemy.resolved_turn_count == 1
+
+    reversals = [
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.REVERSED_INITIATIVE
+    ]
+    assert len(reversals) == 1
+    original = reversals[0]
+    assert original.source_id == "hero_enemy"
+    assert original.created_at_turn == 1
+
+    # Turn 2: NebKher performs that card's Attack action through Mind Grip.
+    neb = state.get_hero(NEB)
+    neb.played_cards = [_resolved_card("neb_prev")]
+    neb.resolved_turn_count = 1
+    state.turn = 2
+    state.current_actor_id = NEB
+
+    second = run_card(state, NEB)
+    second.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    second.expect_input(InputRequestType.SELECT_NUMBER).choose(1)
+    second.expect_input(InputRequestType.SELECT_UNIT).choose("hero_enemy")
+    second.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    second.expect_input(InputRequestType.SELECT_UNIT).choose("blue_target")
+    second.finish()
+
+    reversals = [
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.REVERSED_INITIATIVE
+    ]
+    assert reversals == [original]
+    assert not [
+        event for event in second.events if event.event_type == GameEventType.EFFECT_CREATED
+    ]
+
+    # The turn-1 instance ends after turn 2; nothing remains to reverse turn 3.
+    EffectManager.expire_active_turn_effects(state)
+    assert not [
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.REVERSED_INITIATIVE
+    ]
 
 
 @pytest.mark.effect_flow

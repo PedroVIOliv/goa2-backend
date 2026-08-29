@@ -23,6 +23,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.state import GameState
 from goa2.engine.effect_manager import EffectManager
+from goa2.engine.steps import DefeatUnitStep
 
 
 @pytest.fixture
@@ -443,9 +444,8 @@ class TestOneInstancePerCard:
     """Only one instance of an active effect per card can be active.
 
     Repeating an active effect must not duplicate it (game rule). Identity is
-    (source_card_id, effect_type, scope): a card whose text needs several
-    distinct payloads still gets one row per payload, but performing that card
-    again creates nothing new.
+    the physical card, effect type and affected group, regardless of who
+    performs it or where its runtime scope originates.
     """
 
     def _create(self, state, **overrides):
@@ -473,21 +473,50 @@ class TestOneInstancePerCard:
 
         assert len(game_state.active_effects) == 2
 
-    def test_same_card_and_type_with_a_different_scope_creates_a_second_instance(self, game_state):
-        self._create(game_state, scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.SELF))
+    def test_same_effect_ignores_a_different_runtime_origin_and_range(self, game_state):
         self._create(
             game_state,
-            scope=EffectScope(shape=Shape.POINT, affects=AffectsFilter.FRIENDLY_UNITS),
+            scope=EffectScope(
+                shape=Shape.RADIUS,
+                range=2,
+                origin_id="hero_1",
+                affects=AffectsFilter.SELF,
+            ),
+        )
+        second = self._create(
+            game_state,
+            scope=EffectScope(
+                shape=Shape.RADIUS,
+                range=5,
+                origin_id="hero_2",
+                affects=AffectsFilter.SELF,
+            ),
+        )
+
+        assert len(game_state.active_effects) == 1
+        assert second.scope.affects == AffectsFilter.SELF
+        assert second.scope.origin_id == "hero_1"
+        assert second.scope.range == 2
+
+    def test_different_affected_groups_allow_multiple_rows_for_bulwark(self, game_state):
+        self._create(
+            game_state,
+            scope=EffectScope(shape=Shape.RADIUS, affects=AffectsFilter.FRIENDLY_UNITS),
+        )
+        self._create(
+            game_state,
+            scope=EffectScope(shape=Shape.RADIUS, affects=AffectsFilter.SELF),
         )
 
         assert len(game_state.active_effects) == 2
 
-    def test_a_different_source_does_not_share_an_instance(self, game_state):
-        """A copied card protects the copier, not just the original caster."""
-        self._create(game_state, source_id="hero_1")
-        self._create(game_state, source_id="hero_2")
+    def test_a_different_performer_shares_the_card_effect_instance(self, game_state):
+        first = self._create(game_state, source_id="hero_1")
+        second = self._create(game_state, source_id="hero_2")
 
-        assert len(game_state.active_effects) == 2
+        assert second is first
+        assert len(game_state.active_effects) == 1
+        assert second.source_id == "hero_1"
 
     def test_different_cards_do_not_share_an_instance(self, game_state):
         self._create(game_state, source_card_id="card_1")
@@ -544,11 +573,12 @@ class TestOneInstancePerCard:
 
 
 class TestEffectOwnership:
-    """``source_id`` is the hero who created the effect — not the card's owner.
+    """Performer semantics and card lifecycle are intentionally separate.
 
     A card can be performed by someone else (NebKher's Mind Grip performs a card
-    in an enemy's turn slot). The effect belongs to the performer, so it ends
-    with the performer, not with the hero whose card carried the text.
+    in an enemy's turn slot). ``source_id`` remains the performer for "you",
+    radius and team semantics, while defeat cancellation follows the physical
+    card's owner.
     """
 
     def _state_with_performed_card(self, game_state):
@@ -578,19 +608,20 @@ class TestEffectOwnership:
             is_active=True,
         )
 
-    def test_defeating_the_card_owner_leaves_the_performers_effect(self, game_state):
+    def test_defeating_the_card_owner_ends_the_performers_effect(self, game_state):
         self._state_with_performed_card(game_state)
 
-        EffectManager.expire_by_source(game_state, "hero_owner")
-
-        assert len(game_state.active_effects) == 1
-
-    def test_defeating_the_performer_ends_the_effect(self, game_state):
-        self._state_with_performed_card(game_state)
-
-        EffectManager.expire_by_source(game_state, "hero_performer")
+        DefeatUnitStep(victim_id="hero_owner").resolve(game_state, {})
 
         assert game_state.active_effects == []
+
+    def test_defeating_the_performer_leaves_the_card_owners_effect(self, game_state):
+        self._state_with_performed_card(game_state)
+
+        DefeatUnitStep(victim_id="hero_performer").resolve(game_state, {})
+
+        assert len(game_state.active_effects) == 1
+        assert game_state.active_effects[0].source_id == "hero_performer"
 
 
 class TestSubjectId:

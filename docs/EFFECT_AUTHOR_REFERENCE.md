@@ -439,14 +439,18 @@ the card that granted the re-performance.
 
 Two consequences to write against:
 
-- **Repeats do not stack.** Per the rules, only one instance of an active effect
-  per card can be active. `EffectManager.create_effect` reuses an existing row
-  matching `(source_id, source_card_id, effect_type, scope)` and returns it
-  untouched — no refreshed charges, no restarted duration. A card that needs
-  several distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still emits
-  one `CreateEffectStep` per payload; those differ in type or scope, so they
-  coexist. The source is in the key so a card performed by someone else (Gydion's
-  spells, Mind Grip) gives the copier their own instance.
+- **An active card effect cannot be activated again.** Per the rules, only one
+  instance of an active effect per physical card can be active, whether the
+  action is repeated or performed by another hero. Effects are matched by
+  `(source_card_id, effect_type, scope.affects)`; the affected group keeps
+  Brogan's separate SELF and FRIENDLY_UNITS Bulwark rows distinct. A duplicate
+  attempt is a pure no-op: no refreshed duration, payload, charges, timestamp,
+  source/radius change, `card.is_active` write, or `EFFECT_CREATED` event.
+- **Performer and lifecycle owner are separate.** `source_id` remains the hero
+  performing the action and drives "you", team, radius and choice semantics.
+  If the effect is card-bound, defeat cancellation follows the physical card's
+  owner. Defeating a different performer does not cancel it; defeating the card
+  owner does. Cardless and token-bound effects retain their own lifecycles.
 - **Token effects opt out.** `is_token_effect=True` skips card binding entirely
   and records the anchor token in `ActiveEffect.token_id`. That token *is* the
   effect's whole lifecycle: it survives its placer's defeat, has no card to

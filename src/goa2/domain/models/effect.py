@@ -189,9 +189,9 @@ class ActiveEffect(BaseModel):
     """
 
     id: str
-    # The hero who created the effect — its owner. Defeating them ends it. This
-    # is the performer, which is not always the card's owner: NebKher's Mind Grip
-    # performs a card sitting in an enemy's turn slot, and the effect is his.
+    # The hero who performed the action. This drives "you", team and moving
+    # radius semantics, but a card-bound effect's defeat lifecycle follows the
+    # physical card's owner instead (source_card_id).
     source_id: str
     source_card_id: str | None = None  # Card ID (if card-based effect)
     # Token this effect is bound to (Tali's Ice, Min's Smoke bomb, Trinkets'

@@ -473,12 +473,11 @@ def test_polymorph_respects_swap_prevention() -> None:
 
 
 @pytest.mark.effect_contract
-def test_a_copied_invulnerability_protects_the_copier_too() -> None:
-    """One instance per card is per caster: a copy is a separate instance.
+def test_an_active_invulnerability_cannot_be_activated_again_by_another_hero() -> None:
+    """The one-instance limit follows the physical spell card.
 
-    Gydion's spells can be performed by another hero, and that hero needs their
-    own immunity — reusing the original caster's row would leave the copier
-    unprotected.
+    Performing its action again while the effect is active leaves the original
+    caster's instance untouched, so the second performer gains no immunity.
     """
     state, spell = _state("invulnerability")
     push_steps(state, _effect_steps(state, spell))
@@ -491,5 +490,10 @@ def test_a_copied_invulnerability_protects_the_copier_too() -> None:
     push_steps(state, effect.get_steps(state, copier, spell))
     process_stack(state)
 
-    protected = {e.source_id for e in state.active_effects}
-    assert protected == {"hero_caster", "hero_copier"}
+    invulnerabilities = [
+        effect
+        for effect in state.active_effects
+        if effect.effect_type == EffectType.ATTACK_IMMUNITY
+    ]
+    assert len(invulnerabilities) == 1
+    assert invulnerabilities[0].source_id == "hero_caster"

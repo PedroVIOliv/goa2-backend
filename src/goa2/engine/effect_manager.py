@@ -110,9 +110,7 @@ class EffectManager:
             if board_barrier_origin != str(barrier_origin):
                 kwargs["barrier_origin_id"] = board_barrier_origin
 
-        existing = EffectManager._find_existing_instance(
-            state, source_id, source_card_id, effect_type, scope
-        )
+        existing = EffectManager._find_existing_instance(state, source_card_id, effect_type, scope)
         if existing is not None:
             return existing
 
@@ -148,22 +146,17 @@ class EffectManager:
     @staticmethod
     def _find_existing_instance(
         state: GameState,
-        source_id: str,
         source_card_id: str | None,
         effect_type: EffectType,
         scope: EffectScope,
     ) -> ActiveEffect | None:
-        """This source's live instance of this card effect, if it has one.
+        """The live instance of this effect on its physical card.
 
         Game rule: only one instance of an active effect per card can be
-        active, and repeating an active effect does not duplicate it. Identity
-        is (source, card, effect_type, scope) — a card whose text needs several
-        distinct payloads (Brogan's Bulwark, Dodger's Enfeeblement) still gets
-        one row per payload, but performing that card again reuses them.
-
-        The source is part of the key because a card can be performed by someone
-        else (Gydion's spells, NebKher's Mind Grip): the copier needs their own
-        instance, not the original caster's.
+        active, and performing an already-active card effect does not duplicate
+        it. Identity ignores performer and runtime origin/range, both of which
+        can change under Mind Grip. ``scope.affects`` remains in the key because
+        Bulwark legitimately creates separate SELF and FRIENDLY_UNITS rows.
 
         The match ignores ``is_active`` so a present-but-deactivated row still
         blocks a duplicate, and callers must treat a hit as a pure no-op: no
@@ -182,9 +175,8 @@ class EffectManager:
                 effect
                 for effect in state.active_effects
                 if effect.source_card_id == source_card_id
-                and effect.source_id == source_id
                 and effect.effect_type == effect_type
-                and effect.scope == scope
+                and effect.scope.affects == scope.affects
             ),
             None,
         )
@@ -294,8 +286,7 @@ class EffectManager:
 
     @staticmethod
     def expire_by_source(state: GameState, source_id: str):
-        """Remove all effects from a specific source, e.g. a defeated hero
-        (premature removal).
+        """Cancel effects when a hero is defeated (premature removal).
 
         Intentionally does NOT collect or run ``finishing_steps``. Finishing
         steps are an effect's *natural* end-of-turn/round payload and only fire
@@ -305,18 +296,23 @@ class EffectManager:
         gone simply fizzles (e.g. Min's Death Grenade does not explode). Any
         physical leftovers (tokens) are reclaimed by the normal round-end sweep.
 
-        Ownership is ``source_id`` — the hero who created the effect, never the
-        owner of the card it came from. A card can be performed by someone else
-        (NebKher's Mind Grip), and that effect belongs to the performer. Effects
-        registered against another unit (Hanu's Journey immunity) carry that unit
-        in ``subject_id``, so they still end with their creator.
+        A card-bound effect ends with the physical card's owner, regardless of
+        who performed its action. ``source_id`` still names the performer for
+        effect semantics; defeating that performer does not cancel an effect on
+        another hero's card. Cardless effects continue to end with their source.
 
         Token-bound effects are exempt: the token outlives its placer, so its
         effect does too (see ``_is_token_bound``).
         """
 
         def is_expiring(effect: ActiveEffect) -> bool:
-            return effect.source_id == source_id and not EffectManager._is_token_bound(effect)
+            if EffectManager._is_token_bound(effect):
+                return False
+            if effect.source_card_id:
+                owner = state.get_card_owner(effect.source_card_id)
+                if owner is not None:
+                    return str(owner.id) == str(source_id)
+            return effect.source_id == source_id
 
         affected_card_ids = {
             e.source_card_id for e in state.active_effects if is_expiring(e) and e.source_card_id
