@@ -76,9 +76,16 @@ def test_swift_justice_forces_defender_movement_after_defense() -> None:
 
     # The defender is forced to move full distance (3) in a straight line.
     run.expect_input(InputRequestType.SELECT_HEX)
+    assert state.execution_context["current_action_type"] == ActionType.MOVEMENT
+    assert state.execution_context["current_card_id"] == "terrify"
+    assert state.get_performing_card("hero_defender").id == "terrify"
     run.choose(Hex(q=5, r=0, s=-5)).finish()
 
     assert state.entity_locations["hero_defender"] == Hex(q=5, r=0, s=-5)
+    assert state.execution_context["current_action_type"] == ActionType.ATTACK
+    assert state.execution_context["current_card_id"] == "swift_justice"
+    assert state.get_performing_card("hero_whisper").id == "swift_justice"
+    assert "action_context_stack" not in state.execution_context
 
 
 @pytest.mark.effect_flow

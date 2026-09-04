@@ -1770,11 +1770,23 @@ class ForceDefenseCardMovementStep(GameStep):
         # lost its actions (rulebook FACEDOWN), so no movement can be forced.
         has_secondary_movement = ActionType.MOVEMENT in card.current_secondary_actions
         has_primary_movement = card.current_primary_action == ActionType.MOVEMENT
+        if not has_primary_movement and not has_secondary_movement:
+            # Case 1: No movement → nothing
+            return StepResult(is_finished=True)
+
+        from goa2.engine.steps.phases import RestoreActionContextStep, push_action_context
+
+        push_action_context(
+            context,
+            action_type=ActionType.MOVEMENT,
+            card_id=card.id,
+            card_owner_id=str(hero.id),
+        )
 
         if has_primary_movement:
             # Case 3: Primary movement — call card effect's build_steps
             movement_steps = self._build_primary_movement_steps(state, hero, card)
-        elif has_secondary_movement:
+        else:
             # Case 2: Secondary movement — MoveSequenceStep
             move_val = card.current_secondary_actions[ActionType.MOVEMENT]
             movement_steps = [
@@ -1787,9 +1799,6 @@ class ForceDefenseCardMovementStep(GameStep):
                     force_full_distance=True,
                 ),
             ]
-        else:
-            # Case 1: No movement → nothing
-            return StepResult(is_finished=True)
 
         # Wrap in actor switch: set defender as actor, push movement, restore
         new_steps: list[GameStep] = [
@@ -1802,6 +1811,7 @@ class ForceDefenseCardMovementStep(GameStep):
                 actor_key="sj_saved_actor",
                 save_key="sj_saved_actor_unused",
             ),
+            RestoreActionContextStep(),
         ]
 
         return StepResult(is_finished=True, new_steps=new_steps)
