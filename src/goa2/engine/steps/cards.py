@@ -1920,12 +1920,25 @@ class PerformPrimaryActionStep(GameStep):
             return StepResult(is_finished=True)
 
         stats = compute_card_stats(state, UnitID(str(actor_id)), card)
-        # Signal that this is a re-performance of an already-resolved action (via
-        # Bullet Time, Reload, etc.). Some effects gate behaviour on this — e.g.
-        # Bounce only grants its "may repeat once" when re-performed. The card's
-        # own state lags (it stays current_turn_card until FinalizeHeroTurnStep),
-        # so build_steps can't rely on card.state alone.
-        context["reperforming_card_id"] = card.id
+        action_type = card.current_primary_action
+        if action_type is None:
+            logger.debug(f"   [PERFORM] Card {card.name} has no primary action.")
+            return StepResult(is_finished=True)
+        if action_type == ActionType.DEFENSE_SKILL:
+            action_type = ActionType.SKILL
+
+        # A performed primary action is a nested action on the selected card.
+        # Scope every source field together so targeting/immunity filters and
+        # effect attribution see that card until its steps finish, then restore
+        # the outer action (Angry Roar, Reload, Bullet Time, etc.).
+        from goa2.engine.steps.phases import RestoreActionContextStep, push_action_context
+
+        push_action_context(
+            context,
+            action_type=action_type,
+            card_id=card.id,
+            card_owner_id=str(hero.id),
+        )
         steps = effect.get_steps_with_stats(state, hero, card, stats)
         if self.exclude_target_key:
             self._inject_exclusion_filter(steps, self.exclude_target_key)
@@ -1933,7 +1946,10 @@ class PerformPrimaryActionStep(GameStep):
         logger.debug(
             f"   [PERFORM] Performing primary action of {card.name} " f"({len(steps)} steps)"
         )
-        return StepResult(is_finished=True, new_steps=steps)
+        return StepResult(
+            is_finished=True,
+            new_steps=[*steps, RestoreActionContextStep()],
+        )
 
     @classmethod
     def _inject_exclusion_filter(cls, steps: list[GameStep], exclude_key: str) -> None:

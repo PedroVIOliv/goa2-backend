@@ -4,7 +4,7 @@ import pytest
 
 import goa2.scripts.ursafar_effects  # noqa: F401
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import ActionType, Card, CardColor, CardTier
+from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -91,6 +91,62 @@ def _add_brogan_minion_protection(state) -> None:
         is_active=True,
         allowed_discard_colors=[CardColor.SILVER],
     )
+
+
+def _make_attack_immune(state, hero_id: str) -> None:
+    EffectManager.create_effect(
+        state=state,
+        source_id=hero_id,
+        effect_type=EffectType.ATTACK_IMMUNITY,
+        scope=EffectScope(
+            shape=Shape.POINT,
+            affects=AffectsFilter.SELF,
+            origin_id=hero_id,
+        ),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+    )
+
+
+@pytest.mark.effect_flow
+def test_angry_roar_reperformed_attack_cannot_target_attack_immune_tigerclaw() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1), (0, 1, -1)])
+        .red_hero(
+            "hero_ursafar",
+            name="Ursafar",
+            at=(0, 0, 0),
+            current_card=hero_card("Ursafar", "angry_roar"),
+        )
+        .blue_hero("hero_tigerclaw", name="Tigerclaw", at=(1, 0, -1))
+        .blue_minion("blue_target", at=(0, 1, -1))
+        .with_actor("hero_ursafar")
+        .build()
+    )
+    ursafar = state.get_hero("hero_ursafar")
+    assert ursafar is not None
+    claws = hero_card("Ursafar", "claws_that_catch")
+    claws.state = CardState.RESOLVED
+    claws.is_active = True
+    ursafar.played_cards = [claws]
+    _make_ursafar_enraged(state)
+    _make_attack_immune(state, "hero_tigerclaw")
+
+    run = run_card(state, "hero_ursafar")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("claws_that_catch").expect_input(InputRequestType.SELECT_UNIT)
+
+    assert state.execution_context["current_action_type"] == ActionType.ATTACK
+    assert state.execution_context["current_card_id"] == "claws_that_catch"
+    assert _option_set(run) == {"blue_target"}
+
+    run.choose("blue_target").finish()
+
+    assert state.execution_context["current_action_type"] == ActionType.SKILL
+    assert state.execution_context["current_card_id"] == "angry_roar"
+    assert "action_context_stack" not in state.execution_context
 
 
 @pytest.mark.effect_flow
