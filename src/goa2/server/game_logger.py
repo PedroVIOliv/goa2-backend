@@ -158,9 +158,6 @@ class GameLogger:
             self.logger.info(" | ".join(parts))
             self._add_event("GAME_EVENT", ev)
 
-    def log_advance(self, result_type: str, phase: str) -> None:
-        self.logger.debug("ADVANCE: result=%s, phase=%s", result_type, phase)
-
     def log_error(self, error: str, hero_id: str | None = None) -> None:
         ctx = f" (player={hero_id})" if hero_id else ""
         self.logger.error("ERROR%s: %s", ctx, error)
@@ -251,28 +248,6 @@ class GameLogger:
         who = "spectator" if is_spectator else hero_id
         self.logger.info("WS_DISCONNECT: %s", who)
         self._add_event("WS_DISCONNECT", {"hero_id": hero_id, "is_spectator": is_spectator})
-
-    # ------------------------------------------------------------------
-    # Convenience: log a full SessionResult
-    # ------------------------------------------------------------------
-
-    def log_result(
-        self,
-        result_type: str,
-        phase: str,
-        events: list[dict[str, Any]],
-        input_request: dict[str, Any] | None,
-        winner: str | None,
-    ) -> None:
-        """Log a complete SessionResult in one call."""
-        self.log_phase_change(phase, self._round, self._turn)
-        if events:
-            self.log_events(events)
-        if input_request:
-            self.log_input_request(input_request)
-        self.log_advance(result_type, phase)
-        if winner:
-            self.log_game_over(winner)
 
     def flush_json(self) -> None:
         """Save current events to JSON (call on server shutdown or periodically)."""

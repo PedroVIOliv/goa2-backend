@@ -37,7 +37,7 @@ from goa2.server.models import (
     SubmitInputRequest,
 )
 from goa2.server.player_names import resolve_player_names
-from goa2.server.replay import verify_replay_in_background
+from goa2.server.result_logging import log_session_result
 from goa2.server.share_mint import mint_replay_share
 from goa2.server.time_control import (
     client_decision_timed_out,
@@ -64,30 +64,6 @@ def _map_path(map_name: str) -> str:
         return resolve_map_path(map_name)
     except MapFileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found") from None
-
-
-def _log_result(
-    game,
-    result: SessionResult,
-    hero_id: str | None = None,
-    action: str | None = None,
-    detail: str | None = None,
-) -> None:
-    """Log a SessionResult to the game's logger."""
-    gl = game.game_logger
-    if not gl:
-        return
-    state = game.session.state
-    gl.log_phase_change(result.current_phase.value, state.round, state.turn)
-    events = [ev.model_dump() for ev in result.events]
-    if events:
-        gl.log_events(events)
-    if result.input_request:
-        gl.log_input_request(result.input_request.to_dict())
-    if result.winner:
-        gl.log_game_over(result.winner)
-        if game.replay_recorder is not None:
-            verify_replay_in_background(str(game.replay_recorder.path), game.game_id)
 
 
 def _result_to_response(
@@ -317,7 +293,7 @@ async def commit_card(
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -366,7 +342,7 @@ async def uncommit_card(
         game.last_result = result
         if game.game_logger and card is not None:
             game.game_logger.log_card_uncommit(hid, card.id)
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -401,7 +377,7 @@ async def pass_turn(
         game.last_result = result
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -436,7 +412,7 @@ async def planning_done(
             game.replay_recorder.record_finish_planning(player.hero_id, rec_round, rec_turn)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, session.state, player.hero_id)
 
 
@@ -488,7 +464,7 @@ async def submit_input(
             game.replay_recorder.record_input(player.hero_id, body.selection, rec_round, rec_turn)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -507,7 +483,7 @@ async def advance(
         mark_human_action(game)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 
@@ -545,7 +521,7 @@ async def rollback_action(
             game.replay_recorder.record_rollback(player.hero_id, rec_round, rec_turn)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
-        _log_result(game, result)
+        log_session_result(game, result)
         return _result_to_response(result, session.state, player.hero_id)
 
 

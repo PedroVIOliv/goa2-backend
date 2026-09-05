@@ -34,7 +34,7 @@ from goa2.domain.types import HeroID
 from goa2.engine.phases import planning_open_for_second_card
 from goa2.engine.session import SessionResult
 from goa2.server.registry import GameRegistry, ManagedGame
-from goa2.server.replay import verify_replay_in_background
+from goa2.server.result_logging import log_session_result
 
 logger = logging.getLogger(__name__)
 
@@ -342,18 +342,7 @@ def _record_timeout(
 
 def _store_result(game: ManagedGame, result: SessionResult) -> None:
     game.last_result = result
-    if not game.game_logger:
-        return
-    state = game.session.state
-    game.game_logger.log_phase_change(result.current_phase.value, state.round, state.turn)
-    if result.events:
-        game.game_logger.log_events([event.model_dump() for event in result.events])
-    if result.input_request:
-        game.game_logger.log_input_request(result.input_request.to_dict())
-    if result.winner:
-        game.game_logger.log_game_over(result.winner)
-        if game.replay_recorder is not None:
-            verify_replay_in_background(str(game.replay_recorder.path), game.game_id)
+    log_session_result(game, result)
 
 
 def _apply_planning_timeout(

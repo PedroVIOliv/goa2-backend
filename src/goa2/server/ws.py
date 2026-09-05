@@ -34,8 +34,8 @@ from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.replay import (
     load_replay,
     rebuild_session_for_rewind,
-    verify_replay_in_background,
 )
+from goa2.server.result_logging import log_session_result
 from goa2.server.time_control import (
     client_decision_timed_out,
     finalize_timed_mutation,
@@ -332,23 +332,6 @@ async def broadcast(
         await _send_captured_broadcast(game, messages)
 
 
-def _log_ws_result(game: ManagedGame, result) -> None:
-    """Log a SessionResult from a WebSocket action."""
-    gl = game.game_logger
-    if not gl:
-        return
-    state = game.session.state
-    gl.log_phase_change(result.current_phase.value, state.round, state.turn)
-    events = [ev.model_dump() for ev in result.events]
-    if events:
-        gl.log_events(events)
-    if result.input_request:
-        gl.log_input_request(result.input_request.to_dict())
-    if result.winner:
-        gl.log_game_over(result.winner)
-        _verify_finished_replay(game)
-
-
 async def _handle_submit_input(
     game: ManagedGame, hero_id: str, data: dict[str, Any]
 ) -> dict[str, Any]:
@@ -382,7 +365,7 @@ async def _handle_submit_input(
     if game.replay_recorder:
         game.replay_recorder.record_input(hero_id, data.get("selection"), rec_round, rec_turn)
     game.last_result = result
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
 
 
@@ -416,7 +399,7 @@ async def _handle_commit_card(
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_card_commit(hero_id, card_id)
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
 
 
@@ -449,7 +432,7 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
     game.last_result = result
     if game.game_logger and card is not None:
         game.game_logger.log_card_uncommit(hero_id, card.id)
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
 
 
@@ -485,7 +468,7 @@ async def _handle_finish_planning(game: ManagedGame, hero_id: str) -> dict[str, 
     if game.replay_recorder:
         game.replay_recorder.record_finish_planning(hero_id, rec_round, rec_turn)
     game.last_result = result
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
 
 
@@ -508,14 +491,8 @@ async def _handle_pass_turn(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     game.last_result = result
     if game.game_logger:
         game.game_logger.log_pass_turn(hero_id)
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
-
-
-def _verify_finished_replay(game: ManagedGame) -> None:
-    """Check the finished game's log reconstructs, in the background."""
-    if game.replay_recorder is not None:
-        verify_replay_in_background(str(game.replay_recorder.path), game.game_id)
 
 
 async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
@@ -540,7 +517,7 @@ async def _handle_rollback(game: ManagedGame, hero_id: str) -> dict[str, Any]:
     if game.replay_recorder:
         game.replay_recorder.record_rollback(hero_id, rec_round, rec_turn)
     game.last_result = result
-    _log_ws_result(game, result)
+    log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
 
 
