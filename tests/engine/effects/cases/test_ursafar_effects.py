@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import goa2.scripts.ursafar_effects  # noqa: F401
+from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier
 from goa2.domain.models.effect import (
@@ -254,3 +255,40 @@ def test_feeding_frenzy_bonus_removal_uses_target_board_presence() -> None:
     )
     multi_select = next(step for step in steps if isinstance(step, MultiSelectStep))
     assert multi_select.active_if_key == "target_not_removed"
+
+
+@pytest.mark.parametrize(
+    ("card_id", "additional_destination"),
+    [
+        ("rampaging_beast", Hex(q=3, r=0, s=-3)),
+        ("unstoppable_force", Hex(q=4, r=0, s=-4)),
+    ],
+)
+@pytest.mark.effect_flow
+def test_enraged_swap_cards_allow_optional_additional_movement(
+    card_id: str, additional_destination: Hex
+) -> None:
+    state = (
+        EffectScenarioBuilder()
+        .line_board(6)
+        .red_hero(
+            "hero_ursafar",
+            name="Ursafar",
+            at=(0, 0, 0),
+            current_card=hero_card("Ursafar", card_id),
+        )
+        .blue_hero("enemy", name="Enemy", at=(2, 0, -2))
+        .with_actor("hero_ursafar")
+        .build()
+    )
+    _make_ursafar_enraged(state)
+
+    run = run_card(state, "hero_ursafar")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("MOVEMENT").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(Hex(q=1, r=0, s=-1).model_dump()).expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("enemy").expect_input(InputRequestType.SELECT_HEX)
+    run.choose(additional_destination.model_dump()).finish()
+
+    assert state.entity_locations["hero_ursafar"] == additional_destination
+    assert state.entity_locations["enemy"] == Hex(q=1, r=0, s=-1)

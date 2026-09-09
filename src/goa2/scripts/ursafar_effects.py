@@ -16,6 +16,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_hex import (
+    MovementPathFilter,
     ObstacleFilter,
     RangeFilter,
 )
@@ -413,11 +414,24 @@ class RampagingBeastEffect(CardEffect):
                         ],
                     ),
                     SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
-                    MoveSequenceStep(
-                        unit_id=hero.id,
-                        range_val=1,
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="Move up to 1 additional space (optional).",
+                        output_key="rampaging_beast_additional_hex",
                         is_mandatory=False,
                         active_if_key="swap_target",
+                        filters=[
+                            MovementPathFilter(range_val=1, unit_id=hero.id),
+                            ObstacleFilter(is_obstacle=False, exclude_id=hero.id),
+                        ],
+                    ),
+                    MoveUnitStep(
+                        unit_id=hero.id,
+                        destination_key="rampaging_beast_additional_hex",
+                        range_val=1,
+                        is_movement_action=False,
+                        is_mandatory=False,
+                        active_if_key="rampaging_beast_additional_hex",
                     ),
                 ]
             )
@@ -452,11 +466,24 @@ class UnstoppableForceEffect(CardEffect):
                         ],
                     ),
                     SwapUnitsStep(unit_a_id=hero.id, unit_b_key="swap_target"),
-                    MoveSequenceStep(
-                        unit_id=hero.id,
-                        range_val=2,
+                    SelectStep(
+                        target_type=TargetType.HEX,
+                        prompt="Move up to 2 additional spaces (optional).",
+                        output_key="unstoppable_force_additional_hex",
                         is_mandatory=False,
                         active_if_key="swap_target",
+                        filters=[
+                            MovementPathFilter(range_val=2, unit_id=hero.id),
+                            ObstacleFilter(is_obstacle=False, exclude_id=hero.id),
+                        ],
+                    ),
+                    MoveUnitStep(
+                        unit_id=hero.id,
+                        destination_key="unstoppable_force_additional_hex",
+                        range_val=2,
+                        is_movement_action=False,
+                        is_mandatory=False,
+                        active_if_key="unstoppable_force_additional_hex",
                     ),
                 ]
             )
