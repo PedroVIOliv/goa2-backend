@@ -407,7 +407,7 @@ class HunterSeekerEffect(CardEffect):
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Optionally target a hero with Bounty marker in range (different target)",
-                output_key="hs_second_victim",
+                output_key="hs_adjacent_first_second_victim",
                 is_mandatory=False,
                 active_if_key="chose_adjacent_first",
                 filters=[
@@ -425,8 +425,8 @@ class HunterSeekerEffect(CardEffect):
                 damage=stats.primary_value,
                 range_val=stats.range,
                 is_ranged=True,
-                target_id_key="hs_second_victim",
-                active_if_key="hs_second_victim",
+                target_id_key="hs_adjacent_first_second_victim",
+                active_if_key="hs_adjacent_first_second_victim",
             ),
         ]
 

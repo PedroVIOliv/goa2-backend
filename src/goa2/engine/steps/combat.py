@@ -138,7 +138,7 @@ class AttackSequenceStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        if self.target_id_key and self.target_id_key in context:
+        if self.target_id_key and context.get(self.target_id_key):
             key = self.target_id_key
             select_target = False
         elif self.target_output_key:
@@ -215,6 +215,20 @@ class AttackSequenceStep(GameStep):
                     is_mandatory=self.is_mandatory,
                 )
             )
+            if not self.is_mandatory:
+                # Only expand reactions/combat after this optional selection
+                # succeeds. A skipped selection clears its output; none of the
+                # previous defender's effects or actor switches should run.
+                new_steps.append(
+                    self.model_copy(
+                        update={
+                            "target_id_key": key,
+                            "target_output_key": None,
+                            "active_if_key": key,
+                        }
+                    )
+                )
+                return StepResult(is_finished=True, new_steps=new_steps)
 
         from goa2.domain.models.enums import PassiveTrigger as _PT
 

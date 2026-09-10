@@ -331,6 +331,7 @@ class SelectStep(GameStep):
                 logger.debug(
                     f"   [SKIP] Optional selection '{self.prompt}' skipped. No candidates."
                 )
+                context.pop(self.output_key, None)
                 return StepResult(is_finished=True)
 
         if self.auto_select_if_one and len(valid_candidates) == 1 and self.is_mandatory:
@@ -354,6 +355,7 @@ class SelectStep(GameStep):
 
             if selection == SKIP and not self.is_mandatory:
                 logger.debug("   [SKIP] Player chose to skip optional selection.")
+                context.pop(self.output_key, None)
                 self.pending_input = None
                 self.pending_request_id = None
                 return StepResult(is_finished=True)
