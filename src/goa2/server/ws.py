@@ -234,10 +234,18 @@ def _build_state_update(
     return msg
 
 
-async def _send_json(ws: WebSocket, data: dict[str, Any]) -> bool:
+async def _send_json(
+    ws: WebSocket,
+    data: dict[str, Any],
+    *,
+    encoded: str | None = None,
+) -> bool:
     """Send JSON to a websocket, returning False if the connection is dead."""
     try:
-        await ws.send_json(data)
+        if encoded is None:
+            await ws.send_json(data)
+        else:
+            await ws.send_text(encoded)
         return True
     except Exception:
         return False
@@ -281,11 +289,11 @@ def _capture_broadcast(
         if token == priority_token and client_action_id is not None:
             msg["client_action_id"] = client_action_id
         messages.append((token, ws, msg))
-    for ws in spectator_connections:
+    if spectator_connections:
         msg = _build_state_update(game, None, board_view=board_view)
         if events:
             msg["events"] = events_for_viewer(events, game.session.state, None)
-        messages.append((None, ws, msg))
+        messages.extend((None, ws, msg) for ws in spectator_connections)
     if timing is not None:
         timing["board_ms"] = board_ms
         timing["recipient_views_ms"] = (time.perf_counter() - capture_started) * 1000 - board_ms
@@ -297,9 +305,29 @@ async def _send_captured_broadcast(
     messages: CapturedBroadcast,
 ) -> None:
     """Send already-materialized payloads and prune failed connections."""
+    payload_counts: dict[int, int] = {}
+    for _, _, payload in messages:
+        payload_id = id(payload)
+        payload_counts[payload_id] = payload_counts.get(payload_id, 0) + 1
+
+    encoded_payloads: dict[int, str | None] = {}
     dead_connections: list[tuple[str | None, WebSocket]] = []
     for token, ws, msg in messages:
-        if not await _send_json(ws, msg):
+        encoded = None
+        payload_id = id(msg)
+        if payload_counts[payload_id] > 1:
+            if payload_id not in encoded_payloads:
+                try:
+                    encoded_payloads[payload_id] = json.dumps(
+                        msg, separators=(",", ":"), ensure_ascii=False
+                    )
+                except Exception:
+                    encoded_payloads[payload_id] = None
+            encoded = encoded_payloads[payload_id]
+            if encoded is None:
+                dead_connections.append((token, ws))
+                continue
+        if not await _send_json(ws, msg, encoded=encoded):
             dead_connections.append((token, ws))
     for token, ws in dead_connections:
         if token is None:
