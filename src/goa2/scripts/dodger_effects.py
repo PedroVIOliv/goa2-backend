@@ -555,7 +555,7 @@ class MiddlefingerOfDeathEffect(CardEffect):
             SelectStep(
                 target_type=TargetType.UNIT,
                 prompt="Optionally target an adjacent unit (Middlefinger of Death)",
-                output_key="mfod_second_victim",
+                output_key="mfod_ranged_first_second_victim",
                 is_mandatory=False,
                 active_if_key="chose_ranged_first",
                 filters=[
@@ -572,8 +572,8 @@ class MiddlefingerOfDeathEffect(CardEffect):
                 damage=stats.primary_value,
                 range_val=1,
                 is_ranged=True,
-                target_id_key="mfod_second_victim",
-                active_if_key="mfod_second_victim",
+                target_id_key="mfod_ranged_first_second_victim",
+                active_if_key="mfod_ranged_first_second_victim",
             ),
         ]
 
