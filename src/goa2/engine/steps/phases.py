@@ -384,7 +384,7 @@ class RestoreActionTypeStep(GameStep):
         if stack:
             previous_type = stack.pop()
             context["current_action_type"] = previous_type
-            logger.debug(f"   [CONTEXT] Restored action type to {previous_type.name}")
+            logger.debug(f"   [CONTEXT] Restored action type to {previous_type}")
         return StepResult(is_finished=True)
 
 

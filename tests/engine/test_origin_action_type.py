@@ -206,6 +206,19 @@ class TestRestoreActionTypeStep:
         assert context.get("current_action_type") == ActionType.ATTACK
         assert len(context["action_type_stack"]) == 0
 
+    def test_restores_previous_action_type_after_persistence_roundtrip(self, game_state):
+        """A reloaded game carries plain strings, not ActionType members."""
+        context = {
+            "current_action_type": "DEFENSE",
+            "action_type_stack": ["ATTACK"],
+        }
+
+        step = RestoreActionTypeStep()
+        step.resolve(game_state, context)
+
+        assert context.get("current_action_type") == ActionType.ATTACK
+        assert len(context["action_type_stack"]) == 0
+
     def test_handles_empty_stack(self, game_state):
         """Handles empty stack gracefully."""
         context = {

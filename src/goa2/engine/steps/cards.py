@@ -812,7 +812,7 @@ class ResolveCardStep(GameStep):
                 ):
                     is_primary = True
 
-                logger.debug(f"   [CHOICE] Player selected {choice_id} ({act_type.name})")
+                logger.debug(f"   [CHOICE] Player selected {choice_id} ({act_type})")
 
                 # Track current action type for effect origin tracking
                 context["current_action_type"] = act_type
@@ -2265,7 +2265,7 @@ class PerformCardActionStep(GameStep):
                 ),
             ]
         # HOLD (or anything unhandled): nothing to do.
-        return [LogMessageStep(message=f"{performer_id} performs {act_type.name}.")]
+        return [LogMessageStep(message=f"{performer_id} performs {act_type}.")]
 
     def _build_lifecycle_steps(
         self,
