@@ -237,7 +237,10 @@ def _build_hero_view(
         "team": hero.team.value if hero.team else None,
         "level": hero.level,
         "gold": hero.gold,
-        "items": hero.items if upgrade_snapshot is None else upgrade_snapshot,
+        # Copied, not referenced: a view is a snapshot, and the share bake
+        # diffs one rendered body against the next. An aliased dict mutates
+        # the older body too, so the change diffs away and never reaches a patch.
+        "items": dict(hero.items if upgrade_snapshot is None else upgrade_snapshot),
         # Gydion's Wish victory progress is per caster and public.
         "wish_cast_count": hero.wish_cast_count,
         # Rune slots (Snorri): public to all viewers, including opponents/spectators
