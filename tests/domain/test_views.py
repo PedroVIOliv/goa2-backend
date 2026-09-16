@@ -1010,6 +1010,30 @@ class TestUpgradeRevealMasking:
 
         assert hero_b_view["items"] == {StatType.ATTACK: 1}
 
+    def test_items_are_a_snapshot_not_a_live_reference(self, sample_state):
+        """A later item gain must not reach back into an already-built view.
+
+        The share bake diffs consecutive rendered bodies; an aliased dict would
+        mutate the older one too, so the gain would diff away and no patch would
+        ever carry it.
+        """
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_a.items = {StatType.ATTACK: 1}
+        before = build_view(sample_state, reveal_all=True)["teams"]["RED"]["heroes"][0]
+
+        hero_a.items[StatType.RANGE] = 1
+        after = build_view(sample_state, reveal_all=True)["teams"]["RED"]["heroes"][0]
+
+        assert before["items"] == {StatType.ATTACK: 1}
+        assert after["items"] == {StatType.ATTACK: 1, StatType.RANGE: 1}
+
+    def test_masked_items_are_a_snapshot_too(self, mid_upgrade_state):
+        hero_b_view = build_view(mid_upgrade_state)["teams"]["BLUE"]["heroes"][0]
+
+        mid_upgrade_state.upgrade_reveal_snapshot[HeroID("hero_b")][StatType.RANGE] = 1
+
+        assert hero_b_view["items"] == {}
+
     def test_hero_without_a_snapshot_is_unmasked(self, mid_upgrade_state):
         hero_a = mid_upgrade_state.get_hero(HeroID("hero_a"))
         hero_a.items = {StatType.DEFENSE: 2}
