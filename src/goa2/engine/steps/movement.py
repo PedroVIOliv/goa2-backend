@@ -499,12 +499,8 @@ class FastTravelStep(GameStep):
 
 
 class FastTravelUnitStep(GameStep):
-    """Atomically relocate a unit using Fast Travel rules.
-
-    Fast Travel replaces a Movement action, but the relocation is neither a
-    normal move nor a placement. This step therefore validates Fast Travel's
-    own destination rules without invoking path movement or PLACE prevention.
-    """
+    """Relocate a unit by Fast Travel: neither a move nor a place, so path
+    rules and PLACE prevention (e.g. Magnetic Dagger) do not apply."""
 
     type: StepType = StepType.FAST_TRAVEL_UNIT
     unit_id: str | None = None
@@ -539,8 +535,7 @@ class FastTravelUnitStep(GameStep):
         from_hex = state.get_position(str(actor_id))
         state.move_unit(UnitID(str(actor_id)), destination_hex)
         event = GameEvent(
-            # Preserve the existing client-facing relocation event used by
-            # Fast Travel when it was (incorrectly) executed as PlaceUnitStep.
+            # Clients animate Fast Travel from UNIT_PLACED.
             event_type=GameEventType.UNIT_PLACED,
             actor_id=str(actor_id),
             from_hex=_hex_dict(from_hex),
