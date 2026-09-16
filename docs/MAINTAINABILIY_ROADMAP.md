@@ -125,6 +125,13 @@ Sprinkle **③** as you pass through those files. Ignore **④** until you're al
 | BB6 | Refactor `ResolveCardStep.resolve` into dispatch table | T5 | L |
 | BB7 | Shared effect recipes + `ChooseOneStep`/`IfStep` primitives | T5 | L |
 
+**BB4 progress (2026-09-05):** Effect loading now lives in
+`goa2.bootstrap.register_all_effects()`, shared by the server, replay workers,
+and effect tests. Failed imports stop initialization; duplicate IDs cannot
+silently replace behavior. Registration tests cover a fresh worker without
+FastAPI and missing hero-catalog effects. Moving the effect modules out of
+`scripts/` remains separate work.
+
 ### ③ Fill-ins — opportunistic (effort **S**)
 | # | Item | Theme |
 |---|---|---|
@@ -422,4 +429,3 @@ first because it makes QW1's class of bug impossible going forward.
 - Two related project memories exist for fresh agents: effect-logic-location and
   serialization-auto-registration (both correct the misleading CLAUDE.md statements).
 ```
-

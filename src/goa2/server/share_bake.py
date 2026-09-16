@@ -42,7 +42,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
     """
     # A spawned child is a fresh interpreter: effects are registered as an import
     # side effect and must be re-registered here or every card resolves to nothing.
-    from goa2.server.app import register_all_effects
+    from goa2.bootstrap import register_all_effects
 
     register_all_effects()
 

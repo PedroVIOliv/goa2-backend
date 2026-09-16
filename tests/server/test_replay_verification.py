@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures" / "replays"
 
 @pytest.fixture(autouse=True)
 def _effects_registered():
-    from goa2.server.app import register_all_effects
+    from goa2.bootstrap import register_all_effects
 
     register_all_effects()
 

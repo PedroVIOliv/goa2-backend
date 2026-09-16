@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from goa2.bootstrap import register_all_effects
 from goa2.draft.errors import DraftError
 from goa2.server.draft_registry import DraftRegistry
 from goa2.server.draft_ws import router as draft_ws_router
@@ -42,17 +41,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_GAME_TTL_DAYS = 5
 
 load_dotenv()
-
-
-def register_all_effects():
-    """Auto-discover and import all hero effect modules."""
-    scripts_dir = Path(__file__).parent.parent / "scripts"
-    for script_path in scripts_dir.glob("*_effects.py"):
-        module_name = f"goa2.scripts.{script_path.stem}"
-        try:
-            importlib.import_module(module_name)
-        except Exception as e:
-            logger.warning(f"Failed to load effect module {module_name}: {e}")
 
 
 register_all_effects()

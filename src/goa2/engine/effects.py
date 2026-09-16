@@ -398,15 +398,18 @@ class CardEffect:
 
 class CardEffectRegistry:
     """
-    Global registry for card effects, indexed by effect_id.
+    Global registry for card effects, with separate card and spell namespaces.
+
+    IDs have one owner within each namespace. Conflicting registrations fail
+    immediately instead of making behavior depend on module import order.
     """
 
     _effects: ClassVar[dict[str, CardEffect]] = {}
     _spell_effects: ClassVar[dict[str, CardEffect]] = {}
 
     @classmethod
-    def register(cls, effect_id: str, effect: CardEffect):
-        cls._effects[effect_id] = effect
+    def register(cls, effect_id: str, effect: CardEffect) -> None:
+        cls._register(cls._effects, effect_id, effect)
 
     @classmethod
     def get(cls, effect_id: str) -> CardEffect | None:
@@ -415,7 +418,20 @@ class CardEffectRegistry:
     @classmethod
     def register_spell(cls, effect_id: str, effect: CardEffect) -> None:
         """Register spell behavior without colliding with ordinary card IDs."""
-        cls._spell_effects[effect_id] = effect
+        cls._register(cls._spell_effects, effect_id, effect)
+
+    @staticmethod
+    def _register(effects: dict[str, CardEffect], effect_id: str, effect: CardEffect) -> None:
+        existing = effects.get(effect_id)
+        if existing is not None and existing is not effect:
+            original = type(existing)
+            incoming = type(effect)
+            raise ValueError(
+                f"Effect ID {effect_id!r} is already registered by "
+                f"{original.__module__}.{original.__qualname__}; cannot replace it with "
+                f"{incoming.__module__}.{incoming.__qualname__}"
+            )
+        effects[effect_id] = effect
 
     @classmethod
     def get_for_card(cls, card: Card) -> CardEffect | None:

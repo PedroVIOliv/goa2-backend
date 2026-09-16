@@ -34,7 +34,7 @@ def _init_worker() -> None:
     Registration is an import side effect, so a forked worker inherits it but
     a spawned one starts empty and would rebuild a session with no effects.
     """
-    from goa2.server.app import register_all_effects
+    from goa2.bootstrap import register_all_effects
 
     register_all_effects()
 

@@ -15,6 +15,14 @@ class MyCardEffect(CardEffect):
         ]
 ```
 
+**Registration:** Put effects in `scripts/<hero>_effects.py`. Servers, replay
+workers, and effect tests share `goa2.bootstrap.register_all_effects()`; standalone
+tools should call it before running cards. Each effect ID must be unique within
+the card or spell registry. Failed imports and conflicting registrations raise
+immediately. `tests/engine/test_effect_registration.py` also checks that the hero
+catalog's effect IDs resolve, with documented exceptions for passive ultimates
+implemented by rule hooks.
+
 **Other override methods:**
 - `build_defense_steps(state, defender, card, stats, context)` — When used as primary DEFENSE in reaction. Return `None` to fall back to `build_steps()`. **`state.current_actor_id` is the attacker inside this method.** The engine swaps the actor to the defender only for the steps you return, so read `defender` for "you"; never `current_actor_id`. Filters inside your returned steps are fine — they run after the swap.
 - `build_on_block_steps(state, defender, card, stats, context)` — After successful block ("if you do" effects).

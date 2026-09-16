@@ -110,9 +110,12 @@ class LiquidLeapEffect(CardEffect):
     def build_steps(self, state, hero, card, stats) -> list[GameStep]: ...
 ```
 
-Effect modules are discovered at startup by `server/app.py:register_all_effects()`,
-which globs `scripts/*_effects.py`. Registration is an import side effect of the
-`@register_effect` decorator.
+Servers, replay workers, and standalone tools load effect modules with
+`goa2.bootstrap.register_all_effects()`, which imports `scripts/*_effects.py` in
+sorted order. Import errors stop startup with the module name and original
+traceback. Registration is an import side effect of `@register_effect`; duplicate
+IDs are rejected within the card registry or spell registry. The two registries
+may intentionally share an ID. Repeated loader calls use Python's module cache.
 
 Engine code calls `get_steps()` / `get_steps_with_stats()` — never `build_steps()`
 directly, which skips the card binding these apply (`effects.bind_effect_cards`
