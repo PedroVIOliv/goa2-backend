@@ -13,8 +13,8 @@ import goa2.scripts.silverarrow_effects  # noqa: F401 - registers effects
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
-from goa2.domain.models import DurationType, EffectType, Hero, Team, TeamColor
-from goa2.domain.models.effect import AffectsFilter, Shape
+from goa2.domain.models import ActionType, DurationType, EffectType, Hero, Team, TeamColor
+from goa2.domain.models.effect import ActiveEffect, AffectsFilter, EffectScope, Shape
 from goa2.domain.models.enums import PassiveTrigger
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
@@ -24,6 +24,7 @@ from goa2.engine.filters import (
     RangeFilter,
     StraightLinePathFilter,
 )
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import (
     CheckPassiveAbilitiesStep,
     CreateEffectStep,
@@ -78,6 +79,22 @@ def silver_state():
     return state
 
 
+def _prevent_movement_actions(state):
+    state.active_effects.append(
+        ActiveEffect(
+            id="movement_prevention",
+            source_id="enemy_hero",
+            effect_type=EffectType.MOVEMENT_ZONE,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ALL_UNITS),
+            duration=DurationType.THIS_TURN,
+            restrictions=[ActionType.MOVEMENT],
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+    )
+
+
 class TestTrailblazer:
     def test_registered(self):
         assert CardEffectRegistry.get("trailblazer") is not None
@@ -122,6 +139,23 @@ class TestTrailblazer:
         assert created.effect_type == EffectType.MOVEMENT_AURA_ZONE
         assert created.source_card_id == "trailblazer"
         assert created.grants_pass_through_obstacles is True
+
+    def test_movement_prevention_blocks_card_text_fast_travel_but_not_aura(self, silver_state):
+        effect = CardEffectRegistry.get("trailblazer")
+        hero = silver_state.get_hero("hero_silverarrow")
+        card = _card_by_id("trailblazer")
+        _prevent_movement_actions(silver_state)
+
+        steps = effect.get_steps(silver_state, hero, card)
+        assert steps[0].source_card_id == "trailblazer"
+        push_steps(silver_state, steps)
+        result = process_stack(silver_state)
+
+        assert result.input_request is None
+        assert any(
+            active.effect_type == EffectType.MOVEMENT_AURA_ZONE
+            for active in silver_state.active_effects
+        )
 
 
 class TestWildHunt:

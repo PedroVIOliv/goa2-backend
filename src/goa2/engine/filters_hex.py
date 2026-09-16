@@ -715,6 +715,7 @@ class FastTravelDestinationFilter(FilterCondition):
     type: FilterType = FilterType.FAST_TRAVEL_DESTINATION
     unit_id: str | None = None
     require_zone_change: bool = False
+    source_card_id: str | None = None
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         if not isinstance(candidate, Hex):
@@ -725,7 +726,9 @@ class FastTravelDestinationFilter(FilterCondition):
             return False
 
         # Check validation first
-        if not state.validator.can_fast_travel(state, str(uid), context).allowed:
+        if not state.validator.can_fast_travel(
+            state, str(uid), context, source_card_id=self.source_card_id
+        ).allowed:
             return False
 
         unit = state.get_unit(UnitID(str(uid)))

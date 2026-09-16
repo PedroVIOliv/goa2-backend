@@ -63,6 +63,7 @@ EXPECTED_STEP_CLASSES = {
     "EndPhaseStep",
     "FastTravelSequenceStep",
     "FastTravelStep",
+    "FastTravelUnitStep",
     "FinalizeHeroTurnStep",
     "FindNextActorStep",
     "FlipTieBreakerCoinStep",
@@ -206,6 +207,32 @@ def test_key_non_step_exports():
     assert StepResult is not None
     assert GameStep is not None
     assert callable(apply_hero_upgrade)
+
+
+def test_round_trip_fast_travel_unit_step():
+    """The dedicated Fast Travel relocation survives persistence/replay."""
+    from goa2.engine.steps import FastTravelUnitStep
+
+    state = _make_state()
+    push_steps(
+        state,
+        [
+            FastTravelUnitStep(
+                unit_id="hero_arien",
+                destination_key="fast_travel_hex",
+                require_zone_change=True,
+                source_card_id="shoot_and_scoot",
+            )
+        ],
+    )
+
+    restored = GameState.model_validate(state.model_dump(mode="json"))
+    step = restored.execution_stack[0]
+
+    assert isinstance(step, FastTravelUnitStep)
+    assert step.destination_key == "fast_travel_hex"
+    assert step.require_zone_change is True
+    assert step.source_card_id == "shoot_and_scoot"
 
 
 def test_no_unexpected_step_classes_missing():

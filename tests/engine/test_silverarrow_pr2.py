@@ -18,10 +18,11 @@ from goa2.domain.models import (
     ActionType,
     DurationType,
     EffectType,
+    Hero,
     Team,
     TeamColor,
 )
-from goa2.domain.models.effect import AffectsFilter, Shape
+from goa2.domain.models.effect import ActiveEffect, AffectsFilter, EffectScope, Shape
 from goa2.domain.state import GameState
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.filters import (
@@ -283,3 +284,30 @@ class TestShootAndScoot:
         assert scoot.unit_id == "hero_silverarrow"
         # Audit §5.1: "adjacent zone" excludes Silverarrow's current zone.
         assert scoot.require_zone_change is True
+
+    def test_movement_prevention_blocks_card_text_fast_travel(self, silver_state):
+        blocker = Hero(id="enemy", name="Enemy", team=TeamColor.BLUE, deck=[])
+        silver_state.teams[TeamColor.BLUE].heroes.append(blocker)
+        silver_state.place_entity("enemy", Hex(q=5, r=0, s=-5))
+        silver_state.active_effects.append(
+            ActiveEffect(
+                id="movement_prevention",
+                source_id="enemy",
+                effect_type=EffectType.MOVEMENT_ZONE,
+                scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ALL_UNITS),
+                duration=DurationType.THIS_TURN,
+                restrictions=[ActionType.MOVEMENT],
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+            )
+        )
+        effect = CardEffectRegistry.get("shoot_and_scoot")
+        hero = silver_state.get_hero("hero_silverarrow")
+        card = _card_by_id("shoot_and_scoot")
+        scoot = effect.get_steps(silver_state, hero, card)[1]
+
+        assert scoot.source_card_id == "shoot_and_scoot"
+        result = scoot.resolve(silver_state, {})
+
+        assert result.new_steps == []
