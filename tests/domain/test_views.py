@@ -941,6 +941,25 @@ class TestUnresolvedCardsView:
         assert cards[1]["hero_id"] == "hero_b"
         assert cards[1]["initiative"] == 3
 
+    def test_defender_not_listed_twice(self, sample_state):
+        """While a defense resolves, current_actor_id is the defender and the
+        attacker still owns the resolution. The queue lists each hero once,
+        headed by the attacker."""
+        hero_a = sample_state.get_hero(HeroID("hero_a"))
+        hero_b = sample_state.get_hero(HeroID("hero_b"))
+
+        hero_a.current_turn_card = self._make_card("ca", "Card A", initiative=7)
+        hero_b.current_turn_card = self._make_card("cb", "Card B", initiative=3)
+
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.resolution_owner_id = HeroID("hero_a")
+        sample_state.current_actor_id = HeroID("hero_b")
+        sample_state.unresolved_hero_ids = [HeroID("hero_b")]
+
+        cards = build_view(sample_state, for_hero_id=HeroID("hero_a"))["unresolved_cards"]
+
+        assert [c["hero_id"] for c in cards] == ["hero_a", "hero_b"]
+
     def test_only_current_actor_when_last_to_resolve(self, sample_state):
         """When current actor is the last one, list has just that card."""
         hero_a = sample_state.get_hero(HeroID("hero_a"))

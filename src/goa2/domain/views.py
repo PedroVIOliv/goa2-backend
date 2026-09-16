@@ -140,8 +140,12 @@ def _build_unresolved_cards_view(
         return []
 
     hero_ids = list(state.unresolved_hero_ids)
-    if state.current_actor_id:
-        hero_ids = [state.current_actor_id, *hero_ids]
+    # The owner of the card being resolved, not current_actor_id: a defense or
+    # reaction swaps the actor to the defender, who is still pending and would
+    # otherwise be listed twice.
+    acting_id = state.resolution_owner_id or state.current_actor_id
+    if acting_id and acting_id not in hero_ids:
+        hero_ids = [acting_id, *hero_ids]
 
     if not hero_ids:
         return []
