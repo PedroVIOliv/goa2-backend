@@ -345,7 +345,6 @@ class BackstabEffect(CardEffect):
                     ExcludeIdentityFilter(exclude_self=True),
                 ],
                 output_key="friendly_adjacent_count",
-                skip_immunity_filter=True,
             ),
             # 3. Check if any friendly is adjacent
             CheckContextConditionStep(
@@ -406,7 +405,6 @@ class BackstabWithABallistaEffect(CardEffect):
                     ExcludeIdentityFilter(exclude_self=True),
                 ],
                 output_key="friendly_adjacent_count",
-                skip_immunity_filter=True,
             ),
             # 3. Check if any friendly is adjacent
             CheckContextConditionStep(

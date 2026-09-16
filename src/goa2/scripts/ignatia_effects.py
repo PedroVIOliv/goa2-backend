@@ -586,8 +586,6 @@ class _MoveHeroLineEffect(_IgnatiaBranchEffect):
                 prompt=f"Select a {hero_relation.lower()} hero in radius",
                 output_key=hkey,
                 is_mandatory=True,
-                # Moving a friendly hero is not an offensive action.
-                skip_immunity_filter=(hero_relation == "FRIENDLY"),
                 filters=[
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation=hero_relation),
@@ -659,7 +657,6 @@ class _SwapEffect(_IgnatiaBranchEffect):
                 prompt=f"Swap with a {relation.lower()} unit in radius",
                 output_key=v,
                 is_mandatory=True,
-                skip_immunity_filter=(relation == "FRIENDLY"),
                 filters=[
                     TeamFilter(relation=relation),
                     RangeFilter(max_range=stats.radius),

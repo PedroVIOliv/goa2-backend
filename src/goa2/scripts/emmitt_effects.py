@@ -315,7 +315,6 @@ def _glitch_cleanup_step() -> GameStep:
                     TokenTypeFilter(token_type=TokenType.GLITCH),
                 ],
                 output_key="_glitch_cleanup_ids",
-                skip_immunity_filter=True,
                 skip_self_filter=True,
             ),
             ForEachStep(
@@ -376,7 +375,6 @@ class FlashbackEffect(CardEffect):
                     UnitTypeFilter(unit_type="TOKEN"),
                     TokenTypeFilter(token_type=TokenType.GLITCH),
                 ],
-                skip_immunity_filter=True,
                 skip_self_filter=True,
                 override_player_id_key="glitch_victim",
                 is_mandatory=True,
