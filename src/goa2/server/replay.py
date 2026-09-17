@@ -69,7 +69,9 @@ import json
 import logging
 import os
 import subprocess
+import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +93,7 @@ DEFAULT_REPLAY_TTL_DAYS = 30
 # ov_rewind's ``to`` and ``until_decision`` are positional indices into it, so
 # mixing telemetry in would silently retarget existing rewinds.
 NON_DECISION_TYPES = frozenset({"clock", "clock_turn"})
+_UNSAVED_KEEPABLE_TYPES = NON_DECISION_TYPES | {"setup"}
 
 
 def _replay_dir() -> str:
@@ -126,12 +129,46 @@ def _engine_revision() -> str:
     return "unknown"
 
 
+def _read_log_records(path: Path) -> list[dict[str, Any]] | None:
+    """Every record in a replay file, or None when the file is damaged.
+
+    A power cut can leave NUL bytes or a half-written last line; such a file
+    must not be mirrored into the save, or the damage becomes permanent there.
+    """
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return []
+    except OSError:
+        return None
+    if not data:
+        return []
+    if b"\x00" in data or not data.endswith(b"\n"):
+        return None
+    records: list[dict[str, Any]] = []
+    try:
+        for line in data.decode().splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if not isinstance(record, dict):
+                return None
+            records.append(record)
+    except ValueError:
+        return None
+    return records
+
+
 class ReplayRecorder:
     """Append-only writer for a single game's replay log.
 
     Safe to re-create against an existing file (e.g. after a server restart):
     the setup header is written only when the file is new/empty; decisions are
     appended thereafter.
+
+    ``records`` mirrors the file in memory so the save can carry it: appends
+    are not fsynced, and the save's atomic replace is what survives a power
+    cut. ``None`` means the file was already damaged and is left unmirrored.
     """
 
     def __init__(self, game_id: str, replay_dir: str | None = None) -> None:
@@ -139,15 +176,49 @@ class ReplayRecorder:
         directory = Path(replay_dir or _replay_dir())
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / f"{game_id}.jsonl"
+        self.records = _read_log_records(self.path)
+        if self.records is None:
+            logger.warning("Replay log %s is damaged; the save will not carry it", self.path)
 
     @property
     def has_setup(self) -> bool:
         return self.path.exists() and self.path.stat().st_size > 0
 
+    def restore_from_save(self, saved: list[dict[str, Any]]) -> None:
+        """Rewrite the file from the records the save committed with the game state.
+
+        Records past the saved ones are kept only when none is a decision: the
+        setup header and clock telemetry are written without a following save,
+        but a decision the save never reached is not part of the restored game.
+        """
+        on_disk = self.records
+        if (
+            on_disk is not None
+            and on_disk[: len(saved)] == saved
+            and all(r.get("type") in _UNSAVED_KEEPABLE_TYPES for r in on_disk[len(saved) :])
+        ):
+            return
+        self.records = [dict(r) for r in saved]
+        body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in self.records)
+        fd, tmp_path = tempfile.mkstemp(dir=self.path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(body)
+            os.replace(tmp_path, self.path)
+        except BaseException:
+            with suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+        logger.warning(
+            "Rewrote replay log %s from its save (%d records)", self.path, len(self.records)
+        )
+
     def _append(self, record: dict[str, Any]) -> None:
         # Wall-clock receipt time for data/analytics; not part of the
         # deterministic reconstruction (the replayer ignores it).
         record["ts"] = time.time()
+        if self.records is not None:
+            self.records.append(dict(record))
         try:
             with open(self.path, "a") as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")

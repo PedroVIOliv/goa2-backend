@@ -37,6 +37,7 @@ def save_game(
     hero_names: dict[str, str] | None = None,
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
+    replay_log: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -51,6 +52,8 @@ def save_game(
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
     }
+    if replay_log is not None:
+        payload["replay_log"] = replay_log
 
     os.makedirs(save_dir, exist_ok=True)
     target = Path(save_dir) / f"{game_id}.json"
@@ -123,6 +126,9 @@ def load_game(file_path: str) -> dict[str, Any]:
         "hero_names": payload.get("hero_names", {}),
         "created_at": payload["created_at"],
         "last_result": last_result,
+        # Absent from saves written before the save carried the replay log, and
+        # from games whose log was already damaged when it would have been adopted.
+        "replay_log": payload.get("replay_log"),
     }
 
 
