@@ -158,6 +158,7 @@ class GameRegistry:
                 save_dir=self._save_dir,
                 rollback_snapshot=game.session._rollback_snapshot,
                 rollback_actor_id=game.session._rollback_actor_id,
+                replay_log=game.replay_recorder.records if game.replay_recorder else None,
             )
         except Exception:
             logger.exception("Failed to save game %s", game_id)
@@ -174,6 +175,12 @@ class GameRegistry:
         games_data = load_all_games(self._save_dir)
         count = 0
         for data in games_data:
+            replay_recorder = create_replay_recorder(data["game_id"])
+            if data["replay_log"] is not None:
+                try:
+                    replay_recorder.restore_from_save(data["replay_log"])
+                except Exception:
+                    logger.exception("Failed to restore replay log for game %s", data["game_id"])
             game = ManagedGame(
                 game_id=data["game_id"],
                 session=data["session"],
@@ -184,7 +191,7 @@ class GameRegistry:
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
-                replay_recorder=create_replay_recorder(data["game_id"]),
+                replay_recorder=replay_recorder,
             )
             self._games[game.game_id] = game
             count += 1
