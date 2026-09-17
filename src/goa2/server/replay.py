@@ -673,12 +673,13 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         from goa2.domain.hex import Hex
         from goa2.engine.starting_positions import apply_position
 
-        destination = decision.get("destination")
+        sel = decision["sel"]
+        destination = sel.get("destination")
         apply_position(
             session.state,
             str(hero_id),
             destination=Hex.model_validate(destination) if destination is not None else None,
-            swap_with=decision.get("swap_with"),
+            swap_with=sel.get("swap_with"),
         )
     elif kind == "commit":
         hero = session.state.get_hero(hero_id)

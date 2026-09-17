@@ -510,7 +510,7 @@ async def _handle_starting_position(
     if op == "move":
         destination = Hex.model_validate(data.get("destination"))
         apply_position(state, hero_id, destination=destination)
-        recorded = {"hero": hero_id, "destination": destination.model_dump()}
+        recorded = {"hero": hero_id, "sel": {"destination": destination.model_dump()}}
     elif op == "request_swap":
         target = data.get("target")
         if not isinstance(target, str):
@@ -521,7 +521,7 @@ async def _handle_starting_position(
             raise ValueError("A request ID and boolean acceptance are required")
         requester = respond_swap(state, hero_id, data["request_id"], data["accept"])
         if requester is not None:
-            recorded = {"hero": requester, "swap_with": hero_id}
+            recorded = {"hero": requester, "sel": {"swap_with": hero_id}}
     elif op == "cancel":
         clear_requests(state, hero_id)
     else:

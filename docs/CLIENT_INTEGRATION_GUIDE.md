@@ -2237,8 +2237,8 @@ remains in overflow. Swaps validate the resulting arrangement. Multi-piece
 heroes adjust their single starting piece, not their player-level entity.
 
 Accepted edits refresh the initial position snapshot and append a
-`starting_position` replay decision with `hero`, `r: 1`, `t: 1`, and either
-`destination` or `swap_with`. Both normal replay and shared-replay baking apply
-that decision through the same engine function. Pending/declined requests do not
-enter the replay. Automatic setup placement is unchanged for historical replays.
-Replay and share metadata preserve the destination/partner for timeline labels.
+`starting_position` replay decision with `hero`, `r: 1`, `t: 1`, and `sel` of
+either `{"destination": {q,r,s}}` or `{"swap_with": "<hero id>"}`. Both normal
+replay and shared-replay baking apply that decision through the same engine
+function. Pending/declined requests do not enter the replay. Automatic setup
+placement is unchanged for historical replays.

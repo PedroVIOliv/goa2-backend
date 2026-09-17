@@ -106,8 +106,8 @@ def test_live_moves_swaps_seek_rewind_and_baked_share(client):
     assert result["ok"], result
     setup, decisions = load_replay(game.replay_recorder.path)
     meta = client.get(f"/shared/{result['token']}").json()
-    assert meta["decisions"][0]["destination"] == dest.model_dump()
-    assert meta["decisions"][1]["swap_with"] == "hero_arien"
+    assert meta["decisions"][0]["sel"] == {"destination": dest.model_dump()}
+    assert meta["decisions"][1]["sel"] == {"swap_with": "hero_arien"}
     cursor = ReplayCursor(setup, decisions)
     for index in range(len(decisions) + 1):
         response = client.get(f"/shared/{result['token']}/state?decision={index}")
