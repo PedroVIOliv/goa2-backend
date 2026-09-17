@@ -13,10 +13,11 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
 
 
+# Replacement actions stand in for the whole action they replace, so anything
+# preventing that action also prevents its replacement.
 _ACTION_PREREQUISITES: dict[ActionType, tuple[ActionType, ...]] = {
-    # Fast Travel replaces the Movement action, so losing permission to
-    # perform Movement also removes permission to perform Fast Travel.
     ActionType.FAST_TRAVEL: (ActionType.MOVEMENT,),
+    ActionType.CLEAR: (ActionType.ATTACK,),
 }
 
 
