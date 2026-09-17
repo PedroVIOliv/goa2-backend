@@ -179,6 +179,11 @@ def get_replay_meta(game_id: str) -> dict[str, Any]:
                 "hero": d.get("hero"),
                 "card": d.get("card"),
                 "sel": d.get("sel"),
+                **(
+                    {key: d[key] for key in ("destination", "swap_with") if key in d}
+                    if d.get("type") == "starting_position"
+                    else {}
+                ),
             }
             for i, d in enumerate(decisions)
         ],

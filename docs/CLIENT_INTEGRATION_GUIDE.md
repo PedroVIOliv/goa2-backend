@@ -2204,3 +2204,41 @@ Connection-level errors close the WebSocket with a code:
 | `"Input expected from 'X', not 'Y'"` | Wrong player submitting input | Only the `player_id` from `input_request` should submit |
 | `"Spectators cannot commit cards"` | Spectator token used for a mutation | Use a player token instead |
 | `"Card 'X' not in Y's hand"` | Invalid card_id for commit | Check the hero's `hand` in the view |
+
+### Optional starting-position adjustments
+
+During round 1, turn 1 `PLANNING`, while a hero has no committed card or pass,
+its player-scoped view includes `starting_position`:
+
+```json
+{"destinations": [{"q": -8, "r": -1, "s": 9}], "swap_targets": ["hero_arien"],
+ "requests": [{"id": "opaque-id", "from": "hero_min", "to": "hero_arien"}]}
+```
+
+The field is `null` for spectators and ineligible heroes. Destinations and swap
+targets are server-authoritative. Only requests involving the viewer are exposed.
+Send authenticated WebSocket messages with `type: "STARTING_POSITION"`:
+
+- `op: "move", destination: {q,r,s}` — move your hero to a legal empty start.
+- `op: "request_swap", target: "hero_arien"` — request a teammate's position.
+- `op: "respond_swap", request_id: "…", accept: true|false` — only the recipient
+  can accept or decline; acceptance validates both heroes again and swaps atomically.
+- `op: "cancel"` — cancel requests involving your hero.
+
+Success returns `STARTING_POSITION_UPDATED`, followed by the normal state
+broadcast; rejection returns `ERROR`. Existing clock pause/readiness rules apply.
+Committing closes that hero's adjustment window until the card is taken back.
+Moving or committing invalidates requests involving that hero. Requests survive reconnects and saves but never hold up normal play.
+
+A hero must occupy a team hero spawn. Overflow is allowed only when all team
+hero spawns are occupied, in an empty adjacent space inside a team Throne Zone
+(the appropriate lane endpoint). A move cannot vacate a spawn while a teammate
+remains in overflow. Swaps validate the resulting arrangement. Multi-piece
+heroes adjust their single starting piece, not their player-level entity.
+
+Accepted edits refresh the initial position snapshot and append a
+`starting_position` replay decision with `hero`, `r: 1`, `t: 1`, and either
+`destination` or `swap_with`. Both normal replay and shared-replay baking apply
+that decision through the same engine function. Pending/declined requests do not
+enter the replay. Automatic setup placement is unchanged for historical replays.
+Replay and share metadata preserve the destination/partner for timeline labels.
