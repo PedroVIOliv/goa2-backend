@@ -86,6 +86,7 @@ MUTATION_MESSAGE_TYPES = frozenset(
         "ROLLBACK",
         "CHEATS_GOLD",
         "SET_READY",
+        "STARTING_POSITION",
     }
 )
 CLIENT_ACTION_ID_RE = re.compile(r"[A-Za-z0-9._:-]{1,64}\Z")
@@ -490,6 +491,45 @@ async def _handle_uncommit_card(game: ManagedGame, hero_id: str) -> dict[str, An
         game.game_logger.log_card_uncommit(hero_id, card.id)
     log_session_result(game, result)
     return _action_result_message(game, result, hero_id)
+
+
+async def _handle_starting_position(
+    game: ManagedGame, hero_id: str, data: dict[str, Any]
+) -> dict[str, Any]:
+    from goa2.domain.hex import Hex
+    from goa2.engine.starting_positions import (
+        apply_position,
+        clear_requests,
+        request_swap,
+        respond_swap,
+    )
+
+    state = game.session.state
+    op = data.get("op")
+    recorded = None
+    if op == "move":
+        destination = Hex.model_validate(data.get("destination"))
+        apply_position(state, hero_id, destination=destination)
+        recorded = {"hero": hero_id, "sel": {"destination": destination.model_dump()}}
+    elif op == "request_swap":
+        target = data.get("target")
+        if not isinstance(target, str):
+            raise ValueError("A teammate is required")
+        request_swap(state, hero_id, target)
+    elif op == "respond_swap":
+        if not isinstance(data.get("accept"), bool) or not isinstance(data.get("request_id"), str):
+            raise ValueError("A request ID and boolean acceptance are required")
+        requester = respond_swap(state, hero_id, data["request_id"], data["accept"])
+        if requester is not None:
+            recorded = {"hero": requester, "sel": {"swap_with": hero_id}}
+    elif op == "cancel":
+        clear_requests(state, hero_id)
+    else:
+        raise ValueError("Unknown starting-position operation")
+    if recorded is not None and game.replay_recorder:
+        game.replay_recorder.record_starting_position(recorded)
+    mark_human_action(game)
+    return {"type": "STARTING_POSITION_UPDATED"}
 
 
 async def _handle_set_ready(
@@ -1047,6 +1087,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                 reply = await _handle_rollback(game, hero_id)
                             elif msg_type == "CHEATS_GOLD":
                                 reply = await _handle_cheats_gold(game, hero_id, data)
+                            elif msg_type == "STARTING_POSITION":
+                                reply = await _handle_starting_position(game, hero_id, data)
                             elif msg_type == "SET_READY":
                                 reply = await _handle_set_ready(game, hero_id, data)
                             elif msg_type == "GET_VIEW":

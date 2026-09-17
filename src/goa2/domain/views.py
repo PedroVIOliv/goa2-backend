@@ -82,6 +82,8 @@ def build_view(
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
 
+    from goa2.engine.starting_positions import position_view
+
     view = {
         "phase": state.phase.value,
         "round": state.round,
@@ -112,6 +114,7 @@ def build_view(
         # Direct public hand-card reveal (Cordelia). As with card_guess, the
         # state-backed face survives reconnects and execution-context cleanup.
         "card_reveal": _build_card_reveal_view(state),
+        "starting_position": position_view(state, str(for_hero_id) if for_hero_id else None),
     }
     view["time_control"] = (
         state.time_control.model_dump(mode="json") if state.time_control is not None else None

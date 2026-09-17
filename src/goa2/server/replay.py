@@ -266,6 +266,9 @@ class ReplayRecorder:
             }
         )
 
+    def record_starting_position(self, change: dict[str, Any]) -> None:
+        self._append({"type": "starting_position", "r": 1, "t": 1, **change})
+
     def record_commit(self, hero_id: str, card_id: str, round_num: int, turn: int) -> None:
         self._append(
             {"type": "commit", "r": round_num, "t": turn, "hero": hero_id, "card": card_id}
@@ -737,7 +740,19 @@ def _apply_decision(session: GameSession, decision: dict[str, Any]) -> None:
         _apply_decision(session, translated)
         return
 
-    if kind == "commit":
+    if kind == "starting_position":
+        from goa2.domain.hex import Hex
+        from goa2.engine.starting_positions import apply_position
+
+        sel = decision["sel"]
+        destination = sel.get("destination")
+        apply_position(
+            session.state,
+            str(hero_id),
+            destination=Hex.model_validate(destination) if destination is not None else None,
+            swap_with=sel.get("swap_with"),
+        )
+    elif kind == "commit":
         hero = session.state.get_hero(hero_id)
         if hero is None:
             raise ValueError(f"Replay: hero {hero_id} not found for commit")

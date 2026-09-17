@@ -86,6 +86,9 @@ def commit_card(state: GameState, hero_id: HeroID, card: Card):
         logger.warning("Error playing card: %s", e)
         return
 
+    from goa2.engine.starting_positions import clear_requests
+
+    clear_requests(state, str(hero_id))
     state.pending_inputs[hero_id] = card
     logger.info("%s committed a card.", hero_id)
 
@@ -110,6 +113,9 @@ def pass_turn(state: GameState, hero_id: HeroID):
     if len(hero.hand) > 0:
         raise ValueError(f"{hero_id} cannot pass while holding {len(hero.hand)} card(s)")
 
+    from goa2.engine.starting_positions import clear_requests
+
+    clear_requests(state, str(hero_id))
     state.pending_inputs[hero_id] = None
     logger.info("%s passed.", hero_id)
 
@@ -443,9 +449,10 @@ def record_position_snapshot(state: GameState):
     Snapshot every entity's position at the turn boundary.
 
     Call this wherever the phase becomes PLANNING (turn advance, round reset,
-    game creation). Planning moves nothing, so this single snapshot answers
-    both "where was that unit at the start of this turn" and "has this unit
-    remained in the same space since the last turn" (Emmitt).
+    game creation) and after starting-position edits. Planning moves nothing
+    else, so this single snapshot answers both "where was that unit at the
+    start of this turn" and "has this unit remained in the same space since
+    the last turn" (Emmitt).
     """
     state.last_turn_positions = dict(state.entity_locations)
 

@@ -120,6 +120,9 @@ class GameState(BaseModel):
     # resolving turn's finalization and reconnects. Cleared after another hero
     # finishes a turn, matching card_guess's tabletop presentation lifetime.
 
+    # Pending starting-position swap requests; only accepted edits enter replay.
+    starting_position_requests: dict[str, dict[str, str]] = Field(default_factory=dict)
+
     last_turn_positions: dict[BoardEntityID, Hex] = Field(
         default_factory=dict
     )  # Entity positions at the turn boundary, recorded wherever the phase
