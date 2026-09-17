@@ -13,6 +13,14 @@ if TYPE_CHECKING:
     from goa2.domain.state import GameState
 
 
+# Replacement actions stand in for the whole action they replace, so anything
+# preventing that action also prevents its replacement.
+_ACTION_PREREQUISITES: dict[ActionType, tuple[ActionType, ...]] = {
+    ActionType.FAST_TRAVEL: (ActionType.MOVEMENT,),
+    ActionType.CLEAR: (ActionType.ATTACK,),
+}
+
+
 class ActionValidationMixin:
     if TYPE_CHECKING:
         # Provided at runtime by sibling EffectValidationMixin in ValidationService.
@@ -43,6 +51,7 @@ class ActionValidationMixin:
         Checks: PREVENT_MOVEMENT, PREVENT_ATTACK, PREVENT_SKILL, etc.
         """
         context = context or {}
+        required_action_types = (*_ACTION_PREREQUISITES.get(action_type, ()), action_type)
 
         card_obj = context.get("card")
 
@@ -60,19 +69,20 @@ class ActionValidationMixin:
         # be evaluated per-piece (team + self identity resolve through the piece).
         def blocking_effect(check_id: str, check_hex: Hex) -> ActiveEffect | None:
             actor_unit = state.get_unit(UnitID(check_id))
-            for effect in state.active_effects:
-                if not self._is_effect_active(effect, state):
-                    continue
-                if action_type not in effect.restrictions:
-                    continue
-                if matches_exception(effect.except_card_colors):
-                    continue
-                if not self._is_in_scope(effect, check_id, check_hex, state):
-                    continue
-                if self._unit_ignores_effect_due_to_immunity(effect, check_id, state):
-                    continue
-                if self._actor_blocked_by_effect(effect, actor_unit, None, state):
-                    return effect
+            for required_action_type in required_action_types:
+                for effect in state.active_effects:
+                    if not self._is_effect_active(effect, state):
+                        continue
+                    if required_action_type not in effect.restrictions:
+                        continue
+                    if matches_exception(effect.except_card_colors):
+                        continue
+                    if not self._is_in_scope(effect, check_id, check_hex, state):
+                        continue
+                    if self._unit_ignores_effect_due_to_immunity(effect, check_id, state):
+                        continue
+                    if self._actor_blocked_by_effect(effect, actor_unit, None, state):
+                        return effect
             return None
 
         def card_effect_blocker(check_id: str) -> tuple[str, str] | None:
@@ -85,19 +95,20 @@ class ActionValidationMixin:
             """
             from goa2.engine.effects import get_active_aura_effects
 
-            for team in state.teams.values():
-                for source_hero in team.heroes:
-                    for source_card, card_effect in get_active_aura_effects(state, source_hero):
-                        reason = card_effect.get_action_prevention_reason(
-                            state,
-                            source_hero,
-                            source_card,
-                            check_id,
-                            action_type,
-                            card_obj if isinstance(card_obj, Card) else None,
-                        )
-                        if reason:
-                            return reason, str(source_hero.id)
+            for required_action_type in required_action_types:
+                for team in state.teams.values():
+                    for source_hero in team.heroes:
+                        for source_card, card_effect in get_active_aura_effects(state, source_hero):
+                            reason = card_effect.get_action_prevention_reason(
+                                state,
+                                source_hero,
+                                source_card,
+                                check_id,
+                                required_action_type,
+                                card_obj if isinstance(card_obj, Card) else None,
+                            )
+                            if reason:
+                                return reason, str(source_hero.id)
             return None
 
         def blocking_result(check_id: str, check_hex: Hex) -> ValidationResult | None:
@@ -148,12 +159,23 @@ class ActionValidationMixin:
         state: GameState,
         unit_id: str,
         context: dict[str, Any] | None = None,
+        source_card_id: str | None = None,
     ) -> ValidationResult:
         """
         Can unit perform Fast Travel?
-        Checks: PREVENT_FAST_TRAVEL status.
+
+        Fast Travel replaces a Movement action, so the unit must be allowed to
+        perform both Movement and Fast Travel. The latter remains a distinct
+        action restriction for effects that name Fast Travel explicitly.
         """
-        return self.can_perform_action(state, unit_id, ActionType.FAST_TRAVEL, context)
+        validation_context = dict(context or {})
+        card_id = source_card_id or validation_context.get("current_card_id")
+        if "card" not in validation_context and card_id:
+            card = state.get_card_by_id(card_id)
+            if card is not None:
+                validation_context["card"] = card
+
+        return self.can_perform_action(state, unit_id, ActionType.FAST_TRAVEL, validation_context)
 
     def can_repeat_action(
         self,

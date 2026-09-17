@@ -476,6 +476,7 @@ class FastTravelStep(GameStep):
     type: StepType = StepType.FAST_TRAVEL
     unit_id: str | None = None
     destination_key: str = "target_hex"
+    source_card_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         logger.debug("   [WARNING] FastTravelStep is deprecated. Use FastTravelSequenceStep.")
@@ -487,14 +488,66 @@ class FastTravelStep(GameStep):
 
         return StepResult(
             is_finished=True,
-            new_steps=[PlaceUnitStep(unit_id=actor_id, target_hex_arg=dest)],
+            new_steps=[
+                FastTravelUnitStep(
+                    unit_id=actor_id,
+                    target_hex_arg=dest,
+                    source_card_id=self.source_card_id,
+                )
+            ],
         )
+
+
+class FastTravelUnitStep(GameStep):
+    """Relocate a unit by Fast Travel: neither a move nor a place, so path
+    rules and PLACE prevention (e.g. Magnetic Dagger) do not apply."""
+
+    type: StepType = StepType.FAST_TRAVEL_UNIT
+    unit_id: str | None = None
+    destination_key: str = "target_hex"
+    target_hex_arg: Hex | None = None
+    require_zone_change: bool = False
+    source_card_id: str | None = None
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        base_actor_id = self.unit_id or state.current_actor_id
+        actor_id = state.resolve_board_actor(str(base_actor_id)) if base_actor_id else None
+        destination = self.target_hex_arg or context.get(self.destination_key)
+        if not actor_id or not destination or destination == "SKIP":
+            return StepResult(is_finished=True)
+
+        destination_hex = Hex(**destination) if isinstance(destination, dict) else destination
+
+        from goa2.engine.filters_hex import FastTravelDestinationFilter
+
+        destination_filter = FastTravelDestinationFilter(
+            unit_id=str(actor_id),
+            require_zone_change=self.require_zone_change,
+            source_card_id=self.source_card_id,
+        )
+        if not destination_filter.apply(destination_hex, state, context):
+            logger.debug("   [BLOCKED] FastTravelUnitStep: destination is no longer legal.")
+            return StepResult(is_finished=True, abort_action=self.is_mandatory)
+
+        from_hex = state.get_position(str(actor_id))
+        state.move_unit(UnitID(str(actor_id)), destination_hex)
+        event = GameEvent(
+            # Clients animate Fast Travel from UNIT_PLACED.
+            event_type=GameEventType.UNIT_PLACED,
+            actor_id=str(actor_id),
+            from_hex=_hex_dict(from_hex),
+            to_hex=_hex_dict(destination_hex),
+        )
+        return StepResult(is_finished=True, events=[event])
 
 
 class FastTravelSequenceStep(GameStep):
     """
     Composite Step for Fast Travel.
-    Expands into: Select Destination Hex -> Place Unit.
+    Expands into: Select Destination Hex -> Fast Travel relocation.
     """
 
     type: StepType = StepType.FAST_TRAVEL_SEQUENCE
@@ -503,6 +556,9 @@ class FastTravelSequenceStep(GameStep):
     # Silverarrow's Shoot and Scoot: "fast travel to an adjacent zone" — the
     # current zone is not adjacent to itself, so it is not a legal destination.
     require_zone_change: bool = False
+    # Stamped by effects.bind_effect_cards for card-text Fast Travel. This lets
+    # action-prevention exceptions inspect the card that granted the travel.
+    source_card_id: str | None = None
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
@@ -512,7 +568,12 @@ class FastTravelSequenceStep(GameStep):
         if not actor_id:
             return StepResult(is_finished=True)
 
-        travel_validation = state.validator.can_fast_travel(state, str(actor_id), context)
+        travel_validation = state.validator.can_fast_travel(
+            state,
+            str(actor_id),
+            context,
+            source_card_id=self.source_card_id,
+        )
         if not travel_validation.allowed:
             logger.debug(f"   [BLOCKED] FastTravelSequenceStep: {travel_validation.reason}")
             return StepResult(is_finished=True)
@@ -521,9 +582,11 @@ class FastTravelSequenceStep(GameStep):
             return StepResult(
                 is_finished=True,
                 new_steps=[
-                    PlaceUnitStep(
+                    FastTravelUnitStep(
                         unit_id=actor_id,
                         destination_key=self.destination_key,
+                        require_zone_change=self.require_zone_change,
+                        source_card_id=self.source_card_id,
                         is_mandatory=False,
                     )
                 ],
@@ -544,13 +607,16 @@ class FastTravelSequenceStep(GameStep):
                         FastTravelDestinationFilter(
                             unit_id=actor_id,
                             require_zone_change=self.require_zone_change,
+                            source_card_id=self.source_card_id,
                         )
                     ],
                     is_mandatory=False,
                 ),
-                PlaceUnitStep(
+                FastTravelUnitStep(
                     unit_id=actor_id,
                     destination_key=self.destination_key,
+                    require_zone_change=self.require_zone_change,
+                    source_card_id=self.source_card_id,
                     is_mandatory=False,
                 ),
             ],

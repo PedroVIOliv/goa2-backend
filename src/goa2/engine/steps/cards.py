@@ -861,7 +861,12 @@ class ResolveCardStep(GameStep):
                         )
 
                     elif act_type == ActionType.FAST_TRAVEL:
-                        steps_list.append(FastTravelSequenceStep(unit_id=self.hero_id))
+                        steps_list.append(
+                            FastTravelSequenceStep(
+                                unit_id=self.hero_id,
+                                source_card_id=card.id,
+                            )
+                        )
 
                     elif act_type == ActionType.ATTACK:
                         attack_base = card.current_secondary_actions.get(act_type, val)
@@ -2222,7 +2227,12 @@ class PerformCardActionStep(GameStep):
                 )
             ]
         if act_type == ActionType.FAST_TRAVEL:
-            return [FastTravelSequenceStep(unit_id=performer_id)]
+            return [
+                FastTravelSequenceStep(
+                    unit_id=performer_id,
+                    source_card_id=card.id,
+                )
+            ]
         if act_type == ActionType.ATTACK:
             attack_base = card.current_secondary_actions.get(act_type, val)
             base_rng = card.get_base_stat_value(StatType.RANGE)

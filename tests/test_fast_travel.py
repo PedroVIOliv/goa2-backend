@@ -16,6 +16,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.models.enums import DisplacementType
 from goa2.domain.state import GameState
 from goa2.domain.types import HeroID, UnitID
 from goa2.engine.handler import process_stack, push_steps
@@ -293,6 +294,36 @@ def _offered_hexes(state):
     return req["valid_options"]
 
 
+def _add_global_action_prevention(state, *restrictions):
+    """Add an enemy-authored global action-prevention effect."""
+    blocker_hex = Hex(q=-3, r=0, s=3)
+    state.board.zones["blocker_zone"] = Zone(id="blocker_zone", hexes={blocker_hex}, neighbors=[])
+    state.board.populate_tiles_from_zones()
+    blocker = Hero(
+        id=HeroID("blocker"),
+        name="Blocker",
+        team=TeamColor.BLUE,
+        deck=[],
+        hand=[],
+        items={},
+    )
+    state.teams[TeamColor.BLUE].heroes.append(blocker)
+    state.place_entity("blocker", blocker_hex)
+    state.active_effects.append(
+        ActiveEffect(
+            id="action_prevention",
+            source_id="blocker",
+            effect_type=EffectType.MOVEMENT_ZONE,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ALL_UNITS),
+            duration=DurationType.THIS_TURN,
+            restrictions=list(restrictions),
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+    )
+
+
 def test_fast_travel_cannot_cross_a_reality_split():
     """Audit §3.7: a destination across a reality split is illegal."""
     state = _two_zone_state()
@@ -367,3 +398,110 @@ def test_fast_travel_to_adjacent_zone_excludes_current_zone():
     assert Hex(q=-1, r=0, s=1).model_dump() not in offered
     assert Hex(q=1, r=0, s=-1).model_dump() in offered
     assert Hex(q=2, r=0, s=-2).model_dump() in offered
+
+
+def test_fast_travel_is_not_blocked_by_magnetic_dagger_placement_prevention():
+    """Fast Travel replaces Movement, but its relocation is not Place."""
+    state = _two_zone_state()
+    state.board.zones["z3"] = Zone(id="z3", hexes={Hex(q=-3, r=0, s=3)}, neighbors=[])
+    state.board.populate_tiles_from_zones()
+    wasp = Hero(
+        id=HeroID("hero_wasp"),
+        name="Wasp",
+        team=TeamColor.BLUE,
+        deck=[],
+        hand=[],
+        items={},
+    )
+    state.teams[TeamColor.BLUE].heroes.append(wasp)
+    state.place_entity("hero_wasp", Hex(q=-3, r=0, s=3))
+    state.active_effects.append(
+        ActiveEffect(
+            id="magnetic_dagger_effect",
+            source_id="hero_wasp",
+            source_card_id="magnetic_dagger",
+            effect_type=EffectType.PLACEMENT_PREVENTION,
+            scope=EffectScope(
+                shape=Shape.RADIUS,
+                range=3,
+                origin_id="hero_wasp",
+                affects=AffectsFilter.ENEMY_UNITS,
+            ),
+            duration=DurationType.THIS_TURN,
+            displacement_blocks=[DisplacementType.PLACE, DisplacementType.SWAP],
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+            blocks_enemy_actors=True,
+            blocks_friendly_actors=False,
+            blocks_self=False,
+        )
+    )
+
+    push_steps(state, [FastTravelSequenceStep(unit_id="hero1")])
+    req = process_stack(state).input_request
+    assert req is not None
+    destination = Hex(q=-1, r=0, s=1)
+    assert destination.model_dump() in req["valid_options"]
+
+    state.execution_stack[-1].pending_input = {"selection": destination.model_dump()}
+    result = process_stack(state)
+
+    assert result.input_request is None
+    assert state.get_position("hero1") == destination
+
+
+def test_fast_travel_inherits_movement_action_prevention():
+    """A unit that cannot perform Movement cannot choose or execute Fast Travel."""
+    state = _two_zone_state()
+    _add_global_action_prevention(state, ActionType.MOVEMENT)
+
+    assert not state.validator.can_perform_action(state, "hero1", ActionType.FAST_TRAVEL).allowed
+    assert not state.validator.can_fast_travel(state, "hero1").allowed
+
+    push_steps(state, [FastTravelSequenceStep(unit_id="hero1")])
+    assert process_stack(state).input_request is None
+    assert state.get_position("hero1") == Hex(q=-2, r=0, s=2)
+
+
+def test_movement_prevention_removes_fast_travel_action_option():
+    from goa2.domain.models import Card, CardColor, CardTier
+    from goa2.engine.steps import ResolveCardStep
+
+    state = _two_zone_state()
+    hero = state.get_hero("hero1")
+    hero.current_turn_card = Card(
+        id="travel_card",
+        name="Travel Card",
+        tier=CardTier.I,
+        initiative=1,
+        primary_action=ActionType.SKILL,
+        secondary_actions={ActionType.FAST_TRAVEL: 0},
+        color=CardColor.BLUE,
+        effect_id="test_effect",
+        effect_text="",
+        is_facedown=False,
+    )
+    _add_global_action_prevention(state, ActionType.MOVEMENT)
+
+    push_steps(state, [ResolveCardStep(hero_id="hero1")])
+    req = process_stack(state).input_request
+
+    assert req is not None
+    assert "FAST_TRAVEL" not in {option["id"] for option in req["options"]}
+
+
+def test_fast_travel_revalidates_prefilled_destination_and_zone_change():
+    """Persistence/replay data cannot bypass the atomic destination check."""
+    state = _two_zone_state()
+    same_zone = Hex(q=-1, r=0, s=1)
+    state.execution_context["target_hex"] = same_zone
+
+    push_steps(
+        state,
+        [FastTravelSequenceStep(unit_id="hero1", require_zone_change=True)],
+    )
+    result = process_stack(state)
+
+    assert result.input_request is None
+    assert state.get_position("hero1") == Hex(q=-2, r=0, s=2)

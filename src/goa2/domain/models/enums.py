@@ -129,6 +129,7 @@ class StepType(StrEnum):
     MOVE_SEQUENCE = "move_sequence"
     FAST_TRAVEL = "fast_travel"
     FAST_TRAVEL_SEQUENCE = "fast_travel_sequence"
+    FAST_TRAVEL_UNIT = "fast_travel_unit"
     REACTION_WINDOW = "reaction_window"
     REMOVE_UNIT = "remove_unit"
     REMOVE_TOKEN = "remove_token"

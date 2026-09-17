@@ -13,6 +13,14 @@ from goa2.domain.models import (
     Team,
     TeamColor,
 )
+from goa2.domain.models.effect import (
+    ActiveEffect,
+    AffectsFilter,
+    DurationType,
+    EffectScope,
+    EffectType,
+    Shape,
+)
 from goa2.domain.state import GameState
 from goa2.domain.tile import Tile
 from goa2.engine.validation import ValidationResult, ValidationService
@@ -226,6 +234,29 @@ class TestValidationServiceCanPerformAction:
         validator = ValidationService()
         result = validator.can_perform_action(empty_state, "hero_1", ActionType.MOVEMENT)
         assert result.allowed is True
+
+    def test_attack_prevention_also_prevents_clear(self, state_with_heroes):
+        state_with_heroes.active_effects.append(
+            ActiveEffect(
+                id="attack_prevention",
+                source_id="blue_hero",
+                effect_type=EffectType.MOVEMENT_ZONE,
+                scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ENEMY_HEROES),
+                duration=DurationType.THIS_TURN,
+                restrictions=[ActionType.ATTACK],
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+            )
+        )
+        validator = ValidationService()
+
+        assert not validator.can_perform_action(
+            state_with_heroes, "red_hero", ActionType.CLEAR
+        ).allowed
+        assert validator.can_perform_action(
+            state_with_heroes, "red_hero", ActionType.MOVEMENT
+        ).allowed
 
 
 class TestValidationServiceCanBePlaced:

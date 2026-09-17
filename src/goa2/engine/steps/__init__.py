@@ -80,6 +80,7 @@ from goa2.engine.steps.movement import (  # noqa: F401
     DirectionalMoveUnitsStep,
     FastTravelSequenceStep,
     FastTravelStep,
+    FastTravelUnitStep,
     ForceDefenseCardMovementStep,
     MinePathChoiceStep,
     MoveSequenceStep,

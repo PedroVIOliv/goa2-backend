@@ -731,6 +731,7 @@ def test_witching_hour_hides_attack_choice_when_current_computed_attack_is_negat
     run.expect_input(InputRequestType.CHOOSE_ACTION)
 
     assert "ATTACK" not in _option_set(run)
+    assert "CLEAR" not in _option_set(run)
     assert "MOVEMENT" in _option_set(run)
 
 
@@ -740,8 +741,10 @@ def test_witching_hour_counts_already_active_items_and_only_applies_in_radius() 
     item_run = run_card(rescued_by_item, "enemy")
     item_run.expect_input(InputRequestType.CHOOSE_ACTION)
     assert "ATTACK" in _option_set(item_run)  # 3 base + 8 item - 10 = 1
+    assert "CLEAR" in _option_set(item_run)
 
     outside_radius = _witching_state(enemy_at=(5, 0, -5))
     range_run = run_card(outside_radius, "enemy")
     range_run.expect_input(InputRequestType.CHOOSE_ACTION)
     assert "ATTACK" in _option_set(range_run)
+    assert "CLEAR" in _option_set(range_run)
