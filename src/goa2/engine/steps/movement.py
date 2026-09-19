@@ -1860,24 +1860,26 @@ class ForceDefenseCardMovementStep(GameStep):
                     unit_id=str(defender_id),
                     range_val=move_val,
                     destination_key="sj_forced_dest",
-                    is_mandatory=False,
                     force_straight_line=True,
                     force_full_distance=True,
                 ),
             ]
 
-        # Wrap in actor switch: set defender as actor, push movement, restore
+        # Wrap in actor switch: set defender as actor, push movement, restore.
+        # RestoreActionContextStep sits above the actor restore because it is the
+        # abort boundary: a mandatory failure inside the defender's forced move
+        # pops back to it, so anything below it survives to unwind the actor swap.
         new_steps: list[GameStep] = [
             SetActorStep(
                 actor_id=str(defender_id),
                 save_key="sj_saved_actor",
             ),
             *movement_steps,
+            RestoreActionContextStep(other_hero_action=True),
             SetActorStep(
                 actor_key="sj_saved_actor",
                 save_key="sj_saved_actor_unused",
             ),
-            RestoreActionContextStep(),
         ]
 
         return StepResult(is_finished=True, new_steps=new_steps)
@@ -1905,5 +1907,6 @@ class ForceDefenseCardMovementStep(GameStep):
             if isinstance(step, MoveSequenceStep):
                 step.force_straight_line = True
                 step.force_full_distance = True
+                step.is_mandatory = True
 
         return steps

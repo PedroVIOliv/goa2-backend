@@ -105,7 +105,10 @@ def _clear_after_abort(state: GameState):
     """
     if _clear_to_pending_combat(state):
         return
-    _clear_to_finalize(state)
+    if _clear_to_finalize(state):
+        # Stopped at another hero's nested action, whose RestoreActionContextStep
+        # unwinds its own level of the context stack when it resolves.
+        return
     from goa2.engine.steps.phases import restore_action_context
 
     while state.execution_context.get("action_context_stack"):
@@ -161,15 +164,21 @@ def _clear_to_pending_combat(state: GameState) -> bool:
     return True
 
 
-def _clear_to_finalize(state: GameState):
+def _clear_to_finalize(state: GameState) -> bool:
     """
     Clears all steps from the stack until ConfirmResolutionStep or FinalizeHeroTurnStep is found.
     Stops at ConfirmResolutionStep so the player can review the abort and optionally rollback.
+
+    Returns True when it stopped at another hero's nested action, i.e. only that
+    nested action was cancelled and the outer hero's action resumes.
     """
     from goa2.engine.steps import ConfirmResolutionStep, FinalizeHeroTurnStep
+    from goa2.engine.steps.phases import RestoreActionContextStep
 
     while state.execution_stack:
         step = state.execution_stack[-1]
+        if isinstance(step, RestoreActionContextStep) and step.other_hero_action:
+            return True
         if (
             isinstance(
                 step, (ConfirmResolutionStep, FinalizeHeroTurnStep, FinishedExpiringEffectStep)
@@ -179,14 +188,26 @@ def _clear_to_finalize(state: GameState):
             break
         state.execution_stack.pop()
         logger.debug("Skipped step: %s", step.type)
+    return False
 
 
 def _action_controller(state: GameState, player_id: str) -> str | None:
-    """The Ultimate Trick (Hanu): if `player_id` is the current actor and an
-    active CONTROL_NEXT_ACTION effect targets them for the exact card they are
-    resolving, return the controlling hero's id. The remap changes only who
-    answers — options/legality were already computed relative to the actor."""
+    """The Ultimate Trick (Hanu): if `player_id` is resolving their own turn on
+    the card an active CONTROL_NEXT_ACTION effect targets, return the
+    controlling hero's id. The remap changes only who answers — options/legality
+    were already computed relative to the actor.
+
+    Control covers that hero's whole turn window, including nested actions their
+    card spawns (NebKher performing a card in another slot, Gydion casting a
+    spell) and prompts outside any card (respawn placement, passive confirms) —
+    hence the turn card, not the card currently being performed. It requires
+    ``resolution_owner_id`` to be them as well: an action forced on them during
+    someone else's turn (Whisper making the defender move on their defense card)
+    is not their controlled action, so they answer it themselves.
+    """
     if state.current_actor_id is None or player_id != str(state.current_actor_id):
+        return None
+    if state.resolution_owner_id is None or player_id != str(state.resolution_owner_id):
         return None
     hero = state.get_hero(state.current_actor_id)
     if hero is None or hero.current_turn_card is None:

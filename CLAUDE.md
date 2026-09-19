@@ -152,6 +152,16 @@ SelectStep(..., is_mandatory=True)   # Failure → abort_action=True → skip to
 MoveUnitStep(..., is_mandatory=False) # Failure → continue to next step
 ```
 
+The rulebook scopes this to the card text being followed: "stop performing the
+action at that step, and skip any remaining steps." A nested action the acting
+hero performs themselves is part of that text, so its failure stops the whole
+outer action too (Ursafar's Angry Roar loses its trailing "This round: You are
+enraged."). A nested action performed by **another** hero is not — their
+inability cannot stop the acting hero's card, which is why those clauses read
+"if able". Mark those with `RestoreActionContextStep(other_hero_action=True)`
+and the abort unwinds only to there; place the effect's own unwinding (actor
+restores, etc.) below that step so it survives.
+
 ### Context Passing
 
 Steps share data via `execution_context`:

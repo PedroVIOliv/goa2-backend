@@ -61,7 +61,7 @@ All steps inherit from `GameStep` which provides these base fields:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `is_mandatory` | `bool` | `True` | If `True` and step fails, `abort_action=True` (skips to `FinalizeHeroTurnStep`). If `False`, step is skipped on failure. |
+| `is_mandatory` | `bool` | `True` | If `True` and step fails, `abort_action=True` (skips to `FinalizeHeroTurnStep`, or to an enclosing `RestoreActionContextStep(other_hero_action=True)` when the failing step belongs to another hero's nested action). If `False`, step is skipped on failure. |
 | `active_if_key` | `str \| None` | `None` | If set, step only runs when this key exists (non-None) in context. |
 
 ---

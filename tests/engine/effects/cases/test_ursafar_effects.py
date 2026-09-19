@@ -292,3 +292,49 @@ def test_enraged_swap_cards_allow_optional_additional_movement(
 
     assert state.entity_locations["hero_ursafar"] == additional_destination
     assert state.entity_locations["enemy"] == Hex(q=1, r=0, s=-1)
+
+
+@pytest.mark.effect_flow
+def test_angry_roar_rage_is_lost_when_the_performed_card_aborts() -> None:
+    """Angry Roar performs the action itself, so a mandatory step it cannot
+    complete stops Angry Roar there: "This round: You are enraged." is a later
+    step in the same card text and is skipped with the rest."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, 0, -q) for q in range(6)])
+        .red_hero(
+            "hero_ursafar",
+            name="Ursafar",
+            at=(0, 0, 0),
+            current_card=hero_card("Ursafar", "angry_roar"),
+        )
+        .blue_hero("hero_far", name="Far", at=(5, 0, -5))
+        .with_actor("hero_ursafar")
+        .build()
+    )
+    ursafar = state.get_hero("hero_ursafar")
+    assert ursafar is not None
+    # Claws That Catch attacks an adjacent unit; nothing is adjacent, so its
+    # mandatory target selection aborts the performed action.
+    claws = hero_card("Ursafar", "claws_that_catch")
+    claws.state = CardState.RESOLVED
+    claws.is_active = True
+    ursafar.played_cards = [claws]
+    _make_ursafar_enraged(state)
+
+    def rage_effects() -> int:
+        return sum(
+            1
+            for effect in state.active_effects
+            if effect.effect_type == EffectType.ENRAGED and effect.source_id == "hero_ursafar"
+        )
+
+    assert rage_effects() == 1
+
+    run = run_card(state, "hero_ursafar")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("claws_that_catch").finish()
+
+    assert rage_effects() == 1
+    assert "action_context_stack" not in state.execution_context

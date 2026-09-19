@@ -389,9 +389,18 @@ class RestoreActionTypeStep(GameStep):
 
 
 class RestoreActionContextStep(GameStep):
-    """Restore the outer card/action source after a nested performed action."""
+    """Restore the outer card/action source after a nested performed action.
+
+    ``other_hero_action`` marks a nested action performed by someone else (the
+    defender forced to move on their own defense card). Their inability cannot
+    stop the acting hero's card text, so the abort unwinds to here and the outer
+    action resumes. Left False, the nested action is the acting hero's own card
+    text and a mandatory failure stops that whole action, per the rulebook:
+    "stop performing the action at that step, and skip any remaining steps."
+    """
 
     type: StepType = StepType.RESTORE_ACTION_CONTEXT
+    other_hero_action: bool = False
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         restore_action_context(context)

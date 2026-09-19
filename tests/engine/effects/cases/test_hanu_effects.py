@@ -1520,3 +1520,122 @@ def test_hanu_defeat_ends_the_journey_immunity() -> None:
     assert _immunity_effects(state) == []
     state.current_actor_id = "red_ally"
     assert is_immune(state.get_unit("blue_enemy"), state) is False
+
+
+@pytest.mark.effect_flow
+def test_control_does_not_reach_a_forced_action_on_another_card() -> None:
+    """Control is scoped to the card Hurry Up! targeted. A movement Whisper
+    forces onto the defender's *defense* card is a different card, so the
+    defender answers it even while their own turn card is controlled."""
+    from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+    from goa2.domain.types import HeroID
+    from goa2.engine.effect_manager import EffectManager
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, 0, -q) for q in range(6)])
+        .red_hero(
+            "hero_whisper",
+            at=(0, 0, 0),
+            current_card=hero_card("Whisper", "swift_justice"),
+        )
+        .red_hero("hero_hanu", at=(0, 1, -1))
+        .blue_hero("blue_enemy", at=(2, 0, -2), current_card=_basic_attack_card())
+        .with_actor("hero_whisper")
+        .build()
+    )
+    defender = state.get_hero("blue_enemy")
+    assert defender is not None
+    defender.hand.append(hero_card("Garrus", "terrify"))
+    hanu = state.get_hero("hero_hanu")
+    assert hanu is not None
+    hanu.level = 8
+    hanu.ultimate_card = hero_card("Hanu", "the_ultimate_trick")
+
+    # Hanu already hit blue_enemy's unresolved card with Hurry Up! this round.
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_hanu",
+        effect_type=EffectType.CONTROL_NEXT_ACTION,
+        scope=EffectScope(shape=Shape.POINT, origin_id="blue_enemy"),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+        controlled_card_id=defender.current_turn_card.id,
+    )
+
+    # Whisper owns the turn being resolved, not the controlled defender.
+    state.resolution_owner_id = HeroID("hero_whisper")
+
+    run = run_card(state, "hero_whisper")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_enemy").expect_input("SELECT_CARD_OR_PASS")
+    run.choose("terrify").expect_input(InputRequestType.SELECT_HEX)
+
+    assert run.latest_request is not None
+    assert run.latest_request.player_id == "blue_enemy"
+    assert "controlled_hero_id" not in run.latest_request.context
+
+
+@pytest.mark.effect_flow
+def test_control_persists_while_the_controlled_card_performs_another_card() -> None:
+    """A controlled card that performs another card (Ursafar's Angry Roar, or a
+    cast spell) stays inside the controlled hero's action window — Hanu keeps
+    answering, even though the card being performed is a different one."""
+    from goa2.domain.models import CardState
+    from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
+    from goa2.engine.effect_manager import EffectManager
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(5))
+        .red_hero("hero_hanu", at=(0, 0, 0), current_card=hero_card("Hanu", "hurry_up"))
+        .blue_hero(
+            "blue_enemy",
+            at=(2, 0, -2),
+            current_card=hero_card("Ursafar", "angry_roar"),
+        )
+        .red_minion("red_target", at=(1, 0, -1))
+        .with_unresolved_heroes(["blue_enemy"])
+        .with_actor("hero_hanu")
+        .build()
+    )
+    hanu = state.get_hero("hero_hanu")
+    assert hanu is not None
+    hanu.level = 8
+    hanu.ultimate_card = hero_card("Hanu", "the_ultimate_trick")
+
+    enemy = state.get_hero("blue_enemy")
+    assert enemy is not None
+    # An active played card whose primary action prompts for a target.
+    claws = hero_card("Ursafar", "claws_that_catch")
+    claws.state = CardState.RESOLVED
+    claws.is_active = True
+    enemy.played_cards = [claws]
+    EffectManager.create_effect(
+        state=state,
+        source_id="blue_enemy",
+        effect_type=EffectType.ENRAGED,
+        scope=EffectScope(shape=Shape.POINT, origin_id="blue_enemy"),
+        duration=DurationType.THIS_ROUND,
+        is_active=True,
+    )
+
+    run = run_card(state, "hero_hanu", finalize_turn=True)
+    _play_hurry_up(run)
+
+    # blue_enemy's turn, under control: Angry Roar itself...
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    assert run.latest_request is not None
+    assert run.latest_request.player_id == "hero_hanu"
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_CARD)
+    assert run.latest_request is not None
+    assert run.latest_request.player_id == "hero_hanu"
+
+    # ...and the nested action of the card it performs.
+    run.choose("claws_that_catch").expect_input(InputRequestType.SELECT_UNIT)
+    assert state.execution_context["current_card_id"] == "claws_that_catch"
+    assert run.latest_request is not None
+    assert run.latest_request.player_id == "hero_hanu"
+    assert run.latest_request.context["controlled_hero_id"] == "blue_enemy"

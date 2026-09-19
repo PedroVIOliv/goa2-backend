@@ -1479,6 +1479,12 @@ the acting hero carry:
 Everything else is unchanged: options are computed relative to the controlled
 hero (the controller can only pick choices that hero could legally make), and
 requests addressed to other players (defenders, team choices) are unaffected.
+Control is scoped to the controlled hero's own turn, and covers everything in
+it — including nested actions their card performs (a card played from another
+slot, a cast spell) and prompts outside any card (respawn placement, passive
+confirms). An action forced on them during *someone else's* turn (e.g. Whisper's
+Swift Justice making them move on their defense card) is answered by that hero
+themselves, with no `controlled_hero_id`.
 Clients should render prompts as "*controller* is controlling *hero*" when
 `controlled_hero_id` is present. This field only appears during controlled
 actions; the change is additive. An `EFFECT_CREATED` event with
