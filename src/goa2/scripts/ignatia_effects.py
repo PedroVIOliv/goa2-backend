@@ -12,7 +12,10 @@ them without engine changes:
   resolve time (the moment the action is performed).
 * **Equilibrium** (Silver) — while a THIS_ROUND ``EffectType.EQUILIBRIUM`` effect
   is active she may pick either branch, so the coin read is replaced by a
-  blue/orange prompt with both branches gated.
+  blue/orange prompt with both branches gated. It covers "perform *or repeat*",
+  so a branch's own "may repeat once" clause gets a second prompt: the clause is
+  granted by the branch she picked, but the repeat may apply either text (see
+  ``_repeat_block``).
 * **Chaos Incarnate** (ultimate) — after performing, ``_maybe_ultimate`` appends
   a ``MayRepeatOnceStep`` whose template flips the coin and performs the action
   again with different targets. Off Equilibrium the re-perform is the opposite
@@ -34,7 +37,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.engine.effects import CardEffect, register_effect
-from goa2.engine.filters_composite import CountMatchFilter, OrFilter
+from goa2.engine.filters_composite import AndFilter, CountMatchFilter, OrFilter
 from goa2.engine.filters_geometry import (
     HasStraightLineDestinationFilter,
     InStraightLineFilter,
@@ -121,6 +124,90 @@ def _repeat_gate(prefix: str, target_filters: list) -> list[GameStep]:
             operator=">=",
             threshold=1,
             output_key=f"{prefix}_can_repeat",
+        ),
+    ]
+
+
+def _repeat_faces(state: GameState, hero: Hero, granting_face: str) -> list[str]:
+    """Coin texts a repeat clause may be resolved under. Equilibrium extends to
+    both: "each time you perform OR REPEAT a primary action"."""
+    if _equilibrium_active(state, hero):
+        return ["BLUE", "ORANGE"]
+    return [granting_face]
+
+
+def _repeat_block(
+    prefix: str,
+    faces: list[str],
+    variants: dict[str, tuple],
+    prompt: str,
+    select_prompt: dict[str, str],
+) -> list[GameStep]:
+    """Gate + ``MayRepeatOnceStep`` for an in-branch "may repeat once" clause.
+
+    ``faces`` is every coin text the repeat may be resolved under: one face
+    normally, both under Equilibrium ("each time you perform *or repeat* a
+    primary action"). ``variants[face]`` is ``(filters_factory, attack_factory)``
+    — factories so the gate and the select never share filter instances.
+    """
+    if len(faces) == 1:
+        filters, attack = variants[faces[0]]
+        gate_filters = filters()
+        template: list[GameStep] = [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=select_prompt[faces[0]],
+                output_key=f"{prefix}_target",
+                is_mandatory=True,
+                filters=filters(),
+            ),
+            attack(),
+        ]
+    else:
+        gate_filters = [OrFilter(filters=[AndFilter(filters=variants[f][0]()) for f in faces])]
+        template = [
+            SelectStep(
+                target_type=TargetType.NUMBER,
+                prompt="Equilibrium: apply blue or orange text to the repeat?",
+                number_options=[1, 2],
+                number_labels={1: "Blue", 2: "Orange"},
+                output_key=f"{prefix}_choice",
+                is_mandatory=True,
+            ),
+            CheckContextConditionStep(
+                input_key=f"{prefix}_choice",
+                operator="==",
+                threshold=1,
+                output_key=f"{prefix}_is_blue",
+            ),
+            CheckContextConditionStep(
+                input_key=f"{prefix}_choice",
+                operator="==",
+                threshold=2,
+                output_key=f"{prefix}_is_orange",
+            ),
+        ]
+        for face in faces:
+            filters, attack = variants[face]
+            flag = f"{prefix}_is_{face.lower()}"
+            select = SelectStep(
+                target_type=TargetType.UNIT,
+                prompt=select_prompt[face],
+                output_key=f"{prefix}_target",
+                is_mandatory=True,
+                filters=filters(),
+                active_if_key=flag,
+            )
+            attack_step = attack()
+            attack_step.active_if_key = flag
+            template += [select, attack_step]
+
+    return [
+        *_repeat_gate(prefix, gate_filters),
+        MayRepeatOnceStep(
+            active_if_key=f"{prefix}_can_repeat",
+            prompt=prompt,
+            steps_template=template,
         ),
     ]
 
@@ -286,43 +373,47 @@ class LooselyAimedFireboltsEffect(_FireAttackEffect):
 
     def _orange_steps(self, state, hero, card, stats, slot, exclude):
         first = self._attack(stats, slot, InStraightLineFilter(), exclude)
+        prefix = f"ign_{slot}_lf"
 
-        def target_filters() -> list:
-            # Fresh instances: the gate and the select agree without aliasing.
-            return [
-                UnitTypeFilter(unit_type="HERO"),
-                TeamFilter(relation="ENEMY"),
-                RangeFilter(max_range=stats.range),
-                InStraightLineFilter(),
-                ExcludeIdentityFilter(exclude_keys=[f"ign_{slot}_v1", *exclude]),
-            ]
+        def filters(line_filter_cls):
+            def build() -> list:
+                return [
+                    UnitTypeFilter(unit_type="HERO"),
+                    TeamFilter(relation="ENEMY"),
+                    RangeFilter(max_range=stats.range),
+                    line_filter_cls(),
+                    ExcludeIdentityFilter(exclude_keys=[f"ign_{slot}_v1", *exclude]),
+                ]
+
+            return build
+
+        def attack() -> AttackSequenceStep:
+            return AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=stats.range,
+                is_ranged=True,
+                target_id_key=f"{prefix}_target",
+            )
 
         return [
             first,
-            *_repeat_gate(f"ign_{slot}_lf", target_filters()),
-            MayRepeatOnceStep(
-                active_if_key=f"ign_{slot}_lf_can_repeat",
-                prompt="Repeat once on a different enemy hero in a straight line?",
-                steps_template=[
-                    SelectStep(
-                        target_type=TargetType.UNIT,
-                        prompt="Target a different enemy hero in range and in a straight line",
-                        output_key=f"ign_{slot}_v2",
-                        is_mandatory=True,
-                        filters=target_filters(),
-                    ),
-                    AttackSequenceStep(
-                        damage=stats.primary_value,
-                        range_val=stats.range,
-                        is_ranged=True,
-                        target_id_key=f"ign_{slot}_v2",
-                    ),
-                ],
+            *_repeat_block(
+                prefix,
+                _repeat_faces(state, hero, "ORANGE"),
+                {
+                    "ORANGE": (filters(InStraightLineFilter), attack),
+                    "BLUE": (filters(NotInStraightLineFilter), attack),
+                },
+                prompt="Repeat once on a different enemy hero?",
+                select_prompt={
+                    "ORANGE": "Target a different enemy hero in range and in a straight line",
+                    "BLUE": "Target a different enemy hero in range, not in a straight line",
+                },
             ),
         ]
 
     def _first_target_keys(self, slot):
-        return [f"ign_{slot}_v1", f"ign_{slot}_v2"]
+        return [f"ign_{slot}_v1", f"ign_{slot}_lf_target"]
 
 
 # =============================================================================
@@ -383,41 +474,55 @@ class ImminentEruptionEffect(_RangeExtremeAttackEffect):
             target_output_key=f"ign_{slot}_v1",
             target_filters=_excl(exclude),
         )
+        prefix = f"ign_{slot}_ie"
 
-        def target_filters() -> list:
-            return [
-                UnitTypeFilter(unit_type="MINION"),
-                TeamFilter(relation="ENEMY"),
-                RangeFilter(max_range=1),
-                *_excl(exclude),
-            ]
+        def filters(range_filter):
+            def build() -> list:
+                return [
+                    UnitTypeFilter(unit_type="MINION"),
+                    TeamFilter(relation="ENEMY"),
+                    range_filter(),
+                    *_excl(exclude),
+                ]
+
+            return build
+
+        def attack(range_val: int):
+            def build() -> AttackSequenceStep:
+                return AttackSequenceStep(
+                    damage=stats.primary_value,
+                    range_val=range_val,
+                    is_ranged=True,
+                    target_id_key=f"{prefix}_target",
+                )
+
+            return build
 
         return [
             first,
-            *_repeat_gate(f"ign_{slot}_ie", target_filters()),
-            MayRepeatOnceStep(
-                active_if_key=f"ign_{slot}_ie_can_repeat",
-                prompt="Repeat once on an adjacent minion?",
-                steps_template=[
-                    SelectStep(
-                        target_type=TargetType.UNIT,
-                        prompt="Target an adjacent minion",
-                        output_key=f"ign_{slot}_v2",
-                        is_mandatory=True,
-                        filters=target_filters(),
+            *_repeat_block(
+                prefix,
+                _repeat_faces(state, hero, "BLUE"),
+                {
+                    "BLUE": (
+                        filters(lambda: RangeFilter(max_range=1)),
+                        attack(1),
                     ),
-                    AttackSequenceStep(
-                        damage=stats.primary_value,
-                        range_val=1,
-                        is_ranged=True,
-                        target_id_key=f"ign_{slot}_v2",
+                    "ORANGE": (
+                        filters(lambda: RangeFilter(min_range=stats.range, max_range=stats.range)),
+                        attack(stats.range),
                     ),
-                ],
+                },
+                prompt="Repeat once on a minion?",
+                select_prompt={
+                    "BLUE": "Target an adjacent minion",
+                    "ORANGE": "Target a minion at maximum range",
+                },
             ),
         ]
 
     def _first_target_keys(self, slot):
-        return [f"ign_{slot}_v1", f"ign_{slot}_v2"]
+        return [f"ign_{slot}_v1", f"ign_{slot}_ie_target"]
 
 
 # =============================================================================

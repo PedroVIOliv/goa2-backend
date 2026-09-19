@@ -11,9 +11,9 @@ import pytest
 from goa2.data.heroes.registry import HeroRegistry
 from goa2.domain.events import GameEventType
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import TeamColor
+from goa2.domain.models import ActionType, CardColor, TeamColor
 
-from ..builders import EffectScenarioBuilder, hero_card, hex_at
+from ..builders import EffectScenarioBuilder, hero_card, hex_at, skill_card
 from ..runner import run_card
 
 
@@ -69,6 +69,14 @@ def _option_set(run) -> set:
         else:
             options.add(option)
     return options
+
+
+def _give_big_shield(state, hero_id: str) -> None:
+    """A defense card large enough that the hero survives any Ignatia attack,
+    so later exclusion assertions are about the exclusion and not about death."""
+    shield = skill_card(f"shield_{hero_id}", color=CardColor.BLUE)
+    shield.secondary_actions = {ActionType.DEFENSE: 20}
+    state.get_hero(hero_id).hand = [shield]
 
 
 def _set_coin(state, face: str) -> None:
@@ -348,6 +356,216 @@ def test_loosely_blue_attacks_off_axis_without_repeat() -> None:
     run.choose("PASS").finish()
 
 
+@pytest.mark.effect_flow
+def test_loosely_equilibrium_repeat_may_apply_the_blue_text() -> None:
+    """Equilibrium covers "perform OR repeat": the orange repeat clause grants
+    the repeat, but its text may be blue — a different hero NOT in line."""
+    state = _loosely_state()
+    _set_coin(state, "BLUE")  # coin is irrelevant under Equilibrium
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)  # 2 = Orange
+    run.choose("m_on").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)  # 1 = Blue on the repeat
+
+    opts = _option_set(run)
+    assert "h_off" in opts  # blue text: off the straight line
+    assert "h_on" not in opts  # in line -> orange text only
+    assert "m_on2" not in opts  # the repeat clause still restricts to heroes
+
+    run.choose("h_off").expect_input("SELECT_CARD_OR_PASS")
+    run.choose("PASS").finish()
+    combats = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert len(combats) == 2  # the first attack and the blue-text repeat
+
+
+@pytest.mark.effect_flow
+def test_loosely_equilibrium_repeat_may_apply_the_orange_text() -> None:
+    """The other half of the repeat prompt: the text that granted the repeat."""
+    state = _loosely_state()
+    _set_coin(state, "BLUE")
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)  # 2 = Orange
+    run.choose("m_on").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)  # 2 = Orange on the repeat
+
+    opts = _option_set(run)
+    assert "h_on" in opts  # orange text: in the straight line
+    assert "h_off" not in opts
+
+    run.choose("h_on").expect_input("SELECT_CARD_OR_PASS")
+    run.choose("PASS").finish()
+    combats = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert len(combats) == 2
+
+
+@pytest.mark.effect_flow
+def test_loosely_equilibrium_ultimate_reperform_gets_its_own_branching_repeat() -> None:
+    """Four attacks in one action: each performance picks a text, and each
+    grants its own repeat that picks a text again. Targets never repeat."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero(
+            "hero_ignatia",
+            at=(0, 0, 0),
+            current_card=hero_card("Ignatia", "loosely_aimed_firebolts"),
+        )
+        .blue_minion("m_on", at=(2, 0, -2))  # in line
+        .blue_minion("m_on2", at=(0, 2, -2))  # in line
+        .blue_hero("h_on1", at=(-2, 0, 2))  # in line
+        .blue_hero("h_on2", at=(0, -2, 2))  # in line
+        .blue_hero("h_off", at=(2, -1, -1))  # off the axis
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    _set_coin(state, "BLUE")
+    _enable_equilibrium(state)
+    _enable_ultimate(state)
+    _give_big_shield(state, "h_on1")
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+
+    # -- first performance: orange text, orange repeat ----------------------
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("m_on").expect_input(InputRequestType.SELECT_OPTION)
+    assert "Chaos Incarnate" not in run.latest_request.prompt
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("h_on1").expect_input("SELECT_CARD_OR_PASS")
+
+    # -- Chaos Incarnate re-perform: orange text again ----------------------
+    run.choose("shield_h_on1").expect_input(InputRequestType.SELECT_OPTION)
+    assert "Chaos Incarnate" in run.latest_request.prompt
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+
+    assert "h_on1" in state.entity_locations  # it blocked, so exclusion is what hides it
+    opts = _option_set(run)
+    assert "h_on1" not in opts  # already hit by the first performance
+    assert {"m_on2", "h_on2"} <= opts
+    run.choose("m_on2").expect_input(InputRequestType.SELECT_OPTION)
+
+    # -- the re-perform's own repeat, this time under the blue text ---------
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)
+
+    opts = _option_set(run)
+    # Only h_off is off the axis, so this set is fixed by the blue text's
+    # geometry; the exclusion chain itself is covered by the test below.
+    assert opts == {"h_off"}
+    run.choose("h_off").expect_input("SELECT_CARD_OR_PASS")
+    run.choose("PASS").finish()
+
+    combats = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert len(combats) == 4
+
+
+@pytest.mark.effect_flow
+def test_loosely_equilibrium_ultimate_excludes_every_earlier_target_in_turn() -> None:
+    """Exclusion chain across all four attacks. Every candidate is an in-line
+    enemy hero that blocks and survives, so each option set narrows only
+    because the earlier targets are excluded — never because of geometry,
+    unit type or death."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero(
+            "hero_ignatia",
+            at=(0, 0, 0),
+            current_card=hero_card("Ignatia", "loosely_aimed_firebolts"),
+        )
+        .blue_hero("h1", at=(2, 0, -2))
+        .blue_hero("h2", at=(-2, 0, 2))
+        .blue_hero("h3", at=(0, 2, -2))
+        .blue_hero("h4", at=(0, -2, 2))
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    _set_coin(state, "BLUE")
+    _enable_equilibrium(state)
+    _enable_ultimate(state)
+    for hid in ("h1", "h2", "h3", "h4"):
+        _give_big_shield(state, hid)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+
+    # 1 — first performance, orange text.
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"h1", "h2", "h3", "h4"}
+    run.choose("h1").expect_input("SELECT_CARD_OR_PASS")
+
+    # 2 — its repeat, orange text: h1 is out.
+    run.choose("shield_h1").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"h2", "h3", "h4"}
+    run.choose("h2").expect_input("SELECT_CARD_OR_PASS")
+
+    # 3 — Chaos Incarnate re-perform, orange text: h1 and h2 are out.
+    run.choose("shield_h2").expect_input(InputRequestType.SELECT_OPTION)
+    assert "Chaos Incarnate" in run.latest_request.prompt
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"h3", "h4"}
+    run.choose("h3").expect_input("SELECT_CARD_OR_PASS")
+
+    # 4 — the re-perform's repeat, orange text: only h4 is left.
+    run.choose("shield_h3").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)
+    assert _option_set(run) == {"h4"}
+    run.choose("h4").expect_input("SELECT_CARD_OR_PASS")
+    run.choose("shield_h4").finish()
+
+    # Every candidate blocked, so no set above narrowed because a hero died.
+    for hid in ("h1", "h2", "h3", "h4"):
+        assert hid in state.entity_locations
+    combats = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED]
+    assert len(combats) == 4
+
+
+@pytest.mark.effect_flow
+def test_loosely_equilibrium_repeat_gate_counts_both_texts() -> None:
+    """The repeat is offered when either text has a legal target, not just the
+    text that granted it."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(3))
+        .red_hero(
+            "hero_ignatia",
+            at=(0, 0, 0),
+            current_card=hero_card("Ignatia", "loosely_aimed_firebolts"),
+        )
+        .blue_minion("m_on", at=(2, 0, -2))
+        .blue_hero("h_off", at=(2, -1, -1))  # the only enemy hero, off the axis
+        .with_actor("hero_ignatia")
+        .build()
+    )
+    _set_coin(state, "BLUE")
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)  # 2 = Orange
+    run.choose("m_on").expect_input(InputRequestType.SELECT_OPTION)
+    assert "Repeat" in run.latest_request.prompt
+
+
 # =============================================================================
 # F2 — Range-extreme attacks (crack_of_doom / imminent_eruption), range 5
 #   blue  : target a unit adjacent to you (range 1)
@@ -444,6 +662,53 @@ def test_imminent_eruption_blue_repeats_on_another_adjacent_minion() -> None:
     assert "m2" in opts  # another adjacent minion
     assert "m1" not in opts  # the first target died to the attack
     assert "h1" not in opts  # repeat must be a minion, not a hero
+
+
+@pytest.mark.effect_flow
+def test_imminent_eruption_equilibrium_repeat_may_apply_the_orange_text() -> None:
+    """Blue's repeat clause grants the repeat; under Equilibrium the repeat may
+    apply the orange text, so the minion must be at maximum range instead."""
+    state = _range_state("imminent_eruption")
+    _set_coin(state, "ORANGE")  # coin is irrelevant under Equilibrium
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)  # 1 = Blue
+    run.choose("adj").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_UNIT)  # 2 = Orange on the repeat
+
+    opts = _option_set(run)
+    assert "far" in opts  # orange text: exactly maximum range
+    assert "mid" not in opts  # closer than maximum range
+
+    run.choose("far").finish()
+    assert "far" not in state.entity_locations
+
+
+@pytest.mark.effect_flow
+def test_imminent_eruption_equilibrium_repeat_may_apply_the_blue_text() -> None:
+    """The other half of the repeat prompt: the text that granted the repeat."""
+    state = _imminent_blue_state()
+    _set_coin(state, "ORANGE")
+    _enable_equilibrium(state)
+
+    run = run_card(state, "hero_ignatia")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)  # 1 = Blue
+    run.choose("m1").expect_input(InputRequestType.SELECT_OPTION)
+    run.choose("YES").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(1).expect_input(InputRequestType.SELECT_UNIT)  # 1 = Blue on the repeat
+
+    opts = _option_set(run)
+    assert "m2" in opts  # blue text: another adjacent minion
+    assert "h1" not in opts  # the repeat clause still restricts to minions
+
+    run.choose("m2").finish()
+    assert "m2" not in state.entity_locations
 
 
 @pytest.mark.effect_flow
