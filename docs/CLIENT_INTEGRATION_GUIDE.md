@@ -494,6 +494,11 @@ trusted from) the client.
 
 `reporter_hero` is `null` when submitted with the spectator token.
 `decision_index` is `null` in the unlikely case the replay log is missing.
+The index counts decisions only; `setup`, `clock`, and `clock_turn` records do
+not advance it. Older reports that counted clock telemetry are normalized
+when read, using the corresponding prefix of their replay log. If that log is
+missing or truncated, the original stored index is retained. This correction
+does not change the response shape.
 
 **Error conditions:**
 - `401` — Missing/invalid token

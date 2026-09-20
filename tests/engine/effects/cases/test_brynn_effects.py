@@ -603,6 +603,47 @@ def test_peak_precision_bonus_and_retrieves_itself() -> None:
 
 
 @pytest.mark.effect_flow
+@pytest.mark.parametrize("round_trip", [False, True])
+def test_peak_precision_retrieval_keeps_familiar_ground_in_turn_two(round_trip) -> None:
+    from goa2.domain.state import GameState
+    from goa2.domain.views import build_view
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_radius3())
+        .red_hero("hero_brynn", at=(0, 0, 0), current_card=hero_card("Brynn", "peak_precision"))
+        .blue_hero("enemy_hero", at=(1, 0, -1))
+        .with_actor("hero_brynn")
+        .build()
+    )
+    _make_terrain(state, (2, 0, -2), (2, -1, -1), (1, 1, -2))
+    run = run_card(state, "hero_brynn", finalize_turn=True)
+    run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+    run.expect_input("SELECT_UNIT").choose("enemy_hero")
+    run.expect_input("SELECT_CARD_OR_PASS").choose("PASS")
+    run.expect_input("SELECT_NUMBER").choose(1).finish()
+    assert state.turn == 2
+    brynn = state.get_hero("hero_brynn")
+    assert brynn.played_cards == [None]
+    assert brynn.resolved_turn_count == 1
+    if round_trip:
+        state = GameState.model_validate_json(state.model_dump_json())
+        brynn = state.get_hero("hero_brynn")
+    brynn.current_turn_card = hero_card("Brynn", "familiar_ground")
+    state.current_actor_id = brynn.id
+    run = run_card(state, "hero_brynn", finalize_turn=True)
+    run.expect_input("CHOOSE_ACTION").choose("HOLD").finish()
+    assert [c.id if c else None for c in brynn.played_cards] == [None, "familiar_ground"]
+    assert brynn.resolved_turn_count == 2
+    view = build_view(state, for_hero_id="hero_brynn")
+    shown = next(
+        h for team in view["teams"].values() for h in team["heroes"] if h["id"] == "hero_brynn"
+    )
+    assert shown["played_cards"][0] is None
+    assert shown["played_cards"][1]["id"] == "familiar_ground"
+
+
+@pytest.mark.effect_flow
 def test_peak_precision_no_offer_against_open_target() -> None:
     state = (
         EffectScenarioBuilder()

@@ -164,6 +164,7 @@ def test_mind_grip_on_ursafar_rage_card_enrages_nebkher_only() -> None:
     ursafar.played_cards = [roar]
     nebkher = state.get_hero(HeroID("hero_nebkher"))
     nebkher.resolved_turn_count = 1
+    state.turn = 2
 
     state.execution_context["mg_target_hero"] = "hero_ursafar"
     push_steps(

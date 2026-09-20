@@ -21,6 +21,9 @@ ACTION_CONTEXT_KEYS = (
     "performing_card_id",
     "performing_card_owner_id",
     "reperforming_card_id",
+    "token_type_override",
+    "skip_markers",
+    "substitution_actor_id",
 )
 ACTION_CONTEXT_STACK_KEY = "action_context_stack"
 
@@ -50,7 +53,9 @@ def restore_action_context(context: dict[str, Any]) -> None:
         return
     snapshot = stack.pop()
     for key in ACTION_CONTEXT_KEYS:
-        saved = snapshot[key]
+        # Older suspended games have snapshots from before substitution scope
+        # was part of the action context.
+        saved = snapshot.get(key, {"present": False, "value": None})
         if saved["present"]:
             context[key] = saved["value"]
         else:
@@ -89,13 +94,13 @@ class FinalizeHeroTurnStep(GameStep):
         from goa2.engine.steps.combat import CheckLanePushStep, ReturnMinionToZoneStep
 
         hero = state.get_hero(HeroID(self.hero_id))
-        if hero and hero.current_turn_card:
-            card_id = hero.current_turn_card.id
-            logger.debug(f"   [LOGIC] Finalizing turn for {self.hero_id}. Card moved to Resolved.")
-            hero.resolve_current_card()
+        if hero:
+            card_id = hero.current_turn_card.id if hero.current_turn_card else None
+            hero.resolve_current_card(turn_number=state.turn)
 
             # Activate all effects created by this card
-            EffectManager.activate_effects_by_card(state, card_id)
+            if card_id is not None:
+                EffectManager.activate_effects_by_card(state, card_id)
 
         # Reset passive usage counters for all cards (they reset each turn)
         if hero:

@@ -16,6 +16,8 @@ Locked interpretations (2026-07-07):
 
 from __future__ import annotations
 
+import pytest
+
 from goa2.domain.board import Board, Zone
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType, InputResponse
@@ -50,6 +52,63 @@ TOKEN_EFFECT_ID = "test_pca_token_effect"
 MARKER_EFFECT_ID = "test_pca_marker_effect"
 BOUND_EFFECT_ID = "test_pca_token_bound_effect"
 IMMUNE_TOKEN_EFFECT_ID = "test_pca_immune_token_effect"
+DEFENSE_EFFECT_ID = "test_pca_defense_tokens_and_markers"
+NESTED_EFFECT_ID = "test_pca_nested_copy"
+ABORT_EFFECT_ID = "test_pca_abort_copy"
+
+
+@register_effect(DEFENSE_EFFECT_ID)
+class _DefenseTokenAndMarkerEffect(CardEffect):
+    def build_steps(self, state, hero, card, stats):
+        return []
+
+    def build_defense_steps(self, state, defender, card, stats, context):
+        return [
+            PlaceMarkerStep(marker_type=MarkerType.VENOM, target_id="hero_actor", value=-1),
+            PlaceTokenStep(
+                token_type=TokenType.TREE, hex_key="pca_tree_hex", output_key="def_tree"
+            ),
+            CreateEffectStep(
+                effect_type=EffectType.LOS_BLOCKER,
+                scope=EffectScope(shape=Shape.POINT),
+                origin_id_key="def_tree",
+                is_token_effect=True,
+                duration=DurationType.PASSIVE,
+            ),
+        ]
+
+
+@register_effect(NESTED_EFFECT_ID)
+class _NestedCopyEffect(CardEffect):
+    def build_steps(self, state, hero, card, stats):
+        return [
+            PerformCardActionStep(
+                card_key="inner_card",
+                card_owner_key="pca_owner",
+                hero_id=str(hero.id),
+                token_type_override=TokenType.TREE,
+            ),
+            PlaceTokenStep(token_type=TokenType.TREE, hex_key="outer_hex"),
+            PlaceMarkerStep(marker_type=MarkerType.VENOM, target_id="hero_enemy", value=-1),
+        ]
+
+
+@register_effect(ABORT_EFFECT_ID)
+class _AbortCopyEffect(CardEffect):
+    def build_steps(self, state, hero, card, stats):
+        from goa2.domain.models import TargetType
+        from goa2.engine.filters import RangeFilter, TeamFilter
+        from goa2.engine.steps import SelectStep
+
+        return [
+            SelectStep(
+                target_type=TargetType.UNIT,
+                output_key="impossible_target",
+                prompt="Impossible",
+                filters=[RangeFilter(max_range=0), TeamFilter(relation="ENEMY")],
+                is_mandatory=True,
+            )
+        ]
 
 
 @register_effect(TOKEN_EFFECT_ID)
@@ -368,3 +427,96 @@ def test_markers_still_given_without_skip() -> None:
     process_stack(state)
 
     assert state.markers.get(MarkerType.VENOM) is not None
+
+
+@pytest.mark.effect_contract
+def test_copied_attack_does_not_suppress_defender_markers_or_token_effects() -> None:
+    """Raw stack isolates the copied-action/defense boundary with a synthetic defense."""
+    state = _state()
+    state.move_unit("hero_enemy", Hex(q=1, r=0, s=-1))
+    state.execution_context["pca_tree_hex"] = Hex(q=0, r=1, s=-1)
+    defender = state.get_hero("hero_enemy")
+    defense = _card(
+        "defense_tokens",
+        primary=ActionType.DEFENSE,
+        primary_value=6,
+        effect_id=DEFENSE_EFFECT_ID,
+        secondary={ActionType.MOVEMENT: 2},
+    )
+    defense.state = CardState.HAND
+    defender.hand = [defense]
+    _run_perform(
+        state, _card("copied_attack"), token_type_override=TokenType.ILLUSION, skip_markers=True
+    )
+    for selection in ("ATTACK", "hero_enemy", "defense_tokens"):
+        state.execution_stack[-1].pending_input = {"selection": selection}
+        result = process_stack(state)
+    assert result.input_request is None
+    assert state.markers[MarkerType.VENOM]
+    tree_id = state.execution_context["def_tree"]
+    assert state.get_entity(tree_id).token_type == TokenType.TREE
+    assert any(
+        e.effect_type == EffectType.LOS_BLOCKER and e.scope.origin_id == tree_id
+        for e in state.active_effects
+    )
+
+
+@pytest.mark.effect_contract
+@pytest.mark.parametrize("round_trip", [False, True])
+def test_nested_copy_restores_outer_substitution_policy(round_trip) -> None:
+    state = _state()
+    state.execution_context.update(
+        {
+            "pca_tree_hex": Hex(q=0, r=1, s=-1),
+            "outer_hex": Hex(q=1, r=1, s=-2),
+            "inner_card": "inner_copy",
+        }
+    )
+    outer = _card(
+        "outer_copy", primary=ActionType.SKILL, primary_value=None, effect_id=NESTED_EFFECT_ID
+    )
+    _run_perform(state, outer, token_type_override=TokenType.ILLUSION, skip_markers=True)
+    state.get_hero("hero_enemy").played_cards.append(
+        _card("inner_copy", primary=ActionType.SKILL, primary_value=None, effect_id=TOKEN_EFFECT_ID)
+    )
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
+    result = process_stack(state)
+    assert result.input_request.request_type == InputRequestType.CHOOSE_ACTION
+    if round_trip:
+        state = GameState.model_validate_json(state.model_dump_json())
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
+    assert process_stack(state).input_request is None
+    inner = state.board.get_tile(Hex(q=0, r=1, s=-1)).occupant_id
+    outer = state.board.get_tile(Hex(q=1, r=1, s=-2)).occupant_id
+    assert state.get_entity(inner).token_type == TokenType.TREE
+    assert state.get_entity(outer).token_type == TokenType.ILLUSION
+    assert not state.markers.get(MarkerType.VENOM)
+    assert state.execution_context.get("token_type_override") is None
+    assert state.execution_context.get("skip_markers") is None
+    assert state.execution_context.get("substitution_actor_id") is None
+
+
+@pytest.mark.effect_contract
+def test_aborted_copy_restores_substitution_before_later_work() -> None:
+    state = _state()
+    card = _card(
+        "aborting_copy", primary=ActionType.SKILL, primary_value=None, effect_id=ABORT_EFFECT_ID
+    )
+    _run_perform(state, card, token_type_override=TokenType.ILLUSION, skip_markers=True)
+    state.execution_stack[-1].pending_input = {"selection": "SKILL"}
+    assert process_stack(state).input_request is None
+    assert not state.execution_stack
+    # Work after the aborted action must not inherit either substitution.
+    state.execution_context["pca_tree_hex"] = Hex(q=0, r=1, s=-1)
+    push_steps(
+        state,
+        [
+            PlaceTokenStep(
+                token_type=TokenType.TREE, hex_key="pca_tree_hex", output_key="later_tree"
+            ),
+            PlaceMarkerStep(marker_type=MarkerType.VENOM, target_id="hero_enemy", value=-1),
+        ],
+    )
+    assert process_stack(state).input_request is None
+    assert state.get_entity(state.execution_context["later_tree"]).token_type == TokenType.TREE
+    assert state.markers[MarkerType.VENOM]

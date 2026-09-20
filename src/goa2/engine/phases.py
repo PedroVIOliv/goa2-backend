@@ -231,6 +231,9 @@ def start_revelation_phase(state: GameState):
     for h_id, card in state.pending_inputs.items():
         # If card is None, the player Passed. They do not enter the resolution pool.
         if card is None:
+            hero = state.get_hero(h_id)
+            if hero:
+                hero.resolve_current_card(turn_number=state.turn)
             continue
 
         hero = state.get_hero(h_id)

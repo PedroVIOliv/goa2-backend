@@ -1264,7 +1264,11 @@ class PushUnitStep(GameStep):
                 was_stopped_by_obstacle = True
                 break
 
-            if not are_connected(prev, next_hex, state, unit_ids=[actual_target_id]):
+            # Anchored to where the push starts, as voluntary movement is: the
+            # line bridges both sides, but no single displacement may cross it.
+            if not are_connected(
+                target_loc, next_hex, state, unit_ids=[actual_target_id]
+            ) or not are_connected(prev, next_hex, state, unit_ids=[actual_target_id]):
                 logger.debug(
                     f"   [PUSH] {actual_target_id} blocked by topology split at {next_hex}"
                 )

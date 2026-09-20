@@ -285,6 +285,7 @@ def _glitch_slot_filters(count: int, radius: int, hero_id: str, key_prefix: str)
                 RangeFilter(
                     min_range=GLITCH_SPACING,
                     max_range=None,
+                    distance_mode="geometric",
                     origin_hex_key=f"{key_prefix}_hex_{j}",
                 )
                 for j in range(i)

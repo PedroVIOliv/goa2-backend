@@ -117,6 +117,58 @@ def test_decision_index_null_when_replay_missing(client, game_data):
     assert resp.json()["decision_index"] is None
 
 
+def test_decision_index_excludes_interleaved_clock_telemetry(client, game_data):
+    from goa2.server.replay import load_replay
+
+    replay_path = Path(os.environ["GOA2_REPLAY_DIR"]) / f"{game_data['game_id']}.jsonl"
+    with replay_path.open("a") as f:
+        for kind in ("clock", "commit", "clock_turn", "pass", "clock", "ov_rewind"):
+            f.write(json.dumps({"type": kind}) + "\n")
+    assert _submit(client, game_data).json()["decision_index"] == 3
+    assert len(load_replay(str(replay_path))[1]) == 3
+
+
+def test_legacy_report_index_uses_its_own_log_prefix(client, game_data):
+    response = _submit(client, game_data).json()
+    report_path = _report_files()[0]
+    legacy = json.loads(report_path.read_text())
+    legacy.pop("decision_index_version", None)
+    legacy["decision_index"] = 4
+    report_path.write_text(json.dumps(legacy))
+    original = report_path.read_bytes()
+    replay_path = Path(os.environ["GOA2_REPLAY_DIR"]) / f"{game_data['game_id']}.jsonl"
+    with replay_path.open("a") as f:
+        # Report was made after the second decision. Later clocks must not
+        # affect its correction, and rewind records still occupy a decision.
+        for kind in ("clock", "commit", "clock_turn", "pass", "clock", "ov_rewind"):
+            f.write(json.dumps({"type": kind}) + "\n")
+    assert bug_reports.load_report(response["id"])["decision_index"] == 2
+    assert bug_reports.list_reports()[0]["decision_index"] == 2
+    assert report_path.read_bytes() == original  # reads do not migrate files
+    bug_reports.set_status(response["id"], "resolved")
+    assert bug_reports.load_report(response["id"])["decision_index"] == 2
+    assert json.loads(report_path.read_text())["decision_index"] == 2
+    # Newly created reports must not be corrected a second time.
+    new_report = _submit(client, game_data).json()
+    assert bug_reports.load_report(new_report["id"])["decision_index"] == 3
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_legacy_report_keeps_index_when_replay_cannot_establish_prefix(client, game_data, missing):
+    report = _submit(client, game_data).json()
+    report_path = _report_files()[0]
+    legacy = json.loads(report_path.read_text())
+    legacy.pop("decision_index_version", None)
+    legacy["decision_index"] = 5
+    report_path.write_text(json.dumps(legacy))
+    if missing:
+        replay_path = Path(os.environ["GOA2_REPLAY_DIR"]) / f"{game_data['game_id']}.jsonl"
+        replay_path.unlink()
+    loaded = bug_reports.load_report(report["id"])
+    assert loaded["decision_index"] == 5
+    assert "decision_index_version" not in loaded
+
+
 def test_spectator_can_report_without_hero(client, game_data):
     resp = client.post(
         f"/games/{game_data['game_id']}/bug-reports",

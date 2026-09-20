@@ -1999,8 +1999,8 @@ class PerformCardActionStep(GameStep):
     - Optional substitution flags for copied effects: ``token_type_override``
       (all token placements place that type instead — Mind Grip places
       Illusions) and ``skip_markers`` (marker steps are skipped, the rest of
-      the effect continues). The flags are context-scoped around the copied
-      steps so they reach nested templates and runtime-built sub-steps.
+      the effect continues). The policy is scoped to the performer and saved
+      in the action context, including nested templates and runtime-built steps.
     """
 
     type: StepType = StepType.PERFORM_CARD_ACTION
@@ -2008,8 +2008,7 @@ class PerformCardActionStep(GameStep):
     card_owner_key: str | None = None  # context key: whose card list to search
     hero_id: str | None = None  # performer (default: current actor)
     # Instead of card_key, use the OWNER's previous turn slot (Mind Grip).
-    # Slot index = performer.resolved_turn_count - 1 (repo turn-index
-    # convention; see HasPreviousSlotCardFilter).
+    # Uses the game turn, not either hero's resolution progress.
     previous_slot: bool = False
     token_type_override: TokenType | None = None
     skip_markers: bool = False
@@ -2038,9 +2037,7 @@ class PerformCardActionStep(GameStep):
 
         card: Card | None = None
         if self.previous_slot:
-            prev_index = performer.resolved_turn_count - 1
-            if 0 <= prev_index < len(owner.played_cards):
-                card = owner.played_cards[prev_index]
+            card = owner.card_in_turn_slot(state.turn - 1)
             if not card:
                 logger.debug(f"   [PERFORM ANY] {owner.id} has no previous-slot card.")
                 return StepResult(is_finished=True)
@@ -2160,6 +2157,13 @@ class PerformCardActionStep(GameStep):
                 card_owner_id=str(owner.id),
             )
 
+            if self.token_type_override or self.skip_markers:
+                context["substitution_actor_id"] = state.hero_owner_id(performer_id)
+                context["token_type_override"] = (
+                    self.token_type_override.value if self.token_type_override else None
+                )
+                context["skip_markers"] = self.skip_markers
+
             action_steps = self._build_action_steps(
                 state, context, performer_id, performer, card, act_type, val, is_primary
             )
@@ -2177,7 +2181,7 @@ class PerformCardActionStep(GameStep):
             return StepResult(
                 is_finished=True,
                 new_steps=[
-                    *self._wrap_with_substitution_flags(lifecycle_steps),
+                    *lifecycle_steps,
                     RestoreActionContextStep(),
                 ],
             )
@@ -2373,30 +2377,6 @@ class PerformCardActionStep(GameStep):
         if not self.suppress_after_resolve_card:
             steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_RESOLVE_CARD.value))
         return steps
-
-    def _wrap_with_substitution_flags(self, steps: list[GameStep]) -> list[GameStep]:
-        """Bracket the copied action with the substitution context flags so
-        every token placement / marker step resolving inside it — including
-        nested templates and runtime-built sub-steps — sees them."""
-        if not self.token_type_override and not self.skip_markers:
-            return steps
-
-        from goa2.engine.steps.markers import SKIP_MARKERS_KEY, TOKEN_TYPE_OVERRIDE_KEY
-        from goa2.engine.steps.utility import SetContextFlagStep
-
-        pre: list[GameStep] = []
-        post: list[GameStep] = []
-        if self.token_type_override:
-            pre.append(
-                SetContextFlagStep(
-                    key=TOKEN_TYPE_OVERRIDE_KEY, value=self.token_type_override.value
-                )
-            )
-            post.append(SetContextFlagStep(key=TOKEN_TYPE_OVERRIDE_KEY, value=None))
-        if self.skip_markers:
-            pre.append(SetContextFlagStep(key=SKIP_MARKERS_KEY, value=True))
-            post.append(SetContextFlagStep(key=SKIP_MARKERS_KEY, value=None))
-        return [*pre, *steps, *post]
 
 
 class ConvertCardToItemStep(GameStep):

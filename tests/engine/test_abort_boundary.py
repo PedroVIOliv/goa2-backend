@@ -101,3 +101,43 @@ def test_abort_outside_a_nested_action_still_clears_the_whole_action() -> None:
 
     assert "later_step_ran" not in state.execution_context
     assert not state.execution_stack
+
+
+def test_aborted_nested_defense_restores_outer_copy_policy_before_combat() -> None:
+    """Isolate unwinding: an aborted inner action must not replace the attack's policy."""
+    from goa2.engine.steps.combat import ResolveCombatStep
+    from goa2.engine.steps.utility import SetActorStep
+
+    state = _state()
+    context = state.execution_context
+    context.update(
+        {
+            "defense_card_id": "defense",
+            "is_primary_defense": True,
+            "current_card_id": "outer_copy",
+            "token_type_override": "illusion",
+            "skip_markers": True,
+            "substitution_actor_id": "attacker",
+        }
+    )
+    push_action_context(
+        context, action_type=ActionType.SKILL, card_id="inner_copy", card_owner_id="defender"
+    )
+    context.update(
+        {"token_type_override": "tree", "skip_markers": False, "substitution_actor_id": "defender"}
+    )
+    push_steps(
+        state,
+        [
+            _impossible_selection(),
+            RestoreActionContextStep(),
+            SetActorStep(actor_key="_pre_defense_actor", save_key="_discard"),
+            ResolveCombatStep(damage=3),
+        ],
+    )
+    process_stack(state)
+    assert context["current_card_id"] == "outer_copy"
+    assert context["token_type_override"] == "illusion"
+    assert context["skip_markers"] is True
+    assert context["substitution_actor_id"] == "attacker"
+    assert "action_context_stack" not in context

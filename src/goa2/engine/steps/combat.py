@@ -567,10 +567,11 @@ class DefeatUnitStep(GameStep):
         # Cancel all active effects created by the defeated unit
         EffectManager.expire_by_source(state, actual_victim_id)
 
-        # If the defeated hero has an unresolved card, resolve it without action
-        if hasattr(victim, "current_turn_card") and victim.current_turn_card:
+        # Defeat completes this turn's slot even if its card was retrieved.
+        # Later own-turn finalization must not consume a second slot.
+        if hasattr(victim, "current_turn_card"):
             hero = cast(Hero, victim)
-            hero.resolve_current_card()
+            hero.resolve_current_card(turn_number=state.turn)
 
         # Remove from unresolved pool so they don't get another turn this round
         if HeroID(actual_victim_id) in state.unresolved_hero_ids:
