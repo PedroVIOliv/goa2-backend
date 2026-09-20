@@ -677,6 +677,7 @@ class TestHasResolvedCardFilterPrimitive:
         has an unresolved card THIS turn → 'this turn' condition fails."""
         state = self._state()
         state.get_hero("hero_emmitt").resolved_turn_count = 1
+        state.turn = 2
         enemy = state.get_hero("hero_enemy")
         enemy.played_cards = [_resolved_card("turn1_card")]
         enemy.resolved_turn_count = 1
@@ -1645,6 +1646,70 @@ def _timeline_skill_state(*, board_radius: int = 5, with_enemy: bool = True):
 
 @pytest.mark.effect_flow
 class TestUnstableTimelineSkill:
+    @pytest.mark.parametrize("round_trip", [False, True])
+    def test_spacing_across_reality_split_is_physical(self, round_trip):
+        from goa2.domain.state import GameState
+
+        state = _timeline_skill_state(with_enemy=False)
+        state.active_effects.append(
+            ActiveEffect(
+                id="split",
+                source_id="hero_nebkher",
+                effect_type=EffectType.TOPOLOGY_SPLIT,
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.THIS_TURN,
+                split_axis="q",
+                split_value=0,
+            )
+        )
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL")
+        run.expect_input("SELECT_HEX").choose({"q": -1, "r": 0, "s": 1})
+        run.expect_input("SELECT_HEX")
+        if round_trip:
+            state = GameState.model_validate_json(state.model_dump_json())
+            run.state = state
+            run.expect_input("SELECT_HEX")
+        options = _option_hex_tuples(run.latest_request)
+        assert (1, 0, -1) not in options  # distance 2, even across the split
+        assert (2, 0, -2) in options  # distance 3 on the opposite side is legal
+        run.choose({"q": 1, "r": 0, "s": -1}).expect_input("SELECT_HEX")
+        assert len(_glitch_on_board(state)) == 1
+        run.choose({"q": 2, "r": 0, "s": -2}).finish()
+        assert len(_glitch_on_board(state)) == 2
+
+    def test_split_does_not_make_an_infeasible_batch_possible(self):
+        state = (
+            EffectScenarioBuilder()
+            .with_hexes([(-1, 0, 1), (0, 0, 0), (1, 0, -1)])
+            .red_hero(
+                "hero_emmitt", at=(0, 0, 0), current_card=hero_card("Emmitt", "unstable_timeline")
+            )
+            .with_actor("hero_emmitt")
+            .build()
+        )
+        _add_glitch_pool(state)
+        state.active_effects.append(
+            ActiveEffect(
+                id="split",
+                source_id="hero_nebkher",
+                effect_type=EffectType.TOPOLOGY_SPLIT,
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.THIS_TURN,
+                split_axis="q",
+                split_value=0,
+            )
+        )
+        run = run_card(state, "hero_emmitt")
+        run.expect_input("CHOOSE_ACTION").choose("SKILL").finish()
+        assert _glitch_on_board(state) == {}
+
     def test_place_two_enemy_chooses_emmitt_swaps(self):
         state = _timeline_skill_state()
         run = run_card(state, "hero_emmitt")

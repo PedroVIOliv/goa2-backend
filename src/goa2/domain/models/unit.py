@@ -63,7 +63,7 @@ class Hero(Unit):
     )
     resolved_turn_count: int = Field(
         default=0,
-        description="Number of cards resolved this round (determines next played_cards position)",
+        description="Number of completed turn slots this round, including empty slots",
     )
 
     discard_pile: list[Card] = Field(default_factory=list)
@@ -152,22 +152,34 @@ class Hero(Unit):
         card.played_this_round = False
         self.hand.append(card)
 
-    def resolve_current_card(self):
+    def card_in_turn_slot(self, turn_number: int) -> Card | None:
+        """Resolved card in a one-based round turn slot, or None if empty."""
+        position = turn_number - 1
+        if 0 <= position < len(self.played_cards):
+            return self.played_cards[position]
+        return None
+
+    def resolve_current_card(self, *, turn_number: int | None = None):
+        """Complete a fixed turn slot, even if its card has already left play.
+
+        Engine callers supply the game turn. Repeating completion after defeat
+        is harmless and preserves the card already in that slot. The no-argument
+        form retains sequential card resolution for standalone model callers.
         """
-        Moves the current turn card to the resolved 'played_cards' list.
-        Card goes to position = resolved_turn_count (turn 1 at index 0, turn 2 at index 1, etc.).
-        """
+        if turn_number is None:
+            if self.current_turn_card is None:
+                return
+            turn_number = self.resolved_turn_count + 1
+        if turn_number < 1:
+            raise ValueError("Turn slots are one-based.")
+        position = turn_number - 1
+        while len(self.played_cards) <= position:
+            self.played_cards.append(None)
         if self.current_turn_card:
-            position = self.resolved_turn_count
             self.current_turn_card.state = CardState.RESOLVED
-
-            # Ensure list is long enough
-            while len(self.played_cards) <= position:
-                self.played_cards.append(None)
-
             self.played_cards[position] = self.current_turn_card
             self.current_turn_card = None
-            self.resolved_turn_count += 1
+        self.resolved_turn_count = max(self.resolved_turn_count, turn_number)
 
     def discard_card(self, card: Card, from_hand: bool = True):
         """

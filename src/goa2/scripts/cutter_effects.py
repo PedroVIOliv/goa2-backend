@@ -710,18 +710,10 @@ class WalkThePlankEffect(CardEffect):
 #  the primary action of a card in the previous turn slot."
 #
 # Fires on AFTER_PRIMARY_ACTION (once per turn) — NOT on secondary actions. At
-# that point the just-resolved card is still current_turn_card (moved to
-# played_cards only at FinalizeHeroTurn), so resolved_turn_count still reflects
-# PRIOR turns: the previous turn slot is played_cards[resolved_turn_count - 1].
+# The previous slot is relative to the game turn, including when a primary
+# action is performed outside Cutter's own turn or his current card is gone.
 # Does nothing on the first turn of a round.
 # =============================================================================
-
-
-def _previous_slot_card(hero: Hero):
-    idx = hero.resolved_turn_count - 1
-    if idx < 0 or idx >= len(hero.played_cards):
-        return None
-    return hero.played_cards[idx]
 
 
 @register_effect("legend_of_the_skies")
@@ -739,12 +731,12 @@ class LegendOfTheSkiesEffect(CardEffect):
     ) -> bool:
         if trigger != PassiveTrigger.AFTER_PRIMARY_ACTION:
             return False
-        return _previous_slot_card(hero) is not None
+        return hero.card_in_turn_slot(state.turn - 1) is not None
 
     def get_passive_steps(
         self, state: GameState, hero: Hero, card: Card, trigger: PassiveTrigger, context: dict
     ) -> list[GameStep]:
-        prev = _previous_slot_card(hero)
+        prev = hero.card_in_turn_slot(state.turn - 1)
         if prev is None:
             return []
         return [

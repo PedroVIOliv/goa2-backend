@@ -74,8 +74,8 @@ def mind_grip_state():
     min_hero = state.get_hero(HeroID("hero_min"))
     min_hero.played_cards = [gold_card]
 
-    # Nebkher's resolved_turn_count must be >=1 so PerformCardActionStep
-    # resolves prev_index to 0.
+    # The previous slot on game turn 2 is slot 0.
+    state.turn = 2
     nebkher = state.get_hero(HeroID("hero_nebkher"))
     nebkher.resolved_turn_count = 1
 

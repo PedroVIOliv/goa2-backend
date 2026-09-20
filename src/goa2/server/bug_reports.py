@@ -22,12 +22,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from goa2.server.replay import _replay_dir
+from goa2.server.replay import _replay_dir, is_replay_decision
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BUG_REPORT_DIR = "data/bug_reports"
 MAX_REPORTS_PER_GAME = 10
+DECISION_INDEX_VERSION = 1
 
 
 def _bug_report_dir() -> str:
@@ -42,15 +43,27 @@ def _report_path(report_id: str) -> Path:
 
 
 def count_replay_decisions(game_id: str) -> int | None:
-    """Number of decision (non-setup) lines in the game's replay log.
+    """Number of decisions, excluding setup and telemetry, in the replay log.
 
     This is the ``decision`` seek index for the moment "now". Returns None if
     the replay file doesn't exist.
     """
+    return _count_replay_decisions(game_id)
+
+
+def _count_replay_decisions(game_id: str, *, legacy_index: int | None = None) -> int | None:
+    """Translate a legacy non-setup record count using that exact log prefix.
+
+    A missing/truncated replay cannot establish the old report's position;
+    leave it untouched instead of guessing from the current telemetry total.
+    """
+    if legacy_index == 0:
+        return 0
     path = Path(_replay_dir()) / f"{game_id}.jsonl"
     if not path.is_file():
         return None
     count = 0
+    non_setup_count = 0
     try:
         with open(path) as f:
             for raw in f:
@@ -61,12 +74,30 @@ def count_replay_decisions(game_id: str) -> int | None:
                     record = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                if record.get("type") != "setup":
+                if is_replay_decision(record):
                     count += 1
+                if record.get("type") != "setup":
+                    non_setup_count += 1
+                if legacy_index is not None and non_setup_count == legacy_index:
+                    return count
     except OSError:
         logger.exception("Failed to read replay log for game %s", game_id)
         return None
-    return count
+    return count if legacy_index is None else None
+
+
+def _normalize_decision_index(report: dict[str, Any]) -> dict[str, Any]:
+    """Correct old replay links in memory; new reports already use cursor indices."""
+    if report.get("decision_index_version") is not None:
+        return report
+    index = report.get("decision_index")
+    if not isinstance(index, int) or index < 0:
+        return report
+    corrected = _count_replay_decisions(report["game_id"], legacy_index=index)
+    if corrected is not None:
+        report["decision_index"] = corrected
+        report["decision_index_version"] = DECISION_INDEX_VERSION
+    return report
 
 
 def create_report(
@@ -87,6 +118,7 @@ def create_report(
         "description": description,
         "reporter_hero": reporter_hero,
         "decision_index": decision_index,
+        "decision_index_version": DECISION_INDEX_VERSION,
         "round": round_num,
         "turn": turn,
         "status": "open",
@@ -111,7 +143,7 @@ def load_report(report_id: str) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text())
+        return _normalize_decision_index(json.loads(path.read_text()))
     except (OSError, json.JSONDecodeError):
         logger.exception("Failed to read bug report %s", report_id)
         return None
@@ -130,7 +162,7 @@ def list_reports() -> list[dict[str, Any]]:
             logger.warning("Skipping malformed bug report file %s", f.name)
             continue
         if isinstance(report, dict) and "id" in report:
-            out.append(report)
+            out.append(_normalize_decision_index(report))
     out.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
     return out
 

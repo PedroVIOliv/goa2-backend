@@ -37,10 +37,8 @@ class HasUnresolvedCardFilter(FilterCondition):
 class HasResolvedCardFilter(FilterCondition):
     """Passes hero candidates who have already resolved a card THIS TURN.
 
-    Inverse of HasUnresolvedCardFilter, with PlayedCardFilter's turn-index
-    logic: the current turn index is the acting hero's resolved_turn_count
-    (the actor hasn't finalized yet), so a hero resolved this turn iff their
-    played slot at that index is filled — or their current_turn_card is
+    A hero resolved this turn iff their slot for the game turn is filled,
+    or their current_turn_card is
     RESOLVED but not yet finalized (own-turn / action-control windows).
     Used by Emmitt's Time Loop / Time Warp / Time Snare / Time Trap /
     Time Bomb ("who has already resolved a card this turn")."""
@@ -56,22 +54,14 @@ class HasResolvedCardFilter(FilterCondition):
         card = hero.current_turn_card
         if card is not None and card.state == CardState.RESOLVED:
             return True
-        if state.current_actor_id is None:
-            return False
-        actor = state.get_hero(state.current_actor_id)
-        if not actor:
-            return False
-        turn_index = actor.resolved_turn_count
-        return turn_index < len(hero.played_cards) and hero.played_cards[turn_index] is not None
+        return hero.card_in_turn_slot(state.turn) is not None
 
 
 class HasPreviousSlotCardFilter(FilterCondition):
     """Passes hero candidates with a card in their PREVIOUS turn slot.
 
-    Turn indexing follows the repo convention (PlayedCardFilter /
-    HasResolvedCardFilter): the current turn index is the ACTING hero's
-    resolved_turn_count, so the previous slot is index
-    ``actor.resolved_turn_count - 1``. On the first turn of a round there is
+    Turn indexing follows the game turn, independent of whether either hero
+    has already acted or removed their current card. On the first turn there is
     no previous slot and nothing passes. Used by NebKher's Mind Grip
     ("the card in the previous turn slot of an enemy hero")."""
 
@@ -83,15 +73,7 @@ class HasPreviousSlotCardFilter(FilterCondition):
         hero = state.get_hero(HeroID(candidate))
         if not hero:
             return False
-        if state.current_actor_id is None:
-            return False
-        actor = state.get_hero(state.current_actor_id)
-        if not actor:
-            return False
-        prev_index = actor.resolved_turn_count - 1
-        if prev_index < 0 or prev_index >= len(hero.played_cards):
-            return False
-        return hero.played_cards[prev_index] is not None
+        return hero.card_in_turn_slot(state.turn - 1) is not None
 
 
 class CardsInContainerFilter(FilterCondition):
@@ -151,20 +133,12 @@ class PlayedCardFilter(FilterCondition):
         if not hero:
             return False
 
-        if state.current_actor_id is None:
-            return False
-        actor = state.get_hero(state.current_actor_id)
-        if not actor:
-            return False
-        current_turn_index = actor.resolved_turn_count
-
         cards_to_check = []
 
         # Card from current turn if already resolved
-        if current_turn_index < len(hero.played_cards):
-            card = hero.played_cards[current_turn_index]
-            if card:
-                cards_to_check.append(card)
+        card = hero.card_in_turn_slot(state.turn)
+        if card:
+            cards_to_check.append(card)
 
         # Card from current turn if not yet resolved (respects facedown)
         if hero.current_turn_card:

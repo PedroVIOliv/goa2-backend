@@ -48,6 +48,7 @@ def find_reachable_hexes(
                 actor_id=actor_id,
                 pass_through_obstacles=pass_through_obstacles,
                 unit_ids=topology_unit_ids,
+                movement_origin=start,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -143,6 +144,7 @@ def validate_movement_path(
                 actor_id,
                 pass_through_obstacles=pass_through_obstacles,
                 unit_ids=topology_unit_ids,
+                movement_origin=start,
             )
         else:
             neighbors = board.get_neighbors(current)

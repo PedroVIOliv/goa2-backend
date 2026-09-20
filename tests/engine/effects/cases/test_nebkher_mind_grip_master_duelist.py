@@ -80,6 +80,7 @@ def scenario_state():
         },
     )
     state.phase = GamePhase.RESOLUTION
+    state.turn = 2
 
     state.place_entity("hero_tigerclaw", Hex(q=0, r=0, s=0))
     state.place_entity("hero_arien", Hex(q=1, r=0, s=-1))

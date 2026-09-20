@@ -159,9 +159,19 @@ def _clear_to_pending_combat(state: GameState) -> bool:
             target_index = combat_index + 1
 
     while len(state.execution_stack) - 1 > target_index:
-        step = state.execution_stack.pop()
+        step = _discard_aborted_step(state)
         logger.debug("Skipped step before pending combat: %s", step.type)
     return True
+
+
+def _discard_aborted_step(state: GameState) -> GameStep:
+    """Discard work while still unwinding any nested action it would restore."""
+    from goa2.engine.steps.phases import RestoreActionContextStep, restore_action_context
+
+    step = state.execution_stack.pop()
+    if isinstance(step, RestoreActionContextStep):
+        restore_action_context(state.execution_context)
+    return step
 
 
 def _clear_to_finalize(state: GameState) -> bool:
@@ -186,7 +196,7 @@ def _clear_to_finalize(state: GameState) -> bool:
             or step.survives_action_abort
         ):
             break
-        state.execution_stack.pop()
+        _discard_aborted_step(state)
         logger.debug("Skipped step: %s", step.type)
     return False
 

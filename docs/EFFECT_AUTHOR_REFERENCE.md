@@ -650,16 +650,23 @@ Filters are composed in `SelectStep.filters` (and `MultiSelectStep.filters`). Al
 
 #### `RangeFilter`
 
-**Description:** Checks distance from an origin. Uses topology-aware distance.
+**Description:** Checks distance from an origin. By default, disconnected spaces
+are rejected even when there is no upper distance bound.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `max_range` | `int` | *required* | Maximum distance |
-| `min_range` | `int` | `0` | Minimum distance |
+| `max_range` | `int \| None` | `None` | Maximum distance; `None` means unbounded |
+| `min_range` | `int \| None` | `0` | Minimum distance; `None` means unbounded |
 | `origin_id` | `str \| None` | `None` | Literal origin ID |
 | `origin_key` | `str \| None` | `None` | Context key for origin ID |
+| `origin_hex_key` | `str \| None` | `None` | Context key for a hex; takes precedence over origin IDs |
+| `distance_mode` | `"topology" \| "geometric"` | `"topology"` | Whether reality splits restrict the distance check |
 
 Falls back to current actor if no origin specified.
+Use `distance_mode="geometric"` for physical separation constraints, such as
+Emmitt's minimum spacing between Glitch tokens. Keep the separate hero-to-token
+radius filter topology-aware: legal reach and physical spacing are different
+constraints.
 
 ---
 

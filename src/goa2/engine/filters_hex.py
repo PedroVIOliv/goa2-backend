@@ -398,6 +398,8 @@ class RangeFilter(FilterCondition):
     origin_hex_key: str | None = None  # Key in context holding a Hex (or dict)
     max_range_key: str | None = None  # Read upper bound from context[int]
     min_range_key: str | None = None  # Read lower bound from context[int]
+    # Physical spacing constraints do not ask whether the two spaces interact.
+    distance_mode: Literal["topology", "geometric"] = "topology"
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
         # Resolve runtime bounds from context if keys are provided, otherwise
@@ -452,10 +454,16 @@ class RangeFilter(FilterCondition):
         if not target_hex:
             return False
 
-        # Use topology-aware distance (respects reality splits)
-        topology = get_topology_service()
-        unit_ids = [str(uid) for uid in (origin_uid, target_uid) if uid]
-        dist = topology.distance(origin_hex, target_hex, state, unit_ids=unit_ids)
+        if self.distance_mode == "geometric":
+            dist = origin_hex.distance(target_hex)
+        else:
+            topology = get_topology_service()
+            unit_ids = [str(uid) for uid in (origin_uid, target_uid) if uid]
+            # Disconnection is not an arbitrarily large legal range. Reject it
+            # even when this range constraint has no upper bound.
+            if not topology.are_connected(origin_hex, target_hex, state, unit_ids=unit_ids):
+                return False
+            dist = origin_hex.distance(target_hex)
         if min_r is not None and dist < min_r:
             return False
         return max_r is None or dist <= max_r

@@ -231,6 +231,76 @@ class TestNoEffects:
 # =============================================================================
 
 
+@pytest.mark.parametrize("effect_type", [EffectType.TOPOLOGY_SPLIT, EffectType.TOPOLOGY_ISOLATION])
+@pytest.mark.parametrize("side", [-1, 1])
+def test_movement_cannot_cross_split_via_zero(split_state, effect_type, side):
+    from goa2.engine.rules import find_reachable_hexes, validate_movement_path
+
+    split_state.active_effects[0].effect_type = effect_type
+    split_state.remove_entity("h1")
+    start = Hex(q=side, r=0, s=-side)
+    end = Hex(q=-side, r=0, s=side)
+    zero = Hex(q=0, r=0, s=0)
+    board = split_state.board
+    assert zero in find_reachable_hexes(board, start, 2, state=split_state)
+    assert validate_movement_path(board, start, zero, 2, state=split_state)
+    assert end not in find_reachable_hexes(board, start, 2, state=split_state)
+    assert not validate_movement_path(board, start, end, 2, state=split_state)
+    # A separate movement starting on the line may go to either side.
+    assert end in find_reachable_hexes(board, zero, 2, state=split_state)
+    assert validate_movement_path(board, zero, end, 2, state=split_state)
+
+
+def test_movement_cannot_detour_through_invisible_side(split_state):
+    from goa2.engine.rules import find_reachable_hexes, validate_movement_path
+
+    split_state.remove_entity("h1")
+    path = [(1, 0), (0, 0), (-1, 1), (-1, 2), (-1, 3), (0, 3), (1, 3)]
+    hexes = [Hex(q=q, r=r, s=-q - r) for q, r in path]
+    split_state.board.tiles = {h: Tile(hex=h) for h in hexes}
+    start, end = hexes[0], hexes[-1]
+    assert are_connected(start, end, split_state)
+    assert end not in find_reachable_hexes(split_state.board, start, 8, state=split_state)
+    assert not validate_movement_path(split_state.board, start, end, 8, state=split_state)
+
+
+def test_unbounded_range_rejects_disconnection_but_geometric_spacing_does_not(split_state):
+    from goa2.engine.filters import RangeFilter
+
+    origin = Hex(q=-1, r=0, s=1)
+    target = Hex(q=1, r=0, s=-1)
+    context = {"origin": origin}
+    assert not RangeFilter(min_range=2, origin_hex_key="origin").apply(target, split_state, context)
+    assert RangeFilter(min_range=2, origin_hex_key="origin", distance_mode="geometric").apply(
+        target, split_state, context
+    )
+
+
+def test_movement_origin_check_preserves_unit_immunity(split_state):
+    from goa2.engine.rules import find_reachable_hexes, validate_movement_path
+
+    caster = Hero(id="nebkher", name="NebKher", team=TeamColor.BLUE, deck=[])
+    split_state.teams[TeamColor.BLUE].heroes.append(caster)
+    split_state.place_entity("nebkher", Hex(q=0, r=2, s=-2))
+    start, end = Hex(q=-1, r=0, s=1), Hex(q=1, r=0, s=-1)
+    split_state.move_unit("h1", start)
+    split_state.active_effects.append(
+        ActiveEffect(
+            id="immune",
+            source_id="h1",
+            effect_type=EffectType.IMMUNITY_ENEMY_ACTIONS,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+        )
+    )
+    kwargs = {"state": split_state, "actor_id": "h1", "topology_unit_ids": ["h1"]}
+    assert end in find_reachable_hexes(split_state.board, start, 2, **kwargs)
+    assert validate_movement_path(split_state.board, start, end, 2, **kwargs)
+
+
 class TestTopologySplit:
     """Test TOPOLOGY_SPLIT effect (Tier 2)."""
 

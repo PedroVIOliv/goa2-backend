@@ -56,13 +56,25 @@ TOKEN_TYPE_OVERRIDE_KEY = "token_type_override"
 SKIP_MARKERS_KEY = "skip_markers"
 
 
-def effective_token_type(context: dict[str, Any], default: TokenType) -> TokenType:
-    """Token-type override for copied actions (NebKher's Mind Grip: "if you
-    would place any tokens this way, place Illusion tokens instead").
-    PerformCardActionStep sets the override flag around the copied steps; every
-    token-placing step resolves its type through this helper so the
-    substitution reaches nested templates and runtime-built steps."""
-    override = context.get(TOKEN_TYPE_OVERRIDE_KEY)
+def substitution_applies(state: GameState, context: dict[str, Any]) -> bool:
+    """Copied-action substitutions belong to the performer, not a reacting hero.
+
+    Descendant steps inherit the policy, and action-context restoration unwinds
+    it on both normal completion and mandatory failure.
+    """
+    actor = state.current_actor_id
+    return actor is not None and context.get("substitution_actor_id") == state.hero_owner_id(
+        str(actor)
+    )
+
+
+def effective_token_type(
+    state: GameState, context: dict[str, Any], default: TokenType
+) -> TokenType:
+    """Apply Mind Grip's token substitution only to its performing hero."""
+    override = (
+        context.get(TOKEN_TYPE_OVERRIDE_KEY) if substitution_applies(state, context) else None
+    )
     return TokenType(str(override)) if override else default
 
 
@@ -113,7 +125,7 @@ class PlaceTokenStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.selection import SelectStep
 
-        token_type = effective_token_type(context, self.token_type)
+        token_type = effective_token_type(state, context, self.token_type)
         dest_val = context.get(self.hex_key)
         if not dest_val or dest_val == "SKIP":
             return StepResult(is_finished=True)
@@ -345,7 +357,7 @@ class PlaceTokenBatchStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        token_type = effective_token_type(context, self.token_type)
+        token_type = effective_token_type(state, context, self.token_type)
         pool = state.token_pool.get(token_type, [])
         if self.count > len(pool):
             logger.debug(
@@ -532,7 +544,7 @@ class PlaceTokensInLineStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        token_type = effective_token_type(context, self.token_type)
+        token_type = effective_token_type(state, context, self.token_type)
         origin_uid = self.origin_id
         if not origin_uid and self.origin_key:
             origin_uid = context.get(self.origin_key)
@@ -615,7 +627,7 @@ class PlaceTokenTrailStep(GameStep):
         if self.should_skip(context):
             return StepResult(is_finished=True)
 
-        token_type = effective_token_type(context, self.token_type)
+        token_type = effective_token_type(state, context, self.token_type)
         raw_origin = context.get(self.origin_hex_key)
         raw_dest = context.get(self.dest_key)
         if not raw_origin or not raw_dest:
@@ -962,7 +974,7 @@ class PlaceMarkerStep(GameStep):
 
         # Copied actions may skip marker giving entirely (NebKher's Mind
         # Grip: "skip giving markers") — the rest of the effect continues.
-        if context.get(SKIP_MARKERS_KEY):
+        if context.get(SKIP_MARKERS_KEY) and substitution_applies(state, context):
             logger.debug(f"   [MARKER] Skipping {self.marker_type.value} (skip_markers active).")
             return StepResult(is_finished=True)
 

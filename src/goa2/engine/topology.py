@@ -191,6 +191,7 @@ class TopologyService:
         actor_id: str | None = None,
         pass_through_obstacles: bool = False,
         unit_ids: Iterable[str] | None = None,
+        movement_origin: Hex | None = None,
     ) -> list[Hex]:
         """
         Returns neighbors that can be traversed during movement.
@@ -216,6 +217,13 @@ class TopologyService:
         result = []
         topology_unit_ids = unit_ids if unit_ids is not None else ([actor_id] if actor_id else None)
         for n in hex.neighbors():
+            # ZERO can interact with either side, but cannot bridge an entire
+            # movement across a split. Every traversed space must be visible
+            # from the movement's starting space, including intermediate hexes.
+            if movement_origin is not None and not self.are_connected(
+                movement_origin, n, state, unit_ids=topology_unit_ids
+            ):
+                continue
             # Must be connected (topology check)
             if not self.are_connected(hex, n, state, unit_ids=topology_unit_ids):
                 continue

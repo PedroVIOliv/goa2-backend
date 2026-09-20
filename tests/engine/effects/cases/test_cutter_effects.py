@@ -1109,6 +1109,7 @@ def test_legend_offers_only_when_previous_slot_exists() -> None:
     prev = hero_card("Cutter", "daring_strike")
     hero.played_cards = [prev]
     hero.resolved_turn_count = 1
+    state.turn = 2
     assert (
         effect.should_offer_passive(state, hero, ult, PassiveTrigger.AFTER_PRIMARY_ACTION, {})
         is True
@@ -1123,6 +1124,7 @@ def test_legend_performs_previous_slot_card() -> None:
     prev = hero_card("Cutter", "daring_strike")
     hero.played_cards = [prev]
     hero.resolved_turn_count = 1
+    state.turn = 2
 
     steps = effect.get_passive_steps(state, hero, ult, PassiveTrigger.AFTER_PRIMARY_ACTION, {})
     perform = [s for s in steps if isinstance(s, PerformPrimaryActionStep)]
@@ -1141,6 +1143,7 @@ def test_legend_ignores_empty_previous_slot() -> None:
     # Slot exists in the list but was emptied (card discarded/removed).
     hero.played_cards = [None]
     hero.resolved_turn_count = 1
+    state.turn = 2
     assert (
         effect.should_offer_passive(state, hero, ult, PassiveTrigger.AFTER_PRIMARY_ACTION, {})
         is False

@@ -96,6 +96,11 @@ NON_DECISION_TYPES = frozenset({"clock", "clock_turn"})
 _UNSAVED_KEEPABLE_TYPES = NON_DECISION_TYPES | {"setup"}
 
 
+def is_replay_decision(record: dict[str, Any]) -> bool:
+    """Records that occupy one position in ReplayCursor's decision list."""
+    return record.get("type") not in _UNSAVED_KEEPABLE_TYPES
+
+
 def _replay_dir() -> str:
     return os.environ.get("GOA2_REPLAY_DIR", DEFAULT_REPLAY_DIR)
 
@@ -373,7 +378,7 @@ def load_replay(path: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             record = json.loads(raw)
             if record.get("type") == "setup":
                 setup = record
-            elif record.get("type") not in NON_DECISION_TYPES:
+            elif is_replay_decision(record):
                 decisions.append(record)
 
     if setup is None:

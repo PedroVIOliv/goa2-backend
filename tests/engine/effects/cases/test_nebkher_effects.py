@@ -13,7 +13,8 @@ import pytest
 
 import goa2.scripts.cordelia_effects
 import goa2.scripts.emmitt_effects
-import goa2.scripts.gydion_effects  # noqa: F401
+import goa2.scripts.gydion_effects
+import goa2.scripts.snorri_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
@@ -24,6 +25,7 @@ from goa2.domain.models import (
     CardState,
     CardTier,
     MinionType,
+    StatType,
     TokenType,
 )
 from goa2.domain.models.effect import ActiveEffect, DurationType, EffectScope, EffectType, Shape
@@ -859,7 +861,8 @@ def test_twist_fate_adjacent_zone_does_not_offer_illusion_at_range_two() -> None
 
 def _mind_grip_state() -> GameState:
     state = _grid_state("mind_grip")
-    # It's turn 2 by the actor-slot convention: NebKher has one resolved card.
+    # Turn 2: NebKher has one completed turn slot.
+    state.turn = 2
     neb = state.get_hero(NEB)
     neb.played_cards = [_resolved_card("neb_prev")]
     neb.resolved_turn_count = 1
@@ -988,6 +991,84 @@ def test_mind_grip_substitutes_illusions_for_copied_token_placement() -> None:
         BoardEntityID(str(t.id)) not in state.entity_locations
         for t in state.token_pool[TokenType.TREE]
     )
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("round_trip", [False, True])
+def test_mind_grip_does_not_substitute_defenders_glitches(round_trip) -> None:
+    from goa2.engine.setup import GameSetup
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(q, r, -q - r) for q in range(-4, 5) for r in range(-4, 5) if abs(q + r) <= 4])
+        .red_hero(NEB, at=(1, 0, -1), current_card=hero_card("NebKher", "mind_grip"))
+        .blue_hero("hero_emmitt", at=(0, 0, 0))
+        .with_actor(NEB)
+        .build()
+    )
+    GameSetup._initialize_token_pool(state)
+    state.turn = 2
+    neb = state.get_hero(NEB)
+    neb.played_cards = [_resolved_card("neb_prev")]
+    neb.resolved_turn_count = 1
+    emmitt = state.get_hero("hero_emmitt")
+    copied = hero_card("Snorri", "runic_battleaxe")
+    copied.state = CardState.RESOLVED
+    emmitt.played_cards = [copied]
+    emmitt.resolved_turn_count = 1
+    defense = hero_card("Emmitt", "unstable_timeline")
+    defense.state = CardState.HAND
+    emmitt.hand = [defense]
+    emmitt.items[StatType.DEFENSE] = 2
+    neb.items[StatType.ATTACK] = 1
+    illusions = {}
+    for token, pos in zip(
+        state.token_pool[TokenType.ILLUSION], [(-1, 0, 1), (0, -1, 1), (-1, 1, 0)], strict=True
+    ):
+        illusions[str(token.id)] = Hex(q=pos[0], r=pos[1], s=pos[2])
+        state.place_entity(token.id, illusions[str(token.id)])
+    state.active_effects.append(
+        ActiveEffect(
+            id="army",
+            source_id=NEB,
+            effect_type=EffectType.ILLUSION_MINION_EQUIVALENCE,
+            created_at_turn=1,
+            created_at_round=1,
+            is_active=True,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_ROUND,
+        )
+    )
+
+    run = run_card(state, NEB)
+    run.expect_input("CHOOSE_ACTION").choose("SKILL")
+    run.expect_input("SELECT_NUMBER").choose(1)
+    run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+    run.expect_input("CHOOSE_ACTION").choose("ATTACK")
+    run.expect_input("SELECT_UNIT").choose("hero_emmitt")
+    run.expect_input("SELECT_CARD_OR_PASS")
+    assert state.execution_context["minion_defense_modifier"] == -3
+    if round_trip:
+        state = GameState.model_validate_json(state.model_dump_json())
+        run.state = state
+        run.expect_input("SELECT_CARD_OR_PASS")
+    run.choose("unstable_timeline")
+    for pos in [(3, 0, -3), (0, 3, -3), (-3, 0, 3)]:
+        run.expect_input("SELECT_HEX")
+        assert run.latest_request.player_id == "hero_emmitt"
+        assert "glitch" in run.latest_request.prompt.lower()
+        run.choose({"q": pos[0], "r": pos[1], "s": pos[2]})
+    run.expect_input("SELECT_UNIT").choose(NEB)
+    run.expect_input("SELECT_UNIT_OR_TOKEN")
+    run.choose(str(state.token_pool[TokenType.GLITCH][0].id)).finish()
+    assert {tid: state.get_position(tid) for tid in illusions} == illusions
+    assert len(_token_ids_on_board(state, TokenType.GLITCH)) == 3
+    combat = [e for e in run.events if e.event_type == GameEventType.COMBAT_RESOLVED][-1]
+    # The swap does not recalculate the modifier captured BEFORE defense text.
+    assert combat.metadata["modifier_value"] == -3
+    assert combat.metadata["defense_value"] == 8
+    assert combat.metadata["outcome"] == "DEFEATED"
+    assert state.get_position("hero_emmitt") is None
 
 
 @pytest.mark.effect_flow

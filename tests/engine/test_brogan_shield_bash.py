@@ -207,7 +207,8 @@ class TestPlayedCardFilter:
         """Hero's resolved card at wrong turn index doesn't match."""
         state = _make_base_state()
         brogan = state.get_hero("brogan")
-        brogan.resolved_turn_count = 1  # looking at index 1
+        brogan.resolved_turn_count = 1
+        state.turn = 2  # looking at index 1
 
         enemy = state.get_hero("enemy")
         enemy.played_cards = [_make_attack_card()]  # only index 0

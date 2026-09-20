@@ -120,14 +120,7 @@ def test_push_blocked_by_split(push_topology_state):
     assert new_loc != Hex(q=0, r=0, s=0)
 
 
-def test_push_crosses_bridge(push_topology_state):
-    """
-    Test that a push CAN cross from NEGATIVE -> ZERO -> POSITIVE.
-    This uses Tier 2 Split (Crack in Reality).
-    """
-    state = push_topology_state
-
-    # Apply Tier 2 Split on q=0
+def _split_at_zero(state):
     state.active_effects.append(
         ActiveEffect(
             id="split",
@@ -143,20 +136,36 @@ def test_push_crosses_bridge(push_topology_state):
         )
     )
 
-    # Remove m_center and m_right so the path is clear
+
+def test_push_stops_on_the_line_instead_of_crossing(push_topology_state):
+    """A push cannot carry a unit from one side of a split to the other.
+
+    The line bridges both sides, so the pushed unit reaches it and stops there.
+    """
+    state = push_topology_state
+    _split_at_zero(state)
     state.remove_entity("m_center")
     state.remove_entity("m_right")
 
-    # Push m_left (-1,0,1) East by 2 hexes.
-    # Path: (-1,0,1) -> (0,0,0) -> (1,0,-1)
-    # NEG -> ZERO -> POS
-
-    pusher_hex = Hex(q=-2, r=0, s=2)
-    step = PushUnitStep(target_id="m_left", source_hex=pusher_hex, distance=2, is_mandatory=True)
-
+    step = PushUnitStep(
+        target_id="m_left", source_hex=Hex(q=-2, r=0, s=2), distance=2, is_mandatory=True
+    )
     push_steps(state, [step])
     _ = process_stack(state).input_request
 
-    # Verify m_left moved all the way to Right
-    new_loc = state.unit_locations["m_left"]
-    assert new_loc == Hex(q=1, r=0, s=-1)
+    assert state.unit_locations["m_left"] == Hex(q=0, r=0, s=0)
+
+
+def test_push_from_the_line_reaches_the_far_side(push_topology_state):
+    """A unit standing on the line can be pushed onto either side of it."""
+    state = push_topology_state
+    _split_at_zero(state)
+    state.remove_entity("m_right")
+
+    step = PushUnitStep(
+        target_id="m_center", source_hex=Hex(q=-1, r=0, s=1), distance=1, is_mandatory=True
+    )
+    push_steps(state, [step])
+    _ = process_stack(state).input_request
+
+    assert state.unit_locations["m_center"] == Hex(q=1, r=0, s=-1)
