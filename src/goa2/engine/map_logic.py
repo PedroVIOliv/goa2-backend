@@ -181,9 +181,11 @@ def find_nearest_empty_hexes(
         # Expand (only if we haven't found a closer layer yet)
         if found_distance is None:
             if respect_obstacles:
-                from goa2.engine.topology import get_traversable_neighbors
+                from goa2.engine.topology import get_topology_service
 
-                neighbors = get_traversable_neighbors(current, state, actor_id=actor_id)
+                neighbors = get_topology_service().get_traversable_neighbors(
+                    current, state, actor_id=actor_id, movement_origin=start_hex
+                )
             else:
                 neighbors = get_connected_neighbors(current, state)
 
