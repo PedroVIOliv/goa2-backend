@@ -16,6 +16,7 @@ from goa2.domain.models import (
     TokenType,
 )
 from goa2.domain.models.spawn import SpawnType
+from goa2.domain.rules_version import CURRENT_RULES_VERSION
 from goa2.domain.state import GameState
 from goa2.domain.time_control import TimeControlConfig, create_game_clock
 from goa2.domain.types import BoardEntityID
@@ -83,6 +84,7 @@ class GameSetup:
         seed: int | None = None,
         time_control: TimeControlConfig | None = None,
         tie_breaker_team: TeamColor | None = None,
+        rules_version: int = CURRENT_RULES_VERSION,
     ) -> GameState:
         """
         Initializes a game with the specified map and heroes.
@@ -95,6 +97,8 @@ class GameSetup:
             derived from the setup inputs.
         :param tie_breaker_team: Result of a coin flip already held elsewhere (a
             draft lobby's, say). If omitted, the coin is flipped here from the seed.
+        :param rules_version: Rebuilding a recorded game passes the version it was
+            played under (see domain/rules_version.py).
         """
 
         # 1. Load Map
@@ -126,6 +130,7 @@ class GameSetup:
             phase=GamePhase.SETUP,
             cheats_enabled=cheats_enabled,
             time_control=time_control,
+            rules_version=rules_version,
         )
 
         # Derive the deterministic game seed before creating hidden supplies.

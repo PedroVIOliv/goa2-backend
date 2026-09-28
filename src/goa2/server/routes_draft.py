@@ -141,6 +141,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             time_control=state.time_control,
             tie_breaker_team=game_state.tie_breaker_team.value,
             player_names=hero_names,
+            rules_version=game_state.rules_version,
         )
     for player in state.players:
         if player.claimed_hero:

@@ -52,6 +52,8 @@ class GameState(BaseModel):
     wave_counters: dict[str, int] = Field(default_factory=lambda: {DEFAULT_LANE_ID: 5})
     cheats_enabled: bool = False
     rng_seed: int | None = None
+    # See domain/rules_version.py; 0 is what saves from before versioning load as.
+    rules_version: int = 0
 
     current_actor_id: HeroID | None = None  # ID of the Hero currently acting (Resolution Phase)
     # Owner of the unresolved card being resolved. Unlike current_actor_id,

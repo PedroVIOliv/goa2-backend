@@ -9,6 +9,7 @@ import pytest
 
 from goa2.domain.input import InputResponse
 from goa2.domain.models import TeamColor
+from goa2.domain.rules_version import CURRENT_RULES_VERSION
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession, SessionResultType
 from goa2.engine.setup import GameSetup
@@ -78,6 +79,31 @@ def test_record_writes_setup_header_first(tmp_path):
     assert header["blue"] == BLUE
     assert header["seed"] == 42
     assert header["v"] == 1
+
+
+def test_setup_header_records_the_rules_version(tmp_path):
+    rec = ReplayRecorder("g1", str(tmp_path))
+    rec.record_setup(
+        map_name=MAP,
+        red_heroes=RED,
+        blue_heroes=BLUE,
+        game_type="QUICK",
+        cheats=False,
+        seed=42,
+        rules_version=CURRENT_RULES_VERSION,
+    )
+    setup, _ = load_replay(str(tmp_path / "g1.jsonl"))
+    assert setup["rules_version"] == CURRENT_RULES_VERSION
+    assert build_session_from_setup(setup).state.rules_version == CURRENT_RULES_VERSION
+
+
+def test_logs_without_a_rules_version_rebuild_on_the_original_rules():
+    setup = {"map": MAP, "red": RED, "blue": BLUE, "game_type": "QUICK", "seed": 42}
+    assert build_session_from_setup(setup).state.rules_version == 0
+
+
+def test_new_games_start_on_the_current_rules():
+    assert _live_game().state.rules_version == CURRENT_RULES_VERSION
 
 
 def test_record_decisions_carry_wall_clock_timestamps(tmp_path):

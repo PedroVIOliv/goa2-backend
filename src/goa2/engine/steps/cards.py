@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import Field, model_validator
 
@@ -32,7 +32,57 @@ from goa2.engine.filters_units import ExcludeIdentityFilter, ImmunityFilter, Uni
 from goa2.engine.stats import get_computed_stat
 from goa2.engine.steps.base import GameStep, StepResult
 
+if TYPE_CHECKING:
+    from goa2.engine.steps.selection import MultiSelectStep
+
 logger = logging.getLogger(__name__)
+
+
+def _fast_travel_has_safe_zone(state: GameState, hero_id: str) -> bool:
+    hero = state.get_hero(HeroID(hero_id))
+    team = getattr(hero, "team", None)
+    if not team:
+        return False
+    zone_ids = {
+        z for z in (state.board.get_zone_for_hex(loc) for loc in state.get_positions(hero_id)) if z
+    }
+    return any(rules.get_safe_zones_for_fast_travel(state, team, zid) for zid in zone_ids)
+
+
+def _clear_selection() -> MultiSelectStep:
+    from goa2.engine.steps.selection import MultiSelectStep
+
+    return MultiSelectStep(
+        min_selections=0,
+        max_selections=6,
+        filters=[
+            UnitTypeFilter(unit_type="TOKEN"),
+            RangeFilter(max_range=1),
+            ImmunityFilter(),
+        ],
+        output_key="clear_targets",
+        target_type=TargetType.UNIT_OR_TOKEN,
+        prompt="Select tokens to clear.",
+    )
+
+
+def _clear_steps(state: GameState, hero_id: str) -> list[GameStep]:
+    from goa2.engine.steps.markers import RemoveTokenStep
+    from goa2.engine.steps.utility import ForEachStep, LogMessageStep
+
+    # Gate on board presence, not the owner position: a multi-piece hero has
+    # no owner-level position, and the RangeFilter keys off the bound acting
+    # piece at execution.
+    if not state.has_board_presence(hero_id):
+        return [LogMessageStep(message=f"{hero_id} attempted clear but is not on board.")]
+    return [
+        _clear_selection(),
+        ForEachStep(
+            list_key="clear_targets",
+            item_key="target_id",
+            steps_template=[RemoveTokenStep(token_key="target_id")],
+        ),
+    ]
 
 
 class SetCardInitiativeStep(GameStep):
@@ -672,14 +722,12 @@ class ResolveCardStep(GameStep):
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.steps.combat import AttackSequenceStep
         from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
-        from goa2.engine.steps.markers import RemoveTokenStep
         from goa2.engine.steps.movement import (
             FastTravelSequenceStep,
             MoveSequenceStep,
             ResolvePreActionMovementStep,
         )
-        from goa2.engine.steps.selection import MultiSelectStep
-        from goa2.engine.steps.utility import ForEachStep, LogMessageStep, SetContextFlagStep
+        from goa2.engine.steps.utility import LogMessageStep, SetContextFlagStep
 
         hero = state.get_hero(HeroID(self.hero_id))
         if not hero or not hero.current_turn_card:
@@ -694,8 +742,6 @@ class ResolveCardStep(GameStep):
         context["current_card_id"] = card.id
         options = []
 
-        from goa2.engine.rules import get_safe_zones_for_fast_travel
-
         def is_action_available(act_type: ActionType) -> bool:
             # 1. Check Global/Effect Validation (e.g. Spell Break prevention)
             # We pass the 'card' object in context so validation can check exceptions (color).
@@ -706,28 +752,7 @@ class ResolveCardStep(GameStep):
                 return False
 
             if act_type == ActionType.FAST_TRAVEL:
-                hero_positions = state.get_positions(self.hero_id)
-                if not hero_positions:
-                    return False
-                zone_ids = {
-                    z for z in (state.board.get_zone_for_hex(loc) for loc in hero_positions) if z
-                }
-                if not zone_ids:
-                    return False
-
-                if not hero:
-                    return False
-
-                # Ensure team is present
-                team = getattr(hero, "team", None)
-                if not team:
-                    return False
-
-                safe = [
-                    z for zid in zone_ids for z in get_safe_zones_for_fast_travel(state, team, zid)
-                ]
-                if not safe:
-                    return False
+                return _fast_travel_has_safe_zone(state, self.hero_id)
             return True
 
         # Helper to compute option values
@@ -884,39 +909,7 @@ class ResolveCardStep(GameStep):
                         )
 
                     elif act_type == ActionType.CLEAR:
-                        # Gate on board presence, not the owner position: a
-                        # multi-piece hero has no owner-level position, and the
-                        # RangeFilter keys off the bound acting piece at
-                        # execution, so build the real selection whenever any
-                        # piece is on the board.
-                        if not state.has_board_presence(self.hero_id):
-                            steps_list.append(
-                                LogMessageStep(
-                                    message=f"{self.hero_id} attempted clear but is not on board."
-                                )
-                            )
-                        else:
-                            steps_list.extend(
-                                [
-                                    MultiSelectStep(
-                                        min_selections=0,
-                                        max_selections=6,
-                                        filters=[
-                                            UnitTypeFilter(unit_type="TOKEN"),
-                                            RangeFilter(max_range=1),
-                                            ImmunityFilter(),
-                                        ],
-                                        output_key="clear_targets",
-                                        target_type=TargetType.UNIT_OR_TOKEN,
-                                        prompt="Select tokens to clear.",
-                                    ),
-                                    ForEachStep(
-                                        list_key="clear_targets",
-                                        item_key="target_id",
-                                        steps_template=[RemoveTokenStep(token_key="target_id")],
-                                    ),
-                                ]
-                            )
+                        steps_list.extend(_clear_steps(state, self.hero_id))
                     elif act_type == ActionType.HOLD:
                         steps_list.append(LogMessageStep(message=f"{self.hero_id} Holds."))
 
@@ -1855,7 +1848,8 @@ class PerformPrimaryActionStep(GameStep):
     Looks up a card from context, computes its stats, calls its effect's
     build_steps(), and pushes the resulting steps onto the stack.
 
-    Used by Ursafar's Angry Roar, Instinctive Reaction, Evolutionary Response.
+    From REPERFORM_OFFERS_REPLACEMENT on, a Movement or Attack primary may be
+    replaced by Fast Travel or Clear, as on a normal turn.
     """
 
     type: StepType = StepType.PERFORM_PRIMARY_ACTION
@@ -1936,6 +1930,46 @@ class PerformPrimaryActionStep(GameStep):
         # the outer action (Angry Roar, Reload, Bullet Time, etc.).
         from goa2.engine.steps.phases import RestoreActionContextStep, push_action_context
 
+        replacement = self._replacement_action(state, context, str(actor_id), card, action_type)
+        if replacement is not None:
+            choice = self.pending_input.get("selection") if self.pending_input else None
+            if choice == replacement.name:
+                push_action_context(
+                    context,
+                    action_type=replacement,
+                    card_id=card.id,
+                    card_owner_id=str(hero.id),
+                )
+                return StepResult(
+                    is_finished=True,
+                    new_steps=[
+                        *self._replacement_steps(state, str(actor_id), card, replacement),
+                        RestoreActionContextStep(),
+                    ],
+                )
+            if choice != action_type.name:
+                self.pending_input = None
+                return StepResult(
+                    requires_input=True,
+                    input_request=create_input_request(
+                        request_type=InputRequestType.CHOOSE_ACTION,
+                        player_id=str(actor_id),
+                        prompt=f"Choose an action to perform on {card.name}",
+                        options=[
+                            {
+                                "id": action_type.name,
+                                "type": action_type,
+                                "text": f"Primary: {action_type.name}",
+                            },
+                            {
+                                "id": replacement.name,
+                                "type": replacement,
+                                "text": f"Replacement: {replacement.name}",
+                            },
+                        ],
+                    ),
+                )
+
         push_action_context(
             context,
             action_type=action_type,
@@ -1953,6 +1987,45 @@ class PerformPrimaryActionStep(GameStep):
             is_finished=True,
             new_steps=[*steps, RestoreActionContextStep()],
         )
+
+    @staticmethod
+    def _replacement_action(
+        state: GameState,
+        context: dict[str, Any],
+        actor_id: str,
+        card: Card,
+        action_type: ActionType,
+    ) -> ActionType | None:
+        """Fast Travel / Clear, offered only when performing it would do something."""
+        from goa2.domain.rules_version import REPERFORM_OFFERS_REPLACEMENT
+
+        if state.rules_version < REPERFORM_OFFERS_REPLACEMENT:
+            return None
+        replacement = {
+            ActionType.MOVEMENT: ActionType.FAST_TRAVEL,
+            ActionType.ATTACK: ActionType.CLEAR,
+        }.get(action_type)
+        if replacement is None:
+            return None
+        if not state.validator.can_perform_action(
+            state, actor_id, replacement, context={"card": card}
+        ).allowed:
+            return None
+        if replacement == ActionType.FAST_TRAVEL:
+            available = _fast_travel_has_safe_zone(state, actor_id)
+        else:
+            available = bool(_clear_selection()._get_candidates(state, context))
+        return replacement if available else None
+
+    @staticmethod
+    def _replacement_steps(
+        state: GameState, actor_id: str, card: Card, replacement: ActionType
+    ) -> list[GameStep]:
+        from goa2.engine.steps.movement import FastTravelSequenceStep
+
+        if replacement == ActionType.FAST_TRAVEL:
+            return [FastTravelSequenceStep(unit_id=actor_id, source_card_id=card.id)]
+        return _clear_steps(state, actor_id)
 
     @classmethod
     def _inject_exclusion_filter(cls, steps: list[GameStep], exclude_key: str) -> None:
@@ -2249,33 +2322,7 @@ class PerformCardActionStep(GameStep):
                 )
             ]
         if act_type == ActionType.CLEAR:
-            from goa2.engine.steps.markers import RemoveTokenStep
-            from goa2.engine.steps.selection import MultiSelectStep
-            from goa2.engine.steps.utility import ForEachStep
-
-            if not state.has_board_presence(performer_id):
-                return [
-                    LogMessageStep(message=f"{performer_id} attempted clear but is not on board.")
-                ]
-            return [
-                MultiSelectStep(
-                    min_selections=0,
-                    max_selections=6,
-                    filters=[
-                        UnitTypeFilter(unit_type="TOKEN"),
-                        RangeFilter(max_range=1),
-                        ImmunityFilter(),
-                    ],
-                    output_key="clear_targets",
-                    target_type=TargetType.UNIT_OR_TOKEN,
-                    prompt="Select tokens to clear.",
-                ),
-                ForEachStep(
-                    list_key="clear_targets",
-                    item_key="target_id",
-                    steps_template=[RemoveTokenStep(token_key="target_id")],
-                ),
-            ]
+            return _clear_steps(state, performer_id)
         # HOLD (or anything unhandled): nothing to do.
         return [LogMessageStep(message=f"{performer_id} performs {act_type}.")]
 
