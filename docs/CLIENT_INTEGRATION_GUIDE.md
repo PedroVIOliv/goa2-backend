@@ -1419,7 +1419,7 @@ of input is needed and what options fields are present.
 | `SELECT_HEX` | `valid_hexes` | `{"q": 1, "r": 0, "s": -1}` | Choose a hex on the board |
 | `SELECT_UNIT` | `valid_options` | `"hero_knight"` | Choose a unit by ID |
 | `SELECT_CARD` | `valid_options` | `"card_id"` | Choose a card by ID. When the chooser may be unable to resolve an ID against their own view (a non-owner caster picking from a masked spellbook, e.g. a copy effect driving Gydion's cast), the request also carries `options` (list of `{id, text}`) with display names — render those as labelled choices for any ID that has no card in the view |
-| `CHOOSE_ACTION` | `options` (list of `{id, text}`) | `"ATTACK"` | Choose from named actions |
+| `CHOOSE_ACTION` | `options` (list of `{id, text}`) | `"ATTACK"` | Choose from named actions. Also sent mid-action when a card performs another card's Movement/Attack primary and Fast Travel/Clear could replace it (options: the primary and `"FAST_TRAVEL"` or `"CLEAR"`) |
 | `SELECT_OPTION` | `options` (list of `{id, text}`) | `"option_id"` | Choose from generic options |
 | `SELECT_CARD_OR_PASS` | `options` (list of `{id, text, ...}`) | `"card_id"` or `"PASS"` | Choose a defense card in reaction. Includes combat context fields and per-card metadata. Some cards make the defender block with a stat other than Defense — always render `defense_value` (see below) |
 | `CHOOSE_ACTOR` | `player_ids` | `"hero_arien"` | Choose which hero acts next |

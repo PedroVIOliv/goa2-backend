@@ -76,6 +76,7 @@ from pathlib import Path
 from typing import Any
 
 from goa2.domain.models import GamePhase, TeamColor
+from goa2.domain.rules_version import CURRENT_RULES_VERSION
 from goa2.domain.time_control import TimeControlConfig
 from goa2.domain.types import HeroID
 from goa2.engine.session import GameSession
@@ -242,6 +243,7 @@ class ReplayRecorder:
         time_control: TimeControlConfig | None = None,
         tie_breaker_team: str | None = None,
         player_names: dict[str, str] | None = None,
+        rules_version: int = CURRENT_RULES_VERSION,
     ) -> None:
         """Write the setup header. No-op if the log already has a header."""
         if self.has_setup:
@@ -263,6 +265,9 @@ class ReplayRecorder:
                 # Absent in logs written before player identity; readers that
                 # find no key treat it as an empty map.
                 "player_names": player_names or {},
+                # Absent in logs written before rules versioning: those games
+                # rebuild on version 0.
+                "rules_version": rules_version,
                 "time_control": (
                     time_control.model_dump(mode="json") if time_control is not None else None
                 ),
@@ -418,6 +423,7 @@ def build_session_from_setup(setup: dict[str, Any]) -> GameSession:
         seed=setup["seed"],
         time_control=time_control,
         tie_breaker_team=TeamColor(coin) if coin else None,
+        rules_version=setup.get("rules_version", 0),
     )
     if time_control is not None:
         # Replays record exact decisions, not readiness or wall-clock receipt

@@ -128,6 +128,7 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
             seed=seed,
             time_control=body.time_control,
             player_names=hero_names,
+            rules_version=state.rules_version,
         )
 
     return CreateGameResponse(
