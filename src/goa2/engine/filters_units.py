@@ -13,6 +13,7 @@ from goa2.domain.models.enums import (
 )
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.models.token import Token
+from goa2.domain.rules_version import ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID
 
@@ -256,9 +257,7 @@ class ImmunityFilter(FilterCondition):
     type: FilterType = FilterType.IMMUNITY
 
     def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
-        from goa2.domain.models.effect import EffectType
         from goa2.engine import rules  # Import inside to be safe
-        from goa2.engine.stats import _is_effect_active
 
         target = state.get_entity(BoardEntityID(candidate)) if isinstance(candidate, str) else None
         if not target:
@@ -280,37 +279,15 @@ class ImmunityFilter(FilterCondition):
 
         # Check 2: ATTACK_IMMUNITY effects
         # Only applies when current action is ATTACK
-        current_action = context.get("current_action_type")
-        if current_action == ActionType.ATTACK:
+        if context.get("current_action_type") == ActionType.ATTACK:
             current_actor_id = str(state.current_actor_id) if state.current_actor_id else None
-
-            # Look for ATTACK_IMMUNITY effects where target is the protected unit
-            for effect in state.active_effects:
-                if effect.effect_type != EffectType.ATTACK_IMMUNITY:
-                    continue
-                # Resolving a card sets is_active even for NEXT_TURN effects.
-                # The effect's duration must also include the current turn.
-                if not effect.is_active or not _is_effect_active(effect, state):
-                    continue
-
-                # The effect protects its source_id (the hero who played the defense card)
-                if effect.source_id != candidate:
-                    continue
-
-                # Some immunities protect only against basic (Gold/Silver)
-                # attacks. AttackSequenceStep writes this source-card
-                # classification for every attack, including nested performed
-                # card actions, so a missing/false flag is non-basic here.
-                if effect.basic_attacks_only and not context.get("attack_is_basic", False):
-                    continue
-                if effect.non_basic_attacks_only and context.get("attack_is_basic", False):
-                    continue
-
-                # Check if current attacker is in the exception list
-                if current_actor_id and current_actor_id in effect.except_attacker_ids:
-                    continue  # This attacker is allowed to target
-
-                # Target is immune to this attack
+            if state.rules_version >= ATTACK_IMMUNITY_COVERS_WHOLE_ACTION:
+                is_basic = rules.attack_is_basic(state, current_actor_id)
+            else:
+                # Only set once AttackSequenceStep runs, so choices made
+                # before it treat a basic attack as non-basic.
+                is_basic = bool(context.get("attack_is_basic", False))
+            if rules.is_immune_to_attack(state, candidate, current_actor_id, is_basic=is_basic):
                 return False
 
         return True  # Passes filter (not immune)

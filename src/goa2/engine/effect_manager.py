@@ -12,6 +12,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import ActionType, CardState
+from goa2.domain.rules_version import ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
 
 if TYPE_CHECKING:
     from goa2.domain.state import GameState
@@ -122,6 +123,15 @@ class EffectManager:
         # enemy's card driven by Mind Grip — would stay dormant forever.
         if card is not None and card.state != CardState.UNRESOLVED:
             is_active = True
+
+        if (
+            origin_action_type == ActionType.ATTACK
+            and state.rules_version >= ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
+        ):
+            from goa2.engine.rules import attack_is_basic
+
+            actor_id = str(state.current_actor_id) if state.current_actor_id else None
+            kwargs["origin_attack_is_basic"] = attack_is_basic(state, actor_id)
 
         effect = ActiveEffect(
             id=f"eff_{state.create_entity_id('e')}",
