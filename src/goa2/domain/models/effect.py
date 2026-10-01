@@ -262,6 +262,9 @@ class ActiveEffect(BaseModel):
     # Origin action type - tracks whether effect came from skill or attack
     # Used for cancelling effects by type (e.g., "cancel skill effects")
     origin_action_type: ActionType | None = None
+    # Set only for effects an attack created: whether that attack was basic.
+    # Heroes immune to such attacks are immune to these effects too.
+    origin_attack_is_basic: bool | None = None
 
     # Topology constraint fields (for TOPOLOGY_SPLIT / TOPOLOGY_ISOLATION)
     # Used by Nebkher's Crack in Reality / Shift Reality

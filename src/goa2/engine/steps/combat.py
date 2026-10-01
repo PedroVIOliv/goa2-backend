@@ -17,7 +17,6 @@ from goa2.domain.input import (
     parse_hex_selection,
 )
 from goa2.domain.models import (
-    CardColor,
     GamePhase,
     Hero,
     StatType,
@@ -97,7 +96,7 @@ class AttackSequenceStep(GameStep):
     Stores in context for defense effect resolution:
     - attack_is_ranged: True if is_ranged=True
     - attacker_id: The ID of the attacking unit
-    - attack_is_basic: True if the attack's source card is GOLD/SILVER
+    - attack_is_basic: True if the attack's performed card is basic (gold/silver)
 
     target_id_key reads a target selected by an earlier step.
     target_output_key stores a target selected by this attack.
@@ -183,15 +182,11 @@ class AttackSequenceStep(GameStep):
         context["attacker_id"] = str(state.current_actor_id) if state.current_actor_id else None
         context["attack_damage"] = effective_damage
         context["defense_uses_initiative"] = self.defense_uses_initiative
-        # Snorri's Oath line (and any future basic-attack-gated defense) needs
-        # to know if the attack's source card is GOLD/SILVER (basic) or a
-        # colored tier (non-basic). Source card = the attacker's
-        # current_turn_card, unless a re-perform (Bullet Time, Reload, ...)
-        # already pinned the actual acted-upon card via reperforming_card_id
-        # — that card can differ from current_turn_card. Written on every
-        # resolve, like attack_is_ranged above, so it can't leak between
-        # attacks.
-        context["attack_is_basic"] = self._resolve_attack_is_basic(state, base_actor_id, context)
+        # Defense-time reads (Snorri's Oath). Written on every resolve, like
+        # attack_is_ranged above, so it can't leak between attacks.
+        from goa2.engine import rules
+
+        context["attack_is_basic"] = rules.attack_is_basic(state, base_actor_id)
         logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )
@@ -263,30 +258,6 @@ class AttackSequenceStep(GameStep):
         )
 
         return StepResult(is_finished=True, new_steps=new_steps)
-
-    @staticmethod
-    def _resolve_attack_is_basic(
-        state: GameState, base_actor_id: str | None, context: dict[str, Any]
-    ) -> bool:
-        """Is the attack's source card GOLD/SILVER (basic)?
-
-        Source card = the attacker's current_turn_card, unless the context
-        carries a performing-card override (reperforming_card_id) pinning a
-        different card the attack machinery is actually acting on — see
-        PerformPrimaryActionStep/PerformCardActionStep, which set that key
-        while re-performing an already-resolved card (Bullet Time, Reload).
-        """
-        if not base_actor_id:
-            return False
-        hero = state.get_hero(HeroID(base_actor_id))
-        if not hero:
-            return False
-
-        source_card = state.get_performing_card(base_actor_id)
-
-        if source_card is None:
-            return False
-        return source_card.current_color in (CardColor.GOLD, CardColor.SILVER)
 
 
 class ResolveCombatStep(GameStep):

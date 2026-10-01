@@ -2,9 +2,10 @@ from collections import deque
 
 from goa2.domain.board import Board
 from goa2.domain.hex import Hex
-from goa2.domain.models import ActionType, Card, Minion, TeamColor
+from goa2.domain.models import ActionType, Card, CardColor, Minion, TeamColor
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.unit import Unit
+from goa2.domain.rules_version import ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.topology import get_topology_service
@@ -301,7 +302,57 @@ def unit_ignores_effect_due_to_immunity(
         return False
     if _controller_id(effect.source_id, state) == _controller_id(str(unit_id), state):
         return False
+    if effect.origin_attack_is_basic is not None and is_immune_to_attack(
+        state, str(unit_id), effect.source_id, is_basic=effect.origin_attack_is_basic
+    ):
+        return True
     return is_immune_to_actor(target, state, actor_id=effect.source_id)
+
+
+def attack_is_basic(state: GameState, attacker_id: str | None) -> bool:
+    """Is this attacker's attack performed from a basic (gold/silver) card?
+
+    Reads the performed card, so the answer holds for the whole attack action,
+    including choices made before the attack step itself.
+    """
+    if not attacker_id or state.get_hero(HeroID(attacker_id)) is None:
+        return False
+    card = state.get_performing_card(attacker_id)
+    if card is None:
+        return False
+    if state.rules_version < ATTACK_IMMUNITY_COVERS_WHOLE_ACTION:
+        return card.current_color in (CardColor.GOLD, CardColor.SILVER)
+    return card.is_basic
+
+
+def is_immune_to_attack(
+    state: GameState, target_id: str, attacker_id: str | None, *, is_basic: bool
+) -> bool:
+    """Whether target_id's ATTACK_IMMUNITY effects cover this attacker's attack.
+
+    Immunity to an attack covers every effect of that attack action, from
+    allies too, not just being chosen as its target.
+    """
+    from goa2.domain.models.effect import EffectType
+    from goa2.engine.stats import _is_effect_active
+
+    for effect in state.active_effects:
+        if effect.effect_type != EffectType.ATTACK_IMMUNITY:
+            continue
+        # Resolving a card sets is_active even for NEXT_TURN effects.
+        # The effect's duration must also include the current turn.
+        if not effect.is_active or not _is_effect_active(effect, state):
+            continue
+        if effect.source_id != target_id:
+            continue
+        if effect.basic_attacks_only and not is_basic:
+            continue
+        if effect.non_basic_attacks_only and is_basic:
+            continue
+        if attacker_id and attacker_id in effect.except_attacker_ids:
+            continue
+        return True
+    return False
 
 
 def can_perform_action_on_card(

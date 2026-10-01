@@ -5,5 +5,6 @@
 # Saves and replay logs written before versioning existed are version 0.
 
 REPERFORM_OFFERS_REPLACEMENT = 1  # Fast Travel / Clear may replace a re-performed primary
+ATTACK_IMMUNITY_COVERS_WHOLE_ACTION = 2  # Attack immunity covers every effect of the attack
 
-CURRENT_RULES_VERSION = REPERFORM_OFFERS_REPLACEMENT
+CURRENT_RULES_VERSION = ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
