@@ -5,7 +5,7 @@ import pytest
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import Token, TokenType
+from goa2.domain.models import CardState, Token, TokenType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -1246,6 +1246,115 @@ def test_hurry_up_restores_initiative_at_end_of_turn() -> None:
     push_steps(state, [s.model_copy(deep=True) for s in delayed[0].finishing_steps])
     process_stack(state)
     assert state.get_hero("blue_enemy").current_turn_card.initiative == 3
+
+
+def _hurried_state(rules_version: int | None = None):
+    """blue_enemy's turn card (printed Initiative 3) after Hanu's Hurry Up!."""
+    from goa2.domain.rules_version import CURRENT_RULES_VERSION
+
+    state = _hurry_state(target_init=3)
+    state.rules_version = CURRENT_RULES_VERSION if rules_version is None else rules_version
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_enemy").finish()
+    return state, state.get_hero("blue_enemy").current_turn_card
+
+
+def _base_initiative(card) -> int:
+    from goa2.domain.models import StatType
+
+    return card.get_base_stat_value(StatType.INITIATIVE)
+
+
+@pytest.mark.effect_contract
+def test_hurry_up_leaves_printed_initiative_untouched() -> None:
+    from goa2.domain.views import _build_card_view
+
+    _, card = _hurried_state()
+    assert _base_initiative(card) == 11
+    assert card.initiative == 3
+    assert _build_card_view(card)["initiative"] == 11
+
+    card.state = CardState.RESOLVED
+    assert _build_card_view(card)["initiative"] == 3
+
+
+@pytest.mark.effect_flow
+def test_hurry_up_survives_hanu_defeat_and_ends_when_card_resolves() -> None:
+    state, card = _hurried_state()
+    EffectManager.expire_by_source(state, "hero_hanu")
+    assert _base_initiative(card) == 11
+
+    card.state = CardState.RESOLVED
+    assert _base_initiative(card) == 3
+
+
+@pytest.mark.effect_flow
+def test_hurried_card_swapped_into_hand_is_back_to_printed_initiative() -> None:
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.steps import SwapCardStep
+
+    state, card = _hurried_state()
+    hero = state.get_hero("blue_enemy")
+    replacement = hero_card("Hanu", "hurry_up")
+    replacement.state = CardState.HAND
+    hero.hand.append(replacement)
+    hero.deck.append(replacement)
+
+    state.execution_context["swap_hero"] = "blue_enemy"
+    state.execution_context["swap_card"] = replacement.id
+    push_steps(
+        state,
+        [SwapCardStep(target_card_key="swap_card", context_hero_id_key="swap_hero")],
+    )
+    process_stack(state)
+
+    assert card in hero.hand
+    # An Initiative-as-Defense block (Emmitt's Temporal line) reads this value.
+    assert _base_initiative(card) == 3
+
+
+@pytest.mark.effect_flow
+def test_hurrying_a_card_twice_still_returns_it_to_printed_initiative() -> None:
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.steps import SetCardInitiativeStep
+
+    state, card = _hurried_state()
+    state.execution_context["hurry_target"] = "blue_enemy"
+    push_steps(state, [SetCardInitiativeStep(hero_key="hurry_target", value=11)])
+    process_stack(state)
+    assert _base_initiative(card) == 11
+
+    card.state = CardState.RESOLVED
+    assert _base_initiative(card) == 3
+
+
+@pytest.mark.effect_contract
+def test_initiative_override_is_saved_only_while_set() -> None:
+    from goa2.domain.models import Card
+
+    _, card = _hurried_state()
+    assert card.model_dump(mode="json")["initiative_override"] == 11
+    assert Card.model_validate(card.model_dump(mode="json")).initiative_override == 11
+
+    card.state = CardState.RESOLVED
+    assert "initiative_override" not in card.model_dump(mode="json")
+
+
+@pytest.mark.effect_flow
+def test_hurry_up_on_older_rules_overwrites_and_dies_with_hanu() -> None:
+    from goa2.domain.rules_version import HURRY_UP_INITIATIVE_OVERRIDE
+    from goa2.engine.handler import process_stack
+    from goa2.engine.phases import end_turn
+
+    state, card = _hurried_state(HURRY_UP_INITIATIVE_OVERRIDE - 1)
+    assert card.initiative == 11
+
+    EffectManager.expire_by_source(state, "hero_hanu")
+    end_turn(state)
+    process_stack(state)
+    assert card.initiative == 11
 
 
 @pytest.mark.effect_flow

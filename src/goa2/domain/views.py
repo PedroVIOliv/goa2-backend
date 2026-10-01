@@ -364,7 +364,7 @@ def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, A
             "secondary_actions": {k.value: v for k, v in card.secondary_actions.items()},
             "effect_id": card.effect_id,
             "effect_text": card.effect_text,
-            "initiative": card.initiative,
+            "initiative": card.effective_initiative,
             "state": card.state.value,
             "is_facedown": card.is_facedown,
             "is_ranged": card.is_ranged,

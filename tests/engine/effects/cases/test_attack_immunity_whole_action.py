@@ -19,7 +19,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
-from goa2.domain.rules_version import CURRENT_RULES_VERSION
+from goa2.domain.rules_version import ATTACK_IMMUNITY_COVERS_WHOLE_ACTION, CURRENT_RULES_VERSION
 from goa2.domain.types import UnitID
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.stats import get_computed_stat
@@ -116,7 +116,7 @@ def test_onslaught_can_target_hero_immune_only_to_non_basic_attacks() -> None:
 @pytest.mark.effect_flow
 def test_games_on_older_rules_keep_their_recorded_targeting() -> None:
     state = _onslaught_state()
-    state.rules_version = CURRENT_RULES_VERSION - 1
+    state.rules_version = ATTACK_IMMUNITY_COVERS_WHOLE_ACTION - 1
     _shield(state)
 
     assert "hero_gydion" in _onslaught_targets(state)
