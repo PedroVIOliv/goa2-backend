@@ -26,6 +26,9 @@ class Card(GameEntity):
     effect_text: str = Field(alias="effect_text")
 
     initiative: int
+    # Replaces the printed Initiative while the card is UNRESOLVED (Hanu's
+    # Hurry Up!); any state change clears it, see __setattr__.
+    initiative_override: int | None = Field(default=None, exclude_if=lambda v: v is None)
 
     state: CardState = CardState.DECK
     is_facedown: bool = True  # Default is Hidden
@@ -85,6 +88,11 @@ class Card(GameEntity):
         if self.metadata is None:
             self.metadata = {}
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if name == "state" and value != CardState.UNRESOLVED:
+            super().__setattr__("initiative_override", None)
+
     # -- Masked Values for in-game logic --
     # Use these when resolving game state where hidden info matters.
 
@@ -134,10 +142,16 @@ class Card(GameEntity):
         return self.effect_text
 
     @property
+    def effective_initiative(self) -> int:
+        if self.initiative_override is not None:
+            return self.initiative_override
+        return self.initiative
+
+    @property
     def current_initiative(self) -> int:
         if self.is_facedown:
             return 0
-        return self.initiative
+        return self.effective_initiative
 
     model_config = ConfigDict(frozen=False, populate_by_name=True)
 

@@ -88,10 +88,12 @@ def _clear_steps(state: GameState, hero_id: str) -> list[GameStep]:
 class SetCardInitiativeStep(GameStep):
     """Hanu's Hurry Up!: set the printed Initiative of a target hero's unresolved
     current_turn_card to ``value`` (11), overriding only the BASE value so items
-    and other Initiative modifiers still stack via ``get_computed_stat``. Records
-    the original and schedules an end-of-turn restore (THIS_TURN DELAYED_TRIGGER)
-    so the printed value returns "once it is resolved or otherwise changes
-    state".
+    and other Initiative modifiers still stack via ``get_computed_stat``. The
+    override lasts until the card changes state (``Card.initiative_override``).
+
+    Games older than HURRY_UP_INITIATIVE_OVERRIDE overwrite the printed value
+    and restore it from an end-of-turn trigger sourced from the actor, which
+    Hanu's defeat cancels; replays of those games depend on that.
     """
 
     type: StepType = StepType.SET_CARD_INITIATIVE
@@ -113,24 +115,12 @@ class SetCardInitiativeStep(GameStep):
         if card.state != CardState.UNRESOLVED:
             return StepResult(is_finished=True)
 
-        original = card.initiative
-        card.initiative = self.value
+        from goa2.domain.rules_version import HURRY_UP_INITIATIVE_OVERRIDE
 
-        from goa2.domain.models import DurationType
-        from goa2.domain.models.effect import EffectScope, EffectType, Shape
-        from goa2.engine.effect_manager import EffectManager
-
-        EffectManager.create_effect(
-            state=state,
-            source_id=str(state.current_actor_id) if state.current_actor_id else "system",
-            effect_type=EffectType.DELAYED_TRIGGER,
-            scope=EffectScope(shape=Shape.GLOBAL),
-            duration=DurationType.THIS_TURN,
-            is_active=True,
-            finishing_steps=[
-                RestoreCardInitiativeStep(card_id=card.id, original_initiative=original)
-            ],
-        )
+        if state.rules_version >= HURRY_UP_INITIATIVE_OVERRIDE:
+            card.initiative_override = self.value
+        else:
+            self._overwrite_until_end_of_turn(state, card)
 
         return StepResult(
             is_finished=True,
@@ -145,6 +135,25 @@ class SetCardInitiativeStep(GameStep):
                         "value": self.value,
                     },
                 )
+            ],
+        )
+
+    def _overwrite_until_end_of_turn(self, state: GameState, card: Card) -> None:
+        from goa2.domain.models import DurationType
+        from goa2.domain.models.effect import EffectScope, EffectType, Shape
+        from goa2.engine.effect_manager import EffectManager
+
+        original = card.initiative
+        card.initiative = self.value
+        EffectManager.create_effect(
+            state=state,
+            source_id=str(state.current_actor_id) if state.current_actor_id else "system",
+            effect_type=EffectType.DELAYED_TRIGGER,
+            scope=EffectScope(shape=Shape.GLOBAL),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            finishing_steps=[
+                RestoreCardInitiativeStep(card_id=card.id, original_initiative=original)
             ],
         )
 
@@ -1520,8 +1529,14 @@ class RetrieveUnresolvedCardStep(GameStep):
                 player_id=self.hero_id,
                 prompt="Alternative Timelines: retrieve one of your unresolved cards.",
                 options=[
-                    {"id": first.id, "text": f"{first.name} (initiative {first.initiative})"},
-                    {"id": second.id, "text": f"{second.name} (initiative {second.initiative})"},
+                    {
+                        "id": first.id,
+                        "text": f"{first.name} (initiative {first.effective_initiative})",
+                    },
+                    {
+                        "id": second.id,
+                        "text": f"{second.name} (initiative {second.effective_initiative})",
+                    },
                 ],
             ),
         )

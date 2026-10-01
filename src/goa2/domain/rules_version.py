@@ -6,5 +6,6 @@
 
 REPERFORM_OFFERS_REPLACEMENT = 1  # Fast Travel / Clear may replace a re-performed primary
 ATTACK_IMMUNITY_COVERS_WHOLE_ACTION = 2  # Attack immunity covers every effect of the attack
+HURRY_UP_INITIATIVE_OVERRIDE = 3  # Hurry Up! overrides Initiative only while the card is unresolved
 
-CURRENT_RULES_VERSION = ATTACK_IMMUNITY_COVERS_WHOLE_ACTION
+CURRENT_RULES_VERSION = HURRY_UP_INITIATIVE_OVERRIDE
