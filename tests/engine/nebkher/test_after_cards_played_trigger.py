@@ -178,3 +178,17 @@ def test_generic_turn_expiry_never_runs_the_payload() -> None:
     assert not any(
         e.effect_type == EffectType.AFTER_CARDS_PLAYED_TRIGGER for e in state.active_effects
     )
+
+
+def test_scheduling_card_becomes_inactive_once_payload_fires() -> None:
+    state = _state()
+    blue = _hand_card("card_imbue_doubt")
+    blue.is_active = True
+    state.get_hero("hero_source").played_cards.append(blue)
+    _schedule(state, [SetContextFlagStep(key="acp_fired", value=True)])
+
+    _advance_to_next_turn_reveal(state)
+    process_stack(state)
+
+    assert state.execution_context.get("acp_fired") is True
+    assert blue.is_active is False

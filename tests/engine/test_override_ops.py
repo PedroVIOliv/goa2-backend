@@ -310,3 +310,38 @@ def test_add_effect_from_payload(session):
 def test_add_effect_invalid_payload_rejected(session):
     with pytest.raises(OverrideRejectedError):
         apply_override_decision(session, "add_effect", {"effect": {"id": "x"}})
+
+
+def test_remove_effect_untaps_its_card(session):
+    card_id = session.state.get_hero("hero_arien").hand[0].id
+    session.state.get_card_by_id(card_id).is_active = True
+    session.state.add_effect(
+        ActiveEffect(
+            id="fx_card",
+            source_id="hero_arien",
+            source_card_id=card_id,
+            effect_type=EffectType.AREA_STAT_MODIFIER,
+            scope=EffectScope(shape=Shape.GLOBAL, origin_id="hero_arien"),
+            duration=DurationType.THIS_ROUND,
+            created_at_turn=1,
+            created_at_round=1,
+        )
+    )
+    apply_override_decision(session, "remove_effect", {"effect_id": "fx_card"})
+    assert session.state.get_card_by_id(card_id).is_active is False
+
+
+def test_add_effect_taps_its_card(session):
+    card_id = session.state.get_hero("hero_arien").hand[0].id
+    payload = {
+        "id": "fx_card",
+        "source_id": "hero_arien",
+        "source_card_id": card_id,
+        "effect_type": EffectType.AREA_STAT_MODIFIER.value,
+        "scope": {"shape": Shape.GLOBAL.value, "origin_id": "hero_arien"},
+        "duration": DurationType.THIS_ROUND.value,
+        "created_at_turn": 1,
+        "created_at_round": 1,
+    }
+    apply_override_decision(session, "add_effect", {"effect": payload})
+    assert session.state.get_card_by_id(card_id).is_active is True

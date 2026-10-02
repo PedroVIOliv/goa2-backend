@@ -6,6 +6,9 @@ from goa2.domain.board import Board
 from goa2.domain.hex import Hex
 from goa2.domain.models import (
     ActionType,
+    Card,
+    CardColor,
+    CardTier,
     Hero,
     Team,
     TeamColor,
@@ -429,3 +432,36 @@ class TestCancelEffectsStepDisruptorPulse:
         remaining_ids = [e.id for e in state_with_heroes.active_effects]
         assert "eff_enemy_attack" in remaining_ids
         assert "eff_friendly_skill" in remaining_ids
+
+    def test_cancelling_a_cards_only_effect_untaps_the_card(self, state_with_heroes):
+        card = Card(
+            id="card_1",
+            name="card_1",
+            tier=CardTier.I,
+            color=CardColor.BLUE,
+            initiative=5,
+            primary_action=ActionType.SKILL,
+            secondary_actions={},
+            effect_id="",
+            effect_text="",
+        )
+        card.is_active = True
+        state_with_heroes.get_hero("red_hero").played_cards.append(card)
+        state_with_heroes.active_effects = [
+            ActiveEffect(
+                id="eff_card",
+                source_id="red_hero",
+                source_card_id="card_1",
+                effect_type=EffectType.TARGET_PREVENTION,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.THIS_ROUND,
+                created_at_turn=1,
+                created_at_round=1,
+            )
+        ]
+
+        CancelEffectsStep(effect_types=[EffectType.TARGET_PREVENTION]).resolve(
+            state_with_heroes, {}
+        )
+
+        assert card.is_active is False
