@@ -21,6 +21,7 @@ from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.session import GameSession, SessionResult
 
 
@@ -583,6 +584,8 @@ def _apply_add_effect(session: GameSession, args: AddEffectArgs) -> None:
             f"Effect id {effect.id!r} already active", code="duplicate_effect"
         )
     session.state.add_effect(effect)
+    if effect.source_card_id:
+        EffectManager._update_card_active_status(session.state, effect.source_card_id)
 
 
 _register(
@@ -604,12 +607,11 @@ class RemoveEffectArgs(BaseModel):
 
 def _apply_remove_effect(session: GameSession, args: RemoveEffectArgs) -> None:
     state = session.state
-    before = len(state.active_effects)
-    state.active_effects = [e for e in state.active_effects if e.id != args.effect_id]
-    if len(state.active_effects) == before:
+    if not any(e.id == args.effect_id for e in state.active_effects):
         raise OverrideRejectedError(
             f"No active effect with id {args.effect_id!r}", code="unknown_effect"
         )
+    EffectManager.expire_effect_by_id(state, args.effect_id)
 
 
 _register(

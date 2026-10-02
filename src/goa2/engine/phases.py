@@ -323,6 +323,11 @@ def _collect_after_cards_played_steps(state: GameState) -> list[GameStep]:
         e for e in state.active_effects if e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
     ]
 
+    from goa2.engine.effect_manager import EffectManager
+
+    for card_id in {e.source_card_id for e in triggers if e.source_card_id}:
+        EffectManager._update_card_active_status(state, card_id)
+
     from goa2.engine.steps import SetActorStep
 
     steps: list[GameStep] = []

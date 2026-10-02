@@ -506,9 +506,12 @@ class CancelEffectsStep(GameStep):
 
             return True
 
-        initial_count = len(state.active_effects)
-        state.active_effects = [e for e in state.active_effects if not effect_matches(e)]
-        cancelled_count = initial_count - len(state.active_effects)
+        cancelled = [e for e in state.active_effects if effect_matches(e)]
+        cancelled_ids = {e.id for e in cancelled}
+        state.active_effects = [e for e in state.active_effects if e.id not in cancelled_ids]
+        for card_id in {e.source_card_id for e in cancelled if e.source_card_id}:
+            EffectManager._update_card_active_status(state, card_id)
+        cancelled_count = len(cancelled)
 
         if cancelled_count > 0:
             logger.debug(f"   [EFFECT] Cancelled {cancelled_count} active effect(s)")
