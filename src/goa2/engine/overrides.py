@@ -16,7 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import GamePhase, TeamColor
+from goa2.domain.models import CardState, GamePhase, TeamColor
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
@@ -401,7 +401,8 @@ _register(
 class MoveCardArgs(BaseModel):
     hero_id: str
     card_id: str
-    zone: Literal["hand", "discard", "played"]
+    zone: Literal["hand", "discard", "played", "deck"]
+    slot: int | None = Field(default=None, ge=1, le=4, description="Turn slot for zone='played'")
 
 
 def _detach_card(hero: Any, card_id: str) -> Any:
@@ -427,26 +428,79 @@ def _detach_card(hero: Any, card_id: str) -> Any:
     return None
 
 
+# A deck card no live zone holds: unbought upgrades, retired cards, and cards
+# orphaned by a bug. ITEM/PASSIVE cards are excluded because hero.items and
+# ultimate checks read them in place.
+_UNMOVABLE_STATES = (CardState.ITEM, CardState.PASSIVE)
+
+
+def _take_from_deck(hero: Any, card_id: str) -> Any:
+    for card in hero.deck:
+        if card.id == card_id and card.state not in _UNMOVABLE_STATES:
+            return card
+    return None
+
+
+_ZONE_STATE = {
+    "hand": CardState.HAND,
+    "discard": CardState.DISCARD,
+    "played": CardState.RESOLVED,
+    "deck": CardState.DECK,
+}
+
+
 def _apply_move_card(session: GameSession, args: MoveCardArgs) -> None:
     hero = _require_hero(session.state, args.hero_id)
-    card = _detach_card(hero, args.card_id)
+    slot = args.slot
+    if slot is not None and args.zone != "played":
+        raise OverrideRejectedError("slot only applies to zone 'played'", code="bad_args")
+    if args.zone == "played":
+        # Slots past resolved_turn_count belong to turns not yet played; the
+        # engine overwrites them on resolution, losing the card.
+        open_slots = [
+            n
+            for n in range(1, hero.resolved_turn_count + 1)
+            if hero.card_in_turn_slot(n) is None or hero.card_in_turn_slot(n).id == args.card_id
+        ]
+        if slot is None:
+            if not open_slots:
+                raise OverrideRejectedError(
+                    f"{args.hero_id} has no empty slot for a finished turn", code="slot_unavailable"
+                )
+            slot = open_slots[0]
+        elif slot > hero.resolved_turn_count:
+            raise OverrideRejectedError(
+                f"Turn {slot} has not been played yet by {args.hero_id}", code="slot_unavailable"
+            )
+        elif slot not in open_slots:
+            raise OverrideRejectedError(
+                f"Played slot {slot} of {args.hero_id} already holds "
+                f"{hero.card_in_turn_slot(slot).id!r}",
+                code="slot_occupied",
+            )
+    card = _detach_card(hero, args.card_id) or _take_from_deck(hero, args.card_id)
     if card is None:
         raise OverrideRejectedError(
             f"Card {args.card_id!r} not found in a movable zone of {args.hero_id} "
-            "(hand / discard / played / current / extra)",
+            "(hand / discard / played / current / extra / deck)",
             code="unknown_card",
         )
+    card.state = _ZONE_STATE[args.zone]
+    card.is_facedown = False
+    card.played_this_round = args.zone == "played"
+    if args.zone == "deck":
+        card.is_active = False
     if args.zone == "hand":
         hero.hand.append(card)
     elif args.zone == "discard":
         hero.discard_pile.append(card)
-    else:  # played — fill the first empty slot, else append
-        for i, slot in enumerate(hero.played_cards):
-            if slot is None:
-                hero.played_cards[i] = card
-                break
-        else:
-            hero.played_cards.append(card)
+    elif args.zone == "deck":
+        pass  # hero.deck is the master list; a card held by no live zone is in the deck
+    else:
+        assert slot is not None
+        while len(hero.played_cards) < slot:
+            hero.played_cards.append(None)
+        hero.played_cards[slot - 1] = card
 
 
 _register(
@@ -454,7 +508,7 @@ _register(
         name="move_card",
         family="patch",
         label="Move card between zones",
-        description="Move a card stuck in the wrong zone to hand, discard, or played.",
+        description="Move a card between hand, discard, a played slot, and the deck.",
         args_model=MoveCardArgs,
         apply=_apply_move_card,
         summary_template="Move card {card_id} of {hero_id} to {zone}",
