@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from goa2.domain.models import TargetType
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import HasUnresolvedCardFilter
 from goa2.engine.filters_composite import AndFilter, OrFilter
@@ -49,6 +50,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckTargetDefeatedStep,
     CoDirectionalDragStep,
     GameStep,
     MoveUnitStep,
@@ -501,6 +503,25 @@ class FightAndFlightEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
+        if state.rules_version >= TARGET_DEFEAT_LOG:
+            survived_steps: list[GameStep] = [
+                CheckTargetDefeatedStep(target_key="ff_victim", output_key="ff_defeated"),
+                CheckContextConditionStep(
+                    input_key="ff_defeated",
+                    operator="==",
+                    threshold=0,
+                    output_key="ff_survived",
+                ),
+            ]
+        else:
+            survived_steps = [
+                CheckContextConditionStep(
+                    input_key="block_succeeded",
+                    operator="==",
+                    threshold=1,
+                    output_key="ff_survived",
+                ),
+            ]
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
@@ -508,13 +529,7 @@ class FightAndFlightEffect(CardEffect):
                 is_ranged=card.is_ranged,
                 target_output_key="ff_victim",
             ),
-            # "not defeated" == the attack was blocked (target survived).
-            CheckContextConditionStep(
-                input_key="block_succeeded",
-                operator="==",
-                threshold=1,
-                output_key="ff_survived",
-            ),
+            *survived_steps,
             # Forced full 3-space straight-line flee, if able. Mandatory so the
             # move is not declinable when a legal line exists; when survived but
             # no legal line exists there simply are no candidates (harmless abort

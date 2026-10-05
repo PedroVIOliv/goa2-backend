@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import goa2.scripts.trinkets_effects  # noqa: F401
+import goa2.scripts.trinkets_effects
+import goa2.scripts.ursafar_effects  # noqa: F401
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
@@ -12,12 +13,15 @@ from goa2.domain.models import (
     CardColor,
     CardState,
     CardTier,
+    Hero,
+    TeamColor,
     Token,
     TokenType,
     Turret,
 )
 from goa2.domain.models.effect import EffectType
 from goa2.domain.models.enums import StatType
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 from goa2.engine.effect_manager import EffectManager
@@ -858,6 +862,46 @@ def test_disruptor_grid_defeats_defender_whose_only_card_was_the_block() -> None
     assert trinkets.gold == gold_before + 1
     # Only a discard deactivates the effect; a defeat does not.
     assert effect.is_active is True
+
+
+def _tear_into_grid(*, rules_version: int) -> GameState:
+    """Enraged Ursafar Tears hero_blue, whose block with its last card lets Grid defeat it."""
+    state = _disruptor_state("disruptor_grid", enemy_hand=False)
+    state.rules_version = rules_version
+    _play_disruptor(state, "disruptor_grid")
+
+    ursafar = Hero(id="hero_ursafar", name="Ursafar", team=TeamColor.RED, deck=[], level=8)
+    ursafar.ultimate_card = hero_card("Ursafar", "unbound_fury")
+    ursafar.current_turn_card = hero_card("Ursafar", "tear")
+    state.teams[TeamColor.RED].heroes.append(ursafar)
+    state.place_entity("hero_ursafar", Hex(q=4, r=0, s=-4))
+    state.current_actor_id = "hero_ursafar"
+    state.execution_context.clear()
+
+    blue = state.get_hero("hero_blue")
+    assert blue is not None
+    blue.hand = [_defense_card("blue_block", primary=True)]
+    state.teams[TeamColor.BLUE].life_counters = 5
+
+    run = run_card(state, "hero_ursafar")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_blue")
+    run.expect_input("SELECT_CARD_OR_PASS").choose("blue_block").finish()
+    assert BoardEntityID("hero_blue") not in state.entity_locations
+    return state
+
+
+@pytest.mark.effect_flow
+def test_tear_extra_life_counter_skips_a_hero_defeated_by_grid() -> None:
+    state = _tear_into_grid(rules_version=TARGET_DEFEAT_LOG)
+    # Grid's defeat costs the normal 1; Tear's extra counter needs Ursafar's own defeat.
+    assert state.teams[TeamColor.BLUE].life_counters == 4
+
+
+@pytest.mark.effect_flow
+def test_tear_before_the_defeat_log_charges_a_grid_defeat() -> None:
+    state = _tear_into_grid(rules_version=TARGET_DEFEAT_LOG - 1)
+    assert state.teams[TeamColor.BLUE].life_counters == 3
 
 
 # =============================================================================

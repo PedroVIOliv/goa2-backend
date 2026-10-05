@@ -35,6 +35,7 @@ EXPECTED_STEP_CLASSES = {
     "CheckHeroDefeatedThisRoundStep",
     "CheckLanePushStep",
     "CheckMinionProtectionStep",
+    "CheckTargetDefeatedStep",
     "CheckPassiveAbilitiesStep",
     "CheckSoloWinStep",
     "CheckUnitFiltersStep",

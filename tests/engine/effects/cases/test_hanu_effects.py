@@ -5,7 +5,7 @@ import pytest
 from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import CardState, Token, TokenType
+from goa2.domain.models import CardColor, CardState, Token, TokenType
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -13,6 +13,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.engine.effect_manager import EffectManager
 
 from ..builders import EffectScenarioBuilder, hero_card
@@ -1095,6 +1096,114 @@ def test_fight_and_flight_no_flee_when_no_straight_line_available() -> None:
     run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
     run.choose("blue_hero").expect_input("SELECT_CARD_OR_PASS")
     run.choose("blue_def").finish()  # survives, but cannot flee -> completes
+    assert _pos(state, "hero_hanu") == (0, 0, 0)
+
+
+def _ff_minion_state(*, rules_version: int = TARGET_DEFEAT_LOG):
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_hanu", at=(0, 0, 0), current_card=hero_card("Hanu", "fight_and_flight"))
+        .blue_minion("blue_minion", at=(1, 0, -1))
+        .blue_hero("protector", at=(3, -1, -2))
+        .with_actor("hero_hanu")
+        .build()
+    )
+    state.rules_version = rules_version
+    return state
+
+
+def _add_totem_save(state) -> None:
+    totem = Token(id="blue_totem", name="Totem", token_type=TokenType.TOTEM)
+    state.register_entity(totem)
+    state.place_entity("blue_totem", Hex(q=2, r=-1, s=-1))
+    EffectManager.create_effect(
+        state=state,
+        source_id="protector",
+        effect_type=EffectType.MINION_PROTECTION,
+        scope=EffectScope(
+            shape=Shape.ADJACENT, origin_id="blue_totem", affects=AffectsFilter.FRIENDLY_UNITS
+        ),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+        sacrifice_origin_token=True,
+    )
+
+
+def _add_card_discard_save(state) -> None:
+    EffectManager.create_effect(
+        state=state,
+        source_id="protector",
+        effect_type=EffectType.MINION_PROTECTION,
+        scope=EffectScope(
+            shape=Shape.RADIUS, range=3, origin_id="protector", affects=AffectsFilter.FRIENDLY_UNITS
+        ),
+        duration=DurationType.PASSIVE,
+        is_active=True,
+        allowed_discard_colors=[CardColor.SILVER],
+    )
+    silver = hero_card("Hanu", "hurry_up")
+    silver.id = "protector_silver"
+    state.get_hero("protector").hand = [silver]
+
+
+@pytest.mark.effect_flow
+def test_fight_and_flight_flees_when_a_totem_saves_the_minion() -> None:
+    state = _ff_minion_state()
+    _add_totem_save(state)
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": -3, "r": 0, "s": 3}).finish()
+
+    assert "blue_minion" in state.entity_locations
+    assert _pos(state, "hero_hanu") == (-3, 0, 3)
+
+
+@pytest.mark.effect_flow
+def test_fight_and_flight_stays_when_a_card_discard_save_keeps_the_defeated_minion() -> None:
+    state = _ff_minion_state()
+    _add_card_discard_save(state)
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_CARD)
+    run.choose("protector_silver").finish()
+
+    assert "blue_minion" in state.entity_locations
+    assert _pos(state, "hero_hanu") == (0, 0, 0)
+
+
+@pytest.mark.effect_flow
+def test_fight_and_flight_ignores_a_defeat_from_before_its_attack() -> None:
+    state = _ff_minion_state()
+    _add_totem_save(state)
+    # Earlier this turn the same minion was defeated but kept on the board.
+    state.execution_context["defeat_log"] = [["blue_minion", "someone_else"]]
+    state.execution_context["last_defeated_minion_id"] = "blue_minion"
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+    run.choose({"q": -3, "r": 0, "s": 3}).finish()
+
+    assert _pos(state, "hero_hanu") == (-3, 0, 3)
+
+
+@pytest.mark.effect_flow
+def test_fight_and_flight_before_the_defeat_log_treats_a_totem_save_as_defeated() -> None:
+    state = _ff_minion_state(rules_version=TARGET_DEFEAT_LOG - 1)
+    _add_totem_save(state)
+
+    run = run_card(state, "hero_hanu")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").finish()
+
     assert _pos(state, "hero_hanu") == (0, 0, 0)
 
 
