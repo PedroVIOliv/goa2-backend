@@ -14,6 +14,7 @@ from goa2.domain.models.enums import (
     StatType,
     TargetType,
 )
+from goa2.domain.rules_version import EMPTY_MEANS_NOT_OBSTACLE
 from goa2.domain.types import HeroID
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
@@ -46,8 +47,10 @@ from goa2.engine.steps import (
 )
 
 if TYPE_CHECKING:
+    from goa2.domain.hex import Hex
     from goa2.domain.models import Card, Hero
     from goa2.domain.state import GameState
+    from goa2.domain.tile import Tile
     from goa2.engine.stats import CardStats
 
 
@@ -90,6 +93,17 @@ def _actor_has_tide_of_darkness(state: GameState) -> bool:
     return _has_tide_of_darkness(state, str(actor_id))
 
 
+def _is_empty_for(state: GameState, h: Hex, tile: Tile, hero_id: str) -> bool:
+    """Empty from the point of view of hero_id performing the action.
+
+    Dodger's defense shields also pass Dodger, though the attacker is the
+    current actor then: a teammate's Static Barrier must not cost his bonus.
+    """
+    if state.rules_version >= EMPTY_MEANS_NOT_OBSTACLE:
+        return not state.validator.is_obstacle_for_actor(state, h, str(hero_id))
+    return not tile.is_occupied and not tile.is_terrain
+
+
 def _count_empty_spawn_points(
     state: GameState, hero_id: str, radius: int, *, minion_only: bool = False
 ) -> int:
@@ -120,12 +134,9 @@ def _count_empty_spawn_points(
                 continue
             if tile.zone_id not in battle_zone_ids:
                 continue
-        if tile.is_occupied:
+        if tile.is_obstacle or topology.distance(hero_hex, h, state) > radius:
             continue
-        if tile.is_terrain:
-            continue
-        dist = topology.distance(hero_hex, h, state)
-        if dist <= radius:
+        if _is_empty_for(state, h, tile, str(hero_id)):
             count += 1
     return count
 
@@ -147,12 +158,10 @@ def _is_adjacent_to_empty_spawn_in_battle_zone(state: GameState, unit_hex, hero_
         tile = state.board.get_tile(n)
         if not tile:
             continue
-        if override:
-            if not tile.is_occupied and not tile.is_terrain:
-                return True
-        else:
-            if tile.spawn_point and tile.zone_id in battle_zone_ids and not tile.is_occupied:
-                return True
+        if not override and not (tile.spawn_point and tile.zone_id in battle_zone_ids):
+            continue
+        if _is_empty_for(state, n, tile, hero_id):
+            return True
     return False
 
 
