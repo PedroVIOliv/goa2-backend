@@ -239,7 +239,7 @@ class StraightLinePathFilter(FilterCondition):
 
             if state.validator.is_obstacle_for_actor(
                 state, hex_pos, actor_id, context
-            ) and not state.validator.is_passable_token(state, hex_pos):
+            ) and not state.validator.is_passable_token(state, hex_pos, [str(origin_uid)]):
                 return False
 
         return True
@@ -720,11 +720,11 @@ class CoMoverValidHexFilter(FilterCondition):
 
         if not self.ignore_path_obstacles:
             if not self._path_clear(
-                state, anchor_hex, candidate, str(partner_id), actor_id, context
+                state, anchor_hex, candidate, str(anchor_id), str(partner_id), actor_id, context
             ):
                 return False
             if not self._path_clear(
-                state, partner_hex, partner_dest, str(anchor_id), actor_id, context
+                state, partner_hex, partner_dest, str(partner_id), str(anchor_id), actor_id, context
             ):
                 return False
 
@@ -759,6 +759,7 @@ class CoMoverValidHexFilter(FilterCondition):
         state: GameState,
         start: Hex,
         end: Hex,
+        moved_id: str,
         excluded_unit_id: str,
         actor_id: str | None,
         context: dict,
@@ -777,7 +778,7 @@ class CoMoverValidHexFilter(FilterCondition):
                 continue
             if state.validator.is_obstacle_for_actor(
                 state, hex_pos, actor_id, context
-            ) and not state.validator.is_passable_token(state, hex_pos):
+            ) and not state.validator.is_passable_token(state, hex_pos, [moved_id]):
                 return False
         return True
 

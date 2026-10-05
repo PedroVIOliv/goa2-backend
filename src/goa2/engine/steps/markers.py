@@ -911,6 +911,7 @@ class MoveTokenStep(GameStep):
                 state=state,
                 actor_id=str(state.current_actor_id) if state.current_actor_id else None,
                 pass_through_obstacles=self.pass_through_obstacles,
+                moved_ids=[str(token_id)],
             )
             if not is_valid:
                 logger.debug(f"   [TOKEN] Invalid token move {token_id}: blocked or out of range.")

@@ -9,5 +9,6 @@ ATTACK_IMMUNITY_COVERS_WHOLE_ACTION = 2  # Attack immunity covers every effect o
 HURRY_UP_INITIATIVE_OVERRIDE = 3  # Hurry Up! overrides Initiative only while the card is unresolved
 TARGET_DEFEAT_LOG = 4  # "if the target is (not) defeated" reads the defeat log, not block_succeeded
 EMPTY_MEANS_NOT_OBSTACLE = 5  # a space that counts as an obstacle for the performer is not empty
+TOKENS_CANNOT_CROSS_MINES = 6  # mines are passable only for units, not a moved token like Pyro
 
-CURRENT_RULES_VERSION = EMPTY_MEANS_NOT_OBSTACLE
+CURRENT_RULES_VERSION = TOKENS_CANNOT_CROSS_MINES
