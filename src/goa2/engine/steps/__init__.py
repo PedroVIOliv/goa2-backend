@@ -35,6 +35,7 @@ from goa2.engine.steps.combat import (  # noqa: F401
     AttackSequenceStep,
     CheckLanePushStep,
     CheckMinionProtectionStep,
+    CheckTargetDefeatedStep,
     DefeatUnitStep,
     LanePushStep,
     MinionBattleStep,

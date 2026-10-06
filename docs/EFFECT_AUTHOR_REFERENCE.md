@@ -125,8 +125,10 @@ AttackSequenceStep(damage=..., target_id_key="thunder_target"),
 # OUTPUT — no producer; this step is the picker, and later steps read the victim.
 AttackSequenceStep(damage=..., target_output_key="ff_victim",
                    target_filters=[InStraightLineFilter()]),
-CheckContextConditionStep(input_key="block_succeeded", ...),   # reads the aftermath
+CheckTargetDefeatedStep(target_key="ff_victim", output_key="ff_defeated"),  # reads the aftermath
 ```
+
+For "if the target is (not) defeated" / "if you defeated", use `CheckTargetDefeatedStep` (add `by_actor=True` for "you"), never `block_succeeded`. `block_succeeded` only says whether a block happened: a minion saved by a totem, or a target removed (not defeated) before combat, reads as unblocked without being defeated, and a card-discard save (Brogan) is a defeat that leaves the minion on the board. The step reads the turn's defeat log from the moment its attack began, and needs the attack's own `target_output_key` — the shared `victim_id` is rejected, since a nested attack would overwrite it.
 
 Do not reach for `target_id_key` as an output channel. The step used to infer the difference, and a missing key silently fell back to a picker carrying only range + enemy team — dropping whatever restriction the producing select held, so the player could hit any enemy in range (issue #25). Splitting the channels makes the worst misclassification a card that no-ops, which is visible and testable.
 

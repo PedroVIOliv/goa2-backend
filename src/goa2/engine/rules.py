@@ -20,6 +20,7 @@ def find_reachable_hexes(
     actor_id: str | None = None,
     pass_through_obstacles: bool = False,
     topology_unit_ids: list[str] | None = None,
+    moved_ids: list[str] | None = None,
 ) -> set[Hex]:
     """
     Returns all hexes reachable from start within max_steps via a single BFS.
@@ -50,6 +51,7 @@ def find_reachable_hexes(
                 pass_through_obstacles=pass_through_obstacles,
                 unit_ids=topology_unit_ids,
                 movement_origin=start,
+                moved_ids=moved_ids,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -67,7 +69,7 @@ def find_reachable_hexes(
 
             if is_obs:
                 passable_tok = (
-                    state.validator.is_passable_token(state, neighbor)
+                    state.validator.is_passable_token(state, neighbor, moved_ids)
                     if state and state.validator
                     else False
                 )
@@ -97,6 +99,7 @@ def validate_movement_path(
     actor_id: str | None = None,
     pass_through_obstacles: bool = False,
     topology_unit_ids: list[str] | None = None,
+    moved_ids: list[str] | None = None,
 ) -> bool:
     """
     Validates if a unit can move from start to end within max_steps.
@@ -146,6 +149,7 @@ def validate_movement_path(
                 pass_through_obstacles=pass_through_obstacles,
                 unit_ids=topology_unit_ids,
                 movement_origin=start,
+                moved_ids=moved_ids,
             )
         else:
             neighbors = board.get_neighbors(current)
@@ -162,7 +166,7 @@ def validate_movement_path(
 
                     if is_obs and neighbor != end:
                         passable_tok = (
-                            state.validator.is_passable_token(state, neighbor)
+                            state.validator.is_passable_token(state, neighbor, moved_ids)
                             if state and state.validator
                             else False
                         )

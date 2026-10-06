@@ -192,6 +192,7 @@ class TopologyService:
         pass_through_obstacles: bool = False,
         unit_ids: Iterable[str] | None = None,
         movement_origin: Hex | None = None,
+        moved_ids: Iterable[str] | None = None,
     ) -> list[Hex]:
         """
         Returns neighbors that can be traversed during movement.
@@ -246,7 +247,7 @@ class TopologyService:
                 if is_obs:
                     if end_hex is not None and n == end_hex:
                         pass  # Allow
-                    elif state.validator.is_passable_token(state, n):
+                    elif state.validator.is_passable_token(state, n, moved_ids):
                         pass  # Allow traversal through passable tokens
                     else:
                         continue

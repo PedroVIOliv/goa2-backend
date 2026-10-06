@@ -2,9 +2,12 @@ import pytest
 
 import goa2.scripts.dodger_effects  # noqa: F401
 from goa2.domain.input import InputRequestType
-from goa2.domain.models.effect import EffectType
+from goa2.domain.models import TeamColor
+from goa2.domain.models.effect import AffectsFilter, DurationType, EffectScope, EffectType, Shape
 from goa2.domain.models.enums import StatType
+from goa2.domain.rules_version import EMPTY_MEANS_NOT_OBSTACLE
 from goa2.domain.types import BoardEntityID
+from goa2.engine.effect_manager import EffectManager
 from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.steps import AttackSequenceStep, PerformPrimaryActionStep
 
@@ -200,3 +203,108 @@ def test_repeating_enfeeblement_does_not_duplicate_its_effect() -> None:
     process_stack(state)
 
     assert [e.id for e in state.active_effects] == before
+
+
+# =============================================================================
+# Shields — emptiness is judged with Dodger as the hero performing the action
+# =============================================================================
+
+
+def _shield_state(*, wasp_team: TeamColor, rules_version: int = EMPTY_MEANS_NOT_OBSTACLE):
+    """Dodger blocks 5 damage with Shield of Decay (Defense 3, +2 with 2+ empty
+    spawn points). Two spawn points sit in his radius; a Static Barrier around
+    (4, 0, -4) covers only (2, 0, -2), and Dodger stands outside it."""
+    hexes = [(q, r, -q - r) for q in range(-4, 5) for r in range(-4, 5) if abs(-q - r) <= 4]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(hexes)
+        .spawn_point((2, 0, -2))
+        .spawn_point((1, 1, -2))
+        .red_hero("hero_attacker", at=(0, 0, 0))
+        .blue_hero("hero_dodger", at=(1, 0, -1))
+        .hero("hero_wasp", team=wasp_team, at=(4, 0, -4))
+        .with_actor("hero_attacker")
+        .build()
+    )
+    state.active_zone_id = "z1"
+    state.rules_version = rules_version
+    EffectManager.create_effect(
+        state=state,
+        source_id="hero_wasp",
+        effect_type=EffectType.STATIC_BARRIER,
+        scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ENEMY_HEROES),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+        barrier_radius=2,
+        barrier_origin_id="hero_wasp",
+    )
+    shield = hero_card("Dodger", "shield_of_decay")
+    shield.is_facedown = False
+    state.get_hero("hero_dodger").hand = [shield]
+    return state
+
+
+@pytest.mark.effect_flow
+def test_shield_loses_its_bonus_to_an_enemy_barrier() -> None:
+    assert not _block_five_damage(_shield_state(wasp_team=TeamColor.RED))
+
+
+@pytest.mark.effect_flow
+def test_shield_keeps_its_bonus_under_a_teammates_barrier() -> None:
+    # The attacker is Wasp's enemy, but emptiness is judged for Dodger, Wasp's ally.
+    assert _block_five_damage(_shield_state(wasp_team=TeamColor.BLUE))
+
+
+@pytest.mark.effect_flow
+def test_shield_before_the_ruling_ignores_an_enemy_barrier() -> None:
+    state = _shield_state(wasp_team=TeamColor.RED, rules_version=EMPTY_MEANS_NOT_OBSTACLE - 1)
+    assert _block_five_damage(state)
+
+
+def _dread_razor_state(*, barrier: bool):
+    """Dodger next to one spawn point, (1, 0, -1), with an enemy adjacent too."""
+    hexes = [(q, r, -q - r) for q in range(-4, 5) for r in range(-4, 5) if abs(-q - r) <= 4]
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(hexes)
+        .spawn_point((1, 0, -1))
+        .blue_hero("hero_dodger", at=(0, 0, 0), current_card=hero_card("Dodger", "dread_razor"))
+        .red_hero("hero_enemy", at=(-1, 0, 1))
+        .red_hero("hero_wasp", at=(3, 0, -3))
+        .with_actor("hero_dodger")
+        .build()
+    )
+    state.active_zone_id = "z1"
+    state.rules_version = EMPTY_MEANS_NOT_OBSTACLE
+    if barrier:
+        EffectManager.create_effect(
+            state=state,
+            source_id="hero_wasp",
+            effect_type=EffectType.STATIC_BARRIER,
+            scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ENEMY_HEROES),
+            duration=DurationType.THIS_TURN,
+            is_active=True,
+            barrier_radius=2,
+            barrier_origin_id="hero_wasp",
+        )
+    return state
+
+
+def _dread_razor_first_prompt(state) -> InputRequestType:
+    run = run_card(state, "hero_dodger")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    return process_stack(state).input_request.request_type
+
+
+@pytest.mark.effect_flow
+def test_dread_razor_offers_range_next_to_an_open_spawn_point() -> None:
+    assert _dread_razor_first_prompt(_dread_razor_state(barrier=False)) == (
+        InputRequestType.SELECT_NUMBER
+    )
+
+
+@pytest.mark.effect_flow
+def test_dread_razor_is_melee_only_when_the_spawn_point_is_behind_an_enemy_barrier() -> None:
+    assert _dread_razor_first_prompt(_dread_razor_state(barrier=True)) == (
+        InputRequestType.SELECT_UNIT
+    )

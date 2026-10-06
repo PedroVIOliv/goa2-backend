@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 
 from goa2.domain.board import DEFAULT_LANE_ID
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
@@ -36,6 +36,19 @@ from goa2.engine.filters_hex import RangeFilter
 from goa2.engine.steps.base import GameStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+# Every genuine defeat this turn, in order, as [victim_id, killer_id]. A totem
+# save is not a defeat and never appears; a card-discard save (Brogan) does.
+DEFEAT_LOG_KEY = "defeat_log"
+# Target key -> defeat-log length when that attack began, so an outcome check
+# only sees defeats from its own attack, including nested attacks under other keys.
+DEFEAT_MARKS_KEY = "defeat_marks"
+
+
+def record_defeat(context: dict[str, Any], victim_ids: list[str], killer_id: str | None) -> None:
+    log = context.setdefault(DEFEAT_LOG_KEY, [])
+    for victim_id in dict.fromkeys(victim_ids):
+        log.append([str(victim_id), killer_id])
 
 
 class SnapshotAdjacentHeroesStep(GameStep):
@@ -148,6 +161,8 @@ class AttackSequenceStep(GameStep):
         else:
             key = "victim_id"
             select_target = True
+
+        context.setdefault(DEFEAT_MARKS_KEY, {})[key] = len(context.get(DEFEAT_LOG_KEY, []))
 
         base_actor_id = str(state.current_actor_id) if state.current_actor_id else None
         board_actor_id = state.resolve_board_actor(base_actor_id) if base_actor_id else None
@@ -391,6 +406,53 @@ class ResolveCombatStep(GameStep):
             )
 
 
+def target_defeated_in_attack(
+    state: GameState, context: dict[str, Any], target_key: str, *, by_actor: bool = False
+) -> bool:
+    """Whether the target under target_key was defeated since its attack began."""
+    target_id = context.get(target_key)
+    mark = context.get(DEFEAT_MARKS_KEY, {}).get(target_key)
+    if not target_id or mark is None:
+        return False
+    actor = state.hero_owner_id(str(state.current_actor_id or ""))
+    for victim_id, killer_id in context.get(DEFEAT_LOG_KEY, [])[mark:]:
+        if victim_id != str(target_id):
+            continue
+        if by_actor and (not killer_id or state.hero_owner_id(killer_id) != actor):
+            continue
+        return True
+    return False
+
+
+class CheckTargetDefeatedStep(GameStep):
+    """Stores whether an attack's target was defeated during that attack.
+
+    With by_actor, only a defeat by the current actor's hero counts.
+    """
+
+    type: StepType = StepType.CHECK_TARGET_DEFEATED
+    target_key: str
+    output_key: str
+    by_actor: bool = False
+
+    @field_validator("target_key")
+    @classmethod
+    def _own_target_key(cls, value: str) -> str:
+        # Attacks nested inside this one overwrite a shared key and its mark.
+        if value == "victim_id":
+            raise ValueError("CheckTargetDefeatedStep needs the attack's own target key")
+        return value
+
+    def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
+        if self.should_skip(context):
+            return StepResult(is_finished=True)
+
+        context[self.output_key] = target_defeated_in_attack(
+            state, context, self.target_key, by_actor=self.by_actor
+        )
+        return StepResult(is_finished=True)
+
+
 class RemoveUnitStep(GameStep):
     """
     Purely removes a unit from the board.
@@ -505,6 +567,7 @@ class DefeatUnitStep(GameStep):
                 ],
             )
 
+        record_defeat(context, [actual_victim_id, *removal_ids], self.killer_id)
         events: list[GameEvent] = [
             GameEvent(
                 event_type=GameEventType.UNIT_DEFEATED,
@@ -881,6 +944,7 @@ class CheckMinionProtectionStep(GameStep):
         Records the defeat in context so post-attack passives (Reign of Winter)
         fire for a defeated-but-not-removed minion as well as a real kill."""
         context["last_defeated_minion_id"] = self.minion_id
+        record_defeat(context, [self.minion_id], self.killer_id)
         events: list[GameEvent] = [
             GameEvent(
                 event_type=GameEventType.UNIT_DEFEATED,

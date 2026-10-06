@@ -13,8 +13,11 @@ import pytest
 
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import ActionType
+from goa2.domain.models import ActionType, SpawnType
 from goa2.domain.models.effect import AffectsFilter, DurationType, EffectScope, EffectType, Shape
+from goa2.domain.rules_version import EMPTY_MEANS_NOT_OBSTACLE
+from goa2.engine.effect_manager import EffectManager
+from goa2.engine.handler import process_stack
 
 from ..builders import EffectScenarioBuilder, hero_card
 from ..runner import run_card
@@ -190,3 +193,98 @@ def test_swift_justice_ultimate_survives_an_impossible_forced_move() -> None:
     assert state.current_actor_id == "hero_whisper"
     assert state.execution_context["current_card_id"] == "swift_justice"
     assert "action_context_stack" not in state.execution_context
+
+
+# =============================================================================
+# Crimson Trail — a spawn point that counts as an obstacle is not empty
+# =============================================================================
+
+
+def _disk(radius: int) -> list[tuple[int, int, int]]:
+    return [
+        (q, r, -q - r)
+        for q in range(-radius, radius + 1)
+        for r in range(-radius, radius + 1)
+        if abs(-q - r) <= radius
+    ]
+
+
+def _crimson_trail_state(*, rules_version: int = EMPTY_MEANS_NOT_OBSTACLE):
+    """Whisper with exactly one minion spawn point in radius, at (1, 0, -1)."""
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_disk(4))
+        .spawn_point((1, 0, -1), spawn_type=SpawnType.MINION)
+        .red_hero("hero_whisper", at=(0, 0, 0), current_card=hero_card("Whisper", "crimson_trail"))
+        .blue_minion("blue_minion", at=(-1, 0, 1))
+        .blue_hero("hero_wasp", at=(3, 0, -3))
+        .with_actor("hero_whisper")
+        .build()
+    )
+    state.active_zone_id = "z1"
+    state.rules_version = rules_version
+    return state
+
+
+def _add_effect(state, effect_type: EffectType, *, source_id: str, **kwargs) -> None:
+    EffectManager.create_effect(
+        state=state,
+        source_id=source_id,
+        effect_type=effect_type,
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+        **kwargs,
+    )
+
+
+def _add_enemy_barrier(state) -> None:
+    # Whisper is outside the barrier, so spaces within 2 of Wasp — including the
+    # spawn point at (1, 0, -1) — count as obstacles for her.
+    _add_effect(
+        state,
+        EffectType.STATIC_BARRIER,
+        source_id="hero_wasp",
+        scope=EffectScope(shape=Shape.GLOBAL, affects=AffectsFilter.ENEMY_HEROES),
+        barrier_radius=2,
+        barrier_origin_id="hero_wasp",
+    )
+
+
+def _first_prompt_after_attack_choice(state) -> InputRequestType:
+    run = run_card(state, "hero_whisper")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    return process_stack(state).input_request.request_type
+
+
+@pytest.mark.effect_flow
+def test_crimson_trail_counts_an_open_spawn_point() -> None:
+    state = _crimson_trail_state()
+    assert _first_prompt_after_attack_choice(state) == InputRequestType.SELECT_HEX
+
+
+@pytest.mark.effect_flow
+def test_crimson_trail_ignores_a_spawn_point_an_enemy_barrier_makes_an_obstacle() -> None:
+    state = _crimson_trail_state()
+    _add_enemy_barrier(state)
+    assert _first_prompt_after_attack_choice(state) == InputRequestType.SELECT_UNIT
+
+
+@pytest.mark.effect_flow
+def test_crimson_trail_ignores_a_spawn_point_an_enemy_spatial_denial_makes_an_obstacle() -> None:
+    state = _crimson_trail_state()
+    _add_effect(
+        state,
+        EffectType.EMPTY_HEX_OBSTACLE,
+        source_id="hero_wasp",
+        scope=EffectScope(
+            shape=Shape.RADIUS, range=2, origin_id="hero_wasp", affects=AffectsFilter.ENEMY_UNITS
+        ),
+    )
+    assert _first_prompt_after_attack_choice(state) == InputRequestType.SELECT_UNIT
+
+
+@pytest.mark.effect_flow
+def test_crimson_trail_before_the_ruling_counts_a_barrier_spawn_point() -> None:
+    state = _crimson_trail_state(rules_version=EMPTY_MEANS_NOT_OBSTACLE - 1)
+    _add_enemy_barrier(state)
+    assert _first_prompt_after_attack_choice(state) == InputRequestType.SELECT_HEX

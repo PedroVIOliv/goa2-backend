@@ -6,11 +6,16 @@ from goa2.domain.events import GameEventType
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
 from goa2.domain.models import CardState, Token, TokenType
+from goa2.domain.rules_version import TOKENS_CANNOT_CROSS_MINES
 from goa2.engine.effects import CardEffectRegistry
+from goa2.engine.filters_geometry import StraightLinePathFilter
+from goa2.engine.filters_hex import MovementPathFilter
+from goa2.engine.handler import process_stack, push_steps
 from goa2.engine.setup import GameSetup
+from goa2.engine.steps import MoveTokenStep
 
 from ..builders import EffectScenarioBuilder, hero_card
-from ..runner import run_card
+from ..runner import EffectRun, run_card
 
 
 def _option_set(run) -> set:
@@ -562,8 +567,9 @@ def test_drag_off_off_axis_pair_moves_with_no_mine() -> None:
     "mine_owner", ["blue_mine_owner", "red_mine_owner"], ids=["enemy", "friendly"]
 )
 def test_drag_off_crosses_passable_mines(mine_hexes, mine_owner: str) -> None:
-    """The drag may cross passable mines in front of either mover, either owner."""
+    """Before tokens were barred from mines, the drag crossed them in front of either mover."""
     state = _drag_off_mine_state(mine_owner, mine_hexes)
+    state.rules_version = TOKENS_CANNOT_CROSS_MINES - 1
     mine_ids = [f"mine_{i}" for i in range(1, len(mine_hexes) + 1)]
 
     run = run_card(state, "hero_widget")
@@ -1018,3 +1024,124 @@ def test_dragon_knight_cannot_perform_skill_inside_spell_break() -> None:
 
     assert state.entity_locations["hero_widget"] == Hex(q=1, r=0, s=-1)
     assert "dragon_knight_skill_card" not in state.execution_context
+
+
+# =============================================================================
+# Pyro is a token: "units may move through" mines does not cover it
+# =============================================================================
+
+_PYRO_AT = Hex(q=0, r=0, s=0)
+_PYRO_MINE = Hex(q=1, r=0, s=-1)
+_BEHIND_PYRO_MINE = Hex(q=2, r=0, s=-2)  # 2 away; the only 2-step route crosses the mine
+_WIDGET_AT = Hex(q=-1, r=1, s=0)
+_WIDGET_MINE = Hex(q=0, r=1, s=-1)
+_BEHIND_WIDGET_MINE = Hex(q=1, r=1, s=-2)  # same shape for Widget
+
+
+def _pyro_mine_state(card_id: str, *, rules_version: int = TOKENS_CANNOT_CROSS_MINES):
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_widget", at=_WIDGET_AT, current_card=hero_card("Widget", card_id))
+        .blue_hero("hero_min", at=Hex(q=-3, r=0, s=3))
+        .blue_minion("blue_minion", at=Hex(q=-2, r=1, s=1))
+        .with_actor("hero_widget")
+        .build()
+    )
+    state.rules_version = rules_version
+    _add_pyro_pool(state)
+    state.place_entity("pyro_1", _PYRO_AT)
+    _place_passable_mine(state, _PYRO_MINE, owner_id="hero_min", mine_id="mine_1")
+    _place_passable_mine(state, _WIDGET_MINE, owner_id="hero_min", mine_id="mine_2")
+    return state
+
+
+def _dragon_bond_pyro_options(state) -> tuple[EffectRun, set]:
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_NUMBER)
+    run.choose(2).expect_input(InputRequestType.SELECT_HEX)  # Pyro moves first
+    return run, _option_set(run)
+
+
+@pytest.mark.effect_flow
+def test_dragon_bond_pyro_cannot_move_through_a_mine_but_widget_can() -> None:
+    state = _pyro_mine_state("dragon_bond")
+    run, pyro_options = _dragon_bond_pyro_options(state)
+    assert _BEHIND_PYRO_MINE not in pyro_options
+
+    run.choose(Hex(q=0, r=-1, s=1)).expect_input(InputRequestType.SELECT_HEX)
+    assert _BEHIND_WIDGET_MINE in _option_set(run)
+
+
+@pytest.mark.effect_flow
+def test_dragon_bond_before_the_ruling_lets_pyro_through_a_mine() -> None:
+    state = _pyro_mine_state("dragon_bond", rules_version=TOKENS_CANNOT_CROSS_MINES - 1)
+    _, pyro_options = _dragon_bond_pyro_options(state)
+    assert _BEHIND_PYRO_MINE in pyro_options
+
+
+@pytest.mark.effect_flow
+def test_diversionary_attack_pyro_can_go_around_a_mine() -> None:
+    state = _pyro_mine_state("diversionary_attack")
+    state.move_unit("blue_minion", Hex(q=-1, r=0, s=1))  # adjacent to Widget
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("ATTACK").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_UNIT_OR_TOKEN)
+    run.choose("pyro_1").expect_input(InputRequestType.SELECT_HEX)
+
+    # 3 steps reach the same space the long way round, never touching the mine.
+    assert _BEHIND_PYRO_MINE in _option_set(run)
+
+
+@pytest.mark.effect_flow
+def test_move_token_step_refuses_a_path_through_a_mine() -> None:
+    state = _pyro_mine_state("dragon_bond")
+    state.execution_context.update({"pyro": "pyro_1", "dest": _BEHIND_PYRO_MINE})
+    push_steps(state, [MoveTokenStep(token_key="pyro", destination_key="dest", range_val=2)])
+    process_stack(state)
+
+    assert state.entity_locations["pyro_1"] == _PYRO_AT
+
+
+@pytest.mark.effect_contract
+def test_a_unit_moved_by_another_hero_still_crosses_a_mine() -> None:
+    state = _pyro_mine_state("dragon_bond")
+    state.move_unit("blue_minion", Hex(q=0, r=-1, s=1))
+    behind = Hex(q=2, r=-1, s=-1)  # straight line through the mine at (1, -1, 0)
+    _place_passable_mine(state, Hex(q=1, r=-1, s=0), owner_id="hero_min", mine_id="mine_3")
+
+    assert MovementPathFilter(range_val=2, unit_id="blue_minion").apply(behind, state, {})
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    ("mine_hexes", "pyro_dest_offered"),
+    [((_DRAG_PYRO_PATH,), False), ((_DRAG_ENEMY_PATH,), True)],
+    ids=["pyro-path", "enemy-path"],
+)
+def test_drag_off_refuses_a_direction_where_pyro_crosses_a_mine(
+    mine_hexes, pyro_dest_offered: bool
+) -> None:
+    state = _drag_off_mine_state("blue_mine_owner", mine_hexes)
+    state.rules_version = TOKENS_CANNOT_CROSS_MINES
+
+    run = run_card(state, "hero_widget")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    run.choose("SKILL").expect_input(InputRequestType.SELECT_UNIT)
+    run.choose("blue_minion").expect_input(InputRequestType.SELECT_HEX)
+
+    assert (_DRAG_PYRO_DEST in _option_set(run)) is pyro_dest_offered
+
+
+@pytest.mark.effect_contract
+def test_straight_line_path_is_blocked_by_a_mine_only_for_a_token() -> None:
+    state = _pyro_mine_state("dragon_bond")
+    state.move_unit("blue_minion", Hex(q=0, r=-1, s=1))
+    _place_passable_mine(state, Hex(q=1, r=-1, s=0), owner_id="hero_min", mine_id="mine_3")
+
+    assert not StraightLinePathFilter(origin_id="pyro_1").apply(_BEHIND_PYRO_MINE, state, {})
+    assert StraightLinePathFilter(origin_id="blue_minion").apply(Hex(q=2, r=-1, s=-1), state, {})

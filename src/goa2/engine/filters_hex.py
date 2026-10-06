@@ -696,6 +696,7 @@ class MovementPathFilter(FilterCondition):
             actor_id=str(state.current_actor_id) if state.current_actor_id else None,
             pass_through_obstacles=self.pass_through_obstacles,
             topology_unit_ids=[str(uid)],
+            moved_ids=[str(uid)],
         )
         object.__setattr__(self, "_reachable_cache", result)
         return result

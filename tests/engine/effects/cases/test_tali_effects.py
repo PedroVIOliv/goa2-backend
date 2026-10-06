@@ -25,6 +25,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import PassiveTrigger, TargetType
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.domain.state import GameState
 from goa2.domain.types import UnitID
 from goa2.engine.effect_manager import EffectManager
@@ -635,7 +636,10 @@ def test_ice_blast_uses_defense_card_color_against_another_enemy_hero() -> None:
 
 
 @pytest.mark.effect_flow
-def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat() -> None:
+@pytest.mark.parametrize("rules_version", [TARGET_DEFEAT_LOG - 1, TARGET_DEFEAT_LOG])
+def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat(
+    rules_version: int,
+) -> None:
     state = (
         EffectScenarioBuilder()
         .with_hexes(_arena())
@@ -645,6 +649,7 @@ def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat(
         .with_actor("hero_tali")
         .build()
     )
+    state.rules_version = rules_version
     tali = state.get_hero("hero_tali")
     enemy = state.get_hero("enemy")
     assert tali is not None and enemy is not None
@@ -667,7 +672,8 @@ def test_reign_of_winter_triggers_only_after_ice_blast_defeats_minion_by_combat(
 
 
 @pytest.mark.effect_flow
-def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion() -> None:
+@pytest.mark.parametrize("rules_version", [TARGET_DEFEAT_LOG - 1, TARGET_DEFEAT_LOG])
+def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion(rules_version: int) -> None:
     # A totem-saved minion is NOT defeated — Reign must not force an enemy discard.
     state = (
         EffectScenarioBuilder()
@@ -678,6 +684,7 @@ def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion() -> None:
         .with_actor("hero_tali")
         .build()
     )
+    state.rules_version = rules_version
     tali = state.get_hero("hero_tali")
     enemy = state.get_hero("enemy")
     assert tali is not None and enemy is not None
@@ -699,7 +706,42 @@ def test_reign_of_winter_does_not_fire_when_a_totem_saves_the_minion() -> None:
 
 
 @pytest.mark.effect_flow
-def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minion() -> None:
+def test_reign_of_winter_ignores_a_defeat_from_before_ice_blast() -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_arena())
+        .red_hero("hero_tali", at=(0, 0, 0), current_card=hero_card("Tali", "ice_blast"))
+        .blue_minion("target_minion", at=(1, 0, -1))
+        .blue_hero("enemy", at=(2, 0, -2))
+        .with_actor("hero_tali")
+        .build()
+    )
+    state.rules_version = TARGET_DEFEAT_LOG
+    tali = state.get_hero("hero_tali")
+    enemy = state.get_hero("enemy")
+    assert tali is not None and enemy is not None
+    tali.level = 8
+    tali.ultimate_card = hero_card("Tali", "reign_of_winter")
+    tali.ultimate_card.state = CardState.PASSIVE
+    enemy.hand = [_filler_card("enemy_green", CardColor.GREEN)]
+    _add_sacrifice_totem(state, owner_id="enemy", totem_hex=Hex(q=1, r=-1, s=0))
+    # Earlier this turn the same minion was defeated but kept on the board.
+    state.execution_context["defeat_log"] = [["target_minion", "someone_else"]]
+    state.execution_context["last_defeated_minion_id"] = "target_minion"
+
+    run = run_card(state, "hero_tali")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("target_minion")
+    run.finish()
+
+    assert len(enemy.hand) == 1
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("rules_version", [TARGET_DEFEAT_LOG - 1, TARGET_DEFEAT_LOG])
+def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minion(
+    rules_version: int,
+) -> None:
     # Ruling: a minion saved by a card-discard (Brogan-style) protection is
     # DEFEATED but not removed — so Reign must still fire.
     state = (
@@ -711,6 +753,7 @@ def test_reign_of_winter_fires_when_a_card_discard_save_keeps_the_defeated_minio
         .with_actor("hero_tali")
         .build()
     )
+    state.rules_version = rules_version
     tali = state.get_hero("hero_tali")
     protector = state.get_hero("protector")
     assert tali is not None and protector is not None

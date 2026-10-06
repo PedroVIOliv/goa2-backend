@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from goa2.domain.models.effect import ActiveEffect, EffectType
+from goa2.domain.rules_version import TOKENS_CANNOT_CROSS_MINES
 from goa2.domain.types import BoardEntityID
 from goa2.engine.topology import get_topology_service
 
@@ -162,8 +164,19 @@ class TerrainValidationMixin:
 
         return False
 
-    def is_passable_token(self, state: GameState, hex_pos: Hex) -> bool:
-        """Check if a hex contains a passable token (traversable but not landable)."""
+    def is_passable_token(
+        self, state: GameState, hex_pos: Hex, moved_ids: Iterable[str] | None = None
+    ) -> bool:
+        """Check if a hex contains a passable token (traversable but not landable).
+
+        moved_ids are the pieces being moved, which may differ from the actor
+        (Widget moving Pyro). Mines let units through; a moved token is blocked.
+        """
+        if moved_ids and state.rules_version >= TOKENS_CANNOT_CROSS_MINES:
+            from goa2.domain.models.token import Token
+
+            if any(isinstance(state.get_entity(BoardEntityID(str(m))), Token) for m in moved_ids):
+                return False
         tile = state.board.get_tile(hex_pos)
         if not tile or not tile.occupant_id:
             return False

@@ -137,6 +137,7 @@ class StepType(StrEnum):
     DEFEAT_UNIT = "defeat_unit"
     FIND_NEXT_ACTOR = "find_next_actor"
     RESOLVE_COMBAT = "resolve_combat"
+    CHECK_TARGET_DEFEATED = "check_target_defeated"
     FINALIZE_HERO_TURN = "finalize_hero_turn"
     PLACE_UNIT = "place_unit"
     RESOLVE_TURN_START_HEX = "resolve_turn_start_hex"

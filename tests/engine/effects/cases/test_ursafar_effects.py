@@ -5,7 +5,7 @@ import pytest
 import goa2.scripts.ursafar_effects  # noqa: F401
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier
+from goa2.domain.models import ActionType, Card, CardColor, CardState, CardTier, TeamColor
 from goa2.domain.models.effect import (
     AffectsFilter,
     DurationType,
@@ -13,6 +13,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.effects import CardEffectRegistry
 from goa2.engine.steps import CheckUnitOnBoardStep, MultiSelectStep
@@ -338,3 +339,30 @@ def test_angry_roar_rage_is_lost_when_the_performed_card_aborts() -> None:
 
     assert rage_effects() == 1
     assert "action_context_stack" not in state.execution_context
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize("rules_version", [TARGET_DEFEAT_LOG - 1, TARGET_DEFEAT_LOG])
+def test_tear_hero_defeated_by_ursafar_spends_an_additional_life_counter(
+    rules_version: int,
+) -> None:
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(0, 0, 0), (1, 0, -1)])
+        .red_hero("hero_ursafar", at=(0, 0, 0), current_card=hero_card("Ursafar", "tear"))
+        .blue_hero("hero_blue", at=(1, 0, -1))
+        .with_actor("hero_ursafar")
+        .build()
+    )
+    state.rules_version = rules_version
+    ursafar = state.get_hero("hero_ursafar")
+    ursafar.level = 8
+    ursafar.ultimate_card = hero_card("Ursafar", "unbound_fury")
+    state.teams[TeamColor.BLUE].life_counters = 5
+
+    run = run_card(state, "hero_ursafar")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("ATTACK")
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("hero_blue")
+    run.expect_input("SELECT_CARD_OR_PASS").choose("PASS").finish()
+
+    assert state.teams[TeamColor.BLUE].life_counters == 3

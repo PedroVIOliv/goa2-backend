@@ -19,6 +19,7 @@ from goa2.domain.models.effect import (
     Shape,
 )
 from goa2.domain.models.enums import PassiveTrigger, StatType
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_hex import ObstacleFilter, RangeFilter
@@ -40,6 +41,7 @@ from goa2.engine.steps import (
     SelectStep,
     SetContextFlagStep,
 )
+from goa2.engine.steps.combat import target_defeated_in_attack
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card, Hero
@@ -589,16 +591,23 @@ class CommuneWithSpiritsEffect(CardEffect):
         ]
 
 
+ICE_BLAST_VICTIM_KEY = "ice_blast_victim"
+
+
 @register_effect("ice_blast")
 class IceBlastEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
+        victim_key = (
+            ICE_BLAST_VICTIM_KEY if state.rules_version >= TARGET_DEFEAT_LOG else "victim_id"
+        )
         return [
             AttackSequenceStep(
                 damage=stats.primary_value,
                 range_val=1,
                 target_filters=[RangeFilter(max_range=1)],
+                target_output_key=victim_key,
             ),
             SelectStep(
                 target_type=TargetType.UNIT,
@@ -610,7 +619,7 @@ class IceBlastEffect(CardEffect):
                     UnitTypeFilter(unit_type="HERO"),
                     TeamFilter(relation="ENEMY"),
                     RangeFilter(max_range=stats.radius or 0),
-                    ExcludeIdentityFilter(exclude_keys=["victim_id"]),
+                    ExcludeIdentityFilter(exclude_keys=[victim_key]),
                 ],
             ),
             ForceDiscardByColorStep(
@@ -642,6 +651,15 @@ class ReignOfWinterEffect(CardEffect):
             return False
         if context.get("attack_card_id") != "ice_blast":
             return False
+        if state.rules_version >= TARGET_DEFEAT_LOG:
+            target_id = context.get(ICE_BLAST_VICTIM_KEY)
+            target = state.get_unit(target_id) if target_id else None
+            return (
+                target is not None
+                and hasattr(target, "value")
+                and target_defeated_in_attack(state, context, ICE_BLAST_VICTIM_KEY)
+            )
+
         if context.get("block_succeeded") is not False:
             return False
 

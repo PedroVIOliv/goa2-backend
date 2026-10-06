@@ -14,6 +14,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.rules_version import TARGET_DEFEAT_LOG
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters_hex import (
     MovementPathFilter,
@@ -29,6 +30,7 @@ from goa2.engine.filters_units import (
 from goa2.engine.steps import (
     AttackSequenceStep,
     CheckContextConditionStep,
+    CheckTargetDefeatedStep,
     CheckUnitOnBoardStep,
     CheckUnitTypeStep,
     CombineBooleanContextStep,
@@ -555,24 +557,35 @@ class TearEffect(CardEffect):
     def build_steps(
         self, state: GameState, hero: Hero, card: Card, stats: CardStats
     ) -> list[GameStep]:
+        defeat_log = state.rules_version >= TARGET_DEFEAT_LOG
+        victim_key = "tear_victim" if defeat_log else "victim_id"
         steps: list[GameStep] = [
-            AttackSequenceStep(damage=stats.primary_value, range_val=1),
+            AttackSequenceStep(
+                damage=stats.primary_value,
+                range_val=1,
+                target_output_key=victim_key if defeat_log else None,
+            ),
         ]
         if is_enraged(state, hero):
+            defeated_check: GameStep = (
+                CheckTargetDefeatedStep(
+                    target_key=victim_key, output_key="target_defeated", by_actor=True
+                )
+                if defeat_log
+                else CheckContextConditionStep(
+                    input_key="block_succeeded",
+                    operator="==",
+                    threshold=0,
+                    output_key="target_defeated",
+                )
+            )
             steps.extend(
                 [
                     SetContextFlagStep(key="self_hero", value=hero.id),
                     GainCoinsStep(hero_key="self_hero", amount=2),
-                    # Check if target was defeated (block_succeeded=False → 0)
-                    CheckContextConditionStep(
-                        input_key="block_succeeded",
-                        operator="==",
-                        threshold=0,
-                        output_key="target_defeated",
-                    ),
-                    # Check if target was a hero
+                    defeated_check,
                     CheckUnitTypeStep(
-                        unit_key="victim_id",
+                        unit_key=victim_key,
                         expected_type="HERO",
                         output_key="target_is_hero",
                     ),
@@ -584,7 +597,7 @@ class TearEffect(CardEffect):
                         operation="AND",
                     ),
                     SpendAdditionalLifeCounterStep(
-                        victim_key="victim_id",
+                        victim_key=victim_key,
                         active_if_key="hero_defeated",
                     ),
                 ]
