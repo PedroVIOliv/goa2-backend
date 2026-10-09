@@ -16,7 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from goa2.domain.hex import Hex
-from goa2.domain.models import CardState, GamePhase, TeamColor
+from goa2.domain.models import CardColor, CardState, CardTier, GamePhase, StatType, TeamColor
 from goa2.domain.models.effect import ActiveEffect
 from goa2.domain.models.marker import MarkerType
 from goa2.domain.state import GameState
@@ -513,6 +513,76 @@ _register(
         args_model=MoveCardArgs,
         apply=_apply_move_card,
         summary_template="Move card {card_id} of {hero_id} to {zone}",
+    )
+)
+
+
+class SwapItemCardArgs(BaseModel):
+    hero_id: str
+    color: Literal[CardColor.RED, CardColor.BLUE, CardColor.GREEN]
+    tier: Literal[CardTier.II, CardTier.III]
+
+
+def _apply_swap_item_card(session: GameSession, args: SwapItemCardArgs) -> None:
+    from goa2.engine.steps.cards import SwapItemCardStep
+
+    hero = _require_hero(session.state, args.hero_id)
+    siblings = [c for c in hero.deck if c.color == args.color and c.tier == args.tier]
+    item = next((c for c in siblings if c.state == CardState.ITEM), None)
+    other = next((c for c in siblings if c.state != CardState.ITEM), None)
+    if item is None or other is None:
+        raise OverrideRejectedError(
+            f"{args.hero_id} has no {args.color} tier {args.tier} item to swap",
+            code="no_item",
+        )
+    SwapItemCardStep(hero_key="hero", item_card_key="item", target_card_key="other").resolve(
+        session.state, {"hero": args.hero_id, "item": item.id, "other": other.id}
+    )
+    if item.state == CardState.ITEM:
+        raise OverrideRejectedError(
+            f"{other.id!r} is not in a zone its item sibling can take", code="swap_failed"
+        )
+
+
+_register(
+    OverrideOp(
+        name="swap_item_card",
+        family="patch",
+        label="Swap upgrade with its item",
+        description=(
+            "Swap a tucked item card with its same-color, same-tier sibling "
+            "(fixes picking the wrong upgrade)."
+        ),
+        args_model=SwapItemCardArgs,
+        apply=_apply_swap_item_card,
+        summary_template="Swap {hero_id}'s {color} tier {tier} upgrade with its item",
+    )
+)
+
+
+class SetItemArgs(BaseModel):
+    hero_id: str
+    stat: StatType
+    value: int = Field(ge=0)
+
+
+def _apply_set_item(session: GameSession, args: SetItemArgs) -> None:
+    hero = _require_hero(session.state, args.hero_id)
+    if args.value:
+        hero.items[args.stat] = args.value
+    else:
+        hero.items.pop(args.stat, None)
+
+
+_register(
+    OverrideOp(
+        name="set_item",
+        family="patch",
+        label="Set item count",
+        description="Set how many items of one stat a hero has (does not move item cards).",
+        args_model=SetItemArgs,
+        apply=_apply_set_item,
+        summary_template="Set {hero_id} {stat} items to {value}",
     )
 )
 

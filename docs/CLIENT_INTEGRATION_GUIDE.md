@@ -2129,7 +2129,8 @@ list:
 
 Patch ops: `move_entity`, `remove_entity`, `place_entity`, `set_life_counters`,
 `set_gold`, `set_level`, `add_marker`, `remove_marker`, `add_effect`,
-`remove_effect`, `move_card`, `set_wave_counter`, `set_tie_breaker_team`.
+`remove_effect`, `move_card`, `swap_item_card`, `set_item`, `set_wave_counter`,
+`set_tie_breaker_team`.
 Unstick ops: `skip_input`, `abort_action`, `end_turn`, `force_actor`.
 (The endpoint output is authoritative; this list is illustrative.)
 
@@ -2153,7 +2154,8 @@ list so a rewind target index means something to the table:
 
 - Card identity in labels is player-scoped with the same visibility rule as the
   view: an opponent's facedown commit reads "a card" until the card is public;
-  spectators get the fully-masked form.
+  spectators get the fully-masked form. A Level Up choice reads
+  "<hero> upgraded a card" to everyone but the upgrading player.
 - `superseded: true` marks records behind a rewind (dead segments). Render
   `ov_rewind` rows as visible markers and grey out superseded rows rather than
   hiding them.
