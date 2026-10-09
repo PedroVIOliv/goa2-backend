@@ -138,3 +138,21 @@ def test_history_marks_superseded_segments(client, game_data):
     assert rewind_row["superseded"] is False
     assert "rew" in rewind_row["label"].lower()
     assert hist["total"] == len(hist["decisions"])
+
+
+def test_history_masks_opponent_upgrade_choice(client, game_data):
+    gid = game_data["game_id"]
+    from goa2.server.replay import create_replay_recorder
+
+    rec = create_replay_recorder(gid)
+    rec.record_input("hero_arien", {"hero_id": "hero_arien", "card_id": "arien_secret"}, 2, 1)
+
+    def upgrade_label(token):
+        hist = client.get(f"/games/{gid}/overrides/history", headers=_auth(token)).json()
+        return next(d for d in hist["decisions"] if d["type"] == "input")["label"]
+
+    for token in (_token_for(game_data, "hero_wasp"), game_data["spectator_token"]):
+        label = upgrade_label(token)
+        assert "arien_secret" not in label
+        assert label == "hero_arien upgraded a card"
+    assert "arien_secret" in upgrade_label(_token_for(game_data, "hero_arien"))

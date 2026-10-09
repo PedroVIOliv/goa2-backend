@@ -74,6 +74,10 @@ def _decision_label(d: dict[str, Any], state: GameState, for_hero_id: str | None
         return f"{hero} finished planning"
     if kind == "input":
         sel = d.get("sel")
+        if isinstance(sel, dict) and "card_id" in sel:
+            if for_hero_id is not None and for_hero_id == sel.get("hero_id"):
+                return f"{hero} upgraded to {_card_label(state, sel['card_id'], for_hero_id)}"
+            return f"{hero} upgraded a card"
         if isinstance(sel, str) and _card_visible_to(state, sel, for_hero_id) is False:
             sel = "a hidden card"
         return f"{hero} chose {sel!r}"
