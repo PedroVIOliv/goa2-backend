@@ -47,6 +47,8 @@ def test_registry_contains_all_patch_and_unstick_ops():
         "add_effect",
         "remove_effect",
         "move_card",
+        "swap_item_card",
+        "set_item",
         "set_wave_counter",
         "set_tie_breaker_team",
         "skip_input",
@@ -462,3 +464,50 @@ def test_add_effect_taps_its_card(session):
     }
     apply_override_decision(session, "add_effect", {"effect": payload})
     assert session.state.get_card_by_id(card_id).is_active is True
+
+
+def _upgrade_arien(state, color):
+    from goa2.domain.models import CardColor, CardTier
+    from goa2.engine.steps.cards import apply_hero_upgrade
+
+    hero = state.get_hero("hero_arien")
+    chosen, other = [c for c in hero.deck if c.color == CardColor(color) and c.tier == CardTier.II]
+    apply_hero_upgrade(state, "hero_arien", chosen.id)
+    return hero, chosen.id, other.id
+
+
+def test_swap_item_card_swaps_upgrade_and_item(session):
+    hero, chosen_id, other_id = _upgrade_arien(session.state, "RED")
+    old_stat = next(c for c in hero.deck if c.id == other_id).item
+    new_stat = next(c for c in hero.deck if c.id == chosen_id).item
+
+    apply_override_decision(
+        session, "swap_item_card", {"hero_id": "hero_arien", "color": "RED", "tier": "II"}
+    )
+
+    hero = session.state.get_hero("hero_arien")
+    assert other_id in [c.id for c in hero.hand]
+    assert chosen_id not in [c.id for c in hero.hand]
+    assert next(c for c in hero.deck if c.id == chosen_id).state == "ITEM"
+    if old_stat != new_stat:
+        assert hero.items.get(old_stat, 0) == 0
+    assert hero.items.get(new_stat, 0) == 1
+
+
+def test_swap_item_card_without_item_rejected(session):
+    with pytest.raises(OverrideRejectedError) as exc:
+        apply_override_decision(
+            session, "swap_item_card", {"hero_id": "hero_arien", "color": "RED", "tier": "II"}
+        )
+    assert exc.value.code == "no_item"
+
+
+def test_set_item(session):
+    apply_override_decision(
+        session, "set_item", {"hero_id": "hero_arien", "stat": "ATTACK", "value": 2}
+    )
+    assert session.state.get_hero("hero_arien").items["ATTACK"] == 2
+    apply_override_decision(
+        session, "set_item", {"hero_id": "hero_arien", "stat": "ATTACK", "value": 0}
+    )
+    assert "ATTACK" not in session.state.get_hero("hero_arien").items
