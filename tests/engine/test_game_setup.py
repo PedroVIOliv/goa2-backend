@@ -161,9 +161,9 @@ class TestGameTypeConfig:
         assert waves == 5
         assert lc == 6
 
-    def test_get_game_config_unsupported_players_above_max(self):
-        with pytest.raises(ValueError, match="Unsupported player count"):
-            GameSetup.get_game_config("LONG", 7)
+    def test_get_game_config_players_above_max_use_largest_bracket(self):
+        assert GameSetup.get_game_config("LONG", 8) == (5, 8)
+        assert GameSetup.get_game_config("QUICK", 10) == (3, 5)
 
 
 class TestTwoLaneConfig:
@@ -181,9 +181,8 @@ class TestTwoLaneConfig:
     def test_10_players(self):
         assert GameSetup.get_game_config("LONG", 10, lane_count=2) == (7, 7)
 
-    def test_above_10_players_raises(self):
-        with pytest.raises(ValueError, match="Unsupported player count"):
-            GameSetup.get_game_config("LONG", 11, lane_count=2)
+    def test_above_10_players_uses_largest_bracket(self):
+        assert GameSetup.get_game_config("LONG", 11, lane_count=2) == (7, 7)
 
     def test_game_type_does_not_change_two_lane_config(self):
         # The rulebook has no QUICK/LONG split for two-lane maps.

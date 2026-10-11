@@ -35,7 +35,7 @@ class GameSetup:
         """
         Returns (wave_counters_per_lane, life_counters) for the given game
         type, player count, and lane count. Uneven player counts use the next
-        configured player-count bracket.
+        configured player-count bracket; counts above the largest bracket use it.
 
         Rules:
           Single lane:
@@ -63,13 +63,8 @@ class GameSetup:
 
         life_bracket = next(
             (player_count for player_count in sorted(lc_lookup) if player_count >= total_players),
-            None,
+            max(lc_lookup),
         )
-        if life_bracket is None:
-            raise ValueError(
-                f"Unsupported player count {total_players} for {gt.value} game. "
-                f"Supported: {sorted(lc_lookup.keys())}."
-            )
         life_counters = lc_lookup[life_bracket]
 
         return waves, life_counters
