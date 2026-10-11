@@ -242,6 +242,16 @@ class EffectManager:
         Returns [(source_id, finishing_steps)] for expired effects that carry
         finishing steps.
         """
+        finishing, expiring_ids = EffectManager.collect_turn_expiry(state)
+        EffectManager.remove_effects(state, expiring_ids)
+        return finishing
+
+    @staticmethod
+    def collect_turn_expiry(
+        state: GameState,
+    ) -> tuple[list[tuple[str, list]], list[str]]:
+        """The finishing steps and ids of the effects that end with this turn,
+        without removing them."""
 
         def is_expiring_this_turn(e: ActiveEffect) -> bool:
             if EffectManager._is_token_bound(e):
@@ -263,11 +273,16 @@ class EffectManager:
             for e in expiring
             if e.finishing_steps and e.effect_type != EffectType.AFTER_CARDS_PLAYED_TRIGGER
         ]
-        affected_card_ids = {e.source_card_id for e in expiring if e.source_card_id}
-        state.active_effects = [e for e in state.active_effects if not is_expiring_this_turn(e)]
-        for card_id in affected_card_ids:
+        return finishing, [e.id for e in expiring]
+
+    @staticmethod
+    def remove_effects(state: GameState, effect_ids: list[str]) -> None:
+        """Remove effects by id (natural expiry; finishing steps are the caller's)."""
+        ids = set(effect_ids)
+        removed = [e for e in state.active_effects if e.id in ids]
+        state.active_effects = [e for e in state.active_effects if e.id not in ids]
+        for card_id in {e.source_card_id for e in removed if e.source_card_id}:
             EffectManager._update_card_active_status(state, card_id)
-        return finishing
 
     @staticmethod
     def expire_effects(state: GameState, duration: DurationType) -> list[tuple[str, list]]:

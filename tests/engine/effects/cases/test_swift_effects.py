@@ -549,6 +549,65 @@ def test_delayed_jump_finishing_steps_place_self_not_in_straight_line() -> None:
     assert state.entity_locations.get("hero_swift") == Hex(q=1, r=1, s=-2)
 
 
+def _run_effect_as(state, hero_id: str, card) -> None:
+    from goa2.engine.effects import CardEffectRegistry
+    from goa2.engine.handler import process_stack, push_steps
+    from goa2.engine.stats import compute_card_stats
+    from goa2.engine.steps import SetActorStep
+
+    hero = state.get_hero(hero_id)
+    stats = compute_card_stats(state, hero.id, card)
+    steps = CardEffectRegistry.get(card.effect_id).build_steps(state, hero, card, stats)
+    push_steps(state, [SetActorStep(actor_id=hero_id), *steps])
+    process_stack(state)
+
+
+def _delayed_jump_options_under_static_barrier(rules_version: int) -> set[Hex]:
+    from goa2.engine.handler import process_stack
+    from goa2.engine.phases import end_turn
+
+    from ..builders import card_for_effect
+
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes(_hex_disk(4))
+        .red_hero("hero_wasp", at=(0, 0, 0))
+        .blue_hero("hero_swift", at=(1, 0, -1))
+        .build()
+    )
+    state.rules_version = rules_version
+    _run_effect_as(state, "hero_wasp", card_for_effect("static_barrier"))
+    _run_effect_as(state, "hero_swift", hero_card("Swift", "delayed_jump"))
+
+    end_turn(state)
+    result = process_stack(state)
+    assert result.input_request is not None
+    return {
+        opt.metadata["raw"]
+        for opt in result.input_request.options
+        if opt.metadata and "raw" in opt.metadata
+    }
+
+
+@pytest.mark.effect_flow
+def test_delayed_jump_end_of_turn_placement_respects_static_barrier() -> None:
+    from goa2.domain.rules_version import THIS_TURN_OUTLASTS_END_OF_TURN
+
+    options = _delayed_jump_options_under_static_barrier(THIS_TURN_OUTLASTS_END_OF_TURN)
+
+    assert Hex(q=0, r=-1, s=1) in options
+    assert Hex(q=3, r=-1, s=-2) not in options
+
+
+@pytest.mark.effect_flow
+def test_delayed_jump_ignores_expired_barrier_before_rules_version() -> None:
+    from goa2.domain.rules_version import THIS_TURN_OUTLASTS_END_OF_TURN
+
+    options = _delayed_jump_options_under_static_barrier(THIS_TURN_OUTLASTS_END_OF_TURN - 1)
+
+    assert Hex(q=3, r=-1, s=-2) in options
+
+
 # =============================================================================
 # Mark for Death / Hunting Season: move enemy minion(s) + schedule next-turn
 # minion-defeat coin bounty.
