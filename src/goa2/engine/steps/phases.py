@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pydantic import Field
+
 from goa2.domain.events import GameEvent, GameEventType, _hex_dict
 from goa2.domain.models import ActionType, GamePhase, StepType
 from goa2.domain.models.effect import DurationType
@@ -347,6 +349,7 @@ class AdvanceTurnStep(GameStep):
     """
 
     type: StepType = StepType.ADVANCE_TURN
+    expire_effect_ids: list[str] = Field(default_factory=list)
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
         from goa2.engine.phases import (
@@ -354,6 +357,8 @@ class AdvanceTurnStep(GameStep):
             record_position_snapshot,
             start_end_phase,
         )
+
+        EffectManager.remove_effects(state, self.expire_effect_ids)
 
         if state.turn < 4:
             state.turn += 1
