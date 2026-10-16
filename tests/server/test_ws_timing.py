@@ -213,13 +213,13 @@ def test_capture_reuses_only_the_spectator_scoped_payload(client, game_data, mon
     ]
 
     event_viewers: list[str | None] = []
-    real_events_for_viewer = ws_module.events_for_viewer
+    real_events_for_delivery = ws_module.events_for_delivery
 
-    def counted_events_for_viewer(_events, _state, hero_id):
+    def counted_events_for_delivery(_events, _game, hero_id):
         event_viewers.append(hero_id)
-        return real_events_for_viewer(_events, _state, hero_id)
+        return real_events_for_delivery(_events, _game, hero_id)
 
-    monkeypatch.setattr(ws_module, "events_for_viewer", counted_events_for_viewer)
+    monkeypatch.setattr(ws_module, "events_for_delivery", counted_events_for_delivery)
 
     messages = ws_module._capture_broadcast(
         game,

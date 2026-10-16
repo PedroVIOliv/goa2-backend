@@ -120,6 +120,13 @@ class GameViewResponse(BaseModel):
     hero_names: dict[str, str] = Field(default_factory=dict)
 
 
+class EventHistoryResponse(BaseModel):
+    events: list[dict[str, Any]]
+    last_event_id: int
+    last_event_time: int
+    has_more: bool
+
+
 class ActionResultResponse(BaseModel):
     result_type: str
     current_phase: str

@@ -640,6 +640,14 @@ def test_ws_cheats_gold_broadcasts_state(client):
         assert msg_w["events"][0]["event_type"] == "GOLD_GAINED"
         assert msg_a2["events"][0]["event_type"] == "GOLD_GAINED"
 
+        # A disconnected seat recovers the same events, once, with the live cursor.
+        recovered = client.get(
+            f"/games/{game_id}/events",
+            headers={"Authorization": f"Bearer {wasp_token}"},
+        ).json()
+        assert recovered["events"] == msg_w["events"]
+        assert msg_a1["events"][0]["event_id"] == recovered["last_event_id"]
+
         # Verify gold was updated in both views
         arien_gold = None
         for team_data in msg_a2["view"]["teams"].values():
@@ -700,6 +708,34 @@ def test_ws_broadcast_names_the_awaited_player_without_leaking_their_options(cli
     assert spectator_socket.message["awaiting_input"] == ["hero_wasp"]
     assert defender_msg["awaiting_input"] == ["hero_wasp"]
     assert defender_msg["input_request"]["options"][0]["id"] == "magnetic_dagger"
+
+
+def test_ws_disconnected_player_recovers_missed_events(client):
+    data = client.post(
+        "/games",
+        json={"red_heroes": ["Arien"], "blue_heroes": ["Wasp"], "cheats_enabled": True},
+    ).json()
+    game_id = data["game_id"]
+    arien_token = _token_for(data, "hero_arien")
+    wasp_token = _token_for(data, "hero_wasp")
+    with client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as wasp:
+        wasp.receive_json()
+    with client.websocket_connect(f"/games/{game_id}/ws?token={arien_token}") as arien:
+        arien.receive_json()
+        arien.send_json({"type": "CHEATS_GOLD", "hero_id": "hero_arien", "amount": 5})
+        reply = arien.receive_json()
+        arien.receive_json()
+    headers = {"Authorization": f"Bearer {wasp_token}"}
+    missed = client.get(f"/games/{game_id}/events", headers=headers).json()
+    assert missed["events"] == reply["events"]
+    with client.websocket_connect(f"/games/{game_id}/ws?token={wasp_token}") as wasp:
+        assert "events" not in wasp.receive_json()
+        caught_up = client.get(
+            f"/games/{game_id}/events",
+            params={"after_event_id": missed["last_event_id"]},
+            headers=headers,
+        ).json()
+        assert caught_up["events"] == []
 
 
 def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_data):

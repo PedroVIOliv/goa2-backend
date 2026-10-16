@@ -81,6 +81,9 @@ class GameEvent(BaseModel):
     """A single game event emitted by a step during resolution."""
 
     event_type: GameEventType
+    # Assigned by the server when retained for reconnect catch-up.
+    event_id: int | None = None
+    event_time: int | None = None
     actor_id: str | None = None
     target_id: str | None = None
     from_hex: dict[str, int] | None = None

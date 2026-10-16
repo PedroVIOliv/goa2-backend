@@ -33,6 +33,7 @@ from goa2.domain.time_control import (
 from goa2.domain.types import HeroID
 from goa2.engine.phases import planning_open_for_second_card
 from goa2.engine.session import SessionResult
+from goa2.server.event_history import retain_events
 from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.result_logging import log_session_result
 
@@ -388,6 +389,7 @@ def _apply_planning_timeout(
             events.append(_timer_event(hero_id=hero_id, kind=ClockKind.PLANNING, action=action))
             result = game.session.pass_turn(hid)
 
+    retain_events(game, [*events, *result.events])
     _store_result(game, result)
     events.extend(result.events)
     return events
@@ -428,6 +430,7 @@ def _apply_input_timeout(
     game.session._rollback_snapshot = None
     game.session._rollback_actor_id = None
     result = game.session.advance(InputResponse(request_id=request.id, selection=selection))
+    retain_events(game, [event, *result.events])
     _store_result(game, result)
     return [event, *result.events]
 
@@ -471,6 +474,7 @@ def _apply_level_up_timeout(
             )
         )
         result = game.session.advance(InputResponse(request_id=request.id, selection=selection))
+        retain_events(game, [events[-1], *result.events])
         _store_result(game, result)
         events.extend(result.events)
     return events

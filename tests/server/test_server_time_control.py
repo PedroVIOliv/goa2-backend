@@ -519,6 +519,9 @@ def test_planning_timeout_commits_one_random_card_and_locks_takeback() -> None:
     opponent_event = events_for_viewer(raw, game.session.state, "hero_wasp")[0]
     assert owner_event["metadata"]["card_id"] == committed.id
     assert opponent_event["metadata"]["card_id"] is None
+    assert game.event_history[0]["viewers"]["hero_arien"] == owner_event
+    assert game.event_history[0]["viewers"]["hero_wasp"] == opponent_event
+    assert events[0].event_id == 1
 
     assert game.replay_recorder is not None
     replay_record = json.loads(game.replay_recorder.path.read_text().splitlines()[-1])
@@ -1006,6 +1009,8 @@ def test_level_up_timeout_completes_every_pending_upgrade_for_player() -> None:
     timeouts = [event for event in events if event.event_type.value == "TIMER_EXPIRED"]
     assert len(timeouts) == 2
     assert all(event.metadata["clock_kind"] == "LEVEL_UP" for event in timeouts)
+    assert [event.event_id for event in events] == list(range(1, len(events) + 1))
+    assert len(game.event_history) == len(events)
 
 
 def _clock_telemetry(game: ManagedGame) -> list[dict]:

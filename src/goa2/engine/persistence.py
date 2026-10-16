@@ -38,6 +38,7 @@ def save_game(
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
     replay_log: list[dict[str, Any]] | None = None,
+    event_history: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -51,6 +52,7 @@ def save_game(
         "state": state.model_dump(mode="json"),
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
+        "event_history": event_history or [],
     }
     if replay_log is not None:
         payload["replay_log"] = replay_log
@@ -129,6 +131,7 @@ def load_game(file_path: str) -> dict[str, Any]:
         # Absent from saves written before the save carried the replay log, and
         # from games whose log was already damaged when it would have been adopted.
         "replay_log": payload.get("replay_log"),
+        "event_history": payload.get("event_history", []),
     }
 
 
