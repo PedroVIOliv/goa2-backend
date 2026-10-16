@@ -1,6 +1,7 @@
 """Per-mutation timing instrumentation on the WebSocket path."""
 
 import asyncio
+import json
 import os
 
 import pytest
@@ -247,12 +248,7 @@ def test_send_serializes_a_shared_payload_once(monkeypatch):
     class RecordingSocket:
         def __init__(self, name):
             self.name = name
-            self.json_messages = []
             self.text_messages = []
-
-        async def send_json(self, data):
-            send_order.append(self.name)
-            self.json_messages.append(data)
 
         async def send_text(self, data):
             send_order.append(self.name)
@@ -274,24 +270,44 @@ def test_send_serializes_a_shared_payload_once(monkeypatch):
         (None, second, shared_spectator_payload),
     ]
 
-    real_dumps = ws_module.json.dumps
+    real_encode = ws_module._encode_json
     encoded_payloads = []
 
-    def counted_dumps(data, **kwargs):
+    def counted_encode(data):
         send_order.append("encode")
         encoded_payloads.append(data)
-        return real_dumps(data, **kwargs)
+        return real_encode(data)
 
-    monkeypatch.setattr(ws_module.json, "dumps", counted_dumps)
+    monkeypatch.setattr(ws_module, "_encode_json", counted_encode)
 
     asyncio.run(ws_module._send_captured_broadcast(Game(), messages))
 
-    assert encoded_payloads == [shared_spectator_payload]
-    expected = real_dumps(shared_spectator_payload, separators=(",", ":"), ensure_ascii=False)
+    assert encoded_payloads == [player_payload, shared_spectator_payload]
+    expected = real_encode(shared_spectator_payload)
     assert first.text_messages == [expected]
     assert second.text_messages == [expected]
-    assert player.json_messages == [player_payload]
-    assert send_order == ["player", "encode", "spectator-one", "spectator-two"]
+    assert player.text_messages == [real_encode(player_payload)]
+    assert send_order == ["encode", "player", "encode", "spectator-one", "spectator-two"]
+
+
+def test_send_json_preserves_json_values_in_text_frame():
+    class RecordingSocket:
+        async def send_text(self, text):
+            self.text = text
+
+    payload = {
+        "type": "ACTION_RESULT",
+        "values": [None, True, False, 1, 1.0, -0.0, 1e-9, 'Søren 🐉\n"\\'],
+        "nested": {"items": [], "empty": {}},
+    }
+    socket = RecordingSocket()
+    assert asyncio.run(ws_module._send_json(socket, payload))
+    decoded = json.loads(socket.text)
+    assert decoded == payload
+    assert [type(value) for value in decoded["values"]] == [
+        type(value) for value in payload["values"]
+    ]
+    assert "Søren 🐉" in socket.text
 
 
 def test_failed_shared_send_keeps_replacement_and_continues():
@@ -336,8 +352,8 @@ def test_shared_encoding_failure_does_not_abort_later_payloads(monkeypatch):
         def __init__(self):
             self.json_messages = []
 
-        async def send_json(self, data):
-            self.json_messages.append(data)
+        async def send_text(self, data):
+            self.json_messages.append(json.loads(data))
 
     class Game:
         def __init__(self):
@@ -352,14 +368,14 @@ def test_shared_encoding_failure_does_not_abort_later_payloads(monkeypatch):
     player_payload = {"type": "STATE_UPDATE", "view": {"hand": "private"}}
     game.spectator_ws_connections = {id(first): first, id(second): second}
     game.ws_connections = {"player-token": player}
-    real_dumps = ws_module.json.dumps
+    real_encode = ws_module._encode_json
 
-    def fail_shared_payload(data, **kwargs):
+    def fail_shared_payload(data):
         if data is shared_payload:
             raise TypeError("not serializable")
-        return real_dumps(data, **kwargs)
+        return real_encode(data)
 
-    monkeypatch.setattr(ws_module.json, "dumps", fail_shared_payload)
+    monkeypatch.setattr(ws_module, "_encode_json", fail_shared_payload)
 
     asyncio.run(
         ws_module._send_captured_broadcast(
