@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic_core import to_json
 
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.hex import Hex
@@ -236,6 +237,11 @@ def _build_state_update(
     return msg
 
 
+def _encode_json(data: dict[str, Any]) -> str:
+    # Keep JSON text frames while using Pydantic's existing native serializer.
+    return to_json(data).decode("utf-8")
+
+
 async def _send_json(
     ws: WebSocket,
     data: dict[str, Any],
@@ -244,10 +250,7 @@ async def _send_json(
 ) -> bool:
     """Send JSON to a websocket, returning False if the connection is dead."""
     try:
-        if encoded is None:
-            await ws.send_json(data)
-        else:
-            await ws.send_text(encoded)
+        await ws.send_text(_encode_json(data) if encoded is None else encoded)
         return True
     except Exception:
         return False
@@ -347,9 +350,7 @@ async def _send_captured_broadcast(
         if payload_counts[payload_id] > 1:
             if payload_id not in encoded_payloads:
                 try:
-                    encoded_payloads[payload_id] = json.dumps(
-                        msg, separators=(",", ":"), ensure_ascii=False
-                    )
+                    encoded_payloads[payload_id] = _encode_json(msg)
                 except Exception:
                     encoded_payloads[payload_id] = None
             encoded = encoded_payloads[payload_id]
@@ -918,7 +919,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 code=4002,
                 reason="Connection superseded by a newer session",
             )
-        await websocket.send_json(initial)
+        await websocket.send_text(_encode_json(initial))
 
     if game.game_logger:
         game.game_logger.log_ws_connect(hero_id if not is_spectator else None, is_spectator)
@@ -933,15 +934,17 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 data = json.loads(raw)
             except json.JSONDecodeError:
                 async with game.outbound_lock:
-                    await websocket.send_json({"type": "ERROR", "detail": "Invalid JSON"})
+                    await websocket.send_text(
+                        _encode_json({"type": "ERROR", "detail": "Invalid JSON"})
+                    )
                 continue
 
             msg_type = data.get("type", "")
 
             if is_spectator and msg_type != "GET_VIEW":
                 async with game.outbound_lock:
-                    await websocket.send_json(
-                        {"type": "ERROR", "detail": "Spectators can only GET_VIEW"}
+                    await websocket.send_text(
+                        _encode_json({"type": "ERROR", "detail": "Spectators can only GET_VIEW"})
                     )
                 continue
 
@@ -963,7 +966,9 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         await _send_captured_broadcast(game, ping_messages)
                 except ValueError as exc:
                     async with game.outbound_lock:
-                        await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                        await websocket.send_text(
+                            _encode_json({"type": "ERROR", "detail": str(exc)})
+                        )
                 continue
 
             # Pointer presence: the same ephemeral relay contract as pings.
@@ -1027,7 +1032,9 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     if game.game_logger:
                         game.game_logger.log_error(str(exc), hero_id)
                     async with game.outbound_lock:
-                        await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                        await websocket.send_text(
+                            _encode_json({"type": "ERROR", "detail": str(exc)})
+                        )
                 continue
 
             raw_client_action_id = data.get("client_action_id")
@@ -1165,7 +1172,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             # remaining recipient views are then captured from
                             # the exact same locked mutation state.
                             actor_send_started = time.perf_counter()
-                            await websocket.send_json(sender_reply)
+                            await websocket.send_text(_encode_json(sender_reply))
                             sender_reply_sent = True
                             await _send_captured_broadcast(game, actor_messages)
                             send_ms += (time.perf_counter() - actor_send_started) * 1000
@@ -1191,7 +1198,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             messages = [*actor_messages, *remaining_messages]
 
                     if not sender_reply_sent:
-                        await websocket.send_json(sender_reply)
+                        await websocket.send_text(_encode_json(sender_reply))
                     remaining_send_started = time.perf_counter()
                     await _send_captured_broadcast(game, remaining_messages)
                     send_ms += (time.perf_counter() - remaining_send_started) * 1000
@@ -1220,7 +1227,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                                 game,
                                 [event.model_dump() for event in timer_events],
                             )
-                    await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+                    await websocket.send_text(_encode_json({"type": "ERROR", "detail": str(exc)}))
                     if error_messages:
                         await _send_captured_broadcast(game, error_messages)
 
