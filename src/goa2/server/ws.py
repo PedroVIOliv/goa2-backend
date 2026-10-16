@@ -30,6 +30,7 @@ from goa2.server.errors import (
     validate_input_turn,
     validate_simultaneous_input_scope,
 )
+from goa2.server.event_history import events_for_delivery, retain_events
 from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.replay import (
     load_replay,
@@ -49,7 +50,6 @@ from goa2.server.time_control import (
 )
 from goa2.server.visibility import (
     awaiting_input_hero_ids,
-    events_for_viewer,
     input_request_for_viewer,
 )
 from goa2.server.workers import run_heavy
@@ -293,14 +293,14 @@ def _capture_broadcast(
         hero_id = game.player_tokens.get(token)
         msg = _build_state_update(game, hero_id, board_view=board_view)
         if events:
-            msg["events"] = events_for_viewer(events, game.session.state, hero_id)
+            msg["events"] = events_for_delivery(events, game, hero_id)
         if token == priority_token and client_action_id is not None:
             msg["client_action_id"] = client_action_id
         messages.append((token, ws, msg))
     if spectator_connections:
         msg = _build_state_update(game, None, board_view=board_view)
         if events:
-            msg["events"] = events_for_viewer(events, game.session.state, None)
+            msg["events"] = events_for_delivery(events, game, None)
         messages.extend((None, ws, msg) for ws in spectator_connections)
     if timing is not None:
         timing["board_ms"] = board_ms
@@ -323,7 +323,7 @@ def _capture_player_update(
     hero_id = game.player_tokens.get(token)
     msg = _build_state_update(game, hero_id, board_view=board_view)
     if events:
-        msg["events"] = events_for_viewer(events, game.session.state, hero_id)
+        msg["events"] = events_for_delivery(events, game, hero_id)
     if client_action_id is not None:
         msg["client_action_id"] = client_action_id
     return token, ws, msg
@@ -655,6 +655,7 @@ async def _handle_cheats_gold(
         actor_id=hero.id,
         metadata={"amount": amount, "reason": "cheat"},
     )
+    retain_events(game, [event])
 
     if game.game_logger:
         game.game_logger.log_events([event.model_dump()])
@@ -752,6 +753,7 @@ async def _resolve_override(
                 result = apply_override_decision(game.session, proposal.op, proposal.args)
                 if result is not None:
                     game.last_result = result
+                    retain_events(game, result.events)
                     events = [ev.model_dump() for ev in result.events]
         except (OverrideRejectedError, ValueError, BrokenProcessPool) as exc:
             outcome = "rejected"
@@ -1124,8 +1126,8 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                         if reply.get("type") == "ACTION_RESULT":
                             sender_reply = {
                                 **reply,
-                                "events": events_for_viewer(
-                                    reply.get("events", []), game.session.state, hero_id
+                                "events": events_for_delivery(
+                                    reply.get("events", []), game, hero_id
                                 ),
                             }
                         if client_action_id is not None:

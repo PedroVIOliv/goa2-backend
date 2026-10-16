@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from bisect import bisect_right
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from goa2.domain.events import GameEvent, GameEventType
 from goa2.domain.input import InputResponse
 from goa2.domain.models import GamePhase
-from goa2.domain.state import GameState
 from goa2.domain.types import HeroID
 from goa2.domain.views import build_view
 from goa2.engine.session import GameSession, SessionResult
@@ -22,12 +22,14 @@ from goa2.server.errors import (
     validate_input_turn,
     validate_simultaneous_input_scope,
 )
+from goa2.server.event_history import event_for_viewer, events_for_delivery, retain_events
 from goa2.server.map_paths import MapFileNotFoundError, resolve_map_path
 from goa2.server.models import (
     ActionResultResponse,
     CommitCardRequest,
     CreateGameRequest,
     CreateGameResponse,
+    EventHistoryResponse,
     GameViewResponse,
     GiveGoldRequest,
     PlayerToken,
@@ -37,6 +39,7 @@ from goa2.server.models import (
     SubmitInputRequest,
 )
 from goa2.server.player_names import resolve_player_names
+from goa2.server.registry import ManagedGame
 from goa2.server.result_logging import log_session_result
 from goa2.server.share_mint import mint_replay_share
 from goa2.server.time_control import (
@@ -51,7 +54,6 @@ from goa2.server.time_control import (
 )
 from goa2.server.visibility import (
     awaiting_input_hero_ids,
-    events_for_viewer,
     input_request_for_viewer,
 )
 
@@ -68,15 +70,17 @@ def _map_path(map_name: str) -> str:
 
 def _result_to_response(
     result: SessionResult,
-    state: GameState,
-    for_hero_id: str,
+    game: ManagedGame,
+    for_hero_id: str | None,
 ) -> ActionResultResponse:
     return ActionResultResponse(
         result_type=result.result_type.value,
         current_phase=result.current_phase.value,
-        events=events_for_viewer([ev.model_dump() for ev in result.events], state, for_hero_id),
-        input_request=input_request_for_viewer(result.input_request, state, for_hero_id),
-        awaiting_input=awaiting_input_hero_ids(result.input_request, state),
+        events=events_for_delivery([ev.model_dump() for ev in result.events], game, for_hero_id),
+        input_request=input_request_for_viewer(
+            result.input_request, game.session.state, for_hero_id
+        ),
+        awaiting_input=awaiting_input_hero_ids(result.input_request, game.session.state),
         winner=result.winner,
     )
 
@@ -242,6 +246,41 @@ async def get_game_view(
     )
 
 
+@router.get("/{game_id}/events", response_model=EventHistoryResponse)
+async def get_game_events(
+    game_id: str,
+    player: PlayerDep,
+    registry: RegistryDep,
+    after_event_id: int | None = Query(default=None, ge=0),
+    after_event_time: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> EventHistoryResponse:
+    """Return events strictly after one cursor, in original emission order."""
+    if after_event_id is not None and after_event_time is not None:
+        raise HTTPException(status_code=400, detail="Supply only one event cursor")
+    game = registry.get(game_id)
+    hero_id = None if player.is_spectator else player.hero_id
+    async with game.lock:
+        key = "event_time" if after_event_time is not None else "event_id"
+        cursor = after_event_time if after_event_time is not None else (after_event_id or 0)
+        latest = game.event_history[-1][key] if game.event_history else 0
+        if cursor > latest:
+            raise HTTPException(
+                status_code=400, detail="Event cursor is ahead of this game's history"
+            )
+        # IDs and times are strictly increasing; binary search avoids rescanning
+        # a whole match on each reconnect/poll.
+        start = bisect_right(game.event_history, cursor, key=lambda entry: entry[key])
+        page = game.event_history[start : start + limit]
+        last = page[-1] if page else (game.event_history[-1] if game.event_history else None)
+        return EventHistoryResponse(
+            events=[event_for_viewer(entry, hero_id) for entry in page],
+            last_event_id=last["event_id"] if last else 0,
+            last_event_time=last["event_time"] if last else 0,
+            has_more=start + len(page) < len(game.event_history),
+        )
+
+
 @router.post("/{game_id}/cards", response_model=ActionResultResponse)
 async def commit_card(
     game_id: str,
@@ -295,7 +334,7 @@ async def commit_card(
         if game.game_logger:
             game.game_logger.log_card_commit(player.hero_id, body.card_id)
         log_session_result(game, result)
-        return _result_to_response(result, session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/uncommit", response_model=ActionResultResponse)
@@ -344,7 +383,7 @@ async def uncommit_card(
         if game.game_logger and card is not None:
             game.game_logger.log_card_uncommit(hid, card.id)
         log_session_result(game, result)
-        return _result_to_response(result, session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/pass", response_model=ActionResultResponse)
@@ -379,7 +418,7 @@ async def pass_turn(
         if game.game_logger:
             game.game_logger.log_pass_turn(player.hero_id)
         log_session_result(game, result)
-        return _result_to_response(result, session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/planning-done", response_model=ActionResultResponse)
@@ -414,7 +453,7 @@ async def planning_done(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         log_session_result(game, result)
-        return _result_to_response(result, session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/input", response_model=ActionResultResponse)
@@ -466,7 +505,7 @@ async def submit_input(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         log_session_result(game, result)
-        return _result_to_response(result, game.session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/advance", response_model=ActionResultResponse)
@@ -485,7 +524,7 @@ async def advance(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         log_session_result(game, result)
-        return _result_to_response(result, game.session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/rollback", response_model=ActionResultResponse)
@@ -523,7 +562,7 @@ async def rollback_action(
         result = merge_timer_events(result, timer_events)
         game.last_result = result
         log_session_result(game, result)
-        return _result_to_response(result, session.state, player.hero_id)
+        return _result_to_response(result, game, player.hero_id)
 
 
 @router.post("/{game_id}/cheats/gold", response_model=ActionResultResponse)
@@ -570,11 +609,16 @@ async def give_gold_cheat(
             actor_id=hero.id,
             metadata={"amount": body.amount, "reason": "cheat"},
         )
+        retain_events(game, [event])
 
         result = ActionResultResponse(
             result_type="ACTION_COMPLETE",
             current_phase=session.current_phase.value,
-            events=[*[ev.model_dump() for ev in timer_events], event.model_dump()],
+            events=events_for_delivery(
+                [*[ev.model_dump() for ev in timer_events], event.model_dump()],
+                game,
+                player.hero_id,
+            ),
             input_request=None,
             winner=None,
         )

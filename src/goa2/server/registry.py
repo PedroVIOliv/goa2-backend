@@ -15,6 +15,7 @@ from fastapi import WebSocket
 
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
+from goa2.server.event_history import compact_history
 from goa2.server.game_logger import GameLogger, create_game_logger
 from goa2.server.replay import ReplayRecorder, create_replay_recorder
 
@@ -35,6 +36,7 @@ class ManagedGame:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     outbound_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_result: SessionResult | None = None
+    event_history: list[dict[str, Any]] = field(default_factory=list)
     ws_connections: dict[str, WebSocket] = field(default_factory=dict)
     spectator_ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None
@@ -159,6 +161,7 @@ class GameRegistry:
                 rollback_snapshot=game.session._rollback_snapshot,
                 rollback_actor_id=game.session._rollback_actor_id,
                 replay_log=game.replay_recorder.records if game.replay_recorder else None,
+                event_history=game.event_history,
             )
         except Exception:
             logger.exception("Failed to save game %s", game_id)
@@ -190,6 +193,7 @@ class GameRegistry:
                 hero_names=data["hero_names"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
+                event_history=compact_history(data["event_history"]),
                 game_logger=create_game_logger(data["game_id"]),
                 replay_recorder=replay_recorder,
             )

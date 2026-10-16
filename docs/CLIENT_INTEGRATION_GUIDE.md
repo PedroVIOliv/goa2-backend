@@ -1603,6 +1603,8 @@ Events describe what happened during a game action. They are meant for animation
 ```json
 {
   "event_type": "UNIT_MOVED",
+  "event_id": 42,
+  "event_time": 1792141508000,
   "actor_id": "hero_arien",
   "target_id": null,
   "from_hex": {"q": 0, "r": 0, "s": 0},
@@ -1612,6 +1614,13 @@ Events describe what happened during a game action. They are meant for animation
 ```
 
 ### Event types
+
+Server-delivered events include `event_id` (a per-game integer starting at 1)
+and `event_time` (Unix milliseconds, made strictly increasing per game). Both
+identify the same event across REST action results, WebSocket action results
+and broadcasts, and catch-up requests. Engine-only events have these fields
+set to `null` until the server retains them. Prefer event IDs for resuming and
+deduplication; event times are ordering cursors, not exact wall-clock telemetry.
 
 | Event Type | Description | Key fields |
 |------------|-------------|------------|
@@ -1688,6 +1697,64 @@ To reconnect after a server restart:
 3. If there's a pending `input_request`, continue responding to it normally
 
 Tokens are not rotated on restart — the original tokens remain valid for the lifetime of the game.
+
+### Fetching missed events
+
+`GET /games/{game_id}/events` requires the usual bearer token and returns only
+that token's hero viewpoint; spectator tokens receive the public viewpoint.
+The server retains projections for every seat, including disconnected players,
+at emission time. Later card reveals or token removal cannot change those
+historical payloads. History is saved with the game and survives restarts.
+Live delivery reuses these retained projections, so a combined timeout/action
+batch has the same recipient-specific payloads as subsequent catch-up requests.
+Storage shares identical projections: a public event is stored once for all
+viewers, while events with private details retain only their distinct variants.
+This changes neither the event response shape nor the visibility seen by clients.
+
+Query parameters:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `after_event_id` | Return events with IDs strictly greater than this nonnegative integer. Omit both cursors (or use `0`) to start at the beginning. |
+| `after_event_time` | Alternative cursor: return events with times strictly greater than this nonnegative Unix millisecond value. Use the server's event time. |
+| `limit` | Page size, default `100`, minimum `1`, maximum `1000`. |
+
+Supply at most one cursor. Supplying both or a cursor ahead of the game's
+history returns `400`; malformed/negative cursors or invalid limits return `422`.
+
+```http
+GET /games/abc123/events?after_event_id=41&limit=100
+Authorization: Bearer <player-token>
+```
+
+```json
+{
+  "events": [
+    {"event_type": "GOLD_GAINED", "event_id": 42, "event_time": 1792141508000,
+     "actor_id": "hero_arien", "target_id": null, "from_hex": null,
+     "to_hex": null, "metadata": {"amount": 2}}
+  ],
+  "last_event_id": 42,
+  "last_event_time": 1792141508000,
+  "has_more": false
+}
+```
+
+Save `last_event_id` after processing a page and request the next page with
+`after_event_id` while `has_more` is true. An empty response retains the current
+game cursor; a game without events returns both cursors as `0`.
+
+On reconnect, open the WebSocket and buffer its updates, fetch missed events
+from the last processed cursor, then merge buffered events by `event_id` to
+avoid duplicates. Refresh/render the authoritative state from `STATE_UPDATE`
+or `GET /games/{game_id}`. Do not advance the processed cursor past missing IDs
+while catch-up is in progress. Events remain animation/log hints, not a state
+reconstruction protocol: rollbacks and consensus rewinds do not erase historical
+events, and some state changes have no game event. Ephemeral `PING`, `POINTER`,
+and override negotiation messages are not included.
+
+History is retained for the lifetime of the saved game. Saves from before this
+feature start with an empty history; earlier events cannot be recovered.
 
 ### Limitations
 

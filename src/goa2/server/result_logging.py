@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from goa2.engine.session import SessionResult
+from goa2.server.event_history import retain_events
 from goa2.server.registry import ManagedGame
 from goa2.server.replay import verify_replay_in_background
 
 
 def log_session_result(game: ManagedGame, result: SessionResult) -> None:
-    """Log a result at the current round/turn, verifying its replay on game over."""
+    """Retain events and log a result, verifying its replay on game over."""
+    retain_events(game, result.events)
     game_logger = game.game_logger
     if game_logger is None:
         return

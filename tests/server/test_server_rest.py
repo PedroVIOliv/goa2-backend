@@ -1037,3 +1037,324 @@ def test_create_game_accepts_player_names(client):
 def test_create_game_without_player_names_stores_none(client, game_data):
     game = client.app.state.registry.get(game_data["game_id"])
     assert game.hero_names == {}
+
+
+def test_event_history_pagination_and_time_cursor(client, game_data, monkeypatch):
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.server.event_history import retain_events
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    token = _token_for(game_data, "hero_arien")
+    url = f"/games/{game.game_id}/events"
+    assert client.get(url, headers=_auth(token)).json() == {
+        "events": [],
+        "last_event_id": 0,
+        "last_event_time": 0,
+        "has_more": False,
+    }
+    # Several events in the same clock tick must remain individually resumable.
+    monkeypatch.setattr("goa2.server.event_history.time.time_ns", lambda: 1_000_000_000)
+    events = [
+        GameEvent(event_type=GameEventType.GOLD_GAINED, metadata={"amount": i}) for i in range(3)
+    ]
+    retain_events(game, events)
+    retain_events(game, events)  # merged timer/action results do not duplicate events
+    first = client.get(url, params={"limit": 2}, headers=_auth(token)).json()
+    assert [e["event_id"] for e in first["events"]] == [1, 2]
+    assert first["has_more"] is True
+    assert first["last_event_id"] == 2
+    assert first["last_event_time"] == 1001
+    for key, cursor in [("after_event_id", 2), ("after_event_time", 1001)]:
+        page = client.get(url, params={key: cursor}, headers=_auth(token)).json()
+        assert [e["event_id"] for e in page["events"]] == [3]
+        assert page["has_more"] is False
+    empty = client.get(url, params={"after_event_id": 3}, headers=_auth(token)).json()
+    assert empty["events"] == []
+    assert empty["last_event_id"] == 3
+
+
+@pytest.mark.parametrize(
+    "params,status",
+    [
+        ({"after_event_id": -1}, 422),
+        ({"after_event_time": -1}, 422),
+        ({"limit": 0}, 422),
+        ({"limit": 1001}, 422),
+        ({"after_event_id": "bad"}, 422),
+        ({"after_event_id": 0, "after_event_time": 0}, 400),
+        ({"after_event_id": 1}, 400),
+    ],
+)
+def test_event_history_validates_cursor(client, game_data, params, status):
+    token = _token_for(game_data, "hero_arien")
+    response = client.get(
+        f"/games/{game_data['game_id']}/events", params=params, headers=_auth(token)
+    )
+    assert response.status_code == status
+
+
+def test_event_history_auth(client, game_data):
+    url = f"/games/{game_data['game_id']}/events"
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=_auth("invalid")).status_code == 401
+    token = _token_for(game_data, "hero_arien")
+    assert client.get("/games/another-game/events", headers=_auth(token)).status_code == 403
+    assert client.get(url, headers=_auth(game_data["spectator_token"])).status_code == 200
+
+
+def test_event_history_freezes_viewpoint_at_emission(client, game_data):
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.engine.session import SessionResult, SessionResultType
+    from goa2.server.result_logging import log_session_result
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    hero = game.session.state.get_hero("hero_arien")
+    card = hero.hand[0]
+    result = SessionResult(
+        result_type=SessionResultType.ACTION_COMPLETE,
+        current_phase=game.session.current_phase,
+        events=[
+            GameEvent(
+                event_type=GameEventType.CARD_RETRIEVED,
+                actor_id=hero.id,
+                metadata={"card_id": card.id},
+            )
+        ],
+    )
+    game.game_logger = None  # retention must not depend on optional logging
+    log_session_result(game, result)
+    # A later public reveal must not change an earlier private event.
+    hero.hand.remove(card)
+    card.is_facedown = False
+    hero.discard_pile.append(card)
+    for viewer in ("hero_arien", "hero_wasp", "spectator"):
+        token = (
+            game_data["spectator_token"] if viewer == "spectator" else _token_for(game_data, viewer)
+        )
+        event = client.get(f"/games/{game.game_id}/events", headers=_auth(token)).json()["events"][
+            0
+        ]
+        assert event["metadata"]["card_id"] == (card.id if viewer == "hero_arien" else None)
+        assert event["event_id"] == 1
+
+
+def test_rest_gold_events_survive_restart(client, game_data):
+    from goa2.server.registry import GameRegistry
+
+    registry = client.app.state.registry
+    game = registry.get(game_data["game_id"])
+    game.session.state.cheats_enabled = True
+    token = _token_for(game_data, "hero_arien")
+    emitted = []
+    for amount in (2, 3):
+        response = client.post(
+            f"/games/{game.game_id}/cheats/gold",
+            json={"hero_id": "hero_arien", "amount": amount},
+            headers=_auth(token),
+        )
+        assert response.status_code == 200
+        emitted.extend(response.json()["events"])
+    restored = GameRegistry(save_dir=registry._save_dir)
+    assert restored.restore_all() == 1
+    client.app.state.registry = restored
+    history = client.get(f"/games/{game.game_id}/events", headers=_auth(token)).json()
+    assert history["events"] == emitted
+    response = client.post(
+        f"/games/{game.game_id}/cheats/gold",
+        json={"hero_id": "hero_arien", "amount": 1},
+        headers=_auth(token),
+    )
+    assert response.json()["events"][0]["event_id"] == 3
+
+
+def test_rest_engine_events_are_retained(client, game_data):
+    from goa2.domain.models import GamePhase
+    from goa2.engine.handler import push_steps
+    from goa2.engine.steps import PlaceUnitStep
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    state = game.session.state
+    state.phase = GamePhase.RESOLUTION
+    destination = next(h for h in state.board.tiles if h not in state.entity_locations.values())
+    push_steps(state, [PlaceUnitStep(unit_id="hero_arien", target_hex_arg=destination)])
+    url = f"/games/{game_data['game_id']}"
+    token = _token_for(game_data, "hero_arien")
+    response = client.post(url + "/advance", headers=_auth(token))
+    assert response.status_code == 200
+    emitted = response.json()["events"]
+    assert emitted
+    recovered = client.get(url + "/events", headers=_auth(token)).json()
+    assert [event["event_id"] for event in emitted] == list(range(1, len(emitted) + 1))
+    assert recovered["events"] == emitted
+
+
+def test_live_delivery_reuses_retained_visibility_after_later_changes(client, game_data):
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.domain.views import _build_board_view
+    from goa2.engine.session import SessionResult, SessionResultType
+    from goa2.server.event_history import event_for_viewer, events_for_delivery, retain_events
+    from goa2.server.routes_games import _result_to_response
+    from goa2.server.ws import _capture_broadcast, _capture_player_update
+
+    game = client.app.state.registry.get(game_data["game_id"])
+    hero = game.session.state.get_hero("hero_arien")
+    card = hero.hand[0]
+    event = GameEvent(
+        event_type=GameEventType.TIMER_EXPIRED, actor_id=hero.id, metadata={"card_id": card.id}
+    )
+    retain_events(game, [event])
+    # The subsequent action reveals the selected card before this batch is sent.
+    hero.hand.remove(card)
+    card.is_facedown = False
+    hero.discard_pile.append(card)
+    game.ws_connections = {pt["token"]: object() for pt in game_data["player_tokens"]}
+    game.spectator_ws_connections = {1: object()}
+    messages = _capture_broadcast(game, [event.model_dump()])
+    result = SessionResult(
+        result_type=SessionResultType.ACTION_COMPLETE,
+        current_phase=game.session.current_phase,
+        events=[event],
+    )
+    for token, _, message in messages:
+        hero_id = game.player_tokens[token] if token else None
+        auth_token = token or game.spectator_token
+        recovered = client.get(f"/games/{game.game_id}/events", headers=_auth(auth_token)).json()[
+            "events"
+        ]
+        assert message["events"] == recovered
+        assert message["events"][0]["metadata"]["card_id"] == (
+            card.id if hero_id == hero.id else None
+        )
+        assert _result_to_response(result, game, hero_id).events == recovered
+        if token:
+            update = _capture_player_update(
+                game, token, [event.model_dump()], board_view=_build_board_view(game.session.state)
+            )
+            assert update[2]["events"] == recovered
+    # Delivery must not hand out references that can mutate the durable history.
+    delivered = events_for_delivery([event.model_dump()], game, "hero_arien")
+    delivered[0]["metadata"]["card_id"] = "changed"
+    assert event_for_viewer(game.event_history[0], "hero_arien")["metadata"]["card_id"] == card.id
+
+
+def test_public_history_events_store_one_payload_for_all_viewers(client, game_data):
+    import json
+    from pathlib import Path
+
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.server.event_history import retain_events
+
+    registry = client.app.state.registry
+    game = registry.get(game_data["game_id"])
+    event = GameEvent(
+        event_type=GameEventType.GOLD_GAINED,
+        actor_id="hero_arien",
+        metadata={"amount": 2, "reason": "public-history-test"},
+    )
+    retain_events(game, [event])
+    registry.save_game(game.game_id)
+    saved = json.loads((Path(registry._save_dir) / f"{game.game_id}.json").read_text())
+    entry = saved["event_history"][0]
+    assert entry["payloads"] == [event.model_dump(mode="json")]
+    assert entry["viewers"] == {}
+    assert json.dumps(entry).count("public-history-test") == 1
+    for token in [*game.hero_to_token.values(), game.spectator_token]:
+        response = client.get(f"/games/{game.game_id}/events", headers=_auth(token))
+        assert response.json()["events"] == [event.model_dump(mode="json")]
+
+
+def test_history_compaction_shares_identical_private_variants():
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.server.event_history import compact_history, event_for_viewer
+
+    public = GameEvent(
+        event_type=GameEventType.TIMER_EXPIRED,
+        event_id=1,
+        event_time=1000,
+        metadata={"selection": None},
+    ).model_dump(mode="json")
+    private = {**public, "metadata": {"selection": "private_card"}}
+    history = compact_history(
+        [
+            {
+                "event_id": 1,
+                "event_time": 1000,
+                "viewers": {
+                    "spectator": public,
+                    "hero_a": private,
+                    "hero_b": private.copy(),
+                    "hero_c": public.copy(),
+                },
+            }
+        ]
+    )
+    assert len(history[0]["payloads"]) == 2
+    assert history[0]["viewers"] == {"hero_a": 1, "hero_b": 1}
+    assert event_for_viewer(history[0], None) == public
+    assert event_for_viewer(history[0], "hero_c") == public
+    assert event_for_viewer(history[0], "hero_a") == private
+    assert event_for_viewer(history[0], "hero_b") == private
+    assert compact_history(history) == history
+
+
+def test_legacy_history_migrates_without_rechecking_visibility(client, game_data):
+    import json
+    from pathlib import Path
+
+    from goa2.domain.events import GameEvent, GameEventType
+    from goa2.server.event_history import event_for_viewer, retain_events
+    from goa2.server.registry import GameRegistry
+
+    registry = client.app.state.registry
+    game = registry.get(game_data["game_id"])
+    hero = game.session.state.get_hero("hero_arien")
+    card = hero.hand[0]
+    retain_events(
+        game,
+        [
+            GameEvent(
+                event_type=GameEventType.GOLD_GAINED, actor_id=hero.id, metadata={"amount": 1}
+            ),
+            GameEvent(
+                event_type=GameEventType.CARD_RETRIEVED,
+                actor_id=hero.id,
+                metadata={"card_id": card.id},
+            ),
+        ],
+    )
+    legacy = [
+        {
+            "event_id": entry["event_id"],
+            "event_time": entry["event_time"],
+            "viewers": {
+                viewer: event_for_viewer(entry, None if viewer == "spectator" else viewer)
+                for viewer in [*game.hero_to_token, "spectator"]
+            },
+        }
+        for entry in game.event_history
+    ]
+    assert len(game.event_history[1]["payloads"]) == 2
+    assert game.event_history[1]["viewers"] == {"hero_arien": 1}
+    # Loading must preserve the earlier private payload despite today's reveal.
+    hero.hand.remove(card)
+    card.is_facedown = False
+    hero.discard_pile.append(card)
+    registry.save_game(game.game_id)
+    save_path = Path(registry._save_dir) / f"{game.game_id}.json"
+    saved = json.loads(save_path.read_text())
+    saved["event_history"] = legacy
+    save_path.write_text(json.dumps(saved))
+    restored = GameRegistry(save_dir=registry._save_dir)
+    assert restored.restore_all() == 1
+    client.app.state.registry = restored
+    restored_game = restored.get(game.game_id)
+    assert [len(entry["payloads"]) for entry in restored_game.event_history] == [1, 2]
+    for viewer in [*game.hero_to_token, "spectator"]:
+        token = game.spectator_token if viewer == "spectator" else game.hero_to_token[viewer]
+        response = client.get(f"/games/{game.game_id}/events", headers=_auth(token))
+        assert response.json()["events"] == [entry["viewers"][viewer] for entry in legacy]
+    next_event = GameEvent(event_type=GameEventType.GOLD_GAINED, metadata={"amount": 3})
+    retain_events(restored_game, [next_event])
+    assert next_event.event_id == 3
+    restored.save_game(game.game_id)
+    assert json.loads(save_path.read_text())["event_history"] == restored_game.event_history
