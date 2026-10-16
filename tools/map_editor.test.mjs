@@ -11,13 +11,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
 import vm from "node:vm";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
-
 function loadPureBlock() {
-  const html = readFileSync(path.join(HERE, "map_editor.html"), "utf8");
+  const html = readFileSync(new URL("./map_editor.html", import.meta.url), "utf8");
   const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
   const pure = blocks.find((b) => b.includes("module.exports"));
   assert.ok(pure, "could not find the pure-logic script block");
