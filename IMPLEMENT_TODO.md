@@ -3,7 +3,7 @@
 Implementation scope on this branch is backend only. Section 5 remains the
 future frontend integration plan; no frontend source changes are included.
 Checked items describe the implemented backend. Validation evidence and the
-remaining deployment latency gate are in `docs/LIVE_HISTORY_VALIDATION.md`.
+deployment measurement follow-up are in `docs/LIVE_HISTORY_VALIDATION.md`.
 
 ## Goal and agreed behavior
 
