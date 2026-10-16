@@ -106,10 +106,59 @@ class ShareLinkResponse(BaseModel):
     url: str
 
 
+class HistoryGap(BaseModel):
+    from_decision: int
+    to_decision: int
+
+
+class HistoryMetadata(BaseModel):
+    revision: int
+    epoch: int
+    position_id: int | None
+    predecessor_id: int | None
+    total: int
+    availability: str
+    gaps: list[HistoryGap] = Field(default_factory=list)
+
+
+class HistoryPosition(BaseModel):
+    position_id: int
+    phase: str
+    round: int
+    turn: int
+    timestamp: float
+    decision_count: int
+    reconstructed: bool
+
+
+class HistoryIndexResponse(HistoryMetadata):
+    positions: list[HistoryPosition]
+    has_more: bool
+    before_position_id: int | None
+
+
+class HistoryStateResponse(BaseModel):
+    view: dict[str, Any]
+    winner: str | None
+    position: HistoryPosition
+    revision: int
+    epoch: int
+
+
+class HistoryFramesResponse(BaseModel):
+    start: int
+    keyframe: dict[str, Any]
+    patches: list[list[dict[str, Any]]]
+    positions: list[HistoryPosition]
+    revision: int
+    epoch: int
+
+
 class GameViewResponse(BaseModel):
     """Wraps the dict returned by build_view."""
 
     view: dict[str, Any]
+    history: HistoryMetadata | None = None
     input_request: dict[str, Any] | None = None
     # Public identity of whoever the pending request is waiting on, even for a
     # recipient whose `input_request` was withheld as private.

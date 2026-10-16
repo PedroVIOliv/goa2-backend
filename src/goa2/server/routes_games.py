@@ -131,6 +131,7 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
             rules_version=state.rules_version,
         )
 
+    registry.save_game(game.game_id)
     return CreateGameResponse(
         game_id=game.game_id,
         player_tokens=[
@@ -156,8 +157,9 @@ async def set_ready(
             set_player_ready(game, player.hero_id, body.ready, timestamp)
             finalize_timed_mutation(game, registry, timestamp)
             state = game.session.state
+            view = build_view(state, for_hero_id=HeroID(player.hero_id), now_ms=timestamp)
             response = GameViewResponse(
-                view=build_view(state, for_hero_id=HeroID(player.hero_id), now_ms=timestamp),
+                view=view,
                 input_request=input_request_for_viewer(
                     game.last_result.input_request if game.last_result else None,
                     state,
@@ -169,6 +171,9 @@ async def set_ready(
                 ),
                 winner=game.last_result.winner if game.last_result else None,
                 hero_names=game.hero_names,
+                history=(
+                    game.history.metadata_for_view(view, player.hero_id) if game.history else None
+                ),
             )
 
             # REST and WebSocket ready actions share the same public, atomic
@@ -239,6 +244,7 @@ async def get_game_view(
         awaiting_input=awaiting_input_hero_ids(ir, game.session.state),
         winner=winner,
         hero_names=game.hero_names,
+        history=game.history.metadata_for_view(view, hero_id) if game.history else None,
     )
 
 
@@ -484,7 +490,7 @@ async def advance(
         mark_human_action(game)
         result = merge_timer_events(result, timer_events)
         game.last_result = result
-        log_session_result(game, result)
+        log_session_result(game, result, capture_unrecorded=True)
         return _result_to_response(result, game.session.state, player.hero_id)
 
 

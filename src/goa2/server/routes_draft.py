@@ -143,6 +143,7 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
             player_names=hero_names,
             rules_version=game_state.rules_version,
         )
+    game_registry.save_game(game.game_id)
     for player in state.players:
         if player.claimed_hero:
             hero_id = name_to_id[player.claimed_hero]

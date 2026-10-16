@@ -28,6 +28,9 @@ def build_view(
     reveal_all: bool = False,
     now_ms: int | None = None,
     prebuilt_board_view: dict[str, Any] | None = None,
+    prebuilt_hero_views: dict[tuple[str, bool], dict[str, Any]] | None = None,
+    prebuilt_public_view: dict[str, Any] | None = None,
+    include_transient: bool = True,
 ) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
@@ -55,7 +58,28 @@ def build_view(
     # Build teams view
     teams_view: dict[str, Any] = {}
     for team_color, team in state.teams.items():
-        teams_view[team_color.value] = _build_team_view(state, team, for_hero_id, reveal_all)
+        teams_view[team_color.value] = _build_team_view(
+            state, team, for_hero_id, reveal_all, prebuilt_hero_views
+        )
+
+    if prebuilt_public_view is not None and not reveal_all:
+        # Public effects, geometry and initiative ordering are identical for
+        # all seats. Only cards/tokens and transient controls need rescoping.
+        unresolved = []
+        for entry in prebuilt_public_view["unresolved_cards"]:
+            if for_hero_id is not None and entry["hero_id"] == for_hero_id:
+                hero = state.get_hero(for_hero_id)
+                assert hero is not None
+                unresolved.append({**entry, "card": _build_card_view(hero.current_turn_card, True)})
+            else:
+                unresolved.append(entry)
+        return {
+            **prebuilt_public_view,
+            "teams": teams_view,
+            "tokens": _build_tokens_view(state, for_hero_id),
+            "unresolved_cards": unresolved,
+            **_transient_fields(state, for_hero_id, now_ms, include_transient),
+        }
 
     # The board is public and identical for every recipient. Broadcast callers
     # may build it once from their locked state snapshot and reuse it while the
@@ -81,8 +105,6 @@ def build_view(
 
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
-
-    from goa2.engine.starting_positions import position_view
 
     view = {
         "phase": state.phase.value,
@@ -114,20 +136,33 @@ def build_view(
         # Direct public hand-card reveal (Cordelia). As with card_guess, the
         # state-backed face survives reconnects and execution-context cleanup.
         "card_reveal": _build_card_reveal_view(state),
-        "starting_position": position_view(state, str(for_hero_id) if for_hero_id else None),
     }
     view["time_control"] = (
         state.time_control.model_dump(mode="json") if state.time_control is not None else None
     )
-    view["clock"] = (
+    view.update(_transient_fields(state, for_hero_id, now_ms, include_transient))
+    return view
+
+
+def _transient_fields(
+    state: GameState, for_hero_id: HeroID | None, now_ms: int | None, include: bool
+) -> dict[str, Any]:
+    from goa2.engine.starting_positions import position_view
+
+    clock = (
         public_clock_view(
             state.clock,
             now_ms if now_ms is not None else time.time_ns() // 1_000_000,
         )
-        if state.clock is not None
+        if state.clock is not None and include
         else None
     )
-    return view
+    return {
+        "clock": clock,
+        "starting_position": (
+            position_view(state, str(for_hero_id) if for_hero_id else None) if include else None
+        ),
+    }
 
 
 def _build_unresolved_cards_view(
@@ -191,14 +226,30 @@ def _build_unresolved_cards_view(
 
 
 def _build_team_view(
-    state: GameState, team, for_hero_id: HeroID | None, reveal_all: bool = False
+    state: GameState,
+    team,
+    for_hero_id: HeroID | None,
+    reveal_all: bool = False,
+    hero_views: dict[tuple[str, bool], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a view for a single team."""
+    heroes = []
+    for hero in team.heroes:
+        # Capture batches share public hero projections across recipients.
+        # Exclude omniscient mode, whose second-card permissions depend on the
+        # requesting hero in addition to reveal_all.
+        key = (str(hero.id), hero.id == for_hero_id)
+        if hero_views is not None and not reveal_all:
+            if key not in hero_views:
+                hero_views[key] = _build_hero_view(state, hero, for_hero_id)
+            heroes.append(hero_views[key])
+        else:
+            heroes.append(_build_hero_view(state, hero, for_hero_id, reveal_all))
     return {
         "color": team.color.value,
         "life_counters": team.life_counters,
         "starting_life_counters": team.starting_life_counters,
-        "heroes": [_build_hero_view(state, hero, for_hero_id, reveal_all) for hero in team.heroes],
+        "heroes": heroes,
         "minions": [_build_minion_view(minion) for minion in team.minions],
     }
 
@@ -523,7 +574,7 @@ def _build_board_view(state: GameState) -> dict[str, Any]:
     for zone in state.board.zones.values():
         zones_view[zone.id] = {
             "id": zone.id,
-            "neighbors": zone.neighbors,
+            "neighbors": list(zone.neighbors),
             "spawn_points": [
                 {
                     "location": {

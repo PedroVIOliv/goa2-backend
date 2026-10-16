@@ -560,6 +560,36 @@ def test_emmitt_timeout_keeps_an_existing_first_commit_and_finishes_planning() -
     assert clock.players["hero_emmitt"].planning_locked_by_timeout
 
 
+def test_emmitt_timeout_captures_commit_and_finish_as_separate_decisions() -> None:
+    game = _emmitt_game(
+        _config(planning_allowance_seconds=1, initial_time_bank_seconds=0, max_time_bank_seconds=0)
+    )
+    game.session.state.get_hero(HeroID("hero_emmitt")).level = 8
+    clock = game.session.state.clock
+    for hero_id in clock.players:
+        set_player_ready(game, hero_id, True, 0)
+    clock.players["hero_wasp"].planning_allowance_ms = 5000
+    apply_due_timeouts(game, 1000, rng=random.Random(4))
+    decisions = [r for r in game.replay_recorder.records if r["type"] == "timer_timeout"]
+    assert [r["action"] for r in decisions] == ["commit", "finish_planning"]
+    captures = [r for r in game.history.records if r["kind"] == "timer_timeout"]
+    assert [r["decision_count"] for r in captures] == [1, 2]
+    before = game.history.reader().read(captures[0]["position_id"], "hero_emmitt")
+    after = game.history.reader().read(captures[1]["position_id"], "hero_emmitt")
+
+    def own(body):
+        return next(
+            h
+            for t in body["view"]["teams"].values()
+            for h in t["heroes"]
+            if h["id"] == "hero_emmitt"
+        )
+
+    assert own(before)["can_commit_second_card"]
+    assert not own(after)["can_commit_second_card"]
+    assert game.history.active == [captures[-1]["position_id"]]
+
+
 def test_out_of_turn_and_team_requests_get_response_time_once() -> None:
     game = _game(_config(response_grant_seconds=15))
     _start(game)

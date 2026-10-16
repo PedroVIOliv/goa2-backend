@@ -223,6 +223,8 @@ def _build_state_update(
         "type": "STATE_UPDATE",
         "view": view,
     }
+    if game.history is not None:
+        msg["history"] = game.history.metadata_for_view(view, hero_id)
     input_request = input_request_for_viewer(ir, game.session.state, hero_id)
     if input_request:
         msg["input_request"] = input_request

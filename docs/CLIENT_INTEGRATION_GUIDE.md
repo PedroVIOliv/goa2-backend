@@ -2255,3 +2255,97 @@ either `{"destination": {q,r,s}}` or `{"swap_with": "<hero id>"}`. Both normal
 replay and shared-replay baking apply that decision through the same engine
 function. Pending/declined requests do not enter the replay. Automatic setup
 placement is unchanged for historical replays.
+
+### Live player history
+
+Live matches retain historical player-scoped views on the server, including for
+disconnected seats. These endpoints use the same game bearer token as live play;
+a spectator token receives public history. No admin token or public share link
+is involved. History reads never submit an action or pause the clock.
+
+The player timeline contains one replaceable position per planning phase and a
+position after each subsequent accepted decision. Takebacks replace planning;
+action rollback removes the abandoned segment up to the engine's safe anchor;
+table rewind restores the selected decision prefix. Correction operations do not
+add browsing steps. The full audit replay remains unchanged. Immutable position
+IDs may have gaps: never treat them as array offsets or raw replay decision IDs.
+
+`GET /games/{game_id}` and WebSocket `STATE_UPDATE` add optional `history` metadata:
+
+```json
+{
+  "revision": 42, "epoch": 7, "position_id": 51, "predecessor_id": 48,
+  "total": 18, "availability": "complete", "gaps": []
+}
+```
+
+`revision` changes when the index changes; `epoch` changes when positions are
+replaced or removed, including planning updates and backfill installation.
+`position_id` is null if the live view has no matching captured position. Repeated
+live updates with the same ID do not create additional history. `availability`
+is `complete`, `pending`, `building`, or `unavailable`; available recent history
+remains browsable even when an older prefix is unavailable. `gaps` names missing
+raw-decision ranges as `{from_decision, to_decision}`, with inclusive endpoints.
+
+Historical bodies contain `view` and `winner`, never actionable input requests.
+Their `view.clock` and `view.starting_position` are null. To buffer full live
+views locally, clone the view, clear those two transient fields, and key it by
+the supplied history position ID and authenticated viewer. Keep the latest live
+view separately, keep at most 30 historical views, and fetch missing predecessors
+on demand. On an epoch change discard cached history and refresh the index.
+Continue receiving live updates while browsing; return to the latest live view
+before enabling gameplay controls.
+
+| Request | Response |
+| --- | --- |
+| `GET /games/{game_id}/history?limit=30` | History metadata plus `positions`, `has_more`, and `before_position_id`. Returns the newest page in chronological order; maximum limit 100. |
+| `GET /games/{game_id}/history?before_position_id=48&limit=30&revision=42` | Positions strictly before active ID 48, pinned to the supplied index revision. Continue paging with the returned `before_position_id`. |
+| `GET /games/{game_id}/history/state?position_id=48` | `{view, winner, position, revision, epoch}` for one active position. Supports optional expected `revision`. |
+| `GET /games/{game_id}/history/frames?from_position_id=48&limit=30&revision=42` | A keyframe and forward JSON Patches covering consecutive active positions; maximum limit 30. |
+
+Each position has `position_id`, `phase`, `round`, `turn`, receipt `timestamp`
+(UTC epoch seconds), `decision_count`, and `reconstructed`. The latter distinguishes
+legacy/repaired positions reconstructed from logs from views captured live.
+`decision_count` is for reference, not a navigation cursor.
+
+The frames response reuses the shared-replay group format with history metadata:
+
+```json
+{
+  "start": 0,
+  "keyframe": {"view": {"phase": "RESOLUTION", "round": 1, "turn": 1}, "winner": null},
+  "patches": [[{"op": "replace", "path": "/view/turn", "value": 2}]],
+  "positions": [
+    {"position_id": 48, "phase": "RESOLUTION", "round": 1, "turn": 1,
+     "timestamp": 1792152000.0, "decision_count": 52, "reconstructed": false},
+    {"position_id": 51, "phase": "RESOLUTION", "round": 1, "turn": 2,
+     "timestamp": 1792152001.0, "decision_count": 53, "reconstructed": false}
+  ],
+  "revision": 42, "epoch": 7
+}
+```
+
+`start` is zero within this response. `patches[n]` advances `positions[n]` to
+`positions[n+1]`; use the explicit position list to map sparse IDs to offsets.
+Clone the keyframe before applying patches with the existing JSON Patch helper.
+Only active, viewer-scoped states appear in this response; internal audit patch
+chains and other viewers' data are never returned. Groups use Brotli encoding
+when supported, otherwise gzip, and all history reads use `private, no-store`.
+
+Errors: `401` invalid/missing credentials, `403` a token for another game, `404`
+unknown position, `410` superseded position, `409` changed revision/epoch (refresh
+the index), and `503` missing/damaged captured data. A `503` requests background
+repair when possible. Discard in-flight responses from older epochs or viewers.
+
+New captures are stored as compressed keyframe/patch groups, with their committed
+index in the atomic game save. Server storage keeps the public view once plus
+private overlays derived from each seat's already-filtered view; those internal
+overlays are never exposed directly. Ordinary reads do not re-simulate the engine. A
+legacy game's first history request performs single-flight backfill in the shared
+worker pool, while live play continues. Later captures are merged without replaying
+them; cancellation of the requesting HTTP connection does not cancel backfill.
+Completion also broadcasts fresh history metadata through ordinary `STATE_UPDATE`
+messages so other connected clients can invalidate their old history caches.
+If engine compatibility prevents reconstruction, the available baseline/recent
+history remains accessible and availability reports `unavailable`. History lives
+as long as its game save; existing independent audit replay retention still applies.

@@ -38,6 +38,8 @@ def save_game(
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
     replay_log: list[dict[str, Any]] | None = None,
+    live_history: dict[str, Any] | None = None,
+    rollback_anchor_id: str | None = None,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -51,6 +53,8 @@ def save_game(
         "state": state.model_dump(mode="json"),
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
+        "rollback_anchor_id": rollback_anchor_id,
+        "live_history": live_history,
     }
     if replay_log is not None:
         payload["replay_log"] = replay_log
@@ -97,6 +101,8 @@ def load_game(file_path: str) -> dict[str, Any]:
     # mid-action rollback survives a restart.
     session._rollback_snapshot = payload.get("rollback_snapshot")
     session._rollback_actor_id = payload.get("rollback_actor_id")
+    if session._rollback_snapshot is not None and payload.get("rollback_anchor_id"):
+        session.rollback_anchor_id = payload["rollback_anchor_id"]
 
     # Re-derive last_result by processing the stack. In the server, saves
     # happen after mutations, so the stack either has a step waiting for input
@@ -129,6 +135,7 @@ def load_game(file_path: str) -> dict[str, Any]:
         # Absent from saves written before the save carried the replay log, and
         # from games whose log was already damaged when it would have been adopted.
         "replay_log": payload.get("replay_log"),
+        "live_history": payload.get("live_history"),
     }
 
 

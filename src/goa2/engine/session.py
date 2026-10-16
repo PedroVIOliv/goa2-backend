@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,6 +55,18 @@ class GameSession:
     @property
     def current_phase(self) -> GamePhase:
         return self.state.phase
+
+    @property
+    def _rollback_snapshot(self) -> dict | None:
+        return self.__dict__.get("_snapshot")
+
+    @_rollback_snapshot.setter
+    def _rollback_snapshot(self, value: dict | None) -> None:
+        if value is not self.__dict__.get("_snapshot"):
+            self.rollback_anchor_id = uuid4().hex if value is not None else None
+        self.__dict__["_snapshot"] = value
+
+    rollback_anchor_id: str | None = None
 
     def commit_card(self, hero_id: HeroID, card: Card) -> SessionResult:
         if self.state.phase != GamePhase.PLANNING:
