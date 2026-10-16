@@ -9,7 +9,6 @@ from typing import Any
 
 from goa2.server.live_history import HistoryUnavailable, LiveHistory, canonical_views
 from goa2.server.replay import is_replay_decision, walk_replay
-from goa2.server.replay_codec import GroupBuilder
 from goa2.server.workers import run_heavy
 
 logger = logging.getLogger(__name__)
@@ -36,6 +35,8 @@ def _merge(prefix: LiveHistory, old: LiveHistory, reader: Any) -> LiveHistory:
     merged.active = merged.index_at(cutoff)
     merged.edits = [edit for edit in merged.edits if edit["at"] <= cutoff]
     prefix_reader = prefix.reader()
+    prefix_anchors = {record["decision_count"]: record["anchor"] for record in prefix.records}
+    aliases = {}
     last_count = cutoff
 
     def fill_gap(until: int) -> None:
@@ -76,11 +77,14 @@ def _merge(prefix: LiveHistory, old: LiveHistory, reader: Any) -> LiveHistory:
                 raise
             captured = prefix_reader.read_all(candidates[-1])
             reconstructed = True
+        anchor = record["anchor"]
+        if anchor is not None and anchor not in aliases:
+            aliases[anchor] = prefix_anchors.get(record["decision_count"]) or anchor
         merged.capture_views(
             captured,
             record["decision_count"],
             decision,
-            anchor=record["anchor"],
+            anchor=aliases.get(anchor, anchor),
             reconstructed=reconstructed,
         )
         last_count = record["decision_count"]
@@ -101,9 +105,10 @@ def _merge(prefix: LiveHistory, old: LiveHistory, reader: Any) -> LiveHistory:
     for edit in merged.edits:
         edit["add"] = [i + offset for i in edit["add"]]
     merged.groups = reader.groups + groups
-    merged.builder = GroupBuilder.restore(groups[-1]["body"], copy_values=False)
+    merged.resume_group(groups[-1]["body"])
     merged.directory = old.directory
     merged.last_manifest = old.last_manifest
+    merged._retired_files = old._retired_files.copy()
     merged.epoch = old.epoch + 1
     merged.revision = old.revision + 1
     merged.backfill_status = "complete"
@@ -136,6 +141,7 @@ async def _backfill(game: Any, registry: Any) -> None:
                     raise ValueError("Reconstructed history does not match the live baseline")
                 if registry.get(game.game_id) is not game:
                     return
+                merged.bind_session(game.session)
                 game.history = merged
                 registry.save_game(game.game_id)
                 if merged.backfill_status != "complete":

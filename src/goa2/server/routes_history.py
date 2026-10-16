@@ -87,11 +87,17 @@ async def _read(
 
     def materialize() -> dict[str, Any]:
         bodies = reader.read_many(ids, viewer) if len(ids) > 1 else [reader.read(ids[0], viewer)]
-        builder = GroupBuilder(0, bodies[0], max_patches=limit + 1, copy_values=False)
+        # Pages must remain a single group. Neither compression budgeting nor
+        # a split is useful inside this already bounded delivery envelope.
+        builder = GroupBuilder(
+            0,
+            bodies[0],
+            max_patches=limit + 1,
+            check_every=limit + 1,
+            budget_mode="raw",
+            copy_values=False,
+        )
         for index, body in enumerate(bodies[1:], 1):
-            # API pages are bounded to 30. Do not split a requested page on
-            # storage budget; use the same codec with budget checks disabled.
-            builder.check_every = limit + 1
             builder.append(index, body)
         return builder.group
 

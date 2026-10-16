@@ -14,6 +14,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from pydantic_core import PydanticSerializationError, to_json
+
 # Ensure step_types patching is applied before any serialization
 import goa2.engine.step_types as _step_types  # noqa: F401
 from goa2.domain.models import GamePhase
@@ -50,7 +52,7 @@ def save_game(
         "hero_to_token": hero_to_token,
         "hero_names": hero_names or {},
         "created_at": created_at,
-        "state": state.model_dump(mode="json"),
+        "state": state,
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
         "rollback_anchor_id": rollback_anchor_id,
@@ -65,12 +67,16 @@ def save_game(
     # Atomic write: write to temp file then rename
     fd, tmp_path = tempfile.mkstemp(dir=save_dir, suffix=".tmp")
     try:
-        # Serialize whole, then write once. json.dump() streams the document
-        # through thousands of small f.write() calls; on a ~210 KB save that
-        # costs ~10 ms against ~1.8 ms here (~40 ms vs ~9 ms on the deployment
-        # target), and this runs after every single game mutation.
-        with os.fdopen(fd, "w") as f:
-            f.write(json.dumps(payload))
+        # Pydantic can serialize the model directly to JSON bytes. Avoid first
+        # allocating a complete Python state tree, then traversing it again
+        # with json.dumps(). Preserve ASCII escapes used by existing saves so
+        # legacy readers using their platform encoding remain compatible.
+        with os.fdopen(fd, "wb") as f:
+            try:
+                encoded = to_json(payload, ensure_ascii=True)
+            except PydanticSerializationError as exc:
+                raise TypeError(str(exc)) from exc
+            f.write(encoded)
         os.replace(tmp_path, target)
     except BaseException:
         # Clean up temp file on failure

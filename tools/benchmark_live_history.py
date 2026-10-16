@@ -2,7 +2,9 @@
 
 Run from the repository: python tools/benchmark_live_history.py --decisions 700
 Uses the same deterministic HOLD/pass fallback as automatic play. Timings exclude
-engine resolution, and the paired baseline saves the same state without history.
+engine resolution. Both paired paths append the replay decision and save the same
+state; their execution order alternates. Set PYTHONHASHSEED=0 for repeatable patch
+ordering. The save-only comparison is retained separately for older measurements.
 All generated saves/logs stay in an owned temporary directory under .agent/.
 """
 
@@ -32,6 +34,7 @@ from goa2.engine.setup import GameSetup  # noqa: E402
 from goa2.server.live_history import _CACHE  # noqa: E402
 from goa2.server.map_paths import resolve_map_path  # noqa: E402
 from goa2.server.registry import GameRegistry  # noqa: E402
+from goa2.server.replay import ReplayRecorder  # noqa: E402
 from goa2.server.time_control import _timeout_selection, _upgrade_card_ids  # noqa: E402
 
 
@@ -59,7 +62,7 @@ def retained_bytes(value: Any, seen: set[int] | None = None) -> int:
     return size
 
 
-def run(decisions: int) -> dict[str, Any]:
+def run(decisions: int, *, include_samples: bool = False) -> dict[str, Any]:
     register_all_effects()
     base = (ROOT / ".agent").resolve()
     base.mkdir(exist_ok=True)
@@ -83,7 +86,9 @@ def run(decisions: int) -> dict[str, Any]:
             cheats=False,
             seed=42,
         )
-        capture, persistence, total, baseline = [], [], [], []
+        baseline_recorder = ReplayRecorder("baseline", str(directory / "replays"))
+        baseline_recorder._append(dict(recorder.records[0]))
+        capture, persistence, total, baseline, baseline_total = [], [], [], [], []
         rng, result = random.Random(7), None
         try:
             while len(total) < decisions:
@@ -129,29 +134,54 @@ def run(decisions: int) -> dict[str, Any]:
                         recorder.record_input, request.player_id, selection, round_num, turn
                     )
                 game.last_result = result
-                start = perf_counter()
-                record()
-                captured = perf_counter()
-                registry.save_game(game.game_id)
-                saved = perf_counter()
-                capture.append((captured - start) * 1000)
-                persistence.append((saved - captured) * 1000)
-                total.append((saved - start) * 1000)
-                start = perf_counter()
-                save_game(
-                    game_id="baseline",
-                    state=session.state,
-                    player_tokens=game.player_tokens,
-                    spectator_token=game.spectator_token,
-                    hero_to_token=game.hero_to_token,
-                    created_at=game.created_at,
-                    save_dir=str(directory / "games"),
-                    rollback_snapshot=session._rollback_snapshot,
-                    rollback_actor_id=session._rollback_actor_id,
-                    replay_log=recorder.records,
-                    hero_names=game.hero_names,
+                before_decision = game.history.raw_count
+                baseline_record = partial(
+                    getattr(baseline_recorder, record.func.__name__),
+                    *record.args,
+                    **record.keywords,
                 )
-                baseline.append((perf_counter() - start) * 1000)
+
+                def with_history(record=record, before_decision=before_decision):
+                    start = perf_counter()
+                    record()
+                    captured = perf_counter()
+                    registry.save_game(game.game_id, captured_after=before_decision)
+                    saved = perf_counter()
+                    capture.append((captured - start) * 1000)
+                    persistence.append((saved - captured) * 1000)
+                    total.append((saved - start) * 1000)
+
+                def without_history(baseline_record=baseline_record, session=session):
+                    start = perf_counter()
+                    baseline_record()
+                    recorded = perf_counter()
+                    save_game(
+                        game_id="baseline",
+                        state=session.state,
+                        player_tokens=game.player_tokens,
+                        spectator_token=game.spectator_token,
+                        hero_to_token=game.hero_to_token,
+                        created_at=game.created_at,
+                        save_dir=str(directory / "games"),
+                        rollback_snapshot=session._rollback_snapshot,
+                        rollback_actor_id=session._rollback_actor_id,
+                        rollback_anchor_id=session.rollback_anchor_id,
+                        replay_log=baseline_recorder.records,
+                        hero_names=game.hero_names,
+                    )
+                    saved = perf_counter()
+                    baseline.append((saved - recorded) * 1000)
+                    baseline_total.append((saved - start) * 1000)
+
+                # Include the existing replay-log append in BOTH paths, and
+                # balance write/cache ordering rather than always warming the
+                # baseline with the history-enabled operation first.
+                if len(total) % 2:
+                    without_history()
+                    with_history()
+                else:
+                    with_history()
+                    without_history()
             history = game.history
             reader, positions = history.reader(), history.active
             cold, warm, pages = [], [], []
@@ -168,15 +198,22 @@ def run(decisions: int) -> dict[str, Any]:
                 start = perf_counter()
                 reader.read_many(positions[offset : offset + 30], "hero_arien")
                 pages.append((perf_counter() - start) * 1000)
-            return {
+            report = {
                 "decisions": len(total),
+                "baseline_includes_replay_append": True,
+                "alternating_pair_order": True,
+                "python_hash_seed": os.environ.get("PYTHONHASHSEED"),
                 "active_positions": len(positions),
                 "round": session.state.round,
                 "capture": summarize(capture),
                 "save_including_history": summarize(persistence),
                 "record_and_save": summarize(total),
                 "baseline_save": summarize(baseline),
+                "baseline_record_and_save": summarize(baseline_total),
                 "paired_history_overhead": summarize(
+                    [a - b for a, b in zip(total, baseline_total, strict=True)]
+                ),
+                "save_only_baseline_comparison": summarize(
                     [a - b for a, b in zip(total, baseline, strict=True)]
                 ),
                 "cold_read": summarize(cold),
@@ -187,6 +224,11 @@ def run(decisions: int) -> dict[str, Any]:
                 "save_bytes": (directory / "games" / "benchmark.json").stat().st_size,
                 "groups": len(history.groups),
             }
+            if include_samples:
+                report["paired_overhead_samples_ms"] = [
+                    a - b for a, b in zip(total, baseline_total, strict=True)
+                ]
+            return report
         finally:
             game.game_logger.close()
 
@@ -194,7 +236,10 @@ def run(decisions: int) -> dict[str, Any]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--decisions", type=int, default=700)
+    parser.add_argument(
+        "--samples", action="store_true", help="Include paired timings for pooling runs"
+    )
     args = parser.parse_args()
     if args.decisions < 1:
         parser.error("--decisions must be positive")
-    print(json.dumps(run(args.decisions), indent=2))
+    print(json.dumps(run(args.decisions, include_samples=args.samples), indent=2))

@@ -15,6 +15,7 @@ import re
 import tempfile
 import time
 from collections import OrderedDict
+from contextlib import suppress
 from copy import deepcopy
 from pathlib import Path
 from threading import RLock
@@ -22,7 +23,7 @@ from typing import Any
 from uuid import uuid4
 
 from goa2.domain.types import HeroID
-from goa2.domain.views import _build_board_view, build_view
+from goa2.domain.views import HeroViewCache, _build_board_view, build_view
 from goa2.engine.session import GameSession
 from goa2.server.replay import winner_of
 from goa2.server.replay_codec import (
@@ -37,22 +38,31 @@ from goa2.server.replay_codec import (
 )
 
 logger = logging.getLogger(__name__)
-FORMAT = 2
+FORMAT = 3
 _CACHE: OrderedDict[tuple[str, str, int], dict[str, Any]] = OrderedDict()
 _CACHE_LOCK = RLock()
 _FILE = re.compile(r"^[0-9a-f]{64}\.br$")
+# Live decisions favor bounded capture work. Shares retain the codec's
+# compressed-size policy; live groups use phase boundaries and a cheap byte
+# budget, with at most 31 forward patches between keyframes.
+_GROUP_OPTIONS: dict[str, Any] = {"max_patches": 32, "budget_mode": "raw"}
 
 
 class HistoryUnavailable(ValueError):
     """A known record cannot currently be reconstructed."""
 
 
-def canonical_views(session: GameSession) -> dict[str, Any]:
+def canonical_views(
+    session: GameSession,
+    *,
+    hero_cache: HeroViewCache | None = None,
+    tile_cache: dict | None = None,
+) -> dict[str, Any]:
     state = session.state
-    board = _build_board_view(state)
+    board = _build_board_view(state, tile_cache=tile_cache)
     viewers = [None, *(h.id for team in state.teams.values() for h in team.heroes)]
     result = {}
-    hero_views: dict[tuple[str, bool], dict[str, Any]] = {}
+    hero_views = hero_cache.prepare(state) if hero_cache is not None else {}
     public_view = None
     for viewer in viewers:
         view = build_view(
@@ -76,16 +86,46 @@ def history_directory(save_dir: str, game_id: str) -> Path:
     return Path(save_dir) / ".history" / hashlib.sha256(game_id.encode()).hexdigest()
 
 
-def pack_views(views: dict[str, Any]) -> dict[str, Any]:
+def pack_views(views: dict[str, Any], hero_patches: dict | None = None) -> dict[str, Any]:
     public = views["spectator"]
-    return {
+    memo: dict[tuple[int, int], bool] = {}
+    cached: dict[tuple[str, int, int], list[dict[str, Any]] | None] = {}
+    pairs = {}
+    if hero_patches is not None:
+        for team, projection in public["view"].get("teams", {}).items():
+            for index, hero in enumerate(projection["heroes"]):
+                viewer = hero["id"]
+                private = views[viewer]["view"]["teams"][team]["heroes"][index]
+                escaped = team.replace("~", "~0").replace("/", "~1")
+                path = f"/view/teams/{escaped}/heroes/{index}"
+                key = (path, id(hero), id(private))
+                previous = hero_patches.get(viewer)
+                cached[key] = (
+                    previous[3]
+                    if previous
+                    and previous[0] is hero
+                    and previous[1] is private
+                    and previous[2] == path
+                    else None
+                )
+                pairs[viewer] = (hero, private, path, key)
+    packed = {
         "public": public,
         "private": {
-            viewer: make_patch(public, body)
+            viewer: make_patch(public, body, _memo=memo, _cache=cached)
             for viewer, body in views.items()
             if viewer != "spectator"
         },
     }
+    if hero_patches is not None:
+        hero_patches.clear()
+        hero_patches.update(
+            {
+                viewer: (hero, private, path, cached[key])
+                for viewer, (hero, private, path, key) in pairs.items()
+            }
+        )
+    return packed
 
 
 def unpack_views(packed: dict[str, Any]) -> dict[str, Any]:
@@ -100,7 +140,38 @@ def unpack_views(packed: dict[str, Any]) -> dict[str, Any]:
 
 
 def _atomic_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Flush an immutable payload before its manifest can publish it.
+
+    A new hash name is not referenced by any committed manifest, so exclusive
+    creation needs no rename. Failed/unpublished files are removed here or by
+    restart orphan cleanup. Repairing an existing damaged name still uses
+    atomic replacement, preserving readers' previous file until repair ends.
+    """
+    if not path.parent.is_dir():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except FileExistsError:
+        with path.open("r+b") as existing:
+            if existing.read() == data:
+                # An unpublished file may contain all bytes but have been
+                # interrupted before its flush completed. Verify and flush it
+                # before allowing a new manifest to reference it.
+                os.fsync(existing.fileno())
+                return
+    else:
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except BaseException:
+            with suppress(OSError):
+                path.unlink()
+            raise
+        return
+
     fd, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as stream:
@@ -131,16 +202,42 @@ class LiveHistory:
         self._dirty = False
         self._latest_views: dict[str, Any] | None = None
         self._last_anchor: tuple[str | None, str | None] = (None, None)
+        self._hero_cache = HeroViewCache()
+        self._tile_cache: dict = {}
+        self._hero_patches: dict = {}
+        self._retired_files: set[str] = set()
+        self._legacy_anchor = False
 
-    def anchor_key(self, session: GameSession) -> str | None:
+    def anchor_key(self, session: GameSession, raw_count: int, decision: dict | None) -> str | None:
         anchor = session.rollback_anchor_id
         if anchor != self._last_anchor[0]:
-            # Digest allows anchors reconstructed in another process to match
-            # anchors in a restored live session, whose generation ID differs.
-            snapshot = session._rollback_snapshot
-            digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
-            self._last_anchor = (anchor, digest if anchor is not None else None)
+            key = None
+            if anchor is not None:
+                key = f"decision:{raw_count}"
+                if decision and decision.get("type") == "ov_rewind":
+                    prefix = self.index_at(int(decision["to"]))
+                    if prefix:
+                        key = self.records[prefix[-1]]["anchor"] or key
+                elif key in self.anchors:
+                    # More than one unrecorded capture at the same raw prefix.
+                    # Keep distinct engine generations distinct too.
+                    key += f":{anchor}"
+            self._last_anchor = (anchor, key)
         return self._last_anchor[1]
+
+    def bind_session(self, session: GameSession, *, legacy: bool = False) -> None:
+        """Attach a restored/merged anchor without hashing every new snapshot."""
+        key = self.records[self.active[-1]]["anchor"] if self.active else None
+        if legacy and session.rollback_anchor_id is not None:
+            # Format 2 used canonical snapshot digests. Pay that conversion
+            # once on restore; retain its existing anchor/index association.
+            key = hashlib.sha256(
+                json.dumps(session._rollback_snapshot, sort_keys=True).encode()
+            ).hexdigest()
+        self._last_anchor = (
+            session.rollback_anchor_id,
+            key if session.rollback_anchor_id is not None else None,
+        )
 
     @property
     def latest_views(self) -> dict[str, Any]:
@@ -165,10 +262,10 @@ class LiveHistory:
         reconstructed: bool = False,
     ) -> None:
         self.capture_views(
-            canonical_views(session),
+            canonical_views(session, hero_cache=self._hero_cache, tile_cache=self._tile_cache),
             raw_count,
             decision,
-            anchor=self.anchor_key(session),
+            anchor=self.anchor_key(session, raw_count, decision),
             reconstructed=reconstructed,
         )
 
@@ -188,6 +285,12 @@ class LiveHistory:
         target = before.copy()
         if kind == "ov_rewind":
             target = self.index_at(int(decision["to"]))
+            # A later rollback may have refreshed this anchor to a record
+            # outside the target prefix. Re-bind it to that prefix's earliest
+            # surviving anchored position before installing the restored head.
+            anchored = [i for i in target if anchor and self.records[i]["anchor"] == anchor]
+            if anchor and anchored:
+                self.anchors[anchor] = anchored[0]
             if not target:
                 self.gaps.append({"from_decision": 0, "to_decision": int(decision["to"])})
         elif kind == "rollback":
@@ -224,14 +327,18 @@ class LiveHistory:
         if replace and target:
             target.pop()
         record_id = len(self.records)
-        packed = pack_views(views)
+        packed = pack_views(views, self._hero_patches)
         if self.builder is None:
-            self.builder = GroupBuilder(record_id, packed, copy_values=False)
+            self.builder = GroupBuilder(record_id, packed, copy_values=False, **_GROUP_OPTIONS)
             self.groups.append({"start": record_id, "count": 1})
         else:
-            closed = self.builder.append(record_id, packed)
+            previous_phase = self.builder.previous["public"]["view"]["phase"]
+            closed = self.builder.append(
+                record_id, packed, force_keyframe=previous_phase != public["phase"]
+            )
             if closed is not None:
-                self.groups[-1]["body"] = closed
+                if self._dirty or "file" not in self.groups[-1]:
+                    self.groups[-1]["body"] = closed
                 self.groups[-1]["count"] = len(closed["patches"]) + 1
                 self.groups.append({"start": record_id, "count": 1})
         self.groups[-1]["count"] = len(self.builder.group["patches"]) + 1
@@ -310,18 +417,28 @@ class LiveHistory:
             groups[-1]["body"] = {**group, "patches": list(group["patches"])}
         return HistoryReader(self.directory, self.cache_id, groups)
 
+    def resume_group(self, group: dict) -> None:
+        self.builder = GroupBuilder.restore(group, copy_values=False, **_GROUP_OPTIONS)
+
     def prepare_manifest(self) -> dict[str, Any]:
         if self.builder is not None and self._dirty:
             self.groups[-1]["body"] = self.builder.group
         for group in self.groups:
             if "body" not in group:
                 continue
-            stored = encode(group["body"], quality=1)
+            stored = (
+                self.builder.encode(quality=1)
+                if self.builder is not None and group["body"] is self.builder.group
+                else encode(group["body"], quality=1)
+            )
             filename = hashlib.sha256(stored).hexdigest() + ".br"
             if self.directory is not None:
                 path = self.directory / filename
-                if not path.is_file():
+                if group.get("file") != filename or not path.is_file():
                     _atomic_bytes(path, stored)
+                previous = group.get("file")
+                if previous and previous != filename and _FILE.fullmatch(previous):
+                    self._retired_files.add(previous)
             group["file"] = filename
         return {
             "format": FORMAT,
@@ -335,6 +452,7 @@ class LiveHistory:
             "raw_count": self.raw_count,
             "gaps": list(self.gaps),
             "backfill_status": self.backfill_status,
+            "last_anchor": list(self._last_anchor),
         }
 
     def committed(self) -> None:
@@ -343,7 +461,10 @@ class LiveHistory:
         for group in self.groups:
             group.pop("body", None)
         self._dirty = False
-        self.cleanup_orphans()
+        keep = {group["file"] for group in self.groups}
+        for filename in self._retired_files - keep:
+            (self.directory / filename).unlink(missing_ok=True)
+        self._retired_files.clear()
 
     def cleanup_orphans(self) -> None:
         if self.directory is None or not self.directory.is_dir():
@@ -359,9 +480,12 @@ class LiveHistory:
 
     @classmethod
     def restore(cls, directory: Path, manifest: dict[str, Any]) -> LiveHistory:
-        if manifest.get("format") != FORMAT:
+        if manifest.get("format") not in (2, FORMAT):
             raise HistoryUnavailable("Unsupported history storage format")
         history = cls(directory)
+        history._legacy_anchor = manifest.get("format") == 2
+        last_anchor = manifest.get("last_anchor", (None, None))
+        history._last_anchor = (last_anchor[0], last_anchor[1])
         for name in (
             "records",
             "active",
@@ -381,9 +505,7 @@ class LiveHistory:
             history.backfill_status = "pending"
         if history.groups:
             try:
-                history.builder = GroupBuilder.restore(
-                    history.reader().group(history.groups[-1]), copy_values=False
-                )
+                history.resume_group(history.reader().group(history.groups[-1]))
                 if history.groups[-1]["start"] + history.groups[-1]["count"] != len(
                     history.records
                 ):

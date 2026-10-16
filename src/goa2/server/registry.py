@@ -17,7 +17,7 @@ from fastapi import WebSocket
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
-from goa2.server.live_history import LiveHistory, history_directory
+from goa2.server.live_history import FORMAT, LiveHistory, history_directory
 from goa2.server.replay import ReplayRecorder, create_replay_recorder
 
 logger = logging.getLogger(__name__)
@@ -164,8 +164,13 @@ class GameRegistry:
                 assert directory.resolve().parent == (Path(self._save_dir) / ".history").resolve()
                 shutil.rmtree(directory)
 
-    def save_game(self, game_id: str) -> None:
-        """Persist a game to disk. No-op if save_dir is not configured."""
+    def save_game(self, game_id: str, *, captured_after: int | None = None) -> None:
+        """Persist a game to disk. No-op if save_dir is not configured.
+
+        Successful mutation coordinators may supply their starting decision
+        count when all visible changes were captured by the recorder. Direct
+        saves retain the conservative projection fallback by default.
+        """
         if not self._save_dir:
             return
         game = self._games.get(game_id)
@@ -178,7 +183,14 @@ class GameRegistry:
         count = (
             game.replay_recorder.decision_count if game.replay_recorder else game.history.raw_count
         )
-        game.history.capture_safely(game.session, count)
+        already_captured = (
+            captured_after is not None
+            and count > captured_after
+            and game.history.raw_count == count
+            and game.history.builder is not None
+        )
+        if not already_captured:
+            game.history.capture_safely(game.session, count)
         history_saved = False
         manifest: dict[str, Any] | None
         try:
@@ -202,6 +214,8 @@ class GameRegistry:
                 ):
                     manifest[name] = deepcopy(getattr(game.history, name))
                 manifest["backfill_status"] = "pending"
+                manifest["last_anchor"] = list(game.history._last_anchor)
+                manifest["format"] = FORMAT
         try:
             save_game(
                 game_id=game.game_id,
@@ -270,9 +284,20 @@ class GameRegistry:
                     game.history.records = deepcopy(previous.get("records", []))
                     game.history.revision = previous.get("revision", 0)
                     game.history.epoch = previous.get("epoch", 0) + 1
+                    game.history.raw_count = previous.get("raw_count", 0)
                     game.history.backfill_status = "pending"
+            if game.history is not None and replay_recorder.decision_count < game.history.raw_count:
+                # Captured history is independently durable. Losing/truncating
+                # the audit log must not reset accepted-decision numbering or
+                # make its partial prefix look like a usable full replay.
+                logger.warning("Replay prefix missing for restored game %s", game.game_id)
+                replay_recorder.records = None
+                replay_recorder.decision_count = game.history.raw_count
             self._bind_history(game)
             assert game.history is not None
+            if game.history._legacy_anchor:
+                game.history.bind_session(game.session, legacy=True)
+                game.history._legacy_anchor = False
             game.history.capture_safely(game.session, replay_recorder.decision_count)
             if not data.get("live_history"):
                 game.history.backfill_status = "pending"

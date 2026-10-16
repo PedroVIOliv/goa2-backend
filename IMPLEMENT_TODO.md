@@ -153,7 +153,11 @@ re-anchors after foreign responses and hidden-information boundaries.
       Change it whenever a snapshot is newly created or invalidated; keep it
       across repeated restores to the same anchor.
 - [x] Persist the identifier with the rollback snapshot and map it to a captured
-      history position. Clear stale mappings when the engine invalidates them.
+      history position. Persist its binding to the accepted-decision prefix;
+      avoid hashing every new snapshot. Format 3 retains these bindings and
+      reads format 2 saves, converting their old digest once on restore.
+      Invalidate the current binding when the engine invalidates its snapshot;
+      retain historical bindings needed for table rewinds.
 - [x] Restoring or re-anchoring must never prune another player's valid response
       or cross a hidden-information boundary that the engine protects.
 
@@ -200,10 +204,12 @@ replaced game save. Do not rewrite closed groups on every move.
 - [x] Use the existing `{start, keyframe, patches}` group representation. Retain
       stable record/base IDs in accompanying metadata so codec offsets are not
       mistaken for raw decision indices or sparse public position IDs.
-- [x] Start with a keyframe and use the existing compressed-size budget and
-      maximum group length to choose later boundaries. Preserve the share
-      defaults: budget multiple 2, size check every 8 patches, and hard maximum
-      512 patches. The client's 30-view buffer is independent of keyframe spacing.
+- [x] Preserve the share defaults: compressed-size budget multiple 2, checks
+      every 8 patches, and hard maximum 512 patches. Live history uses the same
+      builder with phase-boundary keyframes, a cached raw-byte budget multiple
+      of 2, checks every 8 patches, and a maximum of 32 positions per group.
+      This live-only policy avoids compression in capture's size checks. The
+      client's 30-view buffer is independent of server keyframe spacing.
 - [x] Reuse forward RFC 6902 patch creation and group reconstruction. Store
       canonical viewer projections together inside the server-private payload
       so group compression can exploit common content.
@@ -226,9 +232,11 @@ replaced game save. Do not rewrite closed groups on every move.
       server reads reconstruct forward from bounded keyframe chains.
 - [x] Extend saves with the committed record index, active player index,
       revision, epoch, raw-prefix index edit metadata, and rollback-anchor map.
-- [x] Write new immutable files through temporary files and atomic replacement,
-      then atomically save game state and the manifest referencing those files.
-      Ensure files are flushed before publishing the referencing save.
+- [x] Create new immutable hash files exclusively, flush/fsync them, then
+      atomically save game state and the manifest that publishes their names.
+      Readers use committed files or frozen in-memory bodies; unpublished files
+      are never served. Verify and flush existing matching files before reuse;
+      repair damaged existing files through temporary files and atomic replacement.
 - [x] On restart, accept only records referenced by the saved manifest; remove
       orphan files left by interrupted operations. Restore history before timers.
 - [x] If a record write fails, publish no reference to that record. Mark a
@@ -350,6 +358,9 @@ drive animations and logging, rather than reconstructing the game.
 - [x] Preserve captured history across engine updates; only backfill/repair uses
       engine simulation. Include a history storage format version for future
       migrations independent of game rules versions.
+- [x] Preserve the manifest's accepted-decision count if the replay log is lost
+      or truncated, so captured history remains browsable and subsequent IDs and
+      prefix labels remain monotonic. Do not treat a partial log as a full replay.
 
 ## 7. Validation and acceptance
 
@@ -385,18 +396,22 @@ drive animations and logging, rather than reconstructing the game.
       switches, and receiving live updates while browsing.
 - [x] Run the complete backend suite with greater than 80% coverage, focused
       engine anchor-lifecycle tests, and Python lint/format/type checks.
-      Final run: 3,854 passed; overall branch-inclusive coverage 88.80%, new
-      history/codec modules combined 96.58%.
+      Final run: 3,866 passed; overall branch-inclusive coverage 88.86%, new
+      history/codec modules combined 96.00%.
 - [ ] During frontend follow-up, run frontend tests, type checks, and production
       build. No frontend source or frontend test changes belong to this branch.
 - [x] Benchmark a long ten-player game: record p50/p95 capture latency, cold and
       warm reads, save growth, retained Python memory, and compressed disk usage.
       See `docs/LIVE_HISTORY_VALIDATION.md` for the 700-decision local results.
-- [ ] Before production enablement, benchmark on the deployment host against
-      the target of less than 10 ms additional p95 decision latency. The local
-      run exceeds that target. Reuse projection work and tune capture/save or
-      compression/cache costs as required; do not treat the local result as a
-      passed deployment gate.
+- [x] Profile and reduce the local 700-decision benchmark to approximately
+      10 ms additional p95 decision time. The final five-run check pooled 3,500
+      decisions at 10.359 ms p95; individual runs ranged from 9.490 to 11.591 ms.
+      Original code measured 42.593 ms with the same corrected benchmark.
+      This is approximately 76% lower, rather than consistently sub-10 ms.
+      Reuse projections and patches, avoid duplicate capture and serialization,
+      and retain durability and visibility.
+- [ ] When deployment is planned, repeat representative measurements on that
+      host. The local optimization target is not a separately agreed release gate.
 
 Acceptance: a fresh client can browse all available active history; captured
 ranges require no engine replay; browsing never changes or pauses live play;

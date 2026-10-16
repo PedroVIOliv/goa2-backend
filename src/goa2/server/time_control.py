@@ -686,10 +686,12 @@ def finalize_timed_mutation(
     game: ManagedGame,
     registry: GameRegistry,
     at_ms: int | None = None,
+    *,
+    captured_after: int | None = None,
 ) -> None:
     timestamp = now_ms() if at_ms is None else at_ms
     reconcile_game_clock(game, timestamp)
-    registry.save_game(game.game_id)
+    registry.save_game(game.game_id, captured_after=captured_after)
     schedule_deadline(game, registry)
 
 
@@ -710,11 +712,16 @@ async def timed_rest_mutation(
     async with game.outbound_lock:
         try:
             async with game.lock:
+                before_decision = game.history.raw_count if game.history else 0
                 timer_events = prepare_timed_mutation(game)
+                completed = False
                 try:
                     yield timer_events
+                    completed = True
                 finally:
-                    finalize_timed_mutation(game, registry)
+                    finalize_timed_mutation(
+                        game, registry, captured_after=before_decision if completed else None
+                    )
                     if timer_events:
                         from goa2.server.ws import _capture_broadcast
 
@@ -770,13 +777,14 @@ async def _deadline_worker(
                 if clock is None or clock.revision != revision:
                     return
                 deadline_at = now_ms()
+                before_decision = game.history.raw_count if game.history else 0
                 emitted = apply_due_timeouts(game, deadline_at)
                 # Deadline processing is backend work during which no client
                 # can acquire the game lock. Re-anchor without spending it.
                 clock = game.session.state.clock
                 if clock is not None:
                     clock.last_settled_at_ms = now_ms()
-                registry.save_game(game.game_id)
+                registry.save_game(game.game_id, captured_after=before_decision)
 
                 # Import lazily to avoid the WebSocket module importing this
                 # coordinator while defining its route handlers.

@@ -1,5 +1,6 @@
 """Tests for Phase 6: State Persistence — serialization round-trips."""
 
+import json
 import os
 import tempfile
 
@@ -753,6 +754,19 @@ def test_failed_save_preserves_previous_file_and_leaves_no_temp(full_state, save
 
     # And the surviving file is still loadable.
     assert load_game(str(target))["game_id"] == "atomic"
+
+
+def test_native_save_preserves_model_json_and_unicode_metadata(full_state, save_dir):
+    names = {"hero_arien": "Søren 🐉"}
+    manifest = {"format": 2, "records": [{"flag": True, "integer": 1, "float": 1.0}]}
+    target = _save(full_state, save_dir, hero_names=names, live_history=manifest)
+    # Existing saves were ASCII JSON and platform-default readers must keep
+    # working on Windows as well as UTF-8 hosts.
+    payload = json.loads(target.read_bytes().decode("ascii"))
+    assert payload["state"] == json.loads(full_state.model_dump_json())
+    restored = load_game(str(target))
+    assert restored["hero_names"] == names
+    assert restored["live_history"] == manifest
 
 
 # ---------------------------------------------------------------------------

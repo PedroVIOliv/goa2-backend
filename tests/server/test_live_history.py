@@ -63,6 +63,137 @@ def test_codec_size_budget_starts_new_keyframe():
     assert builder.group["start"] == 1
 
 
+def test_incremental_encoding_freezes_inputs_and_reopens_identically():
+    initial = {"cards": ["Søren 🐉"]}
+    builder = GroupBuilder(0, initial)
+    after = {"cards": ["Søren 🐉", {"flag": True, "integer": 1, "float": 1.0}]}
+    builder.append(1, after)
+    expected = deepcopy(after)
+    initial["cards"].clear()
+    after["cards"][1]["flag"] = False
+    for quality in (1, 9):
+        assert builder.encode(quality=quality) == encode(builder.group, quality=quality)
+        assert reconstruct(decode(builder.encode(quality=quality)), 1) == expected
+    restored = GroupBuilder.restore(decode(builder.encode()))
+    restored.append(2, {"cards": []})
+    assert decode(restored.encode()) == restored.group
+    assert reconstruct(builder.group, 1) == expected
+
+
+def test_streaming_budget_matches_full_prefix_compression_after_restore():
+    import gzip
+    import pickle
+    import random
+
+    from goa2.server.replay_codec import dumps, make_patch
+
+    rng = random.Random(14)
+    value = {"cards": [rng.randbytes(80).hex()]}
+    builder = GroupBuilder(0, value, check_every=4, budget_multiple=1)
+    keyframe, previous, patches = value, value, []
+    expected_starts, actual_starts = [0], [0]
+    for index in range(1, 90):
+        value = {"cards": [rng.randbytes(80).hex() for _ in range(1 + index % 5)]}
+        patches.append(dumps(make_patch(previous, value)))
+        baseline_size = len(gzip.compress(dumps(keyframe), compresslevel=1))
+        if len(patches) % 4 == 0:
+            size = len(gzip.compress(dumps(keyframe) + b"".join(patches), compresslevel=1))
+            if size - baseline_size > baseline_size:
+                expected_starts.append(index)
+                keyframe, patches = value, []
+        if builder.append(index, value) is not None:
+            actual_starts.append(index)
+        if index % 7 == 0:
+            builder = GroupBuilder.restore(decode(builder.encode()))
+            builder.check_every, builder.budget_multiple = 4, 1
+        elif index % 11 == 0:
+            builder = pickle.loads(pickle.dumps(builder))
+        previous = value
+    assert actual_starts == expected_starts
+
+
+def test_forced_keyframe_skips_diff(monkeypatch):
+    from goa2.server import replay_codec
+
+    builder = GroupBuilder(0, {"phase": "PLANNING"})
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("A forced keyframe must not compute a discarded diff")
+
+    monkeypatch.setattr(replay_codec, "make_patch", forbidden)
+    closed = builder.append(1, {"phase": "RESOLUTION"}, force_keyframe=True)
+    assert reconstruct(closed, 0) == {"phase": "PLANNING"}
+    assert decode(builder.encode())["keyframe"] == {"phase": "RESOLUTION"}
+
+
+def test_raw_budget_needs_no_compression_and_survives_restore(monkeypatch):
+    import pickle
+
+    from goa2.server import replay_codec
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Raw-byte budgeting must not initialize a gzip compressor")
+
+    monkeypatch.setattr(replay_codec.zlib, "compressobj", forbidden)
+    options = {"budget_mode": "raw", "check_every": 1, "budget_multiple": 0}
+    builder = GroupBuilder(0, {"n": 0}, **options)
+    assert builder.append(1, {"n": 1}) is not None
+    restored = GroupBuilder.restore(decode(builder.encode()), **options)
+    restored = pickle.loads(pickle.dumps(restored))
+    assert restored.append(2, {"n": 2}) is not None
+
+
+def test_phase_boundary_reuses_committed_closed_group(tmp_path, monkeypatch):
+    history = LiveHistory(tmp_path)
+    history.capture_views(views(0, "PLANNING"), 0)
+    history.prepare_manifest()
+    history.committed()
+    filename = history.groups[0]["file"]
+    original = (tmp_path / filename).read_bytes()
+    history.capture_views(views(1), 1)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("A committed closed group must not be re-encoded")
+
+    monkeypatch.setattr(live_history, "encode", forbidden)
+    history.prepare_manifest()
+    history.committed()
+    assert len(history.groups) == 2
+    assert (tmp_path / filename).read_bytes() == original
+    assert history.reader().read(0, "spectator") == views(0, "PLANNING")["spectator"]
+    assert history.reader().read(1, "spectator") == views(1)["spectator"]
+
+
+def test_immutable_payload_write_failure_cleanup_and_existing_file_repair(tmp_path, monkeypatch):
+    path = tmp_path / ("a" * 64 + ".br")
+    fsync = live_history.os.fsync
+
+    def fail(_fd):
+        raise OSError("flush failed")
+
+    monkeypatch.setattr(live_history.os, "fsync", fail)
+    with pytest.raises(OSError, match="flush failed"):
+        live_history._atomic_bytes(path, b"new payload")
+    assert not path.exists()
+    assert not list(tmp_path.iterdir())
+    # A leftover partial file from an interrupted, uncommitted write must be
+    # repaired before the next save can publish its name.
+    path.write_bytes(b"partial")
+    with pytest.raises(OSError, match="flush failed"):
+        live_history._atomic_bytes(path, b"complete payload")
+    assert path.read_bytes() == b"partial"
+    assert list(tmp_path.iterdir()) == [path]
+    path.write_bytes(b"complete payload")
+    with pytest.raises(OSError, match="flush failed"):
+        live_history._atomic_bytes(path, b"complete payload")
+    assert path.read_bytes() == b"complete payload"
+    monkeypatch.setattr(live_history.os, "fsync", fsync)
+    live_history._atomic_bytes(path, b"complete payload")
+    assert path.read_bytes() == b"complete payload"
+    live_history._atomic_bytes(path, b"complete payload")
+    assert path.read_bytes() == b"complete payload"
+
+
 def test_effective_planning_rollback_and_nested_rewind():
     history = LiveHistory()
     history.capture_views(views(0, "PLANNING"), 0)
@@ -82,10 +213,12 @@ def test_effective_planning_rollback_and_nested_rewind():
     assert history.active == [2, 8]
     history.capture_views(views(0, "PLANNING"), 9, {"type": "ov_rewind", "to": 0})
     assert history.active == [9]
-    history.capture_views(views(7), 10, {"type": "ov_rewind", "to": 7})
+    history.capture_views(views(7), 10, {"type": "ov_rewind", "to": 7}, anchor="anchor")
     assert history.active[:-1] == [2, 6]
     assert history.reader().read(history.active[-1], "spectator")["view"]["value"] == 7
     assert len(history.records) == 11  # Audit captures remain intact.
+    history.capture_views(views(3), 11, {"type": "rollback"}, anchor="anchor")
+    assert history.active == [2, 11]  # Rewind restored the earlier segment anchor too.
 
 
 def test_anchor_reanchor_dedup_and_capture_failure(monkeypatch):
@@ -135,7 +268,9 @@ def test_storage_restore_orphans_gaps_and_read_isolation(tmp_path):
     damaged = LiveHistory.restore(tmp_path, restored.prepare_manifest())
     assert damaged.gaps
     with pytest.raises(HistoryUnavailable):
-        damaged.reader().read_all(0)
+        damaged.reader().read_all(restored.groups[-1]["start"])
+    if restored.groups[-1]["start"] > 0:
+        assert damaged.reader().read_all(0)["spectator"]["view"]["value"] == 0
 
 
 @pytest.fixture
@@ -309,7 +444,8 @@ def test_captured_views_are_frozen_and_match_standard_projection(client_game):
     assert captures == frozen
 
 
-def test_real_rollback_segments_survive_restart(client_game):
+@pytest.mark.parametrize("legacy_format", [False, True])
+def test_real_rollback_segments_survive_restart(client_game, legacy_format):
     _client, registry, data = client_game
     game = registry.get(data["game_id"])
     state = game.session.state
@@ -339,6 +475,23 @@ def test_real_rollback_segments_survive_restart(client_game):
             safe_position = game.history.active[-1]
     abandoned = game.history.active[-1]
     assert game.session.rollback_anchor_id != first_anchor
+    if legacy_format:
+        import hashlib
+
+        path = Path(registry._save_dir) / f"{game.game_id}.json"
+        saved = json.loads(path.read_text())
+        manifest = saved["live_history"]
+        old_anchor = manifest["last_anchor"][1]
+        digest = hashlib.sha256(
+            json.dumps(saved["rollback_snapshot"], sort_keys=True).encode()
+        ).hexdigest()
+        manifest["anchors"][digest] = manifest["anchors"].pop(old_anchor)
+        for record in manifest["records"]:
+            if record["anchor"] == old_anchor:
+                record["anchor"] = digest
+        manifest["format"] = 2
+        manifest.pop("last_anchor")
+        path.write_text(json.dumps(saved))
     restored = GameRegistry(registry._save_dir)
     restored.restore_all()
     game = restored.get(game.game_id)
@@ -663,6 +816,82 @@ def test_batched_projection_matches_live_views_through_resolution(client_game):
     assert card_id not in json.dumps(past)  # Later public revelation cannot rewrite the past.
 
 
+def test_cached_hero_projections_invalidate_nested_and_visibility_changes(client_game):
+    from goa2.domain.models import CardState
+    from goa2.domain.models.enums import ActionType, StatType
+    from goa2.domain.views import HeroViewCache, build_view
+
+    _client, registry, data = client_game
+    session = registry.get(data["game_id"]).session
+    state = session.state
+    cache = HeroViewCache()
+    history = LiveHistory()
+    tile_cache = {}
+
+    def verify():
+        captured = canonical_views(session, hero_cache=cache, tile_cache=tile_cache)
+        history.capture_views(captured, len(history.records), {"type": "input"})
+        for viewer, body in captured.items():
+            expected = build_view(state, None if viewer == "spectator" else HeroID(viewer))
+            expected["clock"] = expected["starting_position"] = None
+            assert body["view"] == expected
+            assert history.reader().read(history.active[-1], viewer) == body
+        return captured
+
+    first = verify()
+    frozen = deepcopy(first)
+    public_hero = cache.entries["hero_arien"][1]
+    verify()
+    assert cache.entries["hero_arien"][1] is public_hero
+    hero = state.get_hero("hero_arien")
+    card = hero.hand[0]
+    card.secondary_actions[ActionType.HOLD] = 7  # In-place nested edit.
+    verify()
+    hero.items[StatType.ATTACK] = 3
+    state.upgrade_reveal_snapshot[hero.id] = {StatType.ATTACK: 0}
+    verify()
+    state.upgrade_reveal_snapshot.clear()  # Public upgrade reveal without a hero edit.
+    verify()
+    session.commit_card(hero.id, card)
+    verify()
+    card.initiative_override = 77
+    card.enraged_active_override = True
+    card.state = CardState.RESOLVED
+    verify()
+    tile = next(iter(state.board.tiles.values()))
+    tile.is_terrain = not tile.is_terrain
+    zone = next(iter(state.board.zones.values()))
+    zone.neighbors.append("new-neighbor")
+    verify()
+    tile.occupant_id = "changed-occupant"
+    verify()
+    assert first == frozen
+    assert history.reader().read(0, "hero_arien") == frozen["hero_arien"]
+    assert len(history._hero_patches) == len(cache.entries)
+
+
+def test_recorded_mutation_projects_once_but_direct_save_still_captures(client_game, monkeypatch):
+    client, registry, data = client_game
+    project = live_history.canonical_views
+    captures = []
+
+    def counted(*args, **kwargs):
+        captures.append(1)
+        return project(*args, **kwargs)
+
+    monkeypatch.setattr(live_history, "canonical_views", counted)
+    commit(client, data)
+    assert len(captures) == 1
+    game = registry.get(data["game_id"])
+    previous = game.history.active[-1]
+    hero = game.session.state.get_hero("hero_arien")
+    hero.gold += 2  # A direct save supplies no accepted-decision capture proof.
+    registry.save_game(game.game_id)
+    assert len(captures) == 2
+    assert game.history.active[-1] != previous
+    assert game.history.latest_views == canonical_views(game.session)
+
+
 def test_failed_repair_storage_does_not_restart_on_every_read(client_game, monkeypatch):
     client, registry, data = client_game
     commit(client, data)
@@ -736,3 +965,38 @@ def test_legacy_save_without_replay_keeps_readable_baseline(client_game):
     assert again.history.backfill_status == "unavailable"
     body = again.history.reader().read(again.history.active[-1], "hero_arien")
     assert body == canonical_views(again.session)["hero_arien"]
+
+
+@pytest.mark.parametrize("damaged_log", [False, True])
+def test_captured_history_survives_missing_replay_without_resetting_prefix(
+    client_game, damaged_log
+):
+    client, registry, data = client_game
+    commit(client, data)
+    game = registry.get(data["game_id"])
+    count, position = game.history.raw_count, game.history.active[-1]
+    past = game.history.reader().read(position, "hero_arien")
+    path = Path(registry._save_dir) / f"{game.game_id}.json"
+    saved = json.loads(path.read_text())
+    saved["replay_log"] = None
+    path.write_text(json.dumps(saved))
+    if damaged_log:
+        game.replay_recorder.path.write_text("broken log\n")
+    else:
+        game.replay_recorder.path.unlink()
+    restored = GameRegistry(registry._save_dir)
+    restored.restore_all()
+    again = restored.get(game.game_id)
+    assert again.replay_recorder.decision_count == count
+    assert again.replay_recorder.records is None
+    assert again.history.raw_count == count
+    hero = again.session.state.get_hero("hero_wasp")
+    card = hero.hand[0]
+    rec_round, rec_turn = again.session.state.round, again.session.state.turn
+    again.last_result = again.session.commit_card(HeroID(hero.id), card)
+    again.replay_recorder.record_commit(hero.id, card.id, rec_round, rec_turn)
+    restored.save_game(game.game_id)
+    assert again.history.raw_count == count + 1
+    assert again.history.reader().read(position, "hero_arien") == past
+    assert again.history.latest_views == canonical_views(again.session)
+    again.game_logger.close()
