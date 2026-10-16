@@ -1707,6 +1707,9 @@ at emission time. Later card reveals or token removal cannot change those
 historical payloads. History is saved with the game and survives restarts.
 Live delivery reuses these retained projections, so a combined timeout/action
 batch has the same recipient-specific payloads as subsequent catch-up requests.
+Storage shares identical projections: a public event is stored once for all
+viewers, while events with private details retain only their distinct variants.
+This changes neither the event response shape nor the visibility seen by clients.
 
 Query parameters:
 

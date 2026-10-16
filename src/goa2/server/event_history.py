@@ -4,11 +4,65 @@ from __future__ import annotations
 
 import time
 from copy import deepcopy
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from goa2.domain.events import GameEvent
-from goa2.server.registry import ManagedGame
 from goa2.server.visibility import events_for_viewer
+
+if TYPE_CHECKING:
+    from goa2.server.registry import ManagedGame
+
+
+def _pack_projections(
+    event_id: int, event_time: int, projections: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Store each distinct payload once, with the public payload at index zero.
+
+    Only viewers whose payload differs from the public one need an index. A
+    wholly public event therefore has one payload and no per-player entries.
+    Compare the already-filtered payloads, not event types: even a movement or
+    timeout event can carry private metadata.
+    """
+    payloads = [projections["spectator"]]
+    viewers: dict[str, int] = {}
+    for viewer, payload in projections.items():
+        if viewer == "spectator":
+            continue
+        try:
+            index = payloads.index(payload)
+        except ValueError:
+            index = len(payloads)
+            payloads.append(payload)
+        if index != 0:
+            viewers[viewer] = index
+    return {
+        "event_id": event_id,
+        "event_time": event_time,
+        "payloads": payloads,
+        "viewers": viewers,
+    }
+
+
+def compact_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Upgrade saves containing the original full payload per viewer.
+
+    Use the saved projections rather than today's game state, preserving the
+    exact historical visibility boundary. The next save writes the compact form.
+    """
+    return [
+        (
+            entry
+            if "payloads" in entry
+            else _pack_projections(entry["event_id"], entry["event_time"], entry["viewers"])
+        )
+        for entry in history
+    ]
+
+
+def event_for_viewer(entry: dict[str, Any], for_hero_id: str | None) -> dict[str, Any]:
+    """Materialize a private copy of a viewer's frozen historical payload."""
+    index = entry["viewers"].get(for_hero_id, 0) if for_hero_id is not None else 0
+    return deepcopy(entry["payloads"][index])
 
 
 def retain_events(game: ManagedGame, events: list[GameEvent]) -> None:
@@ -38,13 +92,13 @@ def retain_events(game: ManagedGame, events: list[GameEvent]) -> None:
         )
         for viewer in viewers
     }
-    for index, event in enumerate(pending):
+    for index, event_payload in enumerate(raw):
         game.event_history.append(
-            {
-                "event_id": event.event_id,
-                "event_time": event.event_time,
-                "viewers": {viewer: projections[viewer][index] for viewer in viewers},
-            }
+            _pack_projections(
+                event_payload["event_id"],
+                event_payload["event_time"],
+                {viewer: projections[viewer][index] for viewer in viewers},
+            )
         )
 
 
@@ -57,7 +111,6 @@ def events_for_delivery(
     changed card visibility. Never re-project an already retained event against
     that later state. Unretained events use the normal visibility boundary.
     """
-    viewer = for_hero_id if for_hero_id is not None else "spectator"
     retained: list[dict[str, Any] | None] = []
     unretained: list[dict[str, Any]] = []
     for event in events:
@@ -68,7 +121,7 @@ def events_for_delivery(
             else None
         )
         if entry is not None and entry["event_time"] == event.get("event_time"):
-            retained.append(entry["viewers"][viewer])
+            retained.append(event_for_viewer(entry, for_hero_id))
         else:
             retained.append(None)
             unretained.append(event)
@@ -77,4 +130,4 @@ def events_for_delivery(
         if unretained
         else iter(())
     )
-    return [deepcopy(event) if event is not None else next(projected) for event in retained]
+    return [event if event is not None else next(projected) for event in retained]

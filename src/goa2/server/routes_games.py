@@ -22,7 +22,7 @@ from goa2.server.errors import (
     validate_input_turn,
     validate_simultaneous_input_scope,
 )
-from goa2.server.event_history import events_for_delivery, retain_events
+from goa2.server.event_history import event_for_viewer, events_for_delivery, retain_events
 from goa2.server.map_paths import MapFileNotFoundError, resolve_map_path
 from goa2.server.models import (
     ActionResultResponse,
@@ -259,7 +259,7 @@ async def get_game_events(
     if after_event_id is not None and after_event_time is not None:
         raise HTTPException(status_code=400, detail="Supply only one event cursor")
     game = registry.get(game_id)
-    viewer = "spectator" if player.is_spectator else player.hero_id
+    hero_id = None if player.is_spectator else player.hero_id
     async with game.lock:
         key = "event_time" if after_event_time is not None else "event_id"
         cursor = after_event_time if after_event_time is not None else (after_event_id or 0)
@@ -274,7 +274,7 @@ async def get_game_events(
         page = game.event_history[start : start + limit]
         last = page[-1] if page else (game.event_history[-1] if game.event_history else None)
         return EventHistoryResponse(
-            events=[entry["viewers"][viewer] for entry in page],
+            events=[event_for_viewer(entry, hero_id) for entry in page],
             last_event_id=last["event_id"] if last else 0,
             last_event_time=last["event_time"] if last else 0,
             has_more=start + len(page) < len(game.event_history),

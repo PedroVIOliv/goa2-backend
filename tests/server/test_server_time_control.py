@@ -22,6 +22,7 @@ from goa2.engine.session import GameSession, SessionResult, SessionResultType
 from goa2.engine.setup import GameSetup
 from goa2.engine.steps.cards import ResolveUpgradesStep
 from goa2.server.app import create_app
+from goa2.server.event_history import event_for_viewer
 from goa2.server.map_paths import resolve_map_path
 from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.replay import ReplayRecorder, load_clock_telemetry, replay_game
@@ -519,8 +520,8 @@ def test_planning_timeout_commits_one_random_card_and_locks_takeback() -> None:
     opponent_event = events_for_viewer(raw, game.session.state, "hero_wasp")[0]
     assert owner_event["metadata"]["card_id"] == committed.id
     assert opponent_event["metadata"]["card_id"] is None
-    assert game.event_history[0]["viewers"]["hero_arien"] == owner_event
-    assert game.event_history[0]["viewers"]["hero_wasp"] == opponent_event
+    assert event_for_viewer(game.event_history[0], "hero_arien") == owner_event
+    assert event_for_viewer(game.event_history[0], "hero_wasp") == opponent_event
     assert events[0].event_id == 1
 
     assert game.replay_recorder is not None

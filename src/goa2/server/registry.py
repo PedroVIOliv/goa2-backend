@@ -15,6 +15,7 @@ from fastapi import WebSocket
 
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
+from goa2.server.event_history import compact_history
 from goa2.server.game_logger import GameLogger, create_game_logger
 from goa2.server.replay import ReplayRecorder, create_replay_recorder
 
@@ -192,7 +193,7 @@ class GameRegistry:
                 hero_names=data["hero_names"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
-                event_history=data["event_history"],
+                event_history=compact_history(data["event_history"]),
                 game_logger=create_game_logger(data["game_id"]),
                 replay_recorder=replay_recorder,
             )
