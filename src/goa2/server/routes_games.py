@@ -114,7 +114,18 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
     name_to_id = {h.name: h.id for team in state.teams.values() for h in team.heroes}
     hero_names = resolve_player_names(body.player_names, name_to_id)
 
-    game = registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
+    game = registry.create_game(
+        session,
+        hero_ids,
+        game_id=game_id,
+        hero_names=hero_names,
+        webhook=body.webhook,
+        discord_user_ids={
+            name_to_id[name]: user_id
+            for name, user_id in body.discord_user_ids.items()
+            if name in name_to_id
+        },
+    )
 
     if game.game_logger:
         game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)

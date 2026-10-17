@@ -129,7 +129,18 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         name_to_id,
     )
     game_registry = request.app.state.registry
-    game = game_registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
+    game = game_registry.create_game(
+        session,
+        hero_ids,
+        game_id=game_id,
+        hero_names=hero_names,
+        webhook=md.webhook,
+        discord_user_ids={
+            name_to_id[p.claimed_hero]: md.discord_user_ids[p.id]
+            for p in state.players
+            if p.claimed_hero and p.id in md.discord_user_ids
+        },
+    )
     if game.replay_recorder:
         game.replay_recorder.record_setup(
             map_name=state.map_name,
@@ -189,6 +200,9 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         time_control=body.time_control,
     )
     md = registry.create(state)
+    md.webhook = body.webhook
+    if body.discord_user_id:
+        md.discord_user_ids["p1"] = body.discord_user_id
     return CreateDraftResponse(
         draft_id=draft_id,
         player_id="p1",
@@ -228,6 +242,8 @@ async def update_settings(
             max_hero_stars=body.max_hero_stars,
             time_control=time_control,
         )
+        if "webhook" in body.model_fields_set:
+            md.webhook = body.webhook
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)
 
@@ -239,6 +255,8 @@ async def join_draft(
     md = registry.get(draft_id)
     async with md.lock:
         player = service.join(md.state, body.display_name)
+        if body.discord_user_id:
+            md.discord_user_ids[player.id] = body.discord_user_id
         token = registry.add_player_token(draft_id, player.id)
     await broadcast_draft(md, registry)
     return JoinDraftResponse(draft_id=draft_id, player_id=player.id, player_token=token)

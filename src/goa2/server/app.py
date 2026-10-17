@@ -7,8 +7,10 @@ import logging
 import os
 from contextlib import asynccontextmanager, suppress
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -30,6 +32,7 @@ from goa2.server.routes_games import router as games_router
 from goa2.server.routes_heroes import router as heroes_router
 from goa2.server.routes_overrides import router as overrides_router
 from goa2.server.time_control import resume_timers, stop_timers
+from goa2.server.webhooks import WebhookDispatcher
 from goa2.server.workers import prewarm_heavy_pool, shutdown_heavy_pool
 from goa2.server.ws import router as ws_router
 
@@ -78,7 +81,20 @@ async def lifespan(app: FastAPI):
         logger.info("Restored %d game(s) from %s", count, save_dir)
     app.state.registry = registry
     app.state.draft_registry = DraftRegistry()
+    # Restore/re-anchor clocks without emitting restart notifications.
+    registry.webhook_notifications_enabled = False
     await resume_timers(registry)
+    registry.webhook_notifications_enabled = True
+    # Origins are pinned to IPs per request; do not reuse a TLS connection for
+    # a different hostname that happens to resolve to the same IP.
+    webhook_client = httpx.AsyncClient(
+        timeout=5,
+        trust_env=False,
+        follow_redirects=False,
+        limits=httpx.Limits(max_keepalive_connections=0),
+    )
+    webhook_dispatcher = WebhookDispatcher(webhook_client)
+    registry.webhook_dispatcher = webhook_dispatcher
 
     cleanup_task = asyncio.create_task(_cleanup_loop(registry))
     # Background, never awaited: a worker takes seconds to spawn, and blocking
@@ -97,7 +113,10 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError, Exception):
                 await warmup_task
         shutdown_heavy_pool()
+        registry.webhook_notifications_enabled = False
         await stop_timers(registry)
+        await webhook_dispatcher.close()
+        await webhook_client.aclose()
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup_task
@@ -119,6 +138,19 @@ def _configure_logging() -> None:
 def create_app() -> FastAPI:
     _configure_logging()
     app = FastAPI(title="GoA2 API", version="0.1.0", lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        # Pydantic's input echo can contain a credential-bearing webhook URL,
+        # including for errors on an entire request body. Return only diagnostics.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {key: error[key] for key in ("loc", "msg", "type")} for error in exc.errors()
+                ]
+            },
+        )
 
     # Routers
     app.include_router(heroes_router)

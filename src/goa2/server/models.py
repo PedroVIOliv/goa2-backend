@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from goa2.domain.time_control import TimeControlConfig
 from goa2.server.player_names import MAX_PLAYER_NAME_LENGTH
+from goa2.server.webhooks import WebhookConfig, validate_discord_user_id
 
 # -- Requests --
 
@@ -34,6 +35,16 @@ class CreateGameRequest(BaseModel):
     time_control: TimeControlConfig | None = None
     # Keyed by the same hero identifier used in red_heroes/blue_heroes.
     player_names: dict[str, str] = Field(default_factory=dict)
+    # Keyed by hero name, like player_names. Separate from display names.
+    discord_user_ids: dict[str, str] = Field(default_factory=dict)
+    webhook: WebhookConfig | None = None
+
+    @field_validator("discord_user_ids")
+    @classmethod
+    def _discord_ids(cls, value: dict[str, str]) -> dict[str, str]:
+        for user_id in value.values():
+            validate_discord_user_id(user_id)
+        return value
 
 
 class ReadyRequest(BaseModel):
@@ -155,6 +166,8 @@ class CreateDraftRequest(BaseModel):
     sizes are decided inside the lobby, not here. The optional fields seed the defaults."""
 
     host_name: str
+    discord_user_id: str | None = None
+    webhook: WebhookConfig | None = None
     map_name: str = "forgotten_island"
     game_type: str = "LONG"
     draft_mode: str = "sequential_ban_pick"
@@ -163,6 +176,7 @@ class CreateDraftRequest(BaseModel):
     time_control: TimeControlConfig | None = None
 
     _normalize = field_validator("host_name")(_normalize_lobby_name)
+    _discord_id = field_validator("discord_user_id")(validate_discord_user_id)
 
 
 class UpdateDraftSettingsRequest(BaseModel):
@@ -175,12 +189,15 @@ class UpdateDraftSettingsRequest(BaseModel):
     max_hero_stars: int | None = None
     # Explicit null disables timers; omission leaves the setting unchanged.
     time_control: TimeControlConfig | None = None
+    webhook: WebhookConfig | None = None
 
 
 class JoinDraftRequest(BaseModel):
     display_name: str
+    discord_user_id: str | None = None
 
     _normalize = field_validator("display_name")(_normalize_lobby_name)
+    _discord_id = field_validator("discord_user_id")(validate_discord_user_id)
 
 
 class SetTeamRequest(BaseModel):

@@ -16,6 +16,7 @@ This guide covers everything a frontend developer needs to connect to the GoA2 b
 10. [Character Draft Lobby](#character-draft-lobby)
 11. [Consensus Overrides](#consensus-overrides)
 12. [Error Handling](#error-handling)
+13. [Game Webhooks](#game-webhooks)
 
 ---
 
@@ -2255,3 +2256,153 @@ either `{"destination": {q,r,s}}` or `{"swap_with": "<hero id>"}`. Both normal
 replay and shared-replay baking apply that decision through the same engine
 function. Pending/declined requests do not enter the replay. Automatic setup
 placement is unchanged for historical replays.
+
+## Game Webhooks
+
+Games can send notifications to one Discord incoming webhook or a public HTTPS
+callback endpoint. Configuration is optional and does not change game responses
+or the WebSocket protocol. This feature currently provides backend APIs only.
+
+### Direct game creation
+
+Include `webhook` in `POST /games`. Keep readable display names in `player_names`
+and optionally supply Discord user IDs separately in `discord_user_ids`. Both
+maps use hero names from `red_heroes` / `blue_heroes`; unknown heroes are ignored.
+
+```json
+{
+  "red_heroes": ["Hanu"],
+  "blue_heroes": ["Arien"],
+  "player_names": {"Hanu": "Sebastian", "Arien": "Alex"},
+  "discord_user_ids": {"Hanu": "123456789012345678"},
+  "webhook": {
+    "url": "https://discord.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN",
+    "format": "discord",
+    "mode": "decision_changes"
+  }
+}
+```
+
+`format` is required: `discord` sends channel messages; `json` sends structured
+events to your endpoint. `mode` defaults to `decision_changes`:
+
+| Mode | Notifications |
+| --- | --- |
+| `decision_changes` | When the waiting heroes change, the phase changes, or a new round/turn begins; also at game creation and completion. Repeated choices by the same hero within the same phase/turn remain quiet. |
+| `state_changes` | Once per changed game state at a completed action boundary, including planning, board edits, rollback, accepted overrides, and automatic timeouts. Overlapping triggers produce one message. |
+
+Both modes identify the responder, including Hanu control, team decisions,
+simultaneous upgrades, incomplete planning (including second cards), and timed
+ready checks. Reads, reconnects, pointer/ping messages, duplicate saves, and
+clock bookkeeping do not send notifications. Internal engine steps are combined
+into their final state; an action may complete several steps or automatic choices.
+
+Omit `webhook` or set it to `null` to create a game without notifications.
+
+### Draft lobbies
+
+- `POST /drafts` accepts the same optional `webhook` and an optional
+  `discord_user_id` for the host, alongside `host_name`.
+- `POST /drafts/{draft_id}/join` accepts an optional `discord_user_id` alongside
+  `display_name` for that player.
+- The host can replace `webhook` with `PATCH /drafts/{draft_id}/settings` while
+  the draft is in `LOBBY`. Omission preserves it; explicit `null` removes it.
+- When the game is created, each player's ID follows their claimed hero.
+  No notifications are sent during the draft. There is no in-match webhook
+  editing endpoint in this version.
+
+Webhook URLs and Discord ID mappings are private server metadata, excluded from
+game/lobby views and replay records. Configuration survives game save/restore;
+lobbies retain their existing in-memory-only lifecycle. Legacy saves have
+webhooks disabled. Restoring a game sends no startup notification.
+
+### Discord setup and mentions
+
+In the target Discord channel's settings, open **Integrations**, create a
+**Webhook**, and copy its URL into the configuration. No bot installation or bot
+token is needed. Use a normal text channel, or append `?thread_id=THREAD_ID` for
+an existing thread.
+
+For pings, enable Discord **Developer Mode**, right-click the player, and select
+**Copy User ID**. Send that numeric ID as a string, separately from the readable
+name. IDs must be 17-20 digits. Plain `@username` names do not identify Discord
+users for webhook mentions.
+
+Messages look like `Hanu (Sebastian) <@123456789012345678>'s turn.` or
+`New turn. Hanu (Sebastian) <@123456789012345678>, Arien (Alex): choose your cards.`
+Discord renders the ID as a user mention. Only explicit IDs belonging to the
+heroes currently being waited on are allowed to ping. Role and `@everyone`
+mentions are disabled; names are escaped as text. Players without IDs still
+appear by name. Delivery of a Discord notification also depends on the user's
+Discord notification settings.
+
+See [Discord webhooks](https://docs.discord.com/developers/resources/webhook)
+and [mention formatting](https://docs.discord.com/developers/reference#message-formatting).
+
+### JSON callback contract
+
+Set `format` to `json` and provide your public HTTPS endpoint. The backend sends
+an HTTP `POST` with `Content-Type: application/json` and
+`X-GoA2-Event-ID: <event_id>`. Respond with any `2xx` status.
+
+```json
+{
+  "version": 1,
+  "event_id": "cb34ad50838148eaa00944717c83d270",
+  "game_id": "a1b2c3d4e5f6",
+  "event": "decision_changed",
+  "occurred_at": "2026-10-17T12:00:00+00:00",
+  "round": 1,
+  "turn": 2,
+  "phase": "RESOLUTION",
+  "awaiting_heroes": [
+    {
+      "hero_id": "hero_hanu",
+      "hero_name": "Hanu",
+      "player_name": "Sebastian",
+      "discord_user_id": "123456789012345678"
+    }
+  ],
+  "winner": null,
+  "message": "Hanu (Sebastian)'s turn."
+}
+```
+
+`event` is `game_created`, `new_turn`, `decision_changed`, `state_changed`, or
+`game_over`. Overlapping triggers use that order of specificity: game creation
+first, then game completion, new turn, changed decision, and ordinary state
+change. `occurred_at` is UTC; absent player names/Discord IDs and no winner use
+`null`. `awaiting_heroes` is empty when no hero is waiting, including game over.
+Notifications contain no board snapshot, private card choices, input options,
+or game-access tokens. A bot can use its existing authenticated game connection
+if it needs to fetch a current view. Callbacks are not signed in this version;
+use a secret endpoint URL if the receiver needs an endpoint credential.
+
+### Delivery and validation
+
+Delivery runs in the background and never waits for network I/O during a game
+action. Notifications stay ordered within a game; other games can deliver
+concurrently. Each attempt has a five-second total timeout. Network failures,
+server errors, and `429` responses get at most three attempts, with exponential
+backoff or the receiver's numeric `Retry-After` delay. Other non-success responses,
+including redirects, stop that delivery. Exhausted deliveries are logged without
+destination credentials.
+
+Connection failures fall back to other validated DNS addresses within the same
+attempt, sharing its connection-time budget. Requests retain the original TLS
+hostname and HTTP host when trying another address. Callback cookies are neither
+stored nor sent, keeping destinations isolated even when they share an IP address.
+
+Delivery is best effort: pending messages are lost on restart/shutdown or game
+removal, and retries can duplicate delivery. JSON receivers should deduplicate
+using `event_id` (also supplied in the header). A game can queue at most 100
+pending notifications; additional messages are dropped and logged while full.
+
+Only public HTTPS URLs without URL authority credentials or fragments are
+accepted. Private/local/multicast destinations and redirects are rejected. DNS
+is validated again for each attempt and connections use the validated address
+while retaining TLS verification for the original host. DNS rejection/failure
+is handled as a delivery outcome; configuration does not contact the receiver.
+Discord URLs must use `discord.com`, `canary.discord.com`, or `ptb.discord.com`
+and the incoming webhook path. Request validation errors return diagnostics
+without echoing submitted values, so secret webhook URLs are not reflected.

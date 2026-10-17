@@ -38,6 +38,8 @@ def save_game(
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
     replay_log: list[dict[str, Any]] | None = None,
+    webhook: dict[str, str] | None = None,
+    discord_user_ids: dict[str, str] | None = None,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -47,6 +49,8 @@ def save_game(
         "spectator_token": spectator_token,
         "hero_to_token": hero_to_token,
         "hero_names": hero_names or {},
+        "webhook": webhook,
+        "discord_user_ids": discord_user_ids or {},
         "created_at": created_at,
         "state": state.model_dump(mode="json"),
         "rollback_snapshot": rollback_snapshot,
@@ -124,6 +128,8 @@ def load_game(file_path: str) -> dict[str, Any]:
         # Absent from saves written before player identity existed; an empty
         # map is the correct reading of such a file, so no version bump.
         "hero_names": payload.get("hero_names", {}),
+        "webhook": payload.get("webhook"),
+        "discord_user_ids": payload.get("discord_user_ids", {}),
         "created_at": payload["created_at"],
         "last_result": last_result,
         # Absent from saves written before the save carried the replay log, and
