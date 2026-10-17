@@ -322,6 +322,8 @@ def _record_timeout(
     request_id: str | None = None,
     team_id: str | None = None,
     eligible_hero_ids: Iterable[str] = (),
+    round_num: int | None = None,
+    turn: int | None = None,
 ) -> None:
     recorder = game.replay_recorder
     if recorder is None:
@@ -330,8 +332,8 @@ def _record_timeout(
     recorder.record_timer_timeout(
         action=action,
         hero_id=hero_id,
-        round_num=state.round,
-        turn=state.turn,
+        round_num=state.round if round_num is None else round_num,
+        turn=state.turn if turn is None else turn,
         card_id=card_id,
         selection=selection,
         request_id=request_id,
@@ -357,10 +359,10 @@ def _apply_planning_timeout(
     hid = HeroID(hero_id)
     events: list[GameEvent] = []
 
+    rec_round, rec_turn = state.round, state.turn
+    card_id = None
     if hid in state.pending_inputs:
         action = "finish_planning"
-        _record_timeout(game, action=action, hero_id=hero_id)
-        events.append(_timer_event(hero_id=hero_id, kind=ClockKind.PLANNING, action=action))
         result = game.session.finish_planning(hid)
     else:
         hero = state.get_hero(hid)
@@ -368,25 +370,28 @@ def _apply_planning_timeout(
             raise ValueError(f"Timed hero {hero_id!r} not found")
         if hero.hand:
             card = rng.choice(hero.hand)
-            action = "commit"
-            _record_timeout(game, action=action, hero_id=hero_id, card_id=card.id)
-            events.append(
-                _timer_event(
-                    hero_id=hero_id,
-                    kind=ClockKind.PLANNING,
-                    action=action,
-                    card_id=card.id,
-                )
-            )
+            action, card_id = "commit", card.id
             result = game.session.commit_card(hid, card)
-            if state.phase == GamePhase.PLANNING and planning_open_for_second_card(state, hid):
-                _record_timeout(game, action="finish_planning", hero_id=hero_id)
-                result = game.session.finish_planning(hid)
         else:
             action = "pass"
-            _record_timeout(game, action=action, hero_id=hero_id)
-            events.append(_timer_event(hero_id=hero_id, kind=ClockKind.PLANNING, action=action))
             result = game.session.pass_turn(hid)
+    _record_timeout(
+        game, action=action, hero_id=hero_id, card_id=card_id, round_num=rec_round, turn=rec_turn
+    )
+    events.append(
+        _timer_event(hero_id=hero_id, kind=ClockKind.PLANNING, action=action, card_id=card_id)
+    )
+    if (
+        action == "commit"
+        and state.phase == GamePhase.PLANNING
+        and planning_open_for_second_card(state, hid)
+    ):
+        events.extend(result.events)
+        rec_round, rec_turn = state.round, state.turn
+        result = game.session.finish_planning(hid)
+        _record_timeout(
+            game, action="finish_planning", hero_id=hero_id, round_num=rec_round, turn=rec_turn
+        )
 
     _store_result(game, result)
     events.extend(result.events)
@@ -403,15 +408,7 @@ def _apply_input_timeout(
     selection = _timeout_selection(request, rng)
     team_id = request.player_id if request.player_id.startswith("team:") else None
     eligible_hero_ids = _team_hero_ids(game, request.player_id) if team_id else []
-    _record_timeout(
-        game,
-        action="input",
-        hero_id=actor_id,
-        selection=selection,
-        request_id=request.id,
-        team_id=team_id,
-        eligible_hero_ids=eligible_hero_ids,
-    )
+    rec_round, rec_turn = game.session.state.round, game.session.state.turn
     event = _timer_event(
         hero_id=actor_id,
         kind=kind,
@@ -428,6 +425,17 @@ def _apply_input_timeout(
     game.session._rollback_snapshot = None
     game.session._rollback_actor_id = None
     result = game.session.advance(InputResponse(request_id=request.id, selection=selection))
+    _record_timeout(
+        game,
+        action="input",
+        hero_id=actor_id,
+        selection=selection,
+        request_id=request.id,
+        team_id=team_id,
+        eligible_hero_ids=eligible_hero_ids,
+        round_num=rec_round,
+        turn=rec_turn,
+    )
     _store_result(game, result)
     return [event, *result.events]
 
@@ -460,7 +468,7 @@ def _apply_level_up_timeout(
         if not legal:
             raise ValueError(f"Level Up timeout has no legal upgrade for {hero_id}")
         selection = {"hero_id": hero_id, "card_id": rng.choice(legal)}
-        _record_timeout(game, action="input", hero_id=hero_id, selection=selection)
+        rec_round, rec_turn = game.session.state.round, game.session.state.turn
         events.append(
             _timer_event(
                 hero_id=hero_id,
@@ -471,6 +479,14 @@ def _apply_level_up_timeout(
             )
         )
         result = game.session.advance(InputResponse(request_id=request.id, selection=selection))
+        _record_timeout(
+            game,
+            action="input",
+            hero_id=hero_id,
+            selection=selection,
+            round_num=rec_round,
+            turn=rec_turn,
+        )
         _store_result(game, result)
         events.extend(result.events)
     return events
@@ -670,10 +686,12 @@ def finalize_timed_mutation(
     game: ManagedGame,
     registry: GameRegistry,
     at_ms: int | None = None,
+    *,
+    captured_after: int | None = None,
 ) -> None:
     timestamp = now_ms() if at_ms is None else at_ms
     reconcile_game_clock(game, timestamp)
-    registry.save_game(game.game_id)
+    registry.save_game(game.game_id, captured_after=captured_after)
     schedule_deadline(game, registry)
 
 
@@ -694,11 +712,16 @@ async def timed_rest_mutation(
     async with game.outbound_lock:
         try:
             async with game.lock:
+                before_decision = game.history.raw_count if game.history else 0
                 timer_events = prepare_timed_mutation(game)
+                completed = False
                 try:
                     yield timer_events
+                    completed = True
                 finally:
-                    finalize_timed_mutation(game, registry)
+                    finalize_timed_mutation(
+                        game, registry, captured_after=before_decision if completed else None
+                    )
                     if timer_events:
                         from goa2.server.ws import _capture_broadcast
 
@@ -754,13 +777,14 @@ async def _deadline_worker(
                 if clock is None or clock.revision != revision:
                     return
                 deadline_at = now_ms()
+                before_decision = game.history.raw_count if game.history else 0
                 emitted = apply_due_timeouts(game, deadline_at)
                 # Deadline processing is backend work during which no client
                 # can acquire the game lock. Re-anchor without spending it.
                 clock = game.session.state.clock
                 if clock is not None:
                     clock.last_settled_at_ms = now_ms()
-                registry.save_game(game.game_id)
+                registry.save_game(game.game_id, captured_after=before_decision)
 
                 # Import lazily to avoid the WebSocket module importing this
                 # coordinator while defining its route handlers.

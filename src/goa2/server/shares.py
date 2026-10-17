@@ -54,8 +54,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import brotli
-import jsonpatch
+from goa2.server.replay_codec import GroupBuilder, encode, for_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -210,62 +209,30 @@ def _group_name(start: int, encoding: str) -> str:
     return f"g{start:04d}.json.{encoding}"
 
 
-def _dumps(obj: Any) -> bytes:
-    return json.dumps(obj, separators=(",", ":")).encode()
-
-
 def _write_groups(directory: Path, render: Any, positions: int) -> tuple[list[dict[str, int]], int]:
-    """Write every group for positions 0..positions-1 into ``directory``.
-
-    ``render(index) -> dict`` is called once per position, in order, so a caller
-    that can only walk forward (a replay being re-simulated) is never asked to
-    go back. Returns the group index for meta.json and the bytes written.
-    """
+    """Batch adapter over the incremental codec used by live history too."""
     groups: list[dict[str, int]] = []
     size_bytes = 0
 
-    def flush(start: int, keyframe: dict[str, Any], patches: list[list[dict[str, Any]]]) -> None:
+    def flush(group: dict[str, Any]) -> None:
         nonlocal size_bytes
-        raw = _dumps({"start": start, "keyframe": keyframe, "patches": patches})
-        compressed = brotli.compress(raw, quality=_BROTLI_QUALITY)
-        (directory / _group_name(start, "br")).write_bytes(compressed)
+        compressed = encode(group, quality=_BROTLI_QUALITY)
+        (directory / _group_name(group["start"], "br")).write_bytes(compressed)
         size_bytes += len(compressed)
-        groups.append({"start": start, "count": len(patches) + 1})
+        groups.append({"start": group["start"], "count": len(group["patches"]) + 1})
 
-    start = 0
-    keyframe = render(0)
-    previous = keyframe
-    keyframe_raw = _dumps(keyframe)
-    keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
-    patches: list[list[dict[str, Any]]] = []
-    patches_raw: list[bytes] = []
-
-    def over_budget() -> bool:
-        if len(patches) >= _MAX_GROUP:
-            return True
-        if len(patches) % _CHECK_EVERY:
-            return False
-        blob = keyframe_raw + b"".join(patches_raw)
-        grown = len(gzip.compress(blob, _PROXY_LEVEL)) - keyframe_proxy
-        return grown > _BUDGET_MULTIPLE * keyframe_proxy
-
+    builder = GroupBuilder(
+        0,
+        render(0),
+        max_patches=_MAX_GROUP,
+        check_every=_CHECK_EVERY,
+        budget_multiple=_BUDGET_MULTIPLE,
+    )
     for index in range(1, positions):
-        body = render(index)
-        patches.append(jsonpatch.make_patch(previous, body).patch)
-        patches_raw.append(_dumps(patches[-1]))
-        previous = body
-        if over_budget():
-            # The patch that broke the budget is dropped and its target becomes
-            # the next keyframe, so no position is ever unreachable.
-            patches.pop()
-            patches_raw.pop()
-            flush(start, keyframe, patches)
-            start, keyframe = index, body
-            keyframe_raw = _dumps(body)
-            keyframe_proxy = len(gzip.compress(keyframe_raw, _PROXY_LEVEL))
-            patches, patches_raw = [], []
-
-    flush(start, keyframe, patches)
+        closed = builder.append(index, render(index))
+        if closed is not None:
+            flush(closed)
+    flush(builder.group)
     return groups, size_bytes
 
 
@@ -425,9 +392,7 @@ def read_group(token: str, start: int, *, accepts_brotli: bool) -> tuple[bytes, 
     if path is None:
         return None
     stored = path.read_bytes()
-    if accepts_brotli:
-        return stored, "br"
-    return gzip.compress(brotli.decompress(stored), _GZIP_FALLBACK_LEVEL), "gzip"
+    return for_delivery(stored, accepts_brotli=accepts_brotli)
 
 
 def migrate_share_to_groups(token: str) -> dict[str, Any] | None:

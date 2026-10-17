@@ -71,6 +71,7 @@ import os
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -183,6 +184,8 @@ class ReplayRecorder:
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / f"{game_id}.jsonl"
         self.records = _read_log_records(self.path)
+        self.on_decision: Callable[[dict[str, Any], int], None] | None = None
+        self.decision_count = sum(is_replay_decision(r) for r in self.records or [])
         if self.records is None:
             logger.warning("Replay log %s is damaged; the save will not carry it", self.path)
 
@@ -205,6 +208,7 @@ class ReplayRecorder:
         ):
             return
         self.records = [dict(r) for r in saved]
+        self.decision_count = sum(is_replay_decision(r) for r in saved)
         body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in self.records)
         fd, tmp_path = tempfile.mkstemp(dir=self.path.parent, suffix=".tmp")
         try:
@@ -230,6 +234,10 @@ class ReplayRecorder:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
         except OSError:
             logger.exception("Failed to append replay record for game %s", self.game_id)
+        if is_replay_decision(record):
+            self.decision_count += 1
+            if self.on_decision is not None:
+                self.on_decision(record, self.decision_count)
 
     def record_setup(
         self,
@@ -488,14 +496,7 @@ def replay_game(
         # the session positioned at the start of that moment.
         if _decision_at_or_after(decision, until_round, until_turn):
             break
-        if decision.get("type") == "ov_rewind":
-            # A rewind is a cursor move: rebuild from the seed and re-apply the
-            # effective prefix, then continue forward from the next record.
-            session = build_session_from_setup(setup)
-            for d in effective_decisions(decisions, int(decision["to"])):
-                _apply_decision(session, d)
-        else:
-            _apply_decision(session, decision)
+        session = apply_replay_record(session, setup, decisions, decision)
 
     return session
 
@@ -543,12 +544,7 @@ def verify_replay(path: str) -> dict[str, Any]:
     applied = 0
     for index, decision in enumerate(decisions):
         try:
-            if decision.get("type") == "ov_rewind":
-                session = build_session_from_setup(setup)
-                for earlier in effective_decisions(decisions, int(decision["to"])):
-                    _apply_decision(session, earlier)
-            else:
-                _apply_decision(session, decision)
+            session = apply_replay_record(session, setup, decisions, decision)
             applied += 1
         except Exception as exc:
             return {
@@ -704,21 +700,42 @@ class ReplayCursor:
         """Position the session so exactly `target_index` decisions are applied."""
         target = max(0, min(target_index, len(self.decisions)))
         if target < self.cursor:
-            # Backward move: no cheap un-apply, so rebuild from the seed.
             self.session = build_session_from_setup(self.setup)
             self.cursor = 0
         while self.cursor < target:
-            decision = self.decisions[self.cursor]
-            if decision.get("type") == "ov_rewind":
-                # Rewind = cursor move: rebuild from the seed and re-apply the
-                # effective prefix, then continue forward.
-                self.session = build_session_from_setup(self.setup)
-                for d in effective_decisions(self.decisions, int(decision["to"])):
-                    _apply_decision(self.session, d)
-            else:
-                _apply_decision(self.session, decision)
+            self.session = apply_replay_record(
+                self.session, self.setup, self.decisions, self.decisions[self.cursor]
+            )
             self.cursor += 1
         return self.session
+
+
+def apply_replay_record(
+    session: GameSession,
+    setup: dict[str, Any],
+    decisions: list[dict[str, Any]],
+    decision: dict[str, Any],
+) -> GameSession:
+    """One raw record, including a table rewind. Shared by all replay drivers."""
+    if decision.get("type") == "ov_rewind":
+        session = build_session_from_setup(setup)
+        for earlier in effective_decisions(decisions, int(decision["to"])):
+            _apply_decision(session, earlier)
+    else:
+        _apply_decision(session, decision)
+    return session
+
+
+def walk_replay(
+    setup: dict[str, Any],
+    decisions: list[dict[str, Any]],
+) -> Iterator[tuple[int, dict[str, Any] | None, GameSession]]:
+    """Observe every raw decision boundary without duplicating the engine driver."""
+    session = build_session_from_setup(setup)
+    yield 0, None, session
+    for index, decision in enumerate(decisions, 1):
+        session = apply_replay_record(session, setup, decisions, decision)
+        yield index, decision, session
 
 
 def _decision_at_or_after(

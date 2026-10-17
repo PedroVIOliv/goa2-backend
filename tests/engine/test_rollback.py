@@ -243,10 +243,13 @@ class TestRollbackSegmentBoundary:
         assert res1.input_request.prompt == "Pre-Foreign"
         assert res1.input_request.can_rollback is True
         pre_foreign_snapshot = session._rollback_snapshot
+        pre_foreign_anchor_id = session.rollback_anchor_id
+        assert pre_foreign_anchor_id is not None
         assert pre_foreign_snapshot is not None
 
         res2 = _respond(session, res1, "YES")
         assert res2.input_request.prompt == "Foreign"
+        assert session.rollback_anchor_id is None
         assert res2.input_request.can_rollback is False
         assert session._rollback_snapshot is None
         assert state.execution_context.get("rollback_frozen") is not True
@@ -257,12 +260,16 @@ class TestRollbackSegmentBoundary:
         assert res3.input_request.can_rollback is True
         assert session._rollback_snapshot is not None
         assert session._rollback_snapshot is not pre_foreign_snapshot
+        post_foreign_anchor_id = session.rollback_anchor_id
+        assert post_foreign_anchor_id is not None
+        assert post_foreign_anchor_id != pre_foreign_anchor_id
 
         # Rollback returns to Post-Foreign, never past the foreign segment.
         res_rb = session.rollback()
         assert res_rb.input_request.prompt == "Post-Foreign"
         assert res_rb.input_request.can_rollback is True
         assert session.state.execution_context.get("foreign_ok") is True
+        assert session.rollback_anchor_id == post_foreign_anchor_id
 
     def test_same_player_input_does_not_clear_snapshot(self):
         """When a step prompts the current actor, the rollback snapshot is retained."""

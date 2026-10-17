@@ -9,7 +9,11 @@ not team affiliation (allies see enemies' faceup cards too).
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
+
+from pydantic_core import to_json
 
 from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
@@ -21,6 +25,65 @@ from goa2.domain.time_control import public_clock_view
 from goa2.domain.types import BoardEntityID, HeroID
 
 
+class HeroViewCache:
+    """Reuse frozen hero projections while their complete inputs are unchanged.
+
+    Owned by one capture stream, not shared across games or mutable live views.
+    Native model serialization detects in-place changes to cards and nested
+    collections too. Only the latest public/private pair per seat is retained.
+    """
+
+    def __init__(self) -> None:
+        self.entries: dict[str, tuple[bytes, dict, dict]] = {}
+        self.cards: OrderedDict[tuple[type, str, bool], tuple[bytes, dict]] = OrderedDict()
+
+    def card(self, card: Card | None, is_own_hero: bool = True) -> dict | None:
+        if card is None:
+            return None
+        key = (type(card), str(card.id), is_own_hero or not card.is_facedown)
+        signature = to_json(card)
+        cached = self.cards.get(key)
+        if cached is None or cached[0] != signature:
+            projected = _build_card_view(card, is_own_hero)
+            assert projected is not None
+            cached = (signature, projected)
+            self.cards[key] = cached
+        self.cards.move_to_end(key)
+        while len(self.cards) > 512:
+            self.cards.popitem(last=False)
+        return cached[1]
+
+    def prepare(self, state: GameState) -> dict[tuple[str, bool], dict[str, Any]]:
+        entries: dict[str, tuple[bytes, dict, dict]] = {}
+        result = {}
+        for team in state.teams.values():
+            for hero in team.heroes:
+                signature = to_json(
+                    (
+                        hero,
+                        state.phase,
+                        state.upgrade_reveal_snapshot.get(hero.id),
+                        state.pending_inputs.get(hero.id),
+                        state.pending_second_cards.get(hero.id),
+                        hero.id in state.planning_done,
+                    )
+                )
+                previous = self.entries.get(hero.id)
+                if previous is not None and previous[0] == signature:
+                    entry = previous
+                else:
+                    entry = (
+                        signature,
+                        _build_hero_view(state, hero, None, card_cache=self),
+                        _build_hero_view(state, hero, hero.id, card_cache=self),
+                    )
+                entries[hero.id] = entry
+                result[(str(hero.id), False)] = entry[1]
+                result[(str(hero.id), True)] = entry[2]
+        self.entries = entries
+        return result
+
+
 def build_view(
     state: GameState,
     for_hero_id: HeroID | None = None,
@@ -28,6 +91,9 @@ def build_view(
     reveal_all: bool = False,
     now_ms: int | None = None,
     prebuilt_board_view: dict[str, Any] | None = None,
+    prebuilt_hero_views: dict[tuple[str, bool], dict[str, Any]] | None = None,
+    prebuilt_public_view: dict[str, Any] | None = None,
+    include_transient: bool = True,
 ) -> dict[str, Any]:
     """
     Build a player-scoped view of the game state.
@@ -52,10 +118,50 @@ def build_view(
     Returns:
         Serializable dict representation of the game state with filtered cards
     """
-    # Build teams view
-    teams_view: dict[str, Any] = {}
-    for team_color, team in state.teams.items():
-        teams_view[team_color.value] = _build_team_view(state, team, for_hero_id, reveal_all)
+    if prebuilt_public_view is not None and not reveal_all:
+        # Teams and minions are public. Only the requesting hero needs a
+        # private projection; the remaining frozen team data can be reused.
+        teams_view = dict(prebuilt_public_view["teams"])
+        for team_color, team in state.teams.items():
+            for index, hero in enumerate(team.heroes):
+                if hero.id == for_hero_id:
+                    private = (
+                        prebuilt_hero_views.get((str(hero.id), True))
+                        if prebuilt_hero_views is not None
+                        else None
+                    )
+                    if private is None:
+                        private = _build_hero_view(state, hero, for_hero_id)
+                    public_team = teams_view[team_color.value]
+                    heroes = list(public_team["heroes"])
+                    heroes[index] = private
+                    teams_view[team_color.value] = {**public_team, "heroes": heroes}
+        # Public effects, geometry and initiative ordering are identical for
+        # all seats. Only cards/tokens and transient controls need rescoping.
+        unresolved = []
+        for entry in prebuilt_public_view["unresolved_cards"]:
+            if for_hero_id is not None and entry["hero_id"] == for_hero_id:
+                owner = state.get_hero(for_hero_id)
+                assert owner is not None
+                unresolved.append(
+                    {**entry, "card": _build_card_view(owner.current_turn_card, True)}
+                )
+            else:
+                unresolved.append(entry)
+        return {
+            **prebuilt_public_view,
+            "teams": teams_view,
+            "tokens": _build_tokens_view(state, for_hero_id),
+            "unresolved_cards": unresolved,
+            **_transient_fields(state, for_hero_id, now_ms, include_transient),
+        }
+
+    teams_view = {
+        team_color.value: _build_team_view(
+            state, team, for_hero_id, reveal_all, prebuilt_hero_views
+        )
+        for team_color, team in state.teams.items()
+    }
 
     # The board is public and identical for every recipient. Broadcast callers
     # may build it once from their locked state snapshot and reuse it while the
@@ -81,8 +187,6 @@ def build_view(
 
     # Build unresolved cards view (resolution order for frontend)
     unresolved_cards_view = _build_unresolved_cards_view(state, for_hero_id, reveal_all)
-
-    from goa2.engine.starting_positions import position_view
 
     view = {
         "phase": state.phase.value,
@@ -114,20 +218,33 @@ def build_view(
         # Direct public hand-card reveal (Cordelia). As with card_guess, the
         # state-backed face survives reconnects and execution-context cleanup.
         "card_reveal": _build_card_reveal_view(state),
-        "starting_position": position_view(state, str(for_hero_id) if for_hero_id else None),
     }
     view["time_control"] = (
         state.time_control.model_dump(mode="json") if state.time_control is not None else None
     )
-    view["clock"] = (
+    view.update(_transient_fields(state, for_hero_id, now_ms, include_transient))
+    return view
+
+
+def _transient_fields(
+    state: GameState, for_hero_id: HeroID | None, now_ms: int | None, include: bool
+) -> dict[str, Any]:
+    from goa2.engine.starting_positions import position_view
+
+    clock = (
         public_clock_view(
             state.clock,
             now_ms if now_ms is not None else time.time_ns() // 1_000_000,
         )
-        if state.clock is not None
+        if state.clock is not None and include
         else None
     )
-    return view
+    return {
+        "clock": clock,
+        "starting_position": (
+            position_view(state, str(for_hero_id) if for_hero_id else None) if include else None
+        ),
+    }
 
 
 def _build_unresolved_cards_view(
@@ -191,20 +308,41 @@ def _build_unresolved_cards_view(
 
 
 def _build_team_view(
-    state: GameState, team, for_hero_id: HeroID | None, reveal_all: bool = False
+    state: GameState,
+    team,
+    for_hero_id: HeroID | None,
+    reveal_all: bool = False,
+    hero_views: dict[tuple[str, bool], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a view for a single team."""
+    heroes = []
+    for hero in team.heroes:
+        # Capture batches share public hero projections across recipients.
+        # Exclude omniscient mode, whose second-card permissions depend on the
+        # requesting hero in addition to reveal_all.
+        key = (str(hero.id), hero.id == for_hero_id)
+        if hero_views is not None and not reveal_all:
+            if key not in hero_views:
+                hero_views[key] = _build_hero_view(state, hero, for_hero_id)
+            heroes.append(hero_views[key])
+        else:
+            heroes.append(_build_hero_view(state, hero, for_hero_id, reveal_all))
     return {
         "color": team.color.value,
         "life_counters": team.life_counters,
         "starting_life_counters": team.starting_life_counters,
-        "heroes": [_build_hero_view(state, hero, for_hero_id, reveal_all) for hero in team.heroes],
+        "heroes": heroes,
         "minions": [_build_minion_view(minion) for minion in team.minions],
     }
 
 
 def _build_hero_view(
-    state: GameState, hero: Hero, for_hero_id: HeroID | None, reveal_all: bool = False
+    state: GameState,
+    hero: Hero,
+    for_hero_id: HeroID | None,
+    reveal_all: bool = False,
+    *,
+    card_cache: HeroViewCache | None = None,
 ) -> dict[str, Any]:
     """
     Build a view for a single hero.
@@ -215,6 +353,7 @@ def _build_hero_view(
     - Discard pile: Always visible (public info)
     """
     is_own_hero = reveal_all or hero.id == for_hero_id
+    card_view = card_cache.card if card_cache is not None else _build_card_view
 
     # Until the Level Up phase ends, another hero's items come from the
     # pre-phase snapshot: a live item pip announces what they just picked.
@@ -253,14 +392,12 @@ def _build_hero_view(
         # Rune slots (Snorri): public to all viewers, including opponents/spectators
         "rune_slots": {str(k): v.value for k, v in hero.rune_slots.items()},
         # Hand: Own hero sees all, others see empty array
-        "hand": (
-            [_build_card_view(card, is_own_hero=True) for card in hero.hand] if is_own_hero else []
-        ),
+        "hand": ([card_view(card, is_own_hero=True) for card in hero.hand] if is_own_hero else []),
         # Public count so other clients can draw the held-hand fan of card backs.
         "hand_size": len(hero.hand),
         # Deck: Own hero sees full deck, others see count only
         "deck": (
-            [_build_card_view(card, is_own_hero=is_own_hero) for card in hero.deck]
+            [card_view(card, is_own_hero=is_own_hero) for card in hero.deck]
             if is_own_hero
             else {"count": len(hero.deck)}
         ),
@@ -268,23 +405,23 @@ def _build_hero_view(
         # are faceup public information for every viewer.
         "spellbook": (
             (
-                [_build_card_view(spell, is_own_hero=True) for spell in hero.spellbook]
+                [card_view(spell, is_own_hero=True) for spell in hero.spellbook]
                 if is_own_hero
                 else {"count": len(hero.spellbook)}
             )
             if hero.spells
             else None
         ),
-        "cast_spells": [_build_card_view(spell, is_own_hero=True) for spell in hero.cast_spells],
+        "cast_spells": [card_view(spell, is_own_hero=True) for spell in hero.cast_spells],
         # Played cards: faceup ones are public; facedown ones are hidden from
         # everyone, the owner included (see _build_card_view_outside_hand)
         "played_cards": [
-            _build_card_view_outside_hand(card, is_own_hero=is_own_hero)
+            _build_card_view_outside_hand(card, is_own_hero=is_own_hero, render=card_view)
             for card in hero.played_cards
         ],
         # Current turn card: Own hero sees all, others see faceup only
         "current_turn_card": (
-            _build_card_view(hero.current_turn_card, is_own_hero=is_own_hero)
+            card_view(hero.current_turn_card, is_own_hero=is_own_hero)
             if hero.current_turn_card
             else None
         ),
@@ -292,7 +429,7 @@ def _build_hero_view(
         # commit during two-card Planning, then the second revealed card until
         # the retrieve choice.
         "extra_turn_card": (
-            _build_card_view(extra_turn_card, is_own_hero=is_own_hero) if extra_turn_card else None
+            card_view(extra_turn_card, is_own_hero=is_own_hero) if extra_turn_card else None
         ),
         # Two-card Planning (Emmitt's Alternative Timelines): True only for the
         # requesting hero while they may still commit a second card or call
@@ -300,13 +437,12 @@ def _build_hero_view(
         "can_commit_second_card": can_commit_second_card,
         # Discard pile: public info, except facedown cards (hidden from everyone)
         "discard_pile": [
-            _build_card_view_outside_hand(card, is_own_hero=True) for card in hero.discard_pile
+            _build_card_view_outside_hand(card, is_own_hero=True, render=card_view)
+            for card in hero.discard_pile
         ],
         # Ultimate card: Own hero sees it, others see faceup only
         "ultimate_card": (
-            _build_card_view(hero.ultimate_card, is_own_hero=is_own_hero)
-            if hero.ultimate_card
-            else None
+            card_view(hero.ultimate_card, is_own_hero=is_own_hero) if hero.ultimate_card else None
         ),
     }
 
@@ -323,7 +459,10 @@ def _build_minion_view(minion: Minion) -> dict[str, Any]:
 
 
 def _build_card_view_outside_hand(
-    card: Card | None, is_own_hero: bool = True
+    card: Card | None,
+    is_own_hero: bool = True,
+    *,
+    render: Callable[..., dict | None] | None = None,
 ) -> dict[str, Any] | None:
     """Card view for the discard pile and the resolved slots.
 
@@ -333,7 +472,7 @@ def _build_card_view_outside_hand(
     """
     if card is None:
         return None
-    return _build_card_view(card, is_own_hero=is_own_hero and not card.is_facedown)
+    return (render or _build_card_view)(card, is_own_hero=is_own_hero and not card.is_facedown)
 
 
 def _build_card_view(card: Card | None, is_own_hero: bool = True) -> dict[str, Any] | None:
@@ -488,11 +627,24 @@ def _build_card_reveal_view(state: GameState) -> dict[str, Any] | None:
     }
 
 
-def _build_board_view(state: GameState) -> dict[str, Any]:
+def _build_board_view(state: GameState, *, tile_cache: dict | None = None) -> dict[str, Any]:
     """Build a view of the board (public info)."""
     # Get all tiles with occupant info
     tiles_view = {}
+    next_tiles = {}
     for hex_obj, tile in state.board.tiles.items():
+        if tile_cache is not None:
+            signature = (
+                tile.zone_id,
+                tile.is_terrain,
+                tile.occupant_id,
+                to_json(tile.spawn_point) if tile.spawn_point is not None else None,
+            )
+            previous = tile_cache.get(hex_obj)
+            if previous is not None and previous[0] == signature:
+                tiles_view[previous[1]] = previous[2]
+                next_tiles[hex_obj] = previous
+                continue
         tile_id = f"{hex_obj.q}_{hex_obj.r}_{hex_obj.s}"
         tile_data = {
             "hex": {"q": hex_obj.q, "r": hex_obj.r, "s": hex_obj.s},
@@ -517,13 +669,19 @@ def _build_board_view(state: GameState) -> dict[str, Any]:
             ),
         }
         tiles_view[tile_id] = tile_data
+        if tile_cache is not None:
+            next_tiles[hex_obj] = (signature, tile_id, tile_data)
+
+    if tile_cache is not None:
+        tile_cache.clear()
+        tile_cache.update(next_tiles)
 
     # Get zone info
     zones_view = {}
     for zone in state.board.zones.values():
         zones_view[zone.id] = {
             "id": zone.id,
-            "neighbors": zone.neighbors,
+            "neighbors": list(zone.neighbors),
             "spawn_points": [
                 {
                     "location": {

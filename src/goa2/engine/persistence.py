@@ -14,9 +14,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from pydantic_core import PydanticSerializationError, to_json
+
 # Ensure step_types patching is applied before any serialization
 import goa2.engine.step_types as _step_types  # noqa: F401
 from goa2.domain.models import GamePhase
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack
 from goa2.engine.session import GameSession
@@ -38,6 +41,9 @@ def save_game(
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
     replay_log: list[dict[str, Any]] | None = None,
+    live_history: dict[str, Any] | None = None,
+    rollback_anchor_id: str | None = None,
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -48,9 +54,12 @@ def save_game(
         "hero_to_token": hero_to_token,
         "hero_names": hero_names or {},
         "created_at": created_at,
-        "state": state.model_dump(mode="json"),
+        "state": state,
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
+        "rollback_anchor_id": rollback_anchor_id,
+        "live_history": live_history,
+        "history_scope": history_scope,
     }
     if replay_log is not None:
         payload["replay_log"] = replay_log
@@ -61,12 +70,16 @@ def save_game(
     # Atomic write: write to temp file then rename
     fd, tmp_path = tempfile.mkstemp(dir=save_dir, suffix=".tmp")
     try:
-        # Serialize whole, then write once. json.dump() streams the document
-        # through thousands of small f.write() calls; on a ~210 KB save that
-        # costs ~10 ms against ~1.8 ms here (~40 ms vs ~9 ms on the deployment
-        # target), and this runs after every single game mutation.
-        with os.fdopen(fd, "w") as f:
-            f.write(json.dumps(payload))
+        # Pydantic can serialize the model directly to JSON bytes. Avoid first
+        # allocating a complete Python state tree, then traversing it again
+        # with json.dumps(). Preserve ASCII escapes used by existing saves so
+        # legacy readers using their platform encoding remain compatible.
+        with os.fdopen(fd, "wb") as f:
+            try:
+                encoded = to_json(payload, ensure_ascii=True)
+            except PydanticSerializationError as exc:
+                raise TypeError(str(exc)) from exc
+            f.write(encoded)
         os.replace(tmp_path, target)
     except BaseException:
         # Clean up temp file on failure
@@ -97,6 +110,8 @@ def load_game(file_path: str) -> dict[str, Any]:
     # mid-action rollback survives a restart.
     session._rollback_snapshot = payload.get("rollback_snapshot")
     session._rollback_actor_id = payload.get("rollback_actor_id")
+    if session._rollback_snapshot is not None and payload.get("rollback_anchor_id"):
+        session.rollback_anchor_id = payload["rollback_anchor_id"]
 
     # Re-derive last_result by processing the stack. In the server, saves
     # happen after mutations, so the stack either has a step waiting for input
@@ -129,6 +144,8 @@ def load_game(file_path: str) -> dict[str, Any]:
         # Absent from saves written before the save carried the replay log, and
         # from games whose log was already damaged when it would have been adopted.
         "replay_log": payload.get("replay_log"),
+        "live_history": payload.get("live_history"),
+        "history_scope": HistoryScope(payload.get("history_scope", HistoryScope.CURRENT_ROUND)),
     }
 
 

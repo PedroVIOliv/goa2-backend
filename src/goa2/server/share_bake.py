@@ -48,8 +48,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
 
     from goa2.server import shares
     from goa2.server.replay import (
-        _apply_decision,
-        build_session_from_setup,
+        ReplayCursor,
         effective_decisions,
         load_replay,
         state_body,
@@ -61,16 +60,12 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
     # timeline the forward walk below can bake, and never simulates a decision
     # the table voted away.
     decisions = effective_decisions(raw)
-    session = build_session_from_setup(setup)
-    applied = 0
+    cursor = ReplayCursor(setup, decisions)
 
     def render(index: int) -> dict[str, Any]:
-        nonlocal applied
-        # bake_share renders 0..len(decisions) in order, so a single forward walk
-        # suffices; no position is ever rebuilt from the seed.
-        while applied < index:
-            _apply_decision(session, decisions[applied])
-            applied += 1
+        # The same cursor drives admin replay, shared baking and history
+        # reconstruction. Sequential rendering never needs a backward rebuild.
+        session = cursor.seek(index)
         return state_body(session, cursor_index=index, total=len(decisions))
 
     try:
@@ -81,7 +76,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
             render=render,
             # Only known once every decision is applied, so it gates publication
             # rather than gating the walk.
-            validate=lambda: winner_of(session.state) is not None,
+            validate=lambda: winner_of(cursor.session.state) is not None,
             share_dir=share_dir,
         )
     except Exception as e:
@@ -92,7 +87,7 @@ def bake_replay_share(replay_path: str, game_id: str, share_dir: str) -> BakeRes
         return {
             "ok": False,
             "reason": "drift",
-            "at": applied,
+            "at": cursor.cursor,
             "error": f"{type(e).__name__}: {e}" if not isinstance(e, ValueError) else str(e),
         }
 

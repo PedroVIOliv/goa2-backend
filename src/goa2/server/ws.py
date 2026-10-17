@@ -223,6 +223,8 @@ def _build_state_update(
         "type": "STATE_UPDATE",
         "view": view,
     }
+    if game.history is not None:
+        msg["history"] = game.history.metadata_for_view(view, hero_id)
     input_request = input_request_for_viewer(ir, game.session.state, hero_id)
     if input_request:
         msg["input_request"] = input_request
@@ -1049,6 +1051,7 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                     sender_reply_sent = False
                     send_ms = 0.0
                     async with game.lock:
+                        before_decision = game.history.raw_count if game.history else 0
                         timer_events = (
                             prepare_timed_mutation(game, registry=registry)
                             if msg_type in MUTATION_MESSAGE_TYPES and msg_type != "SET_READY"
@@ -1116,7 +1119,13 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                             }
 
                         if msg_type in MUTATION_MESSAGE_TYPES and not lost_deadline_race:
-                            finalize_timed_mutation(game, registry)
+                            finalize_timed_mutation(
+                                game,
+                                registry,
+                                captured_after=(
+                                    before_decision if reply.get("type") != "ERROR" else None
+                                ),
+                            )
 
                         # Materialize both the direct reply and every scoped
                         # broadcast while they still describe this mutation.

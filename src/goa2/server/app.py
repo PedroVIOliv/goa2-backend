@@ -96,6 +96,9 @@ async def lifespan(app: FastAPI):
             warmup_task.cancel()
             with suppress(asyncio.CancelledError, Exception):
                 await warmup_task
+        from goa2.server.history_backfill import stop_backfills
+
+        await stop_backfills(registry)
         shutdown_heavy_pool()
         await stop_timers(registry)
         cleanup_task.cancel()
@@ -123,6 +126,9 @@ def create_app() -> FastAPI:
     # Routers
     app.include_router(heroes_router)
     app.include_router(games_router)
+    from goa2.server.routes_history import router as history_router
+
+    app.include_router(history_router)
     app.include_router(overrides_router)
     app.include_router(bug_reports_router)
     app.include_router(draft_router)

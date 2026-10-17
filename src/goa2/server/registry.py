@@ -7,15 +7,18 @@ import logging
 import os
 import time
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from fastapi import WebSocket
 
+from goa2.domain.models.enums import HistoryScope
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
+from goa2.server.live_history import FORMAT, LiveHistory, history_directory
 from goa2.server.replay import ReplayRecorder, create_replay_recorder
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,8 @@ class ManagedGame:
     spectator_ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     game_logger: GameLogger | None = None
     replay_recorder: ReplayRecorder | None = None
+    history: LiveHistory | None = None
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND
     timer_task: asyncio.Task[None] | None = None
     # Consensus-override negotiation state. Coordination, not game state:
     # never saved, never in views; unresolved proposals die on restart.
@@ -78,6 +83,7 @@ class GameRegistry:
         hero_ids: list[str],
         game_id: str | None = None,
         hero_names: dict[str, str] | None = None,
+        history_scope: HistoryScope = HistoryScope.CURRENT_ROUND,
     ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
         game_id = game_id or uuid.uuid4().hex[:12]
@@ -97,15 +103,34 @@ class GameRegistry:
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
             hero_names=hero_names or {},
+            history_scope=HistoryScope(history_scope),
             game_logger=create_game_logger(game_id),
             replay_recorder=create_replay_recorder(game_id),
         )
         self._games[game_id] = game
+        self._bind_history(game)
 
         if self._save_dir:
             self.save_game(game_id)
 
         return game
+
+    def _bind_history(self, game: ManagedGame) -> None:
+        if game.history is None:
+            directory = history_directory(self._save_dir, game.game_id) if self._save_dir else None
+            game.history = LiveHistory(directory, scope=game.history_scope)
+            count = game.replay_recorder.decision_count if game.replay_recorder else 0
+            game.history.capture_safely(game.session, count)
+            if count:
+                game.history.backfill_status = "pending"
+        game.history.scope = game.history_scope
+        if game.replay_recorder:
+
+            def capture(record: dict, count: int) -> None:
+                assert game.history is not None
+                game.history.capture_safely(game.session, count, record)
+
+            game.replay_recorder.on_decision = capture
 
     def get(self, game_id: str) -> ManagedGame:
         """Get a game by ID or raise GameNotFoundError."""
@@ -136,9 +161,21 @@ class GameRegistry:
             from goa2.engine.persistence import delete_game_save
 
             delete_game_save(game_id, self._save_dir)
+            import shutil
 
-    def save_game(self, game_id: str) -> None:
-        """Persist a game to disk. No-op if save_dir is not configured."""
+            directory = history_directory(self._save_dir, game_id)
+            if directory.is_dir():
+                # Hashed identifier, confined to this save directory's history root.
+                assert directory.resolve().parent == (Path(self._save_dir) / ".history").resolve()
+                shutil.rmtree(directory)
+
+    def save_game(self, game_id: str, *, captured_after: int | None = None) -> None:
+        """Persist a game to disk. No-op if save_dir is not configured.
+
+        Successful mutation coordinators may supply their starting decision
+        count when all visible changes were captured by the recorder. Direct
+        saves retain the conservative projection fallback by default.
+        """
         if not self._save_dir:
             return
         game = self._games.get(game_id)
@@ -146,6 +183,44 @@ class GameRegistry:
             return
         from goa2.engine.persistence import save_game
 
+        self._bind_history(game)
+        assert game.history is not None
+        count = (
+            game.replay_recorder.decision_count if game.replay_recorder else game.history.raw_count
+        )
+        already_captured = (
+            captured_after is not None
+            and count > captured_after
+            and game.history.raw_count == count
+            and game.history.builder is not None
+        )
+        if not already_captured:
+            game.history.capture_safely(game.session, count)
+        history_saved = False
+        manifest: dict[str, Any] | None
+        try:
+            manifest = game.history.prepare_manifest()
+            history_saved = True
+        except Exception:
+            logger.exception("Failed to persist live history for %s", game_id)
+            game.history.note_gap(count)
+            manifest = deepcopy(game.history.last_manifest)
+            if manifest is not None:
+                # Preserve allocated IDs and correction metadata, while only
+                # referencing previously committed files/active positions.
+                for name in (
+                    "records",
+                    "edits",
+                    "anchors",
+                    "revision",
+                    "epoch",
+                    "raw_count",
+                    "gaps",
+                ):
+                    manifest[name] = deepcopy(getattr(game.history, name))
+                manifest["backfill_status"] = "pending"
+                manifest["last_anchor"] = list(game.history._last_anchor)
+                manifest["format"] = FORMAT
         try:
             save_game(
                 game_id=game.game_id,
@@ -159,7 +234,13 @@ class GameRegistry:
                 rollback_snapshot=game.session._rollback_snapshot,
                 rollback_actor_id=game.session._rollback_actor_id,
                 replay_log=game.replay_recorder.records if game.replay_recorder else None,
+                live_history=manifest,
+                rollback_anchor_id=game.session.rollback_anchor_id,
+                history_scope=game.history_scope,
             )
+            game.history.last_manifest = manifest
+            if manifest is not None and history_saved:
+                game.history.committed()
         except Exception:
             logger.exception("Failed to save game %s", game_id)
 
@@ -188,12 +269,49 @@ class GameRegistry:
                 spectator_token=data["spectator_token"],
                 hero_to_token=data["hero_to_token"],
                 hero_names=data["hero_names"],
+                history_scope=data["history_scope"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
                 replay_recorder=replay_recorder,
             )
             self._games[game.game_id] = game
+            if data.get("live_history"):
+                try:
+                    game.history = LiveHistory.restore(
+                        history_directory(self._save_dir, game.game_id),
+                        data["live_history"],
+                        scope=game.history_scope,
+                    )
+                    game.history.last_manifest = data["live_history"]
+                except Exception:
+                    logger.exception("Failed to restore history for %s", game.game_id)
+                    # Reserve previously issued IDs even if this server cannot
+                    # read the old group format. Rebuild a new baseline/prefix.
+                    previous = data["live_history"]
+                    game.history = LiveHistory(
+                        history_directory(self._save_dir, game.game_id), scope=game.history_scope
+                    )
+                    game.history.records = deepcopy(previous.get("records", []))
+                    game.history.revision = previous.get("revision", 0)
+                    game.history.epoch = previous.get("epoch", 0) + 1
+                    game.history.raw_count = previous.get("raw_count", 0)
+                    game.history.backfill_status = "pending"
+            if game.history is not None and replay_recorder.decision_count < game.history.raw_count:
+                # Captured history is independently durable. Losing/truncating
+                # the audit log must not reset accepted-decision numbering or
+                # make its partial prefix look like a usable full replay.
+                logger.warning("Replay prefix missing for restored game %s", game.game_id)
+                replay_recorder.records = None
+                replay_recorder.decision_count = game.history.raw_count
+            self._bind_history(game)
+            assert game.history is not None
+            if game.history._legacy_anchor:
+                game.history.bind_session(game.session, legacy=True)
+                game.history._legacy_anchor = False
+            game.history.capture_safely(game.session, replay_recorder.decision_count)
+            if not data.get("live_history"):
+                game.history.backfill_status = "pending"
             count += 1
             logger.info("Restored game %s", game.game_id)
 
