@@ -584,6 +584,72 @@ def test_upgrade_input_rejects_tier_skip(upgrade_state):
     assert upgrade_state.pending_upgrades["h1"] == 1  # slot not consumed
 
 
+@pytest.mark.parametrize("card_ids", [["r2a", "b2a"], ["b2a", "r2a"]])
+def test_upgrade_batch_spends_multiple_slots(upgrade_state, card_ids):
+    upgrade_state.pending_upgrades["h1"] = 2
+    step = ResolveUpgradesStep(pending_input={"selection": {"hero_id": "h1", "card_ids": card_ids}})
+    step.resolve(upgrade_state, {})
+    hero = upgrade_state.get_hero("h1")
+    assert set(card_ids).issubset({c.id for c in hero.hand})
+    assert "h1" not in upgrade_state.pending_upgrades
+    assert sum(hero.items.values()) == 2
+
+
+@pytest.mark.parametrize(
+    "card_ids",
+    [
+        [],
+        ["r2a", "r2a"],
+        ["r2a", "r2b"],
+        ["r2a", "unknown"],
+        ["r2a", {}],
+        "r2a",
+        ["r2a", "b2a", "r2b"],
+    ],
+)
+def test_invalid_upgrade_batch_spends_nothing(upgrade_state, card_ids):
+    upgrade_state.pending_upgrades["h1"] = 2
+    hero = upgrade_state.get_hero("h1")
+    before = hero.model_dump()
+    step = ResolveUpgradesStep(pending_input={"selection": {"hero_id": "h1", "card_ids": card_ids}})
+    result = step.resolve(upgrade_state, {})
+    assert result.requires_input
+    assert hero.model_dump() == before
+    assert upgrade_state.pending_upgrades["h1"] == 2
+
+
+def test_partial_upgrade_batch_returns_remaining_count(upgrade_state):
+    upgrade_state.pending_upgrades["h1"] = 3
+    step = ResolveUpgradesStep(
+        pending_input={"selection": {"hero_id": "h1", "card_ids": ["r2a", "b2a"]}}
+    )
+    result = step.resolve(upgrade_state, {})
+    assert result.input_request.context["players"]["h1"]["remaining"] == 1
+
+
+@pytest.mark.parametrize("other_colors_at_tier_one", [True, False])
+def test_upgrade_batch_rechecks_tiers_between_choices(upgrade_state, other_colors_at_tier_one):
+    hero = upgrade_state.get_hero("h1")
+    template = next(c for c in hero.deck if c.id == "r2a")
+    hero.deck.extend(
+        [template.model_copy(update={"id": cid, "tier": CardTier.III}) for cid in ["r3a", "r3b"]]
+    )
+    if not other_colors_at_tier_one:
+        hero.hand = [c for c in hero.hand if c.color == CardColor.RED]
+    upgrade_state.pending_upgrades["h1"] = 2
+    before = hero.model_dump()
+    step = ResolveUpgradesStep(
+        pending_input={"selection": {"hero_id": "h1", "card_ids": ["r2a", "r3a"]}}
+    )
+    step.resolve(upgrade_state, {})
+    if other_colors_at_tier_one:
+        assert hero.model_dump() == before
+        assert upgrade_state.pending_upgrades["h1"] == 2
+    else:
+        assert [c.id for c in hero.hand] == ["r3a"]
+        assert "h1" not in upgrade_state.pending_upgrades
+
+
 def test_upgrade_input_accepts_legal_option(upgrade_state):
     """The valid path is unchanged: a legal offered option is applied."""
     upgrade_state.pending_upgrades["h1"] = 1

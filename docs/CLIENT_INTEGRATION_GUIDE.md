@@ -1431,6 +1431,38 @@ pending chooser cannot read what the others took. They jump to their real values
 for everyone once the last upgrade is submitted; a hero always sees their own
 choice applied immediately.
 
+### Batched upgrades and Snorri rune placement
+
+The REST `/games/{game_id}/input` endpoint and WebSocket `SUBMIT_INPUT`
+both accept the following batch selections. Echo the current `request_id`.
+Existing single-choice payloads remain supported.
+
+For `UPGRADE_PHASE`, send one hero's ordered upgrade choices:
+
+```json
+{"request_id": "<request_id>", "selection": {"hero_id": "hero_arien", "card_ids": ["<first_card_id>", "<second_card_id>"]}}
+```
+
+The request includes `supports_batch: true`. Submit between one and that hero's
+`players[hero_id].remaining` choices. Each card must be legal after the preceding
+choices have been applied: finish the lowest card tier before moving to the next.
+Do not send both `card_id` and `card_ids`. Only the authenticated hero's upgrades
+can be selected. An invalid batch spends no upgrades and returns a fresh prompt.
+Partial batches leave the hero waiting for their remaining upgrades.
+
+Snorri's **Inscribe the Runes** `SELECT_OPTION` prompt includes
+`supports_batch: true`, `next_slot`, and `max_selections`. Send distinct remaining
+rune IDs in slot order, starting at `next_slot`:
+
+```json
+{"request_id": "<request_id>", "selection": ["axe", "bird", "anvil", "horn"]}
+```
+
+One or more runes may be submitted together. If only one remains, it is placed
+automatically. Empty batches, duplicate runes, unknown runes, or already placed
+runes reject the whole batch and leave prior choices intact. The final arrangement
+emits one `RUNES_PLACED` event. Other rune-choice prompts still take one rune.
+
 ### How to respond
 
 **Via REST:**

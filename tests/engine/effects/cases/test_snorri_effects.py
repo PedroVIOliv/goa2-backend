@@ -110,6 +110,57 @@ def test_inscribe_places_four_runes_with_choice():  # H1
     assert "RUNES_PLACED" in [e.event_type.value for e in run.events]
 
 
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    "runes",
+    [
+        ["horn", "axe", "bird", "anvil"],
+        ["horn", "axe", "bird"],
+    ],
+)
+def test_inscribe_places_ordered_batch(runes):
+    state = snorri_state("inscribe_the_runes")
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input("SELECT_OPTION").choose(runes).finish()
+    assert state.get_hero("hero_snorri").rune_slots == {
+        1: RuneType.HORN,
+        2: RuneType.AXE,
+        3: RuneType.BIRD,
+        4: RuneType.ANVIL,
+    }
+    events = [e for e in run.events if e.event_type == GameEventType.RUNES_PLACED]
+    assert len(events) == 1
+
+
+@pytest.mark.effect_flow
+@pytest.mark.parametrize(
+    "runes",
+    [
+        [],
+        ["bird", "bird"],
+        ["bird", "unknown"],
+        ["bird", {}],
+        ["bird", "axe"],
+    ],
+)
+def test_inscribe_invalid_batch_preserves_previous_choices(runes):
+    state = snorri_state("inscribe_the_runes")
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input("SELECT_OPTION").choose("axe")
+    run.expect_input("SELECT_OPTION").choose(runes)
+    run.expect_input("SELECT_OPTION")
+    assert run.latest_request.context["next_slot"] == 2
+    run.choose(["horn", "anvil", "bird"]).finish()
+    assert state.get_hero("hero_snorri").rune_slots == {
+        1: RuneType.AXE,
+        2: RuneType.HORN,
+        3: RuneType.ANVIL,
+        4: RuneType.BIRD,
+    }
+
+
 @pytest.mark.effect_contract
 def test_inscribe_rune_slots_public_to_opponent():  # H2
     state = snorri_state("inscribe_the_runes")

@@ -2505,14 +2505,26 @@ class ResolveUpgradesStep(GameStep):
             selection = self.pending_input.get("selection")
             if isinstance(selection, dict):
                 hero_id = selection.get("hero_id")
-                card_id = selection.get("card_id")
-                # UPGRADE_PHASE is a 'simultaneous' request and hero_id/card_id
-                # come straight from the client. Only apply an upgrade the hero
-                # actually earned (has a pending slot) and was actually offered
-                # (a legal option) — otherwise a client could grant a free extra
-                # upgrade or skip tiers to a higher-tier deck card.
-                if hero_id and card_id and self._is_legal_upgrade(state, hero_id, card_id):
-                    apply_hero_upgrade(state, hero_id, card_id)
+                card_ids = selection.get("card_ids", [selection.get("card_id")])
+                if (
+                    isinstance(hero_id, str)
+                    and isinstance(card_ids, list)
+                    and 0 < len(card_ids) <= state.pending_upgrades.get(hero_id, 0)
+                    and all(isinstance(card_id, str) for card_id in card_ids)
+                    and not ("card_ids" in selection and "card_id" in selection)
+                ):
+                    # Later choices depend on earlier upgrades (including tier
+                    # restrictions). Validate the entire batch on a copy before
+                    # changing the live hero, so an invalid suffix spends nothing.
+                    preview = state.model_copy(deep=True) if len(card_ids) > 1 else state
+                    for card_id in card_ids:
+                        if not self._is_legal_upgrade(preview, hero_id, card_id):
+                            break
+                        if preview is not state:
+                            apply_hero_upgrade(preview, hero_id, card_id)
+                    else:
+                        for card_id in card_ids:
+                            apply_hero_upgrade(state, hero_id, card_id)
             self.pending_input = None
 
         if not state.pending_upgrades:
@@ -2532,6 +2544,7 @@ class ResolveUpgradesStep(GameStep):
                 player_id="simultaneous",
                 prompt="Mandatory Upgrade Phase",
                 players=broadcast_data,
+                supports_batch=True,
             ),
         )
 

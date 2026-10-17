@@ -46,6 +46,100 @@ def _auth(token: str) -> dict:
 # ---- /heroes ----
 
 
+@pytest.mark.parametrize("transport", ["rest", "websocket"])
+@pytest.mark.parametrize("choice", ["upgrades", "runes"])
+def test_submit_batch_input(client, transport, choice):
+    from goa2.domain.models import GamePhase, RuneType
+    from goa2.engine.handler import push_steps
+    from goa2.engine.steps import PlaceRunesStep, ResolveUpgradesStep
+
+    hero_name = "Arien" if choice == "upgrades" else "Snorri"
+    hero_id = f"hero_{hero_name.lower()}"
+    data = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": [hero_name],
+            "blue_heroes": ["Wasp"],
+        },
+    ).json()
+    gid = data["game_id"]
+    token = _token_for(data, hero_id)
+    game = client.app.state.registry.get(gid)
+    state = game.session.state
+    if choice == "upgrades":
+        state.phase = GamePhase.LEVEL_UP
+        state.pending_upgrades[hero_id] = 2
+        step = ResolveUpgradesStep()
+        options = step._get_upgrade_options(state, hero_id)
+        card_ids = [option["pair"][0] for option in options[:2]]
+        assert len(card_ids) == 2
+        selection = {"hero_id": hero_id, "card_ids": card_ids}
+    else:
+        state.phase = GamePhase.RESOLUTION
+        step = PlaceRunesStep(hero_id=hero_id)
+        selection = ["horn", "axe", "bird", "anvil"]
+    push_steps(state, [step])
+    game.last_result = game.session.advance()
+    request = game.last_result.input_request
+    assert request.context["supports_batch"] is True
+    payload = {"request_id": request.id, "selection": selection}
+
+    if transport == "rest":
+        response = client.post(f"/games/{gid}/input", json=payload, headers=_auth(token))
+        assert response.status_code == 200, response.text
+    else:
+        with client.websocket_connect(f"/games/{gid}/ws?token={token}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "SUBMIT_INPUT", **payload})
+            assert ws.receive_json()["type"] == "ACTION_RESULT"
+            assert ws.receive_json()["type"] == "STATE_UPDATE"
+
+    hero = state.get_hero(hero_id)
+    if choice == "upgrades":
+        assert hero_id not in state.pending_upgrades
+        assert set(card_ids).issubset({card.id for card in hero.hand})
+        assert state.phase == GamePhase.PLANNING
+    else:
+        assert hero.rune_slots == {
+            1: RuneType.HORN,
+            2: RuneType.AXE,
+            3: RuneType.BIRD,
+            4: RuneType.ANVIL,
+        }
+
+
+@pytest.mark.parametrize("transport", ["rest", "websocket"])
+def test_upgrade_batch_cannot_choose_for_another_hero(client, game_data, transport):
+    from goa2.domain.models import GamePhase
+    from goa2.engine.handler import push_steps
+    from goa2.engine.steps import ResolveUpgradesStep
+
+    gid = game_data["game_id"]
+    token = _token_for(game_data, "hero_wasp")
+    game = client.app.state.registry.get(gid)
+    state = game.session.state
+    state.phase = GamePhase.LEVEL_UP
+    state.pending_upgrades["hero_arien"] = 2
+    step = ResolveUpgradesStep()
+    card_ids = [opt["pair"][0] for opt in step._get_upgrade_options(state, "hero_arien")[:2]]
+    push_steps(state, [step])
+    game.last_result = game.session.advance()
+    payload = {
+        "request_id": game.last_result.input_request.id,
+        "selection": {"hero_id": "hero_arien", "card_ids": card_ids},
+    }
+    if transport == "rest":
+        response = client.post(f"/games/{gid}/input", json=payload, headers=_auth(token))
+        assert response.status_code == 403
+    else:
+        with client.websocket_connect(f"/games/{gid}/ws?token={token}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "SUBMIT_INPUT", **payload})
+            assert ws.receive_json()["type"] == "ERROR"
+    assert state.pending_upgrades["hero_arien"] == 2
+
+
 def test_list_heroes(client):
     resp = client.get("/heroes")
     assert resp.status_code == 200

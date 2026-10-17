@@ -1065,7 +1065,7 @@ class RemoveMarkerStep(GameStep):
 
 class PlaceRunesStep(GameStep):
     """Snorri's Inscribe the Runes: place one rune below each of the 4 turn
-    slots via up to 3 sequential SELECT_OPTION prompts (the 4th and last
+    slots via ordered batches or sequential SELECT_OPTION prompts (the last
     rune is auto-placed, since there is only one left to choose from).
 
     Overwrites ``hero.rune_slots`` entirely once all 4 runes are placed
@@ -1089,11 +1089,17 @@ class PlaceRunesStep(GameStep):
             selection = self.pending_input.get("selection")
             self.pending_input = None
             try:
-                chosen = RuneType(str(selection))
-            except ValueError:
-                chosen = None
-            if chosen is not None and chosen not in self.placed.values():
-                self.placed[len(self.placed) + 1] = chosen
+                values = selection if isinstance(selection, list) else [selection]
+                chosen = [RuneType(value) for value in values]
+            except (ValueError, TypeError):
+                chosen = []
+            if (
+                chosen
+                and len(chosen) == len(set(chosen))
+                and not set(chosen).intersection(self.placed.values())
+            ):
+                for rune in chosen:
+                    self.placed[len(self.placed) + 1] = rune
 
         remaining = [rune for rune in RuneType if rune not in self.placed.values()]
         if len(remaining) == 1:
@@ -1132,5 +1138,8 @@ class PlaceRunesStep(GameStep):
                 player_id=player_id,
                 prompt=f"Place a rune below turn slot {slot}",
                 options=[InputOption(id=rune.value, text=rune.value.title()) for rune in remaining],
+                supports_batch=True,
+                next_slot=slot,
+                max_selections=len(remaining),
             ),
         )
