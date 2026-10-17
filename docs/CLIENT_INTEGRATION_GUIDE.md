@@ -2388,6 +2388,11 @@ backoff or the receiver's numeric `Retry-After` delay. Other non-success respons
 including redirects, stop that delivery. Exhausted deliveries are logged without
 destination credentials.
 
+Connection failures fall back to other validated DNS addresses within the same
+attempt, sharing its connection-time budget. Requests retain the original TLS
+hostname and HTTP host when trying another address. Callback cookies are neither
+stored nor sent, keeping destinations isolated even when they share an IP address.
+
 Delivery is best effort: pending messages are lost on restart/shutdown or game
 removal, and retries can duplicate delivery. JSON receivers should deduplicate
 using `event_id` (also supplied in the header). A game can queue at most 100

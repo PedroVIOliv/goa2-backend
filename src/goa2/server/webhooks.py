@@ -15,6 +15,7 @@ from collections import deque
 from contextlib import suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
@@ -148,9 +149,31 @@ def waiting_heroes(game: ManagedGame) -> list[str]:
     return [str(state.current_actor_id)] if state.current_actor_id is not None else []
 
 
+def _without_step_input(value: Any) -> Any:
+    """Ignore correlation IDs and buffered submissions, including on nested steps.
+
+    A rejected selection can remain in pending_input when the same prompt is
+    reissued. Accepted choices change the step's progress or execution context.
+    """
+    if isinstance(value, list):
+        return [_without_step_input(item) for item in value]
+    if isinstance(value, dict):
+        is_step = "step_id" in value and "type" in value
+        return {
+            key: _without_step_input(item)
+            for key, item in value.items()
+            if not (is_step and key in {"pending_request_id", "pending_input"})
+        }
+    return value
+
+
 def _fingerprint(game: ManagedGame) -> str:
     state = game.session.state
     data = state.model_dump(mode="json", exclude={"clock"})
+    data["execution_stack"] = _without_step_input(data["execution_stack"])
+    data["input_stack"] = [
+        request.model_dump(mode="json", exclude={"id"}) for request in state.input_stack
+    ]
     request = game.last_result.input_request if game.last_result else None
     data["server_input_request"] = (
         request.model_dump(mode="json", exclude={"id"}) if request else None
@@ -258,12 +281,12 @@ def observe_game(game: ManagedGame, *, baseline_only: bool = False) -> dict[str,
     return payload
 
 
-async def resolve_public_address(host: str, port: int) -> str:
+async def resolve_public_addresses(host: str, port: int) -> list[str]:
     answers = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    addresses = [answer[4][0] for answer in answers]
+    addresses = list(dict.fromkeys(answer[4][0] for answer in answers))
     if not addresses or not all(_public_ip(address) for address in addresses):
         raise ValueError("webhook destination did not resolve exclusively to public addresses")
-    return addresses[0]
+    return addresses
 
 
 class WebhookDispatcher:
@@ -271,6 +294,9 @@ class WebhookDispatcher:
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
+        # This dispatcher owns the client. IP pinning collapses different DNS
+        # origins onto one cookie scope, so neither store nor send cookies.
+        self.client.cookies = CookieJar(policy=DefaultCookiePolicy(allowed_domains=[]))
         self.queues: dict[str, deque[tuple[WebhookConfig, dict[str, Any], str]]] = {}
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.slots = asyncio.Semaphore(8)
@@ -327,37 +353,27 @@ class WebhookDispatcher:
             try:
                 async with self.slots:
                     async with asyncio.timeout(5):
+                        deadline = asyncio.get_running_loop().time() + 5
                         url = validate_url(config.url.get_secret_value())
-                        address = await resolve_public_address(url.host, url.port or 443)
-                        # Connect to the validated IP, retaining the original TLS identity
-                        # and HTTP host. No second DNS lookup, redirects, or environment proxy.
-                        destination = url.copy_with(host=address)
+                        addresses = await resolve_public_addresses(url.host, url.port or 443)
                         if config.format == "discord":
-                            destination = destination.copy_set_param("wait", "true")
-                        request = self.client.build_request(
-                            "POST",
-                            destination,
-                            json=payload,
-                            headers={
-                                "Host": url.netloc.decode("ascii"),
-                                "X-GoA2-Event-ID": event_id,
-                            },
-                            extensions={"sni_hostname": url.host},
-                        )
-                        # Stream and discard response bodies so a callback cannot force
-                        # unbounded buffering. Retry-After is sufficient for rate limits.
-                        token = _sending_webhook.set(True)
-                        try:
-                            response = await self.client.send(
-                                request, stream=True, follow_redirects=False
-                            )
+                            url = url.copy_set_param("wait", "true")
+                        for index, address in enumerate(addresses):
+                            # Reserve connection time for remaining addresses, so an
+                            # unreachable IPv6 route cannot consume the whole attempt.
+                            remaining = max(0.001, deadline - asyncio.get_running_loop().time())
                             try:
-                                status = response.status_code
-                                retry_after = response.headers.get("Retry-After")
-                            finally:
-                                await response.aclose()
-                        finally:
-                            _sending_webhook.reset(token)
+                                status, retry_after = await self._send_to_address(
+                                    url,
+                                    address,
+                                    payload,
+                                    event_id,
+                                    connect_timeout=remaining / (len(addresses) - index),
+                                )
+                                break
+                            except (httpx.ConnectError, httpx.ConnectTimeout):
+                                if index == len(addresses) - 1:
+                                    raise
                 outcome = str(status)
                 if 200 <= status < 300:
                     logger.info("Webhook delivered game=%s event=%s", game_id, event_id)
@@ -386,3 +402,33 @@ class WebhookDispatcher:
         logger.warning(
             "Webhook exhausted retries game=%s event=%s status=%s", game_id, event_id, outcome
         )
+
+    async def _send_to_address(
+        self,
+        url: httpx.URL,
+        address: str,
+        payload: dict[str, Any],
+        event_id: str,
+        *,
+        connect_timeout: float,
+    ) -> tuple[int, str | None]:
+        # Connect to the validated IP, retaining the original TLS identity and
+        # HTTP host. No second DNS lookup, redirects, or environment proxy.
+        request = self.client.build_request(
+            "POST",
+            url.copy_with(host=address),
+            json=payload,
+            headers={"Host": url.netloc.decode("ascii"), "X-GoA2-Event-ID": event_id},
+            extensions={"sni_hostname": url.host},
+            timeout=httpx.Timeout(5, connect=connect_timeout),
+        )
+        # Stream and discard response bodies to bound memory use.
+        token = _sending_webhook.set(True)
+        try:
+            response = await self.client.send(request, stream=True, follow_redirects=False)
+            try:
+                return response.status_code, response.headers.get("Retry-After")
+            finally:
+                await response.aclose()
+        finally:
+            _sending_webhook.reset(token)
