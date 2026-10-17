@@ -31,7 +31,7 @@ from goa2.domain.time_control import (
     usable_time_ms,
 )
 from goa2.domain.types import HeroID
-from goa2.engine.phases import planning_open_for_second_card
+from goa2.engine.phases import planning_complete, planning_open_for_second_card
 from goa2.engine.session import SessionResult
 from goa2.server.registry import GameRegistry, ManagedGame
 from goa2.server.result_logging import log_session_result
@@ -74,12 +74,6 @@ def _team_hero_ids(game: ManagedGame, player_id: str) -> list[str]:
         if team.color.value == team_name
         for hero in team.heroes
     ]
-
-
-def _planning_complete(game: ManagedGame, hero_id: str) -> bool:
-    state = game.session.state
-    hid = HeroID(hero_id)
-    return hid in state.pending_inputs and not planning_open_for_second_card(state, hid)
 
 
 def set_player_ready(game: ManagedGame, hero_id: str, ready: bool, at_ms: int) -> bool:
@@ -192,7 +186,7 @@ def reconcile_game_clock(game: ManagedGame, at_ms: int) -> None:
     if state.phase == GamePhase.PLANNING:
         active: list[str] = []
         for hero_id, player_clock in clock.players.items():
-            complete = _planning_complete(game, hero_id)
+            complete = planning_complete(state, HeroID(hero_id))
             player_clock.planning_complete = complete
             if not complete and not player_clock.planning_locked_by_timeout:
                 active.append(hero_id)

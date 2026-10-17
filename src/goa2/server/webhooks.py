@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 from goa2.domain.models import GamePhase
 from goa2.domain.time_control import ClockStatus
 from goa2.domain.types import HeroID
-from goa2.engine.phases import planning_open_for_second_card
+from goa2.engine.phases import planning_complete
 from goa2.server.visibility import awaiting_input_hero_ids
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ def waiting_heroes(game: ManagedGame) -> list[str]:
             str(hero.id)
             for team in state.teams.values()
             for hero in team.heroes
-            if hero.id not in state.pending_inputs or planning_open_for_second_card(state, hero.id)
+            if not planning_complete(state, hero.id)
         )
     request = game.last_result.input_request if game.last_result else None
     if request is not None:

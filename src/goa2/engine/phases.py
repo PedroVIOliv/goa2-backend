@@ -207,6 +207,11 @@ def planning_open_for_second_card(state: GameState, hero_id: HeroID) -> bool:
     )
 
 
+def planning_complete(state: GameState, hero_id: HeroID) -> bool:
+    """Whether a hero has committed or passed with no remaining planning choice."""
+    return hero_id in state.pending_inputs and not planning_open_for_second_card(state, hero_id)
+
+
 def _check_phase_transition(state: GameState):
     # Check if all heroes have committed (Card or Pass)
     total_heroes = sum(len(team.heroes) for team in state.teams.values())
