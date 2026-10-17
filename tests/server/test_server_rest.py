@@ -140,6 +140,157 @@ def test_upgrade_batch_cannot_choose_for_another_hero(client, game_data, transpo
     assert state.pending_upgrades["hero_arien"] == 2
 
 
+@pytest.mark.parametrize("transport", ["rest", "websocket"])
+@pytest.mark.parametrize("choice", ["upgrades", "runes"])
+def test_invalid_batch_preserves_pending_action_and_request(client, transport, choice):
+    from goa2.domain.models import GamePhase
+    from goa2.engine.handler import push_steps
+    from goa2.engine.steps import PlaceRunesStep, ResolveUpgradesStep, SetContextFlagStep
+
+    hero_name = "Arien" if choice == "upgrades" else "Snorri"
+    hero_id = f"hero_{hero_name.lower()}"
+    data = client.post(
+        "/games",
+        json={
+            "map_name": "forgotten_island",
+            "red_heroes": [hero_name],
+            "blue_heroes": ["Wasp"],
+        },
+    ).json()
+    gid = data["game_id"]
+    token = _token_for(data, hero_id)
+    game = client.app.state.registry.get(gid)
+    state = game.session.state
+    if choice == "upgrades":
+        state.phase = GamePhase.LEVEL_UP
+        state.pending_upgrades[hero_id] = 3
+        step = ResolveUpgradesStep()
+        card_ids = [opt["pair"][0] for opt in step._get_upgrade_options(state, hero_id)]
+        invalid = [
+            {"hero_id": hero_id, "card_ids": ids}
+            for ids in [
+                [],
+                card_ids[:2],
+                [card_ids[0]] * 3,
+                [*card_ids[:2], "unknown"],
+                [*card_ids[:2], {}],
+                [card_ids[0]] * 1000,
+                None,
+            ]
+        ]
+        invalid += [{"hero_id": hero_id, "card_id": card_ids[0], "card_ids": card_ids}]
+    else:
+        state.phase = GamePhase.RESOLUTION
+        step = PlaceRunesStep(hero_id=hero_id)
+        invalid = [
+            [],
+            ["axe", "bird"],
+            ["axe"] * 4,
+            ["axe"] * 1000,
+            ["axe", "bird", "unknown"],
+            ["axe", {}, "bird"],
+            {"placed": {"1": "axe"}, "is_finished": True, "abort_action": True},
+        ]
+    invalid += [None, "SKIP", "DONE", {"skip_if_key": True, "is_finished": True}]
+    push_steps(state, [step, SetContextFlagStep(key="continued", value=True)])
+    game.last_result = game.session.advance()
+    request = game.last_result.input_request
+    before = state.model_dump(mode="json")
+    recorded = list(game.replay_recorder.records) if game.replay_recorder else None
+    valid_selection = (
+        {"hero_id": hero_id, "card_ids": card_ids}
+        if choice == "upgrades"
+        else ["axe", "bird", "anvil", "horn"]
+    )
+
+    def check_unchanged():
+        assert state.model_dump(mode="json") == before
+        assert game.last_result.input_request.id == request.id
+        assert step.pending_request_id == request.id
+        assert "continued" not in state.execution_context
+        if game.replay_recorder:
+            assert game.replay_recorder.records == recorded
+
+    payloads = [{"request_id": request.id, "selection": selection} for selection in invalid]
+    payloads.append({"request_id": "stale-request", "selection": valid_selection})
+    valid_payload = {"request_id": request.id, "selection": valid_selection}
+
+    if transport == "rest":
+        for payload in payloads:
+            response = client.post(f"/games/{gid}/input", headers=_auth(token), json=payload)
+            assert response.status_code == 400, response.text
+            check_unchanged()
+        assert (
+            client.post(f"/games/{gid}/input", headers=_auth(token), json=valid_payload).status_code
+            == 200
+        )
+    else:
+        with client.websocket_connect(f"/games/{gid}/ws?token={token}") as ws:
+            ws.receive_json()
+            for payload in payloads:
+                ws.send_json({"type": "SUBMIT_INPUT", **payload})
+                assert ws.receive_json()["type"] == "ERROR"
+                check_unchanged()
+            ws.send_json({"type": "SUBMIT_INPUT", **valid_payload})
+            assert ws.receive_json()["type"] == "ACTION_RESULT"
+            assert ws.receive_json()["type"] == "STATE_UPDATE"
+    assert state.execution_context["continued"] is True
+
+
+@pytest.mark.parametrize("transport", ["rest", "websocket"])
+def test_finished_player_cannot_invalidate_other_players_upgrade_request(
+    client, game_data, transport
+):
+    from goa2.domain.input import InputResponse
+    from goa2.domain.models import GamePhase
+    from goa2.engine.handler import push_steps
+    from goa2.engine.steps import ResolveUpgradesStep
+
+    gid = game_data["game_id"]
+    game = client.app.state.registry.get(gid)
+    state = game.session.state
+    state.phase = GamePhase.LEVEL_UP
+    state.pending_upgrades = {"hero_arien": 1, "hero_wasp": 1}
+    step = ResolveUpgradesStep()
+    arien_card = step._get_upgrade_options(state, "hero_arien")[0]["pair"][0]
+    wasp_card = step._get_upgrade_options(state, "hero_wasp")[0]["pair"][0]
+    push_steps(state, [step])
+    game.last_result = game.session.advance()
+    game.last_result = game.session.advance(
+        InputResponse(
+            request_id=game.last_result.input_request.id,
+            selection={"hero_id": "hero_arien", "card_id": arien_card},
+        )
+    )
+    request_id = game.last_result.input_request.id
+    token = _token_for(game_data, "hero_arien")
+    payload = {
+        "request_id": request_id,
+        "selection": {"hero_id": "hero_arien", "card_ids": [arien_card]},
+    }
+    if transport == "rest":
+        assert (
+            client.post(f"/games/{gid}/input", headers=_auth(token), json=payload).status_code
+            == 400
+        )
+    else:
+        with client.websocket_connect(f"/games/{gid}/ws?token={token}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "SUBMIT_INPUT", **payload})
+            assert ws.receive_json()["type"] == "ERROR"
+    assert game.last_result.input_request.id == request_id
+    response = client.post(
+        f"/games/{gid}/input",
+        headers=_auth(_token_for(game_data, "hero_wasp")),
+        json={
+            "request_id": request_id,
+            "selection": {"hero_id": "hero_wasp", "card_id": wasp_card},
+        },
+    )
+    assert response.status_code == 200
+    assert state.phase == GamePhase.PLANNING
+
+
 def test_list_heroes(client):
     resp = client.get("/heroes")
     assert resp.status_code == 200

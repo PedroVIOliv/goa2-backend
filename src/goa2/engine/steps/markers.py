@@ -1088,18 +1088,8 @@ class PlaceRunesStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             self.pending_input = None
-            try:
-                values = selection if isinstance(selection, list) else [selection]
-                chosen = [RuneType(value) for value in values]
-            except (ValueError, TypeError):
-                chosen = []
-            if (
-                chosen
-                and len(chosen) == len(set(chosen))
-                and not set(chosen).intersection(self.placed.values())
-            ):
-                for rune in chosen:
-                    self.placed[len(self.placed) + 1] = rune
+            for rune in self._validated_runes(selection):
+                self.placed[len(self.placed) + 1] = rune
 
         remaining = [rune for rune in RuneType if rune not in self.placed.values()]
         if len(remaining) == 1:
@@ -1141,5 +1131,25 @@ class PlaceRunesStep(GameStep):
                 supports_batch=True,
                 next_slot=slot,
                 max_selections=len(remaining),
+                selection_counts=sorted({1, len(remaining) - 1, len(remaining)}),
             ),
         )
+
+    def validate_input(self, state: GameState, selection: Any) -> None:
+        if not self._validated_runes(selection):
+            raise ValueError("Choose one remaining rune or complete the remaining rune slots")
+
+    def _validated_runes(self, selection: Any) -> list[RuneType]:
+        values = selection if isinstance(selection, list) else [selection]
+        remaining = len(RuneType) - len(self.placed)
+        # Check size before parsing: a client cannot make us iterate an
+        # arbitrarily large batch. Leaving one rune completes automatically.
+        if not values or len(values) not in {1, remaining - 1, remaining}:
+            return []
+        try:
+            chosen = [RuneType(value) for value in values]
+        except (ValueError, TypeError):
+            return []
+        if len(set(chosen)) != len(chosen) or set(chosen).intersection(self.placed.values()):
+            return []
+        return chosen

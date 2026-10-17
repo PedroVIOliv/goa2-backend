@@ -161,6 +161,22 @@ def test_inscribe_invalid_batch_preserves_previous_choices(runes):
     }
 
 
+@pytest.mark.effect_flow
+def test_inscribe_intermediate_subset_does_not_finish_action():
+    state = snorri_state("inscribe_the_runes")
+    run = run_card(state, "hero_snorri")
+    run.expect_input(InputRequestType.CHOOSE_ACTION).choose("SKILL")
+    run.expect_input("SELECT_OPTION").choose(["axe", "bird"])
+    run.expect_input("SELECT_OPTION")
+    assert run.latest_request.context["next_slot"] == 1
+    assert run.latest_request.context["selection_counts"] == [1, 3, 4]
+    assert not state.get_hero("hero_snorri").rune_slots
+    run.choose("axe").expect_input("SELECT_OPTION")
+    # After one choice, supplying two completes the arrangement automatically.
+    run.choose(["bird", "anvil"]).finish()
+    assert len(state.get_hero("hero_snorri").rune_slots) == 4
+
+
 @pytest.mark.effect_contract
 def test_inscribe_rune_slots_public_to_opponent():  # H2
     state = snorri_state("inscribe_the_runes")

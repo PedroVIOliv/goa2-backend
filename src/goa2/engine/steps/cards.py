@@ -2503,28 +2503,11 @@ class ResolveUpgradesStep(GameStep):
         # Process input if provided
         if self.pending_input:
             selection = self.pending_input.get("selection")
-            if isinstance(selection, dict):
-                hero_id = selection.get("hero_id")
-                card_ids = selection.get("card_ids", [selection.get("card_id")])
-                if (
-                    isinstance(hero_id, str)
-                    and isinstance(card_ids, list)
-                    and 0 < len(card_ids) <= state.pending_upgrades.get(hero_id, 0)
-                    and all(isinstance(card_id, str) for card_id in card_ids)
-                    and not ("card_ids" in selection and "card_id" in selection)
-                ):
-                    # Later choices depend on earlier upgrades (including tier
-                    # restrictions). Validate the entire batch on a copy before
-                    # changing the live hero, so an invalid suffix spends nothing.
-                    preview = state.model_copy(deep=True) if len(card_ids) > 1 else state
-                    for card_id in card_ids:
-                        if not self._is_legal_upgrade(preview, hero_id, card_id):
-                            break
-                        if preview is not state:
-                            apply_hero_upgrade(preview, hero_id, card_id)
-                    else:
-                        for card_id in card_ids:
-                            apply_hero_upgrade(state, hero_id, card_id)
+            choices = self._validated_choices(state, selection)
+            if choices is not None:
+                hero_id, card_ids = choices
+                for card_id in card_ids:
+                    apply_hero_upgrade(state, hero_id, card_id)
             self.pending_input = None
 
         if not state.pending_upgrades:
@@ -2535,7 +2518,11 @@ class ResolveUpgradesStep(GameStep):
         broadcast_data = {}
         for h_id, count in state.pending_upgrades.items():
             options = self._get_upgrade_options(state, h_id)
-            broadcast_data[str(h_id)] = {"remaining": count, "options": options}
+            broadcast_data[str(h_id)] = {
+                "remaining": count,
+                "options": options,
+                "selection_counts": sorted({1, count}),
+            }
 
         return StepResult(
             requires_input=True,
@@ -2547,6 +2534,36 @@ class ResolveUpgradesStep(GameStep):
                 supports_batch=True,
             ),
         )
+
+    def validate_input(self, state: GameState, selection: Any) -> None:
+        if self._validated_choices(state, selection) is None:
+            raise ValueError("Choose one legal upgrade or all remaining upgrades for your hero")
+
+    def _validated_choices(self, state: GameState, selection: Any) -> tuple[str, list[str]] | None:
+        if not isinstance(selection, dict):
+            return None
+        hero_id = selection.get("hero_id")
+        card_ids = selection.get("card_ids", [selection.get("card_id")])
+        if not isinstance(hero_id, str) or not isinstance(card_ids, list):
+            return None
+        remaining = state.pending_upgrades.get(hero_id, 0)
+        if (
+            remaining <= 0
+            or len(card_ids) not in {1, remaining}
+            or not all(isinstance(card_id, str) for card_id in card_ids)
+            or len(set(card_ids)) != len(card_ids)
+            or ("card_ids" in selection and "card_id" in selection)
+        ):
+            return None
+        # Recheck tier eligibility after each choice, without spending any live
+        # upgrades unless the entire ordered batch is legal.
+        preview = state.model_copy(deep=True) if len(card_ids) > 1 else state
+        for card_id in card_ids:
+            if not self._is_legal_upgrade(preview, hero_id, card_id):
+                return None
+            if preview is not state:
+                apply_hero_upgrade(preview, hero_id, card_id)
+        return hero_id, card_ids
 
     def _is_legal_upgrade(self, state: GameState, hero_id: str, card_id: str) -> bool:
         """A submitted upgrade is legal only if the hero has a pending upgrade

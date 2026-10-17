@@ -618,13 +618,14 @@ def test_invalid_upgrade_batch_spends_nothing(upgrade_state, card_ids):
     assert upgrade_state.pending_upgrades["h1"] == 2
 
 
-def test_partial_upgrade_batch_returns_remaining_count(upgrade_state):
+@pytest.mark.parametrize("card_ids, remaining", [(["r2a", "b2a"], 3), (["r2a"], 2)])
+def test_upgrade_accepts_one_choice_but_rejects_intermediate_subset(
+    upgrade_state, card_ids, remaining
+):
     upgrade_state.pending_upgrades["h1"] = 3
-    step = ResolveUpgradesStep(
-        pending_input={"selection": {"hero_id": "h1", "card_ids": ["r2a", "b2a"]}}
-    )
+    step = ResolveUpgradesStep(pending_input={"selection": {"hero_id": "h1", "card_ids": card_ids}})
     result = step.resolve(upgrade_state, {})
-    assert result.input_request.context["players"]["h1"]["remaining"] == 1
+    assert result.input_request.context["players"]["h1"]["remaining"] == remaining
 
 
 @pytest.mark.parametrize("other_colors_at_tier_one", [True, False])
