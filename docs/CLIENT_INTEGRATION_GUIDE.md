@@ -205,6 +205,7 @@ Create a new game. No authentication required.
 | `cheats_enabled` | boolean | `false` | Enable cheats for this game (unlocks gold cheat API) |
 | `game_type` | string | `"LONG"` | `"QUICK"` or `"LONG"`. Controls wave and life counter setup (see below) |
 | `time_control` | object/null | `null` | Optional timed-match configuration shown in the quick-start example above |
+| `history_scope` | string | `"CURRENT_ROUND"` | Player replay access: `"CURRENT_TURN"`, `"CURRENT_ROUND"`, or `"EVERYTHING"`. Spectators always have full public history. |
 
 **Game types:**
 
@@ -1753,7 +1754,7 @@ Send as `Authorization: Bearer <token>`, the same scheme as the game API.
 
 **Team sizes are not chosen up front.** Players join and self-select RED/BLUE freely (up to 6
 players total); the per-team sizes are simply however many landed on each side, fixed at `start`.
-All match settings (map, game type, draft mode, cheats) default at creation but are
+All match settings (map, game type, draft mode, cheats, history scope) default at creation but are
 **host-editable inside the lobby** via `PATCH /drafts/{id}/settings`.
 
 `CreateDraftRequest` — only `host_name` is required; the rest seed the lobby defaults:
@@ -1766,6 +1767,7 @@ All match settings (map, game type, draft mode, cheats) default at creation but 
   "draft_mode": "sequential_ban_pick",
   "cheats_enabled": false,
   "max_hero_stars": 4,
+  "history_scope": "CURRENT_ROUND",
   "time_control": null
 }
 ```
@@ -1796,6 +1798,12 @@ are left unchanged. Broadcasts a `STATE_UPDATE` like any other mutation:
 
 Sending `"time_control": null` explicitly disables clocks; omitting it leaves
 the current lobby setting unchanged.
+
+`history_scope` also accepts `"CURRENT_TURN"` and `"EVERYTHING"` on creation or
+settings updates. It appears in the draft view and is carried into the game.
+Only the host may change it, and only in LOBBY; it is fixed once the game starts.
+Omitting it on creation defaults to `"CURRENT_ROUND"`. Invalid enum values return
+`422`; an omitted or null settings-update value leaves the choice unchanged.
 
 At `start`, the number of **assigned** players (those on a team) must be a supported match size
 (2, 4, 5, or 6) — otherwise `start` returns `400`. Each team must have at least one player and a
@@ -2263,6 +2271,21 @@ disconnected seats. These endpoints use the same game bearer token as live play;
 a spectator token receives public history. No admin token or public share link
 is involved. History reads never submit an action or pause the clock.
 
+The game's `history_scope` limits **players**, while spectators always retain
+the full effective public history:
+
+| Setting | Player history available |
+| --- | --- |
+| `CURRENT_TURN` | Current turn, retaining the preceding turn of the same round during card selection. That preceding turn expires when planning completes and cards reveal. Resets when a new round starts. |
+| `CURRENT_ROUND` (default) | Current round, retaining the previous round during upgrading and the next round's initial planning. The previous round expires when that planning completes and cards reveal, including passes and two-card heroes' planning completion. |
+| `EVERYTHING` | All effective history, as available in stored captures/backfill. |
+
+For example, round 1 remains available while selecting round 2's first cards;
+it expires as soon as round 2's initial planning finishes. These restrictions
+affect access, not storage: the full captured/audit history remains intact for
+spectators, backfill, and consensus rewinds. Saves without this setting also
+default to `CURRENT_ROUND`. Ordinary finished replay shares are unchanged.
+
 The player timeline contains one replaceable position per planning phase and a
 position after each subsequent accepted decision. Takebacks replace planning;
 action rollback removes the abandoned segment up to the engine's safe anchor;
@@ -2274,13 +2297,20 @@ IDs may have gaps: never treat them as array offsets or raw replay decision IDs.
 
 ```json
 {
+  "scope": "CURRENT_ROUND", "first_position_id": 34,
   "revision": 42, "epoch": 7, "position_id": 51, "predecessor_id": 48,
   "total": 18, "availability": "complete", "gaps": []
 }
 ```
 
 `revision` changes when the index changes; `epoch` changes when positions are
-replaced or removed, including planning updates and backfill installation.
+replaced, removed, or expire from the player's window, including planning
+updates and backfill installation. An epoch change may also invalidate a
+spectator cache; it does not restrict the spectator's range.
+`scope` is the effective scope for the authenticated viewer, so spectators
+receive `EVERYTHING`. `first_position_id` is the oldest currently accessible
+position, or null when no position is available. `total` and `predecessor_id`
+are also limited to that viewer's accessible effective timeline.
 `position_id` is null if the live view has no matching captured position. Repeated
 live updates with the same ID do not create additional history. `availability`
 is `complete`, `pending`, `building`, or `unavailable`; available recent history
@@ -2293,6 +2323,11 @@ views locally, clone the view, clear those two transient fields, and key it by
 the supplied history position ID and authenticated viewer. Keep the latest live
 view separately, keep at most 30 historical views, and fetch missing predecessors
 on demand. On an epoch change discard cached history and refresh the index.
+Window expiration must also evict already-cached frames/groups and invalidate
+pending reads. Return to live if the displayed historical position expires.
+Use the server's scope and range; a round-number increment alone does not end
+the current-round grace period. Do not switch to a spectator token to fetch
+an expired player position.
 Continue receiving live updates while browsing; return to the latest live view
 before enabling gameplay controls.
 
@@ -2332,10 +2367,13 @@ Only active, viewer-scoped states appear in this response; internal audit patch
 chains and other viewers' data are never returned. Groups use Brotli encoding
 when supported, otherwise gzip, and all history reads use `private, no-store`.
 
-Errors: `401` invalid/missing credentials, `403` a token for another game, `404`
+Errors: `401` invalid/missing credentials, `403` a token for another game or an
+active position outside the player's replay window (`History position is outside
+the replay window`), `404`
 unknown position, `410` superseded position, `409` changed revision/epoch (refresh
 the index), and `503` missing/damaged captured data. A `503` requests background
 repair when possible. Discard in-flight responses from older epochs or viewers.
+On a window-expiration `403`, refresh the index and discard the expired position.
 
 New captures are stored as compressed keyframe/patch groups, with their committed
 index in the atomic game save. Server storage keeps the public view once plus

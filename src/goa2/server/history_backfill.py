@@ -28,6 +28,7 @@ def build_history(setup: dict, decisions: list[dict]) -> LiveHistory:
 def _merge(prefix: LiveHistory, old: LiveHistory, reader: Any) -> LiveHistory:
     """Replay captured views, not engine decisions, over a reconstructed prefix."""
     merged = deepcopy(prefix)
+    merged.scope = old.scope
     # Edits identify captures in logical raw-prefix order, even after a prior
     # backfill preserved an older audit prefix with separately allocated IDs.
     source = [old.records[edit["add"][-1]] for edit in old.edits if edit["add"]]

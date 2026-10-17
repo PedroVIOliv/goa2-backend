@@ -19,6 +19,7 @@ from pydantic_core import PydanticSerializationError, to_json
 # Ensure step_types patching is applied before any serialization
 import goa2.engine.step_types as _step_types  # noqa: F401
 from goa2.domain.models import GamePhase
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.state import GameState
 from goa2.engine.handler import process_stack
 from goa2.engine.session import GameSession
@@ -42,6 +43,7 @@ def save_game(
     replay_log: list[dict[str, Any]] | None = None,
     live_history: dict[str, Any] | None = None,
     rollback_anchor_id: str | None = None,
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -57,6 +59,7 @@ def save_game(
         "rollback_actor_id": rollback_actor_id,
         "rollback_anchor_id": rollback_anchor_id,
         "live_history": live_history,
+        "history_scope": history_scope,
     }
     if replay_log is not None:
         payload["replay_log"] = replay_log
@@ -142,6 +145,7 @@ def load_game(file_path: str) -> dict[str, Any]:
         # from games whose log was already damaged when it would have been adopted.
         "replay_log": payload.get("replay_log"),
         "live_history": payload.get("live_history"),
+        "history_scope": HistoryScope(payload.get("history_scope", HistoryScope.CURRENT_ROUND)),
     }
 
 

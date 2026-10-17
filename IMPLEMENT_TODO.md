@@ -23,6 +23,14 @@ but exclude abandoned attempts and correction operations from player browsing.
   capture each accepted decision and its deterministic processing, rather than
   each atomic engine step.
 - Browsing is read-only and does not pause the match or its clocks.
+- Player access is a match setting, `history_scope`: `CURRENT_TURN`,
+  `CURRENT_ROUND` (default), or `EVERYTHING`. Spectators always have full public
+  history. These limits never delete captured records or the audit replay.
+- `CURRENT_TURN` retains the preceding turn of the same round during card
+  selection, expiring it when planning completes. It resets on a new round.
+  `CURRENT_ROUND` retains the previous round through upgrading and next-round
+  first-turn planning; it expires when that
+  planning completes and cards reveal, including passes and two-card heroes.
 
 ## 0. Reuse existing replay infrastructure first
 
@@ -259,6 +267,19 @@ Use the existing game-scoped bearer authentication. Players receive only their
 projection; spectators receive the public projection. Never accept a requested
 viewer identity or `reveal_all` flag from the client.
 
+- [x] Accept `history_scope` on direct game and draft creation; allow host-only
+      edits while the draft is in LOBBY. Freeze it at game creation and persist
+      it separately from gameplay state. Saves without the setting default to
+      `CURRENT_ROUND`; replay/share data remains unchanged.
+- [x] Apply the player's current window to pagination, direct state reads,
+      grouped keyframes/patches, and live history metadata. Spectator tokens
+      bypass only the window, retaining ordinary public-information masking.
+- [x] Report effective `scope` and `first_position_id`, with viewer-specific
+      totals and predecessors. Advance `epoch` when the player window expires,
+      and recheck eligibility after reconstruction and response compression.
+- [x] Reject active-but-expired IDs with `403`; retained internal data and a
+      cached server read must not bypass the player's current window.
+
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /games/{game_id}/history` | Page of active position metadata, revision, epoch, total, and availability. Default latest 30; support `before_position_id`; maximum 100. Return entries chronologically. |
@@ -298,6 +319,13 @@ drive animations and logging, rather than reconstructing the game.
 
 - [ ] Add history API types and a `useGameHistory` hook. Cache at most 30 complete
       historical views by immutable position ID.
+- [ ] Add the host's lobby selector: Current turn (`CURRENT_TURN`), Current round
+      (`CURRENT_ROUND`, default), Everything (`EVERYTHING`). Carry the setting
+      through draft creation/updates and direct-game creation; do not offer
+      per-player overrides or an in-game settings change.
+- [ ] Consume effective `scope` and `first_position_id` from history metadata.
+      Use server-provided positions, totals, and predecessors to bound controls;
+      spectator metadata is `EVERYTHING` even for a restricted match.
 - [ ] Extract the keyframe clone, `applyPatches()`, group lookup, and cached
       reconstruction logic from `sharedReplaySource()` into common helpers used
       by both shared replay and live history. Preserve existing share behavior
@@ -312,11 +340,21 @@ drive animations and logging, rather than reconstructing the game.
 - [ ] If a position's predecessor is missing, fetch that group when browsing
       reaches the gap. One received message need not equal one backend decision.
 - [ ] On epoch change, clear history caches and refresh the active index.
-      Append-only revisions preserve existing cached positions.
+      This includes replay-window expiration as well as corrections/backfill.
+      Append-only revisions preserve existing eligible cached positions.
+- [ ] On a window reset, evict expired frames and patch groups, invalidate
+      pending reads, and return to live if the displayed position expired.
+      Do this even when the browser already has the old frame. Current-turn
+      history retains the previous turn during card selection within a round;
+      it resets when the new round starts. Current-round history survives
+      leveling/upgrading and next-round first-turn planning;
+      do not clear it merely because the live round number increments.
 - [ ] Fetch older groups on demand. Retain the displayed position and closest
       neighbors while evicting distant entries to maintain the 30-view bound.
 - [ ] Cancel or ignore responses for old epochs, games, or viewers; clear caches
       on seat changes. A `409` refreshes the index; a `410` drops the stale entry.
+      A history-window `403` also refreshes the range and drops the expired entry;
+      never retry it with the spectator token or expose expired cached views.
 - [ ] Keep the newest live state separate from the displayed historical state.
       Continue receiving live updates while browsing.
 - [ ] Add a History entry point, previous/next controls, position details, and
@@ -392,12 +430,22 @@ drive animations and logging, rather than reconstructing the game.
       keyframes, patches, labels, or metadata.
 - [x] Exercise stale revisions, superseded/unknown IDs, read/correction races,
       interrupted writes, failed saves, orphan files, missing records, and repair.
+- [x] Test all replay scopes, lobby permissions, spectator exemption, persistence
+      and backfill, turn/round planning grace, passes and two-card heroes, and
+      expiration during reads or compression. Verify expired stored/cached
+      frames cannot bypass the current player's window.
 - [ ] Test client cache misses, eviction, epoch changes, late responses, viewer
       switches, and receiving live updates while browsing.
+      Include all three scopes, spectator exemption, previous-turn planning
+      grace and round resets, round grace through upgrading/planning,
+      final-commit expiration, already-cached expired
+      frames, and a cutoff while a history request or animation is in flight.
 - [x] Run the complete backend suite with greater than 80% coverage, focused
       engine anchor-lifecycle tests, and Python lint/format/type checks.
-      Final run: 3,866 passed; overall branch-inclusive coverage 88.86%, new
-      history/codec modules combined 96.00%.
+      WSL full run: 3,883 passed; one worktree Git-path environment failure was
+      resolved and its verification module rerun (8 passed). All 3,884 collected
+      tests passed across these runs; branch-inclusive coverage 88.95%, new
+      history/codec modules combined 95.93%. See the validation notes.
 - [ ] During frontend follow-up, run frontend tests, type checks, and production
       build. No frontend source or frontend test changes belong to this branch.
 - [x] Benchmark a long ten-player game: record p50/p95 capture latency, cold and
@@ -413,7 +461,7 @@ drive animations and logging, rather than reconstructing the game.
 - [ ] When deployment is planned, repeat representative measurements on that
       host. The local optimization target is not a separately agreed release gate.
 
-Acceptance: a fresh client can browse all available active history; captured
+Acceptance: a fresh client can browse all active history allowed by its scope; captured
 ranges require no engine replay; browsing never changes or pauses live play;
 abandoned attempts stay out of player browsing; audit history remains intact;
 and private information remains scoped to the viewer at the historical moment.

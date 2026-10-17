@@ -129,7 +129,9 @@ def _maybe_create_game(request: Request, md: ManagedDraft) -> None:
         name_to_id,
     )
     game_registry = request.app.state.registry
-    game = game_registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
+    game = game_registry.create_game(
+        session, hero_ids, game_id=game_id, hero_names=hero_names, history_scope=state.history_scope
+    )
     if game.replay_recorder:
         game.replay_recorder.record_setup(
             map_name=state.map_name,
@@ -188,6 +190,7 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         cheats=body.cheats_enabled,
         max_hero_stars=body.max_hero_stars,
         time_control=body.time_control,
+        history_scope=body.history_scope,
     )
     md = registry.create(state)
     return CreateDraftResponse(
@@ -228,6 +231,7 @@ async def update_settings(
             cheats=body.cheats_enabled,
             max_hero_stars=body.max_hero_stars,
             time_control=time_control,
+            history_scope=body.history_scope,
         )
     await broadcast_draft(md, registry)
     return _draft_view(md, player.player_id, player.is_spectator)

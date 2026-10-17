@@ -30,6 +30,7 @@ from goa2.server.models import (
     CreateGameResponse,
     GameViewResponse,
     GiveGoldRequest,
+    HistoryMetadata,
     PlayerToken,
     ReadyRequest,
     ShareLinkResponse,
@@ -114,7 +115,9 @@ async def create_game(body: CreateGameRequest, registry: RegistryDep) -> CreateG
     name_to_id = {h.name: h.id for team in state.teams.values() for h in team.heroes}
     hero_names = resolve_player_names(body.player_names, name_to_id)
 
-    game = registry.create_game(session, hero_ids, game_id=game_id, hero_names=hero_names)
+    game = registry.create_game(
+        session, hero_ids, game_id=game_id, hero_names=hero_names, history_scope=body.history_scope
+    )
 
     if game.game_logger:
         game.game_logger.log_game_created(body.red_heroes, body.blue_heroes, body.map_name)
@@ -172,7 +175,11 @@ async def set_ready(
                 winner=game.last_result.winner if game.last_result else None,
                 hero_names=game.hero_names,
                 history=(
-                    game.history.metadata_for_view(view, player.hero_id) if game.history else None
+                    HistoryMetadata.model_validate(
+                        game.history.metadata_for_view(view, player.hero_id)
+                    )
+                    if game.history
+                    else None
                 ),
             )
 
@@ -244,7 +251,11 @@ async def get_game_view(
         awaiting_input=awaiting_input_hero_ids(ir, game.session.state),
         winner=winner,
         hero_names=game.hero_names,
-        history=game.history.metadata_for_view(view, hero_id) if game.history else None,
+        history=(
+            HistoryMetadata.model_validate(game.history.metadata_for_view(view, hero_id))
+            if game.history
+            else None
+        ),
     )
 
 

@@ -7,25 +7,35 @@ frontend source.
 
 ## Automated checks
 
-Run from the repository root, using the existing development environment:
+Run from the repository root in WSL Ubuntu, using the existing Python 3.11
+development environment (the isolated worktree used the root checkout's
+`.venv-wsl`):
 
-```powershell
-New-Item -ItemType Directory -Force .agent | Out-Null
-$env:COVERAGE_FILE='.agent/history-perf-release.coverage'
-.venv/Scripts/python.exe -m pytest tests/ -q --cov=goa2 --cov-report=term --cov-report=json:.agent/history-perf-release-coverage.json --cov-fail-under=80.01
+```bash
+mkdir -p .agent
+COVERAGE_FILE=.agent/history-window.coverage .venv-wsl/bin/python -m pytest tests/ -q --cov=goa2 --cov-report=term --cov-report=json:.agent/history-window-coverage.json --cov-fail-under=80.01
 ```
 
-Final run: **3,866 tests passed in 807.85 seconds**, with **88.86% coverage**.
-The enforced 80.01% gate passed. Coverage includes branches and the entire
-`goa2` package, rather than just the new feature.
+The full WSL run collected **3,884 tests**: **3,883 passed**, with one
+environment-dependent replay verification failure, in **784.79 seconds**.
+WSL Git could not read the Windows Git-directory path in this worktree, so
+the existing engine-revision test received `unknown`. Providing WSL absolute
+`GIT_DIR` and `GIT_WORK_TREE` paths resolved this without application or test
+changes. The entire verification module then passed: **8 passed in 63.92
+seconds**, including that test. All collected tests passed across these runs.
+
+The rerun used `tests/server/test_replay_verification.py` with the same coverage
+options plus `--cov-append`. Final combined coverage is **88.95%**; the enforced
+80.01% gate passed on both runs. Coverage includes branches and the entire
+`goa2` package. A normal root checkout does not need the worktree Git-path fix.
 
 | New module | Coverage including branches |
 | --- | ---: |
 | `replay_codec.py` | 100.00% |
-| `live_history.py` | 95.50% |
-| `routes_history.py` | 97.92% |
-| `history_backfill.py` | 91.46% |
-| Combined | 96.00% |
+| `live_history.py` | 95.42% |
+| `routes_history.py` | 97.37% |
+| `history_backfill.py` | 91.50% |
+| Combined | 95.93% |
 
 Focused history coverage includes authenticated player/spectator access,
 frozen projections and private information, planning replacements, action
@@ -34,15 +44,21 @@ failed writes/saves, cache isolation, stale reads, replay repair, cancellation,
 concurrent live captures, process-pool serialization, and backfill metadata
 broadcasts. Existing replay/share tests exercise the common codec through the
 original adapters. Timeout tests verify that automatic commit and
-finish-planning each capture their own accepted decision.
+finish-planning each capture their own accepted decision. Replay-window tests
+cover all three settings, lobby permissions, spectator exemption, both planning
+grace periods, two-card heroes and passes, restart/backfill, cached expired
+frames, and cutoffs during reconstruction or response compression.
 
-For the performance follow-up, Ruff and Black checks pass for all 12 changed
-Python files. Mypy passes for the nine changed application modules checked with
-`--follow-imports=silent`.
+Ruff passes for all source and tests. Black leaves all 514 Python files
+unchanged; mypy passes for all 186 application modules. These checks also ran
+in WSL.
 
 ## Performance follow-up
 
-Reproduce with:
+The measurements below are historical results from the performance follow-up
+at `1300268`, before configurable replay windows. They have not been rerun for
+the window setting. The original measurement environment used Windows Python.
+Reproduce that historical benchmark with:
 
 ```powershell
 $env:PYTHONHASHSEED='0'

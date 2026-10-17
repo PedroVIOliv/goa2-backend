@@ -22,6 +22,7 @@ from threading import RLock
 from typing import Any
 from uuid import uuid4
 
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.types import HeroID
 from goa2.domain.views import HeroViewCache, _build_board_view, build_view
 from goa2.engine.session import GameSession
@@ -184,7 +185,10 @@ def _atomic_bytes(path: Path, data: bytes) -> None:
 
 
 class LiveHistory:
-    def __init__(self, directory: Path | None = None) -> None:
+    def __init__(
+        self, directory: Path | None = None, *, scope: HistoryScope = HistoryScope.CURRENT_ROUND
+    ) -> None:
+        self.scope = scope
         self.directory = directory
         self.cache_id = uuid4().hex
         self.records: list[dict[str, Any]] = []
@@ -303,6 +307,9 @@ class LiveHistory:
                 self.gaps.append({"from_decision": 0, "to_decision": raw_count})
 
         public = views["spectator"]["view"]
+        window_changed = bool(
+            before and self._window_start(self.records[before[-1]]) != self._window_start(public)
+        )
         if self.builder is not None and "board" in public:
             previous_board = self.latest_views["spectator"]["view"].get("board")
             # This renderer has a fixed typed schema. Reuse a frozen board when
@@ -364,7 +371,7 @@ class LiveHistory:
         while keep < min(len(before), len(target)) and before[keep] == target[keep]:
             keep += 1
         self.edits.append({"at": raw_count, "keep": keep, "add": target[keep:]})
-        if keep < len(before):
+        if keep < len(before) or window_changed:
             self.epoch += 1
         self.active = target
         self.revision += 1
@@ -392,13 +399,58 @@ class LiveHistory:
         self.epoch += 1
         self.revision += 1
 
-    def metadata(self, *, matches_live: bool = True) -> dict[str, Any]:
+    def _window_start(self, view: dict[str, Any]) -> tuple[int, int]:
+        if self.scope == HistoryScope.EVERYTHING:
+            return (0, 0)
+        round_num, turn = view["round"], view["turn"]
+        if self.scope == HistoryScope.CURRENT_TURN:
+            if view["phase"] == "PLANNING":
+                turn = max(1, turn - 1)
+            return (round_num, turn)
+        # Upgrading still belongs to the old round. The next round's first
+        # planning retains it until the engine actually completes planning,
+        # including passes and two-card heroes' finish-planning decisions.
+        if turn == 1 and view["phase"] == "PLANNING":
+            round_num = max(1, round_num - 1)
+        return (round_num, 0)
+
+    def visible_active(
+        self, viewer: str | None = None, *, view: dict[str, Any] | None = None
+    ) -> list[int]:
+        """Filter browsing access only; retain the full effective/audit history.
+
+        Routes supply the live round/turn/phase, so a failed capture cannot
+        leave an expired window accessible through an older captured head.
+        """
+        if viewer in (None, "spectator") or self.scope == HistoryScope.EVERYTHING:
+            return self.active
+        if not self.active:
+            return []
+        view = view if view is not None else self.records[self.active[-1]]
+        first_round, first_turn = self._window_start(view)
+        return [
+            i
+            for i in self.active
+            if first_round <= self.records[i]["round"] <= view["round"]
+            and (first_turn == 0 or first_turn <= self.records[i]["turn"] <= view["turn"])
+        ]
+
+    def metadata(
+        self,
+        *,
+        matches_live: bool = True,
+        viewer: str | None = None,
+        view: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        active = self.visible_active(viewer, view=view)
         return {
+            "scope": HistoryScope.EVERYTHING if viewer in (None, "spectator") else self.scope,
+            "first_position_id": active[0] if active else None,
             "revision": self.revision,
             "epoch": self.epoch,
-            "position_id": self.active[-1] if self.active and matches_live else None,
-            "predecessor_id": self.active[-2] if len(self.active) > 1 else None,
-            "total": len(self.active),
+            "position_id": active[-1] if active and matches_live else None,
+            "predecessor_id": active[-2] if len(active) > 1 else None,
+            "total": len(active),
             "availability": self.backfill_status,
             "gaps": deepcopy(self.gaps),
         }
@@ -406,7 +458,9 @@ class LiveHistory:
     def metadata_for_view(self, view: dict, viewer: str | None) -> dict[str, Any]:
         canonical = {**view, "clock": None, "starting_position": None}
         latest = self.latest_views.get(viewer or "spectator") if self.builder else None
-        return self.metadata(matches_live=bool(latest and latest["view"] == canonical))
+        return self.metadata(
+            matches_live=bool(latest and latest["view"] == canonical), viewer=viewer, view=view
+        )
 
     def reader(self) -> HistoryReader:
         groups = [dict(group) for group in self.groups]
@@ -479,10 +533,16 @@ class LiveHistory:
                 path.unlink(missing_ok=True)
 
     @classmethod
-    def restore(cls, directory: Path, manifest: dict[str, Any]) -> LiveHistory:
+    def restore(
+        cls,
+        directory: Path,
+        manifest: dict[str, Any],
+        *,
+        scope: HistoryScope = HistoryScope.CURRENT_ROUND,
+    ) -> LiveHistory:
         if manifest.get("format") not in (2, FORMAT):
             raise HistoryUnavailable("Unsupported history storage format")
-        history = cls(directory)
+        history = cls(directory, scope=scope)
         history._legacy_anchor = manifest.get("format") == 2
         last_anchor = manifest.get("last_anchor", (None, None))
         history._last_anchor = (last_anchor[0], last_anchor[1])

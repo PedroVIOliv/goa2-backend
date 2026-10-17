@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from goa2.domain.models.enums import HistoryScope
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
@@ -42,6 +43,7 @@ class ManagedGame:
     game_logger: GameLogger | None = None
     replay_recorder: ReplayRecorder | None = None
     history: LiveHistory | None = None
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND
     timer_task: asyncio.Task[None] | None = None
     # Consensus-override negotiation state. Coordination, not game state:
     # never saved, never in views; unresolved proposals die on restart.
@@ -81,6 +83,7 @@ class GameRegistry:
         hero_ids: list[str],
         game_id: str | None = None,
         hero_names: dict[str, str] | None = None,
+        history_scope: HistoryScope = HistoryScope.CURRENT_ROUND,
     ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
         game_id = game_id or uuid.uuid4().hex[:12]
@@ -100,6 +103,7 @@ class GameRegistry:
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
             hero_names=hero_names or {},
+            history_scope=HistoryScope(history_scope),
             game_logger=create_game_logger(game_id),
             replay_recorder=create_replay_recorder(game_id),
         )
@@ -114,11 +118,12 @@ class GameRegistry:
     def _bind_history(self, game: ManagedGame) -> None:
         if game.history is None:
             directory = history_directory(self._save_dir, game.game_id) if self._save_dir else None
-            game.history = LiveHistory(directory)
+            game.history = LiveHistory(directory, scope=game.history_scope)
             count = game.replay_recorder.decision_count if game.replay_recorder else 0
             game.history.capture_safely(game.session, count)
             if count:
                 game.history.backfill_status = "pending"
+        game.history.scope = game.history_scope
         if game.replay_recorder:
 
             def capture(record: dict, count: int) -> None:
@@ -231,6 +236,7 @@ class GameRegistry:
                 replay_log=game.replay_recorder.records if game.replay_recorder else None,
                 live_history=manifest,
                 rollback_anchor_id=game.session.rollback_anchor_id,
+                history_scope=game.history_scope,
             )
             game.history.last_manifest = manifest
             if manifest is not None and history_saved:
@@ -263,6 +269,7 @@ class GameRegistry:
                 spectator_token=data["spectator_token"],
                 hero_to_token=data["hero_to_token"],
                 hero_names=data["hero_names"],
+                history_scope=data["history_scope"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
@@ -272,7 +279,9 @@ class GameRegistry:
             if data.get("live_history"):
                 try:
                     game.history = LiveHistory.restore(
-                        history_directory(self._save_dir, game.game_id), data["live_history"]
+                        history_directory(self._save_dir, game.game_id),
+                        data["live_history"],
+                        scope=game.history_scope,
                     )
                     game.history.last_manifest = data["live_history"]
                 except Exception:
@@ -280,7 +289,9 @@ class GameRegistry:
                     # Reserve previously issued IDs even if this server cannot
                     # read the old group format. Rebuild a new baseline/prefix.
                     previous = data["live_history"]
-                    game.history = LiveHistory(history_directory(self._save_dir, game.game_id))
+                    game.history = LiveHistory(
+                        history_directory(self._save_dir, game.game_id), scope=game.history_scope
+                    )
                     game.history.records = deepcopy(previous.get("records", []))
                     game.history.revision = previous.get("revision", 0)
                     game.history.epoch = previous.get("epoch", 0) + 1

@@ -5,6 +5,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from goa2.domain.models import TeamColor
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.time_control import TimeControlConfig
 
 
@@ -49,6 +50,7 @@ class DraftState(BaseModel):
     # Max hero difficulty (stars, 1..4) allowed into the pool. 4 = all heroes.
     max_hero_stars: int = 4
     time_control: TimeControlConfig | None = None
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND
     # Team sizes are derived from membership at start_draft (no preset; 0 in LOBBY).
     red_size: int = 0
     blue_size: int = 0

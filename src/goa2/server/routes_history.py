@@ -20,13 +20,20 @@ def _check(history: Any, revision: int | None) -> None:
         raise HTTPException(409, "History changed; refresh the index")
 
 
-def _position(history: Any, position_id: int) -> int:
+def _position(history: Any, position_id: int, active: list[int]) -> int:
     if not 0 <= position_id < len(history.records):
         raise HTTPException(404, "Unknown history position")
+    if position_id not in history.active:
+        raise HTTPException(410, "History position was superseded")
     try:
-        return history.active.index(position_id)
+        return active.index(position_id)
     except ValueError:
-        raise HTTPException(410, "History position was superseded") from None
+        raise HTTPException(403, "History position is outside the replay window") from None
+
+
+def _context(game: Any) -> dict[str, Any]:
+    state = game.session.state
+    return {"round": state.round, "turn": state.turn, "phase": state.phase.value}
 
 
 async def _game(game_id: str, registry: Any) -> Any:
@@ -54,14 +61,17 @@ async def history_index(
     async with game.lock:
         history = game.history
         _check(history, revision)
+        viewer = "spectator" if player.is_spectator else player.hero_id
+        context = _context(game)
+        active = history.visible_active(viewer, view=context)
         end = (
-            _position(history, before_position_id)
+            _position(history, before_position_id, active)
             if before_position_id is not None
-            else len(history.active)
+            else len(active)
         )
-        ids = history.active[max(0, end - limit) : end]
+        ids = active[max(0, end - limit) : end]
         return {
-            **history.metadata(),
+            **history.metadata(viewer=viewer, view=context),
             "positions": [public_position(history.records[i]) for i in ids],
             "has_more": end > limit,
             "before_position_id": ids[0] if ids else None,
@@ -79,8 +89,9 @@ async def _read(
     async with game.lock:
         history = game.history
         _check(history, revision)
-        start = _position(history, position_id)
-        ids = history.active[start : start + limit]
+        active = history.visible_active(viewer, view=_context(game))
+        start = _position(history, position_id, active)
+        ids = active[start : start + limit]
         epoch, version = history.epoch, history.revision
         positions = [public_position(history.records[i]) for i in ids]
         reader = history.reader()
@@ -118,8 +129,9 @@ async def _read(
             or (revision is not None and history.revision != version)
         ):
             raise HTTPException(409, "History changed; refresh the index")
+        active = history.visible_active(viewer, view=_context(game))
         for record_id in ids:
-            _position(history, record_id)
+            _position(history, record_id, active)
     return {**group, "positions": positions, "revision": version, "epoch": epoch}
 
 
@@ -178,6 +190,10 @@ async def history_frames(
             revision is not None and game.history.revision != group["revision"]
         ):
             raise HTTPException(409, "History changed; refresh the index")
+        viewer = "spectator" if player.is_spectator else player.hero_id
+        active = game.history.visible_active(viewer, view=_context(game))
+        for position in group["positions"]:
+            _position(game.history, position["position_id"], active)
     return Response(
         body,
         media_type="application/json",

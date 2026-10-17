@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.time_control import TimeControlConfig
 from goa2.server.player_names import MAX_PLAYER_NAME_LENGTH
 
@@ -32,6 +33,7 @@ class CreateGameRequest(BaseModel):
     cheats_enabled: bool = False
     game_type: str = "LONG"
     time_control: TimeControlConfig | None = None
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND
     # Keyed by the same hero identifier used in red_heroes/blue_heroes.
     player_names: dict[str, str] = Field(default_factory=dict)
 
@@ -112,6 +114,8 @@ class HistoryGap(BaseModel):
 
 
 class HistoryMetadata(BaseModel):
+    scope: HistoryScope
+    first_position_id: int | None
     revision: int
     epoch: int
     position_id: int | None
@@ -210,6 +214,7 @@ class CreateDraftRequest(BaseModel):
     cheats_enabled: bool = False
     max_hero_stars: int = 4
     time_control: TimeControlConfig | None = None
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND
 
     _normalize = field_validator("host_name")(_normalize_lobby_name)
 
@@ -222,6 +227,7 @@ class UpdateDraftSettingsRequest(BaseModel):
     draft_mode: str | None = None
     cheats_enabled: bool | None = None
     max_hero_stars: int | None = None
+    history_scope: HistoryScope | None = None
     # Explicit null disables timers; omission leaves the setting unchanged.
     time_control: TimeControlConfig | None = None
 

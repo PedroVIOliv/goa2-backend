@@ -11,6 +11,12 @@ class GameType(StrEnum):
     LONG = "LONG"
 
 
+class HistoryScope(StrEnum):
+    CURRENT_TURN = "CURRENT_TURN"
+    CURRENT_ROUND = "CURRENT_ROUND"
+    EVERYTHING = "EVERYTHING"
+
+
 class MinionType(StrEnum):
     MELEE = "MELEE"
     RANGED = "RANGED"

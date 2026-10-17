@@ -15,9 +15,9 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _run_full_draft(client):
+def _run_full_draft(client, **settings):
     """Drive a full 2v2 draft to a created game; return (draft_id, toks, final_view)."""
-    r = client.post("/drafts", json={"host_name": "Alice"})
+    r = client.post("/drafts", json={"host_name": "Alice", **settings})
     assert r.status_code == 201
     d = r.json()
     draft_id, host_tok = d["draft_id"], d["player_token"]
@@ -72,6 +72,51 @@ def test_full_draft_creates_playable_game(client):
     assert final["game_token"]
     gv = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
     assert gv.status_code == 200
+    assert gv.json()["history"]["scope"] == "CURRENT_ROUND"
+
+
+def test_draft_history_scope_carries_into_game(client):
+    _draft_id, _toks, final = _run_full_draft(client, history_scope="EVERYTHING")
+    assert final["draft"]["history_scope"] == "EVERYTHING"
+    response = client.get(f"/games/{final['game_id']}", headers=_auth(final["game_token"]))
+    assert response.json()["history"]["scope"] == "EVERYTHING"
+
+
+def test_host_updates_history_scope_only_in_lobby(client):
+    data = client.post("/drafts", json={"host_name": "Alice"}).json()
+    base = f"/drafts/{data['draft_id']}"
+    host = _auth(data["player_token"])
+    assert client.get(base, headers=host).json()["draft"]["history_scope"] == "CURRENT_ROUND"
+    guest = client.post(base + "/join", json={"display_name": "Bob"}).json()["player_token"]
+    assert (
+        client.patch(
+            base + "/settings", headers=_auth(guest), json={"history_scope": "EVERYTHING"}
+        ).status_code
+        == 403
+    )
+    for scope in ("EVERYTHING", "CURRENT_TURN", "CURRENT_ROUND"):
+        response = client.patch(base + "/settings", headers=host, json={"history_scope": scope})
+        assert response.status_code == 200
+        assert response.json()["draft"]["history_scope"] == scope
+    assert (
+        client.patch(
+            base + "/settings", headers=host, json={"history_scope": "INVALID"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post("/drafts", json={"host_name": "A", "history_scope": "INVALID"}).status_code
+        == 422
+    )
+    from goa2.draft.models import DraftStatus
+
+    client.app.state.draft_registry.get(data["draft_id"]).state.status = DraftStatus.DRAFTING
+    assert (
+        client.patch(
+            base + "/settings", headers=host, json={"history_scope": "EVERYTHING"}
+        ).status_code
+        == 409
+    )
 
 
 def test_draft_spectator_carries_over_to_game_spectator(client):

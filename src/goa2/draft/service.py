@@ -4,6 +4,7 @@ import random
 from typing import cast
 
 from goa2.domain.models import TeamColor
+from goa2.domain.models.enums import HistoryScope
 from goa2.domain.time_control import TimeControlConfig
 from goa2.draft.errors import (
     ChaosRequiresFullRosterError,
@@ -78,6 +79,7 @@ def create_draft(
     cheats: bool = False,
     max_hero_stars: int = 4,
     time_control: TimeControlConfig | None = None,
+    history_scope: HistoryScope = HistoryScope.CURRENT_ROUND,
 ) -> DraftState:
     get_mode(draft_mode)  # validate mode name early (raises KeyError -> caller maps)
     _require_full_roster_for_chaos(draft_mode, max_hero_stars)
@@ -89,6 +91,7 @@ def create_draft(
         cheats=cheats,
         max_hero_stars=max_hero_stars,
         time_control=time_control,
+        history_scope=history_scope,
         created_at=now,
     )
     state.players.append(DraftPlayer(id="p1", display_name=host_name, is_host=True))
@@ -104,6 +107,7 @@ def update_settings(
     cheats: bool | None = None,
     max_hero_stars: int | None = None,
     time_control: TimeControlConfig | None | object = UNSET,
+    history_scope: HistoryScope | None = None,
 ) -> None:
     """Host-editable lobby settings. LOBBY-only. Only validates the draft mode name;
     map and game_type are validated by the route layer against the engine."""
@@ -128,6 +132,8 @@ def update_settings(
         state.max_hero_stars = max_hero_stars
     if time_control is not UNSET:
         state.time_control = cast(TimeControlConfig | None, time_control)
+    if history_scope is not None:
+        state.history_scope = history_scope
 
 
 def join(state: DraftState, display_name: str) -> DraftPlayer:
