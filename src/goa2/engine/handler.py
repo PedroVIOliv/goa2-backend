@@ -38,8 +38,10 @@ def submit_input(state: GameState, response: InputResponse | dict) -> None:
                 f"Input response request_id {response.request_id!r} does not match "
                 f"pending request {expected_request_id!r}"
             )
+        current_step.validate_input(state, response.selection)
         current_step.pending_input = {"selection": response.selection}
     else:
+        current_step.validate_input(state, response.get("selection"))
         current_step.pending_input = response
     current_step.pending_request_id = None
 
