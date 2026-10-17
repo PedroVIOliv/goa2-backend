@@ -583,6 +583,10 @@ def _build_effects_view(state: GameState) -> list[dict[str, Any]]:
             "split_value": effect.split_value,
             # Publicly announced card color (Imbue Doubt family).
             "named_color": effect.named_color.value if effect.named_color else None,
+            # Wasp's Static Barrier: radius around barrier_origin_id's current
+            # position (it moves with her), so clients can draw the bubble.
+            "barrier_radius": effect.barrier_radius,
+            "barrier_origin_id": effect.barrier_origin_id,
         }
         effects_view.append(effect_view)
 

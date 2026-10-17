@@ -772,6 +772,37 @@ class TestViewStructure:
         (fx,) = [e for e in view["effects"] if e["id"] == "fx_doubt"]
         assert fx["named_color"] == "RED"
 
+    def test_effects_expose_static_barrier_radius(self, sample_state):
+        """Static Barrier carries its radius and center unit so clients can draw it."""
+        from goa2.domain.models.effect import (
+            ActiveEffect,
+            DurationType,
+            EffectScope,
+            EffectType,
+            Shape,
+        )
+
+        sample_state.active_effects.append(
+            ActiveEffect(
+                id="fx_barrier",
+                source_id="hero_a",
+                effect_type=EffectType.STATIC_BARRIER,
+                scope=EffectScope(shape=Shape.GLOBAL),
+                duration=DurationType.THIS_TURN,
+                created_at_turn=1,
+                created_at_round=1,
+                is_active=True,
+                barrier_radius=2,
+                barrier_origin_id="hero_a",
+            )
+        )
+
+        view = build_view(sample_state, for_hero_id=None)
+
+        (fx,) = [e for e in view["effects"] if e["id"] == "fx_barrier"]
+        assert fx["barrier_radius"] == 2
+        assert fx["barrier_origin_id"] == "hero_a"
+
     def test_markers_structure(self, sample_state):
         """Markers view has correct structure."""
         view = build_view(sample_state, for_hero_id=HeroID("hero_a"))
