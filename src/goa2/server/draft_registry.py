@@ -11,6 +11,7 @@ from fastapi import WebSocket
 
 from goa2.draft.errors import DraftNotFoundError
 from goa2.draft.models import DraftState
+from goa2.server.webhooks import WebhookConfig
 
 
 @dataclass
@@ -19,6 +20,8 @@ class ManagedDraft:
     state: DraftState
     host_token: str
     spectator_token: str
+    webhook: WebhookConfig | None = field(default=None, repr=False)
+    discord_user_ids: dict[str, str] = field(default_factory=dict)  # player_id -> Discord user ID
     player_tokens: dict[str, str] = field(default_factory=dict)
     player_to_token: dict[str, str] = field(default_factory=dict)
     player_game_tokens: dict[str, str] = field(default_factory=dict)

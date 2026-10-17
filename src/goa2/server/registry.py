@@ -17,6 +17,7 @@ from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
 from goa2.server.replay import ReplayRecorder, create_replay_recorder
+from goa2.server.webhooks import WebhookConfig, WebhookDispatcher, observe_game
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,10 @@ class ManagedGame:
     # Display name per hero, from the draft lobby or manual creation. Empty is
     # the normal case for a game created without names.
     hero_names: dict[str, str] = field(default_factory=dict)
+    discord_user_ids: dict[str, str] = field(default_factory=dict)
+    webhook: WebhookConfig | None = field(default=None, repr=False)
+    webhook_decision_key: tuple | None = field(default=None, repr=False)
+    webhook_fingerprint: str | None = field(default=None, repr=False)
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     outbound_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -68,9 +73,13 @@ class ManagedGame:
 class GameRegistry:
     """Thread-safe in-memory store for active games with optional file persistence."""
 
-    def __init__(self, save_dir: str | None = None) -> None:
+    def __init__(
+        self, save_dir: str | None = None, webhook_dispatcher: WebhookDispatcher | None = None
+    ) -> None:
         self._games: dict[str, ManagedGame] = {}
         self._save_dir = save_dir
+        self.webhook_dispatcher = webhook_dispatcher
+        self.webhook_notifications_enabled = True
 
     def create_game(
         self,
@@ -78,6 +87,8 @@ class GameRegistry:
         hero_ids: list[str],
         game_id: str | None = None,
         hero_names: dict[str, str] | None = None,
+        webhook: WebhookConfig | None = None,
+        discord_user_ids: dict[str, str] | None = None,
     ) -> ManagedGame:
         """Register a new game and generate tokens for each hero + spectator."""
         game_id = game_id or uuid.uuid4().hex[:12]
@@ -97,13 +108,14 @@ class GameRegistry:
             spectator_token=spectator_token,
             hero_to_token=hero_to_token,
             hero_names=hero_names or {},
+            webhook=webhook,
+            discord_user_ids=discord_user_ids or {},
             game_logger=create_game_logger(game_id),
             replay_recorder=create_replay_recorder(game_id),
         )
         self._games[game_id] = game
 
-        if self._save_dir:
-            self.save_game(game_id)
+        self.save_game(game_id)
 
         return game
 
@@ -127,6 +139,8 @@ class GameRegistry:
         return None
 
     def remove(self, game_id: str) -> None:
+        if self.webhook_dispatcher:
+            self.webhook_dispatcher.cancel_game(game_id)
         game = self._games.pop(game_id, None)
         if game is not None and game.timer_task is not None:
             game.timer_task.cancel()
@@ -138,11 +152,17 @@ class GameRegistry:
             delete_game_save(game_id, self._save_dir)
 
     def save_game(self, game_id: str) -> None:
-        """Persist a game to disk. No-op if save_dir is not configured."""
-        if not self._save_dir:
-            return
+        """Observe the completed mutation and optionally persist it to disk."""
         game = self._games.get(game_id)
         if game is None:
+            return
+        try:
+            payload = observe_game(game, baseline_only=not self.webhook_notifications_enabled)
+            if payload and game.webhook and self.webhook_dispatcher:
+                self.webhook_dispatcher.enqueue(game_id, game.webhook, payload)
+        except Exception:
+            logger.warning("Webhook observation failed game=%s", game_id)
+        if not self._save_dir:
             return
         from goa2.engine.persistence import save_game
 
@@ -154,6 +174,8 @@ class GameRegistry:
                 spectator_token=game.spectator_token,
                 hero_to_token=game.hero_to_token,
                 hero_names=game.hero_names,
+                webhook=game.webhook.private_dump() if game.webhook else None,
+                discord_user_ids=game.discord_user_ids,
                 created_at=game.created_at,
                 save_dir=self._save_dir,
                 rollback_snapshot=game.session._rollback_snapshot,
@@ -188,12 +210,15 @@ class GameRegistry:
                 spectator_token=data["spectator_token"],
                 hero_to_token=data["hero_to_token"],
                 hero_names=data["hero_names"],
+                webhook=WebhookConfig.model_validate(data["webhook"]) if data["webhook"] else None,
+                discord_user_ids=data["discord_user_ids"],
                 created_at=data["created_at"],
                 last_result=data["last_result"],
                 game_logger=create_game_logger(data["game_id"]),
                 replay_recorder=replay_recorder,
             )
             self._games[game.game_id] = game
+            observe_game(game, baseline_only=True)
             count += 1
             logger.info("Restored game %s", game.game_id)
 
