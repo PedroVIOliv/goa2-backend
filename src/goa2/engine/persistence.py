@@ -38,6 +38,7 @@ def save_game(
     rollback_snapshot: dict[str, Any] | None = None,
     rollback_actor_id: str | None = None,
     replay_log: list[dict[str, Any]] | None = None,
+    joined: bool = True,
 ) -> Path:
     """Serialize game data to a JSON file with atomic write."""
     payload: dict[str, Any] = {
@@ -48,6 +49,7 @@ def save_game(
         "hero_to_token": hero_to_token,
         "hero_names": hero_names or {},
         "created_at": created_at,
+        "joined": joined,
         "state": state.model_dump(mode="json"),
         "rollback_snapshot": rollback_snapshot,
         "rollback_actor_id": rollback_actor_id,
@@ -134,6 +136,9 @@ def load_game_payload(payload: dict[str, Any]) -> dict[str, Any]:
         # map is the correct reading of such a file, so no version bump.
         "hero_names": payload.get("hero_names", {}),
         "created_at": payload["created_at"],
+        # Absent from saves written before the flag existed. Such a game counts
+        # as joined so the unjoined-game expiry never deletes it.
+        "joined": payload.get("joined", True),
         "last_result": last_result,
         # Absent from saves written before the save carried the replay log, and
         # from games whose log was already damaged when it would have been adopted.
