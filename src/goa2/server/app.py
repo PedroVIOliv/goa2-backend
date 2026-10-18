@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # from the last persisted mutation — connecting, watching, and reconnecting do
 # not reset it.
 DEFAULT_GAME_TTL_DAYS = 5
+UNJOINED_SWEEP_SECONDS = 300
 
 load_dotenv()
 
@@ -72,6 +73,15 @@ async def _cleanup_loop(registry: GameRegistry):
             logger.info("Cleanup: removed %d old replay log(s)", purged)
 
 
+async def _unjoined_sweep_loop(registry: GameRegistry):
+    """Delete games no player joined within an hour, checked every few minutes."""
+    while True:
+        await asyncio.sleep(UNJOINED_SWEEP_SECONDS)
+        expired = await registry.expire_unjoined_games()
+        if expired:
+            logger.info("Cleanup: deleted %d game(s) no player joined", expired)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     save_dir = os.environ.get("GOA2_SAVE_DIR", "data/games")
@@ -84,6 +94,7 @@ async def lifespan(app: FastAPI):
     await resume_timers(registry)
 
     cleanup_task = asyncio.create_task(_cleanup_loop(registry))
+    unjoined_task = asyncio.create_task(_unjoined_sweep_loop(registry))
     # Background, never awaited: a worker takes seconds to spawn, and blocking
     # startup on it would delay every restart to spare the first rewind.
     # Off by default under tests, which build hundreds of apps.
@@ -101,9 +112,10 @@ async def lifespan(app: FastAPI):
                 await warmup_task
         shutdown_heavy_pool()
         await stop_timers(registry)
-        cleanup_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await cleanup_task
+        for task in (cleanup_task, unjoined_task):
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 def _configure_logging() -> None:

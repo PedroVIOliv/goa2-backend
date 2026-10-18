@@ -18,11 +18,12 @@ from fastapi import WebSocket
 from goa2.engine.session import GameSession, SessionResult
 from goa2.server.errors import GameNotFoundError
 from goa2.server.game_logger import GameLogger, create_game_logger
-from goa2.server.replay import ReplayRecorder, create_replay_recorder
+from goa2.server.replay import ReplayRecorder, create_replay_recorder, is_replay_decision
 
 logger = logging.getLogger(__name__)
 
 FINISHED_GAME_IDLE_SECONDS = 3600
+UNJOINED_GAME_TTL_SECONDS = 3600
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,10 @@ class ManagedGame:
     pending_override: Any | None = None
     override_expiry_task: asyncio.Task[None] | None = None
     last_access: float = field(default_factory=time.monotonic)
+    # Set once a player (not spectator) WebSocket has connected. Persisted, and
+    # True for anything not built by create_game, so only a game provably never
+    # opened by a player can be expired by expire_unjoined_games.
+    joined: bool = True
 
     @property
     def current_responder(self) -> str | None:
@@ -116,6 +121,7 @@ class GameRegistry:
             hero_names=hero_names or {},
             game_logger=create_game_logger(game_id),
             replay_recorder=create_replay_recorder(game_id),
+            joined=False,
         )
         self._games[game_id] = game
 
@@ -210,6 +216,7 @@ class GameRegistry:
                 rollback_snapshot=game.session._rollback_snapshot,
                 rollback_actor_id=game.session._rollback_actor_id,
                 replay_log=game.replay_recorder.records if game.replay_recorder else None,
+                joined=game.joined,
             )
         except Exception:
             logger.exception("Failed to save game %s", game_id)
@@ -267,6 +274,7 @@ class GameRegistry:
             last_result=data["last_result"],
             game_logger=create_game_logger(data["game_id"]),
             replay_recorder=replay_recorder,
+            joined=data["joined"],
         )
 
     async def unload_idle_finished_games(
@@ -300,6 +308,48 @@ class GameRegistry:
             unloaded += 1
             logger.info("Unloaded idle finished game %s from memory", game.game_id)
         return unloaded
+
+    async def expire_unjoined_games(
+        self, max_age_seconds: float = UNJOINED_GAME_TTL_SECONDS
+    ) -> int:
+        """Delete games no player ever joined, max_age_seconds after creation.
+
+        Removes the game from memory with its save, game logs and replay.
+        Returns the number deleted.
+        """
+        cutoff = time.time() - max_age_seconds
+        expired: list[ManagedGame] = []
+        for game in list(self._games.values()):
+            if not _is_expired_unjoined(game, cutoff):
+                continue
+            async with game.lock:
+                if self._games.get(game.game_id) is not game or not _is_expired_unjoined(
+                    game, cutoff
+                ):
+                    continue
+                self.remove(game.game_id)
+            expired.append(game)
+        if expired:
+            self._delete_unjoined_files(expired)
+        return len(expired)
+
+    def _delete_unjoined_files(self, games: list[ManagedGame]) -> None:
+        from goa2.server.bug_reports import open_report_game_ids
+        from goa2.server.game_logger import delete_game_logs
+        from goa2.server.shares import shared_game_ids
+
+        pinned = open_report_game_ids() | shared_game_ids()
+        log_dir = os.environ.get("GOA2_LOG_DIR", "logs/games")
+        for game in games:
+            if game.game_logger is not None:
+                game.game_logger.close()
+            try:
+                delete_game_logs(game.game_id, log_dir)
+                if game.replay_recorder is not None and game.game_id not in pinned:
+                    game.replay_recorder.path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception("Failed to delete files of unjoined game %s", game.game_id)
+            logger.info("Deleted game %s: no player joined it", game.game_id)
 
     def cleanup_stale_games(self, max_age_seconds: int = 86400) -> int:
         """Remove games whose save file hasn't been updated in max_age_seconds.
@@ -370,4 +420,19 @@ def _is_idle_finished(game: ManagedGame, cutoff: float) -> bool:
         and not game.spectator_ws_connections
         and game.pending_override is None
         and game.last_access <= cutoff
+    )
+
+
+def _is_expired_unjoined(game: ManagedGame, cutoff: float) -> bool:
+    records = game.replay_recorder.records if game.replay_recorder else None
+    return (
+        not game.joined
+        and game.created_at <= cutoff
+        and not game.ws_connections
+        and not game.spectator_ws_connections
+        and game.pending_override is None
+        and not game.session.state.is_game_over
+        # A damaged replay (None) cannot prove the game saw no decision.
+        and records is not None
+        and not any(is_replay_decision(r) for r in records)
     )
