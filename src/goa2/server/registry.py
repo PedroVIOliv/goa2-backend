@@ -163,9 +163,11 @@ class GameRegistry:
         Returns None if the token is unknown.
         """
         # Snapshots: a worker thread may load a game back while this iterates.
+        # _unloaded is read first because a reload adds the game to _games
+        # before dropping it from _unloaded, so a concurrent reload is never missed.
         holders: list[tuple[str, ManagedGame | UnloadedGame]] = [
-            *list(self._games.items()),
             *list(self._unloaded.items()),
+            *list(self._games.items()),
         ]
         for game_id, holder in holders:
             if token in holder.player_tokens:
