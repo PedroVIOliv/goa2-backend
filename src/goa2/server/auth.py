@@ -42,6 +42,10 @@ def get_current_player(request: Request, registry: RegistryDep) -> PlayerContext
     if path_game_id and path_game_id != game_id:
         raise HTTPException(status_code=403, detail="Token does not match this game")
 
+    # Sync dependency, so FastAPI runs it in a worker thread: an unloaded
+    # finished game loads back from disk here instead of on the event loop.
+    registry.get(game_id)
+
     return PlayerContext(game_id=game_id, hero_id=hero_id, is_spectator=is_spectator)
 
 

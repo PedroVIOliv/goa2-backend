@@ -62,6 +62,9 @@ async def _cleanup_loop(registry: GameRegistry):
         removed = registry.cleanup_stale_games(max_age_seconds=_game_ttl_days() * 86400)
         if removed:
             logger.info("Cleanup: removed %d stale game(s)", removed)
+        unloaded = await registry.unload_idle_finished_games()
+        if unloaded:
+            logger.info("Cleanup: unloaded %d idle finished game(s)", unloaded)
         # Replays outlive game saves: retained for their own TTL (default 30d)
         # so bugs reported after a game ends can still be reproduced.
         purged = cleanup_old_replays()
