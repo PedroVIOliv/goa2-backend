@@ -231,7 +231,7 @@ Omitting `game_type` defaults to `"LONG"` (standard game).
 }
 ```
 
-A game no player joins within an hour is deleted. "Joined" means a player token
+A game no player joins within 24 hours is deleted. "Joined" means a player token
 opened the game WebSocket (or a player decision was submitted); REST polling and
 spectator sockets do not count. After deletion its tokens are unknown: REST
 returns `401`, the WebSocket closes with `4001`.

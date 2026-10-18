@@ -74,7 +74,7 @@ async def _cleanup_loop(registry: GameRegistry):
 
 
 async def _unjoined_sweep_loop(registry: GameRegistry):
-    """Delete games no player joined within an hour, checked every few minutes."""
+    """Delete games no player joined within a day, checked every few minutes."""
     while True:
         await asyncio.sleep(UNJOINED_SWEEP_SECONDS)
         expired = await registry.expire_unjoined_games()

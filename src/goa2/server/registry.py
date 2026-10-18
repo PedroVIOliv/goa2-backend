@@ -23,7 +23,7 @@ from goa2.server.replay import ReplayRecorder, create_replay_recorder, is_replay
 logger = logging.getLogger(__name__)
 
 FINISHED_GAME_IDLE_SECONDS = 3600
-UNJOINED_GAME_TTL_SECONDS = 3600
+UNJOINED_GAME_TTL_SECONDS = 24 * 3600
 
 
 @dataclass(frozen=True)

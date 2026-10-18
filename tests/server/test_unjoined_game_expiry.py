@@ -1,4 +1,4 @@
-"""Games no player ever connected to are deleted an hour after creation."""
+"""Games no player ever connected to are deleted a day after creation."""
 
 import asyncio
 import json
