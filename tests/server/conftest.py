@@ -39,6 +39,13 @@ def _no_worker_subprocesses():
 
 
 @pytest.fixture(autouse=True)
+def _unlimited_creations(monkeypatch):
+    """Every TestClient shares one IP; the limit itself is covered in
+    test_creation_rate_limit.py."""
+    monkeypatch.setenv("GOA2_CREATE_LIMIT_PER_HOUR", "1000000")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_data_dirs(tmp_path_factory):
     """Point every server data directory at a fresh temp dir, per test."""
     previous = {var: os.environ.get(var) for var in _ISOLATED_DIRS}

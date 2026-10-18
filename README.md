@@ -287,6 +287,7 @@ Use behavior assertions rather than checking only that setup wiring happened. Fo
 - `GOA2_LOG_DIR` - game log directory. Defaults to `logs/games`.
 - `GOA2_REPLAY_DIR` - minimal replay-log directory. Defaults to `data/replays`.
 - `GOA2_REPLAY_TTL_DAYS` - how long replay logs are retained, in days. Defaults to `30`.
+- `GOA2_CREATE_LIMIT_PER_HOUR` - games plus drafts one IP may create per rolling hour. Defaults to `5`.
 
 ### Replay logs
 
