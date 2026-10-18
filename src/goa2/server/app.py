@@ -23,6 +23,7 @@ from goa2.server.errors import (
     InvalidPhaseError,
     NotYourTurnError,
 )
+from goa2.server.rate_limit import CreationLimiter, create_limit_per_hour
 from goa2.server.registry import GameRegistry
 from goa2.server.routes_bug_reports import public_router as bug_reports_router
 from goa2.server.routes_draft import router as draft_router
@@ -134,6 +135,7 @@ def _configure_logging() -> None:
 def create_app() -> FastAPI:
     _configure_logging()
     app = FastAPI(title="GoA2 API", version="0.1.0", lifespan=lifespan)
+    app.state.creation_limiter = CreationLimiter(create_limit_per_hour())
 
     # Routers
     app.include_router(heroes_router)

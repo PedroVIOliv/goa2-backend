@@ -36,6 +36,7 @@ from goa2.server.models import (
     UpdateDraftSettingsRequest,
 )
 from goa2.server.player_names import resolve_player_names
+from goa2.server.rate_limit import check_creation_budget, spend_creation_budget
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])
 
@@ -167,7 +168,10 @@ async def list_maps() -> list[str]:
 
 
 @router.post("", response_model=CreateDraftResponse, status_code=201)
-async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> CreateDraftResponse:
+async def create_draft(
+    body: CreateDraftRequest, registry: DraftRegistryDep, request: Request
+) -> CreateDraftResponse:
+    ip = check_creation_budget(request)
     # Match settings can be tweaked in the lobby, but seed/validate the initial values now.
     if body.game_type not in ("QUICK", "LONG"):
         raise HTTPException(status_code=400, detail="game_type must be QUICK or LONG")
@@ -189,6 +193,7 @@ async def create_draft(body: CreateDraftRequest, registry: DraftRegistryDep) -> 
         time_control=body.time_control,
     )
     md = registry.create(state)
+    spend_creation_budget(request, ip)
     return CreateDraftResponse(
         draft_id=draft_id,
         player_id="p1",
