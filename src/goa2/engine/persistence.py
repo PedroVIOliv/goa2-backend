@@ -89,7 +89,16 @@ def load_game(file_path: str) -> dict[str, Any]:
     """
     with open(file_path) as f:
         payload = json.load(f)
+    return load_game_payload(payload)
 
+
+def is_finished_payload(payload: dict[str, Any]) -> bool:
+    """True when a raw save holds a completed game, without validating the state."""
+    return payload["state"].get("phase") == GamePhase.GAME_OVER.value
+
+
+def load_game_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the load_game() result from an already-parsed save file."""
     state = GameState.model_validate(payload["state"])
     session = GameSession(state)
 

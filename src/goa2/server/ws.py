@@ -892,7 +892,11 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
         return
 
     try:
-        game = registry.get(game_id)
+        game = (
+            registry.get(game_id)
+            if registry.is_loaded(game_id)
+            else await asyncio.to_thread(registry.get, game_id)
+        )
     except GameNotFoundError:
         await websocket.close(code=4004, reason="Game not found")
         return
