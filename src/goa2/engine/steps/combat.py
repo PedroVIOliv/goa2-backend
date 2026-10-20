@@ -886,6 +886,7 @@ class CheckMinionProtectionStep(GameStep):
                 input_request=create_input_request(
                     request_type=InputRequestType.SELECT_CARD,
                     prompt=f"Discard a card to protect {self.minion_id}?",
+                    decision_context={"purpose": "discard", "actor_id": str(protector.id)},
                     options=options,
                     player_id=protector.id,
                     can_skip=True,

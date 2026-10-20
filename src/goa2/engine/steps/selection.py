@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import Field
 
@@ -62,6 +62,7 @@ class SelectStep(GameStep):
     target_type: TargetType  # "UNIT", "HEX", "CARD", "NUMBER"
     prompt: str
     output_key: str = "selection"
+    decision_purpose: Literal["discard"] | None = None
     filters: list[FilterCondition] = Field(default_factory=list)
     auto_select_if_one: bool = False
     context_hero_id: str | None = None  # Non-empty literal wins over context_hero_id_key
@@ -425,6 +426,14 @@ class SelectStep(GameStep):
                 player_id=prompt_player_id or str(actor_id),
                 prompt=self.prompt,
                 options=options_for_request,
+                decision_context=(
+                    {
+                        "purpose": self.decision_purpose,
+                        "actor_id": prompt_player_id or str(actor_id),
+                    }
+                    if self.decision_purpose
+                    else None
+                ),
                 can_skip=not self.is_mandatory,
             ),
         )
@@ -1108,6 +1117,7 @@ class ChooseRuneStep(GameStep):
                 options=[
                     InputOption(id=rune.value, text=rune.value.title()) for rune in self.options
                 ],
+                decision_context={"purpose": "rune_selection", "actor_id": player_id},
             ),
         )
 

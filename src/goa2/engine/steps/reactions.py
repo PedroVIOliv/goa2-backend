@@ -246,6 +246,23 @@ class ReactionWindowStep(GameStep):
                 attack_value=attack_value,
                 minion_modifier=minion_modifier,
                 defense_needed=defense_needed,
+                decision_context={
+                    "purpose": "defense",
+                    "actor_id": str(target_hero.id),
+                    "choice_facts": {
+                        card.id: {
+                            "defense_stat": block_stat.value,
+                            "defense_kind": (
+                                "primary"
+                                if not block_primary
+                                and card.current_primary_action
+                                in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL)
+                                else "secondary"
+                            ),
+                        }
+                        for card in valid_defense_cards
+                    },
+                },
             ),
         )
 

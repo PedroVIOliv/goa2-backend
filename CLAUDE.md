@@ -16,12 +16,13 @@ For client integration details, see [docs/CLIENT_INTEGRATION_GUIDE.md](docs/CLIE
 ## Shared frontend decisions and engine facts
 
 The frontend's agreed [shared decisions plan](../goa2-frontend/docs/plans/shared-decisions-engine-facts.md)
-defines the next migration prerequisite. It is planned work, not an implemented
-API. The engine owns offered choices, decision semantics and computed gameplay
+defines the shared migration boundary. Optional `decision_context` on requests
+and `battle_zone_minion_counts` on views implement its additive engine facts.
+The engine owns offered choices, decision semantics and computed gameplay
 values; the frontend shares normalization, permitted labels and payload handling
 while retaining separate desktop/mobile presentation. Mobile remains opt-in.
 
-When implementing the plan, expose missing facts additively from existing engine
+When extending this boundary, expose missing facts additively from existing engine
 computations, preserve legacy request fields and submissions, and scope all new
 metadata to the authorized recipient, including simultaneous choices. Keep older
 clients and saved requests working and update the client integration guide with
