@@ -1480,6 +1480,10 @@ zero is valid. An older-server fallback may use public minion positions and tile
 zone membership; missing membership is unavailable, not a whole-board total or zero.
 This field is derived for views and is not persisted in game state.
 
+See the [existing frontend compatibility record](SHARED_DECISION_FACTS_COMPATIBILITY.md)
+for the unchanged default frontend revision, control/candidate browser checks,
+accepted legacy submissions and verification limits.
+
 ### Common input request types
 
 | Type | Options field | Selection value | Description |
