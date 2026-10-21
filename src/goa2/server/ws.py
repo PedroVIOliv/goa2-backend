@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import time
@@ -921,10 +922,13 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 game.joined = True
             initial = _build_state_update(game, hero_id if not is_spectator else None)
         if previous_websocket is not None and previous_websocket is not websocket:
-            await previous_websocket.close(
-                code=4002,
-                reason="Connection superseded by a newer session",
-            )
+            # After a network drop the predecessor is usually already dead,
+            # and its close() raises; that must not abort this reconnect.
+            with contextlib.suppress(Exception):
+                await previous_websocket.close(
+                    code=4002,
+                    reason="Connection superseded by a newer session",
+                )
         await websocket.send_json(initial)
 
     if first_join:
