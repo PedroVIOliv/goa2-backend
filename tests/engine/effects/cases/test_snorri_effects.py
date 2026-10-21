@@ -27,6 +27,7 @@ from goa2.domain.models import (
     RuneType,
     StatType,
 )
+from goa2.domain.rules_version import SIGILS_BIRD_SINGLE_TARGET_PROMPT
 from goa2.domain.state import GameState
 from goa2.domain.views import build_view
 from goa2.engine.effect_manager import EffectManager
@@ -1734,6 +1735,8 @@ def test_rune_sigils_u2_bird_can_decline_minion_targeting_and_attack_adjacent_un
         minions=[("blue_minion", (2, 0, -2))],
     )
 
+    state.rules_version = SIGILS_BIRD_SINGLE_TARGET_PROMPT - 1
+
     run = _start_rune_sigils(state)
     run.expect_input(InputRequestType.SELECT_UNIT).skip()
     _pass_sigils_defense(
@@ -1741,6 +1744,43 @@ def test_rune_sigils_u2_bird_can_decline_minion_targeting_and_attack_adjacent_un
     ).finish()
 
     assert _attack_values(run) == [2]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_bird_offers_adjacent_units_and_minions_in_range_in_one_prompt():
+    state = _rune_sigils_state(
+        runes={1: RuneType.BIRD},
+        enemies=[("hero_target", (1, 0, -1)), ("hero_far", (2, 0, -2))],
+        minions=[("blue_minion", (1, 1, -2))],
+    )
+    state.rules_version = SIGILS_BIRD_SINGLE_TARGET_PROMPT
+
+    run = _start_rune_sigils(state)
+    request = run.expect_input(InputRequestType.SELECT_UNIT)
+    assert {option.id for option in request.latest_request.options} == {
+        "hero_target",
+        "blue_minion",
+    }
+    _pass_sigils_defense(request.choose("hero_target")).finish()
+
+    assert _attack_values(run) == [2]
+
+
+@pytest.mark.effect_flow
+def test_rune_sigils_bird_single_prompt_attacks_a_minion_in_range():
+    state = _rune_sigils_state(
+        runes={1: RuneType.BIRD},
+        enemies=[("hero_target", (1, 0, -1))],
+        minions=[("blue_minion", (3, 0, -3))],
+    )
+    state.get_hero("hero_snorri").items[StatType.RANGE] = 1
+    state.rules_version = SIGILS_BIRD_SINGLE_TARGET_PROMPT
+
+    run = _start_rune_sigils(state)
+    run.expect_input(InputRequestType.SELECT_UNIT).choose("blue_minion").finish()
+
+    assert _attack_values(run) == [2]
+    assert state.get_position("blue_minion") is None
 
 
 @pytest.mark.effect_flow

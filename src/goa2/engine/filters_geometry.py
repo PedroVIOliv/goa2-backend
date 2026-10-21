@@ -6,6 +6,7 @@ from pydantic import Field
 
 from goa2.domain.hex import Hex
 from goa2.domain.models import FilterType
+from goa2.domain.rules_version import ROLLING_STONE_SKIPS_DENIED_SPACES
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, UnitID
 
@@ -429,8 +430,8 @@ class MaxEmptySpacesInLineFilter(FilterCondition):
 
     For "Move any number of spaces in a straight line, ignoring obstacles,
     without moving through more than N empty spaces." Only on-map empty interior
-    hexes (no terrain, no occupant) count toward the budget; obstacles passed
-    through do not. Start and destination hexes never count (line_to is
+    hexes count toward the budget; obstacles passed through do not, including
+    spaces that only count as obstacles for the mover (Spinning Blade). Start and destination hexes never count (line_to is
     origin-exclusive, and we drop the destination). Pair with
     StraightLinePathFilter(pass_through_obstacles=True), which already rejects
     off-map interiors.
@@ -466,8 +467,13 @@ class MaxEmptySpacesInLineFilter(FilterCondition):
         for hex_pos in path[:-1]:  # interior hexes only (destination dropped)
             if not state.board.is_on_map(hex_pos):
                 continue
-            tile = state.board.get_tile(hex_pos)
-            if not tile.is_obstacle:  # on-map empty floor consumes the budget
+            if state.rules_version >= ROLLING_STONE_SKIPS_DENIED_SPACES:
+                is_obstacle = state.validator.is_obstacle_for_actor(
+                    state, hex_pos, str(origin_uid), context
+                )
+            else:
+                is_obstacle = state.board.get_tile(hex_pos).is_obstacle
+            if not is_obstacle:  # on-map empty floor consumes the budget
                 empties += 1
         return empties <= self.max_empty
 
