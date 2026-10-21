@@ -11,5 +11,6 @@ TARGET_DEFEAT_LOG = 4  # "if the target is (not) defeated" reads the defeat log,
 EMPTY_MEANS_NOT_OBSTACLE = 5  # a space that counts as an obstacle for the performer is not empty
 TOKENS_CANNOT_CROSS_MINES = 6  # mines are passable only for units, not a moved token like Pyro
 THIS_TURN_OUTLASTS_END_OF_TURN = 7  # "this turn" effects apply during end-of-turn triggers
+SIGILS_BIRD_SINGLE_TARGET_PROMPT = 8  # Rune Sigils' bird offers adjacent units and minions together
 
-CURRENT_RULES_VERSION = THIS_TURN_OUTLASTS_END_OF_TURN
+CURRENT_RULES_VERSION = SIGILS_BIRD_SINGLE_TARGET_PROMPT
