@@ -13,6 +13,7 @@ from goa2.domain.models.effect import (
     EffectType,
     Shape,
 )
+from goa2.domain.rules_version import ROLLING_STONE_SKIPS_DENIED_SPACES
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.steps import OfferRockUltimateStep
 
@@ -448,6 +449,50 @@ def test_strolling_stone_allows_two_empty_spaces() -> None:
     run.choose({"q": 4, "r": 0, "s": -4}).finish()
 
     assert state.entity_locations.get("hero_mrak") == Hex(q=4, r=0, s=-4)
+
+
+def _rolling_past_spinning_blade(rules_version: int):
+    # Blue Takahide off the line denies (1,0,-1) and (2,0,-2) to red Mrak.
+    state = (
+        EffectScenarioBuilder()
+        .with_hexes([(i, 0, -i) for i in range(7)] + [(2, -1, -1)])
+        .red_hero("hero_mrak", at=(0, 0, 0), current_card=hero_card("Mrak", "rolling_stone"))
+        .blue_hero("hero_takahide", at=(2, -1, -1))
+        .with_actor("hero_mrak")
+        .build()
+    )
+    state.rules_version = rules_version
+    EffectManager.create_effect(
+        state,
+        source_id="hero_takahide",
+        effect_type=EffectType.EMPTY_HEX_OBSTACLE,
+        scope=EffectScope(
+            shape=Shape.RADIUS,
+            range=1,
+            origin_id="hero_takahide",
+            affects=AffectsFilter.ENEMY_UNITS,
+        ),
+        duration=DurationType.THIS_TURN,
+        is_active=True,
+    )
+
+    run = run_card(state, "hero_mrak")
+    run.expect_input(InputRequestType.CHOOSE_ACTION)
+    return run.choose("SKILL")
+
+
+@pytest.mark.effect_flow
+def test_rolling_stone_spaces_counting_as_obstacles_are_not_empty() -> None:
+    run = _rolling_past_spinning_blade(ROLLING_STONE_SKIPS_DENIED_SPACES)
+    dests = _option_set(run.expect_input(InputRequestType.SELECT_HEX))
+    assert Hex(q=4, r=0, s=-4) in dests  # interior empties: only (3,0,-3)
+    assert Hex(q=5, r=0, s=-5) not in dests
+
+
+@pytest.mark.effect_flow
+def test_rolling_stone_counts_denied_spaces_before_rules_version() -> None:
+    run = _rolling_past_spinning_blade(ROLLING_STONE_SKIPS_DENIED_SPACES - 1)
+    run.finish()  # no legal destination, so the optional move is never offered
 
 
 def test_rolling_stone_is_optional_skip() -> None:
