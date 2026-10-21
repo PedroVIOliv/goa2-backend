@@ -108,6 +108,28 @@ def test_ws_wrong_game(client, game_data):
         ws.receive_json()
 
 
+class _DeadSocket:
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        raise RuntimeError(
+            "Unexpected ASGI message 'websocket.close', after sending "
+            "'websocket.close' or response already completed."
+        )
+
+
+def test_reconnect_succeeds_when_previous_socket_is_already_dead(client, game_data):
+    token = _token_for(game_data, "hero_arien")
+    game_id = game_data["game_id"]
+    game = client.app.state.registry.get(game_id)
+    game.ws_connections[token] = _DeadSocket()
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+        assert not isinstance(game.ws_connections[token], _DeadSocket)
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+
+
 def test_new_connection_supersedes_old_connection(client, game_data):
     """A reconnect owns the token and continues receiving broadcasts."""
     token = _token_for(game_data, "hero_arien")
