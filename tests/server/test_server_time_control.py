@@ -988,6 +988,65 @@ def test_rules_rollback_never_refunds_clock_time() -> None:
     assert clock.model_dump(mode="json") == before
 
 
+@pytest.mark.parametrize("choice", ["upgrades", "runes"])
+def test_invalid_batches_do_not_replenish_time_or_prevent_timeout(choice) -> None:
+    from goa2.domain.input import InputResponse
+    from goa2.engine.steps import PlaceRunesStep
+
+    game = _game(_config(initial_time_bank_seconds=0, max_time_bank_seconds=0))
+    _start(game)
+    state = game.session.state
+    if choice == "upgrades":
+        state.phase = GamePhase.LEVEL_UP
+        state.pending_upgrades[HeroID("hero_arien")] = 3
+        step = ResolveUpgradesStep()
+        selection = {"hero_id": "hero_arien", "card_ids": []}
+        actor = "hero_arien"
+        kind = ClockKind.LEVEL_UP
+    else:
+        # A foreign rune prompt exercises Response grants, which are keyed to
+        # request ID. Invalid input must not create a new grant on every retry.
+        state.phase = GamePhase.RESOLUTION
+        state.resolution_owner_id = HeroID("hero_arien")
+        step = PlaceRunesStep(hero_id="hero_wasp")
+        selection = ["axe", "bird"]
+        actor = "hero_wasp"
+        kind = ClockKind.RESPONSE
+    push_steps(state, [step])
+    game.last_result = game.session.advance()
+    request = game.last_result.input_request
+    reconcile_game_clock(game, 0)
+    clock = state.clock
+    assert clock is not None
+    reconcile_game_clock(game, 1_000)
+    balance = clock.players[actor].model_dump()
+    credits = list(clock.credited_response_request_ids)
+
+    for _ in range(3):
+        stop_clock_for_accepted_decision(game, hero_id=actor, request_id=request.id)
+        with pytest.raises(ValueError):
+            game.session.advance(InputResponse(request_id=request.id, selection=selection))
+        reconcile_game_clock(game, 1_000)
+        assert clock.players[actor].model_dump() == balance
+        assert clock.credited_response_request_ids == credits
+        assert clock.active_request_id == request.id
+        assert actor in clock.active_hero_ids
+        assert clock.active_kind == kind
+
+    events = apply_due_timeouts(game, 100_000, rng=random.Random(3))
+    assert any(event.event_type.value == "TIMER_EXPIRED" for event in events)
+    if choice == "upgrades":
+        assert HeroID(actor) not in state.pending_upgrades
+    else:
+        # Each legitimate foreign prompt may grant fresh Response time, so
+        # expire the finite remaining single-rune prompts as well.
+        for at_ms in (200_000, 300_000):
+            if len(state.get_hero(HeroID(actor)).rune_slots) == 4:
+                break
+            apply_due_timeouts(game, at_ms, rng=random.Random(3))
+        assert len(state.get_hero(HeroID(actor)).rune_slots) == 4
+
+
 def test_level_up_timeout_completes_every_pending_upgrade_for_player() -> None:
     game = _game(
         _config(upgrade_allowance_seconds=0, initial_time_bank_seconds=0, max_time_bank_seconds=0)

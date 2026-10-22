@@ -2503,15 +2503,10 @@ class ResolveUpgradesStep(GameStep):
         # Process input if provided
         if self.pending_input:
             selection = self.pending_input.get("selection")
-            if isinstance(selection, dict):
-                hero_id = selection.get("hero_id")
-                card_id = selection.get("card_id")
-                # UPGRADE_PHASE is a 'simultaneous' request and hero_id/card_id
-                # come straight from the client. Only apply an upgrade the hero
-                # actually earned (has a pending slot) and was actually offered
-                # (a legal option) — otherwise a client could grant a free extra
-                # upgrade or skip tiers to a higher-tier deck card.
-                if hero_id and card_id and self._is_legal_upgrade(state, hero_id, card_id):
+            choices = self._validated_choices(state, selection)
+            if choices is not None:
+                hero_id, card_ids = choices
+                for card_id in card_ids:
                     apply_hero_upgrade(state, hero_id, card_id)
             self.pending_input = None
 
@@ -2523,7 +2518,11 @@ class ResolveUpgradesStep(GameStep):
         broadcast_data = {}
         for h_id, count in state.pending_upgrades.items():
             options = self._get_upgrade_options(state, h_id)
-            broadcast_data[str(h_id)] = {"remaining": count, "options": options}
+            broadcast_data[str(h_id)] = {
+                "remaining": count,
+                "options": options,
+                "selection_counts": sorted({1, count}),
+            }
 
         return StepResult(
             requires_input=True,
@@ -2532,8 +2531,39 @@ class ResolveUpgradesStep(GameStep):
                 player_id="simultaneous",
                 prompt="Mandatory Upgrade Phase",
                 players=broadcast_data,
+                supports_batch=True,
             ),
         )
+
+    def validate_input(self, state: GameState, selection: Any) -> None:
+        if self._validated_choices(state, selection) is None:
+            raise ValueError("Choose one legal upgrade or all remaining upgrades for your hero")
+
+    def _validated_choices(self, state: GameState, selection: Any) -> tuple[str, list[str]] | None:
+        if not isinstance(selection, dict):
+            return None
+        hero_id = selection.get("hero_id")
+        card_ids = selection.get("card_ids", [selection.get("card_id")])
+        if not isinstance(hero_id, str) or not isinstance(card_ids, list):
+            return None
+        remaining = state.pending_upgrades.get(hero_id, 0)
+        if (
+            remaining <= 0
+            or len(card_ids) not in {1, remaining}
+            or not all(isinstance(card_id, str) for card_id in card_ids)
+            or len(set(card_ids)) != len(card_ids)
+            or ("card_ids" in selection and "card_id" in selection)
+        ):
+            return None
+        # Recheck tier eligibility after each choice, without spending any live
+        # upgrades unless the entire ordered batch is legal.
+        preview = state.model_copy(deep=True) if len(card_ids) > 1 else state
+        for card_id in card_ids:
+            if not self._is_legal_upgrade(preview, hero_id, card_id):
+                return None
+            if preview is not state:
+                apply_hero_upgrade(preview, hero_id, card_id)
+        return hero_id, card_ids
 
     def _is_legal_upgrade(self, state: GameState, hero_id: str, card_id: str) -> bool:
         """A submitted upgrade is legal only if the hero has a pending upgrade
