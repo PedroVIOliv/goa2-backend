@@ -1,5 +1,6 @@
 """WebSocket integration tests."""
 
+import asyncio
 import json
 import os
 import time
@@ -166,6 +167,30 @@ def test_reconnect_succeeds_when_previous_socket_is_already_dead(client, game_da
 
     with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
         assert ws.receive_json()["type"] == "STATE_UPDATE"
+
+
+class _UnresponsiveSocket:
+    """A predecessor whose peer is gone: close() waits out the handshake."""
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        await asyncio.sleep(3)
+
+
+def test_unresponsive_previous_socket_does_not_stall_the_table(client, game_data):
+    token = _token_for(game_data, "hero_arien")
+    other_token = _token_for(game_data, "hero_wasp")
+    game_id = game_data["game_id"]
+    game = client.app.state.registry.get(game_id)
+    game.ws_connections[token] = _UnresponsiveSocket()
+
+    started = time.monotonic()
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+        with client.websocket_connect(f"/games/{game_id}/ws?token={other_token}") as other:
+            other.receive_json()
+            other.send_json({"type": "GET_VIEW"})
+            assert other.receive_json()["type"] == "STATE_UPDATE"
+    assert time.monotonic() - started < 1.5
 
 
 def test_new_connection_supersedes_old_connection(client, game_data):
