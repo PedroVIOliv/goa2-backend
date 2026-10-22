@@ -238,6 +238,16 @@ def _build_state_update(
     return msg
 
 
+_superseded_closes: set[asyncio.Task[None]] = set()
+
+
+async def _close_superseded(websocket: WebSocket) -> None:
+    # After a network drop the predecessor is usually already dead, and its
+    # close() raises.
+    with contextlib.suppress(Exception):
+        await websocket.close(code=4002, reason="Connection superseded by a newer session")
+
+
 def _encode_json(data: dict[str, Any]) -> str:
     # Keep JSON text frames while using Pydantic's existing native serializer.
     return to_json(data).decode("utf-8")
@@ -922,15 +932,15 @@ async def game_ws(websocket: WebSocket, game_id: str) -> None:
                 first_join = not game.joined
                 game.joined = True
             initial = _build_state_update(game, hero_id if not is_spectator else None)
-        if previous_websocket is not None and previous_websocket is not websocket:
-            # After a network drop the predecessor is usually already dead,
-            # and its close() raises; that must not abort this reconnect.
-            with contextlib.suppress(Exception):
-                await previous_websocket.close(
-                    code=4002,
-                    reason="Connection superseded by a newer session",
-                )
         await websocket.send_text(_encode_json(initial))
+
+    if previous_websocket is not None and previous_websocket is not websocket:
+        # A predecessor whose peer is gone waits out the close handshake (10 s)
+        # before close() returns, so it must not hold outbound_lock or this
+        # handler.
+        task = asyncio.create_task(_close_superseded(previous_websocket))
+        _superseded_closes.add(task)
+        task.add_done_callback(_superseded_closes.discard)
 
     if first_join:
         async with game.lock:
