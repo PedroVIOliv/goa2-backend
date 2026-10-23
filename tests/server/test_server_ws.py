@@ -1,5 +1,7 @@
 """WebSocket integration tests."""
 
+import asyncio
+import json
 import os
 import time
 
@@ -49,6 +51,43 @@ def test_ws_connect_and_receive_initial_state(client, game_data):
         msg = ws.receive_json()
         assert msg["type"] == "STATE_UPDATE"
         assert msg["view"]["phase"] == "PLANNING"
+
+
+def test_ws_updates_replies_and_errors_remain_unicode_json_text(client, game_data):
+    game_id = game_data["game_id"]
+    token = _token_for(game_data, "hero_arien")
+    name = 'Søren 🐉 "captain"\n'
+    client.app.state.registry.get(game_id).hero_names["hero_arien"] = name
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+
+        def receive_text_message():
+            frame = ws.receive()
+            assert frame["type"] == "websocket.send"
+            assert isinstance(frame["text"], str)
+            assert "bytes" not in frame
+            return json.loads(frame["text"])
+
+        initial = receive_text_message()
+        assert initial["hero_names"]["hero_arien"] == name
+        arien = next(
+            hero
+            for team in initial["view"]["teams"].values()
+            for hero in team["heroes"]
+            if hero["id"] == "hero_arien"
+        )
+        ws.send_json({"type": "GET_VIEW"})
+        assert receive_text_message() == initial
+        ws.send_json({"type": "COMMIT_CARD", "card_id": arien["hand"][0]["id"]})
+        assert receive_text_message()["type"] == "ACTION_RESULT"
+        update = receive_text_message()
+        assert update["type"] == "STATE_UPDATE"
+        assert update["hero_names"]["hero_arien"] == name
+        ws.send_json({"type": "未知 🐉"})
+        assert receive_text_message() == {
+            "type": "ERROR",
+            "detail": "Unknown message type: 未知 🐉",
+        }
 
 
 def test_ws_connect_spectator(client, game_data):
@@ -106,6 +145,52 @@ def test_ws_wrong_game(client, game_data):
         client.websocket_connect(f"/games/wrong_game/ws?token={token}") as ws,
     ):
         ws.receive_json()
+
+
+class _DeadSocket:
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        raise RuntimeError(
+            "Unexpected ASGI message 'websocket.close', after sending "
+            "'websocket.close' or response already completed."
+        )
+
+
+def test_reconnect_succeeds_when_previous_socket_is_already_dead(client, game_data):
+    token = _token_for(game_data, "hero_arien")
+    game_id = game_data["game_id"]
+    game = client.app.state.registry.get(game_id)
+    game.ws_connections[token] = _DeadSocket()
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+        assert not isinstance(game.ws_connections[token], _DeadSocket)
+
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+
+
+class _UnresponsiveSocket:
+    """A predecessor whose peer is gone: close() waits out the handshake."""
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        await asyncio.sleep(3)
+
+
+def test_unresponsive_previous_socket_does_not_stall_the_table(client, game_data):
+    token = _token_for(game_data, "hero_arien")
+    other_token = _token_for(game_data, "hero_wasp")
+    game_id = game_data["game_id"]
+    game = client.app.state.registry.get(game_id)
+    game.ws_connections[token] = _UnresponsiveSocket()
+
+    started = time.monotonic()
+    with client.websocket_connect(f"/games/{game_id}/ws?token={token}") as ws:
+        assert ws.receive_json()["type"] == "STATE_UPDATE"
+        with client.websocket_connect(f"/games/{game_id}/ws?token={other_token}") as other:
+            other.receive_json()
+            other.send_json({"type": "GET_VIEW"})
+            assert other.receive_json()["type"] == "STATE_UPDATE"
+    assert time.monotonic() - started < 1.5
 
 
 def test_new_connection_supersedes_old_connection(client, game_data):
@@ -667,8 +752,8 @@ def test_ws_broadcast_names_the_awaited_player_without_leaking_their_options(cli
         def __init__(self):
             self.message = None
 
-        async def send_json(self, data):
-            self.message = data
+        async def send_text(self, data):
+            self.message = json.loads(data)
 
     game = client.app.state.registry.get(game_data["game_id"])
     game.last_result = SessionResult(
@@ -713,8 +798,8 @@ def test_ws_broadcast_projects_hidden_mine_event_per_connection(client, game_dat
         def __init__(self):
             self.message = None
 
-        async def send_json(self, data):
-            self.message = data
+        async def send_text(self, data):
+            self.message = json.loads(data)
 
     game = client.app.state.registry.get(game_data["game_id"])
     state = game.session.state
@@ -758,8 +843,8 @@ def test_ws_broadcast_captures_one_immutable_state_snapshot(client, game_data):
             self.release = release
             self.message = None
 
-        async def send_json(self, data):
-            self.message = data
+        async def send_text(self, data):
+            self.message = json.loads(data)
             self.entered.set()
             await self.release.wait()
 
@@ -767,8 +852,8 @@ def test_ws_broadcast_captures_one_immutable_state_snapshot(client, game_data):
         def __init__(self):
             self.message = None
 
-        async def send_json(self, data):
-            self.message = data
+        async def send_text(self, data):
+            self.message = json.loads(data)
 
     game = client.app.state.registry.get(game_data["game_id"])
     state = game.session.state
@@ -811,8 +896,8 @@ def test_ws_broadcasts_are_serialized_per_game(client, game_data):
             self.release = release
             self.messages = []
 
-        async def send_json(self, data):
-            self.messages.append(data)
+        async def send_text(self, data):
+            self.messages.append(json.loads(data))
             if len(self.messages) == 1:
                 self.entered.set()
                 await self.release.wait()

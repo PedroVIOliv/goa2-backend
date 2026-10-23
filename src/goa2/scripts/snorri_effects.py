@@ -25,7 +25,9 @@ from goa2.domain.models import (
     TargetType,
 )
 from goa2.domain.models.enums import PassiveTrigger
+from goa2.domain.rules_version import SIGILS_BIRD_SINGLE_TARGET_PROMPT
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
+from goa2.engine.filters_composite import AndFilter, OrFilter
 from goa2.engine.filters_hex import MovementPathFilter, ObstacleFilter, RangeFilter
 from goa2.engine.filters_units import (
     ContextIdsFilter,
@@ -808,7 +810,22 @@ class RuneSigilsEffect(CardEffect):
         anvil_active = RuneType.ANVIL in active
         steps: list[GameStep] = [SetContextFlagStep(key="rs_actor", value=hero.id)]
 
-        if RuneType.BIRD in active:
+        target_filters: list[Any] = [RangeFilter(max_range=1)]
+        if RuneType.BIRD in active and state.rules_version >= SIGILS_BIRD_SINGLE_TARGET_PROMPT:
+            target_filters = [
+                OrFilter(
+                    filters=[
+                        RangeFilter(max_range=1),
+                        AndFilter(
+                            filters=[
+                                UnitTypeFilter(unit_type="MINION"),
+                                RangeFilter(max_range=range_value),
+                            ]
+                        ),
+                    ]
+                )
+            ]
+        elif RuneType.BIRD in active:
             steps.append(
                 SelectStep(
                     target_type=TargetType.UNIT,
@@ -832,7 +849,7 @@ class RuneSigilsEffect(CardEffect):
                 actor_key="rs_actor",
                 anvil_active=anvil_active,
                 target_output_key="rs_target",
-                target_filters=[RangeFilter(max_range=1)],
+                target_filters=target_filters,
             )
         )
         if RuneType.HORN in active:
