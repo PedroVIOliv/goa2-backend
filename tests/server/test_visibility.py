@@ -40,6 +40,58 @@ def test_input_request_is_only_sent_to_its_responder():
     assert input_request_for_viewer(request, state, None) is None
 
 
+def test_decision_facts_follow_offer_visibility_and_do_not_reveal_hidden_sources():
+    state = _state()
+    hidden_card = state.get_hero("hero_arien").hand[0].id
+    request = create_input_request(
+        InputRequestType.SELECT_CARD,
+        player_id="hero_wasp",
+        options=["offered_spell"],
+        decision_context={
+            "purpose": "cast_spell",
+            "actor_id": "hero_wasp",
+            "source_card_id": hidden_card,
+            "choice_facts": {
+                "offered_spell": {"action_role": "primary"},
+                "secret_choice": {"action_role": "secondary"},
+            },
+        },
+    )
+    payload = input_request_for_viewer(request, state, "hero_wasp")
+    assert payload["decision_context"] == {
+        "purpose": "cast_spell",
+        "actor_id": "hero_wasp",
+        "choice_facts": {"offered_spell": {"action_role": "primary"}},
+    }
+    assert input_request_for_viewer(request, state, "hero_arien") is None
+    assert input_request_for_viewer(request, state, None) is None
+    # Scoping never mutates the durable request or its context.
+    assert request.decision_context.source_card_id == hidden_card
+    assert "secret_choice" in request.decision_context.choice_facts
+
+
+def test_simultaneous_context_cannot_bypass_player_scoping():
+    state = _state()
+    request = create_input_request(
+        InputRequestType.UPGRADE_PHASE,
+        player_id="simultaneous",
+        players={
+            "hero_arien": {"options": ["arien_upgrade"]},
+            "hero_wasp": {"options": ["wasp_upgrade"]},
+        },
+        decision_context={
+            "source_card_id": "private",
+            "choice_facts": {
+                "arien_upgrade": {"action_role": "primary"},
+                "wasp_upgrade": {"action_role": "secondary"},
+            },
+        },
+    )
+    payload = input_request_for_viewer(request, state, "hero_arien")
+    assert payload["players"] == {"hero_arien": {"options": ["arien_upgrade"]}}
+    assert "decision_context" not in payload
+
+
 def test_team_and_simultaneous_requests_are_narrowed_to_authorized_players():
     state = _state()
     team_request = create_input_request(

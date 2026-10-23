@@ -45,6 +45,7 @@ class CastSpellStep(GameStep):
                 request_type=InputRequestType.SELECT_CARD,
                 player_id=caster_id,
                 prompt="Choose a prepared spell to cast",
+                decision_context={"purpose": "cast_spell", "actor_id": caster_id},
                 options=[InputOption(id=spell.id, text=spell.name) for spell in eligible],
             ),
         )

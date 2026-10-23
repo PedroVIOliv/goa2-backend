@@ -13,6 +13,26 @@ Guards of Atlantis II (GoA2) backend - a deterministic, stack-based game engine 
 For detailed architecture, module guide, and data flows, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
 For client integration details, see [docs/CLIENT_INTEGRATION_GUIDE.md](docs/CLIENT_INTEGRATION_GUIDE.md).
 
+## Shared frontend decisions and engine facts
+
+The frontend's agreed [shared decisions plan](../goa2-frontend/docs/plans/shared-decisions-engine-facts.md)
+defines the shared migration boundary. Optional `decision_context` on requests
+and `battle_zone_minion_counts` on views implement its additive engine facts.
+The engine owns offered choices, decision semantics and computed gameplay
+values; the frontend shares normalization, permitted labels and payload handling
+while retaining separate desktop/mobile presentation. Mobile remains opt-in.
+
+When extending this boundary, expose missing facts additively from existing engine
+computations, preserve legacy request fields and submissions, and scope all new
+metadata to the authorized recipient, including simultaneous choices. Keep older
+clients and saved requests working and update the client integration guide with
+implemented contract additions. Derive physical per-battle-zone minion counts in
+views rather than persisting counters or substituting modified battle strength.
+Keep unrelated behavior fixes and batch UI activation separate. Read the linked
+plan for exact semantics and acceptance; do not duplicate its implementation
+instructions here. Resolve the sibling link against the configured frontend
+checkout when its location differs.
+
 ## Development Commands
 
 ```bash

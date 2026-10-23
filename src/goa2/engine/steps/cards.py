@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import Field, model_validator
 
 from goa2.domain.events import GameEvent, GameEventType
-from goa2.domain.input import InputRequestType, create_input_request
+from goa2.domain.input import (
+    DecisionChoiceFacts,
+    DecisionContext,
+    InputRequestType,
+    create_input_request,
+)
 from goa2.domain.models import (
     ActionType,
     Card,
@@ -36,6 +41,27 @@ if TYPE_CHECKING:
     from goa2.engine.steps.selection import MultiSelectStep
 
 logger = logging.getLogger(__name__)
+
+
+def _action_decision_context(
+    actor_id: str, card: Card, options: list[dict[str, Any]]
+) -> DecisionContext:
+    primary = card.current_primary_action
+    if primary == ActionType.DEFENSE_SKILL:
+        primary = ActionType.SKILL
+    facts: dict[str, DecisionChoiceFacts] = {}
+    for option in options:
+        # The engine selects the first matching ID; retain that identity if a
+        # primary and secondary happen to offer the same action.
+        facts.setdefault(
+            option["id"],
+            DecisionChoiceFacts(
+                action_role="primary" if option.get("type") == primary else "secondary"
+            ),
+        )
+    return DecisionContext(
+        purpose="action", actor_id=actor_id, source_card_id=card.id, choice_facts=facts
+    )
 
 
 def _fast_travel_has_safe_zone(state: GameState, hero_id: str) -> bool:
@@ -466,6 +492,7 @@ class ForceDiscardStep(GameStep):
             select = SelectStep(
                 target_type=TargetType.CARD,
                 prompt=f"{resolved_victim}, select a card to discard.",
+                decision_purpose="discard",
                 output_key="card_to_discard",
                 card_containers=[CardContainerType.HAND, CardContainerType.PLAYED],
                 restrict_played_to_shields=True,
@@ -478,6 +505,7 @@ class ForceDiscardStep(GameStep):
             select = SelectStep(
                 target_type=TargetType.CARD,
                 prompt=f"{resolved_victim}, select a card to discard.",
+                decision_purpose="discard",
                 output_key="card_to_discard",
                 card_container=CardContainerType.HAND,
                 card_is_basic=self.card_is_basic,
@@ -540,6 +568,7 @@ class ForceDiscardByColorStep(GameStep):
                 SelectStep(
                     target_type=TargetType.CARD,
                     prompt=f"{victim_id}, select a {color.value} card to discard.",
+                    decision_purpose="discard",
                     output_key=self.output_key,
                     card_container=CardContainerType.HAND,
                     context_hero_id_key=self.victim_key,
@@ -627,6 +656,7 @@ class ForceDiscardOrDefeatStep(GameStep):
                 SelectStep(
                     target_type=TargetType.CARD,
                     prompt=f"{victim_id}, select a card to discard (or be Defeated).",
+                    decision_purpose="discard",
                     output_key="card_to_discard",
                     card_container=CardContainerType.HAND,
                     context_hero_id_key=self.victim_key,  # Look at victim's hand
@@ -1019,6 +1049,7 @@ class ResolveCardStep(GameStep):
                 player_id=self.hero_id,
                 prompt=f"Choose action for card {card.name}",
                 options=options,
+                decision_context=_action_decision_context(str(self.hero_id), card, options),
             ),
         )
 
@@ -1970,6 +2001,15 @@ class PerformPrimaryActionStep(GameStep):
                         request_type=InputRequestType.CHOOSE_ACTION,
                         player_id=str(actor_id),
                         prompt=f"Choose an action to perform on {card.name}",
+                        decision_context=DecisionContext(
+                            purpose="action",
+                            actor_id=str(actor_id),
+                            source_card_id=card.id,
+                            choice_facts={
+                                action_type.name: DecisionChoiceFacts(action_role="primary"),
+                                replacement.name: DecisionChoiceFacts(action_role="replacement"),
+                            },
+                        ),
                         options=[
                             {
                                 "id": action_type.name,
@@ -2215,6 +2255,7 @@ class PerformCardActionStep(GameStep):
                     player_id=performer_id,
                     prompt=f"Choose an action to perform on {card.name}",
                     options=options,
+                    decision_context=_action_decision_context(performer_id, card, options),
                 ),
             )
 

@@ -443,3 +443,11 @@ class TestGetComputedStatWithMarkers:
         # Total: 5 - 1 (marker) - 2 (effect) = 2
         attack = get_computed_stat(state, "hero_1", StatType.ATTACK, base_value=5)
         assert attack == 2
+
+
+def test_defense_contributions_explain_the_existing_net_modifier(aura_state):
+    from goa2.engine.stats import minion_defense_contributions
+
+    counts = minion_defense_contributions(aura_state, "H1")
+    assert counts == {"friendly": {"MELEE": 1}, "enemy": {"MELEE": 1, "RANGED": 1}}
+    assert calculate_minion_defense_modifier(aura_state, "H1") == -1
