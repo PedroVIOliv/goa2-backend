@@ -159,6 +159,16 @@ class DecisionChoiceFacts(BaseModel):
     defense_kind: Literal["primary", "secondary"] | None = None
 
 
+class CombatDecisionFacts(BaseModel):
+    """Facts about the current attack, scoped with its defense request."""
+    attacker_id: str | None = None
+    is_basic: bool | None = None
+    is_ranged: bool | None = None
+    defense_stat: Literal["DEFENSE", "INITIATIVE"] = "DEFENSE"
+    friendly_minions: dict[str, int] = Field(default_factory=dict)
+    enemy_minions: dict[str, int] = Field(default_factory=dict)
+
+
 class DecisionContext(BaseModel):
     purpose: (
         Literal["action", "defense", "discard", "cast_spell", "rune_selection", "rune_inscription"]
@@ -167,6 +177,7 @@ class DecisionContext(BaseModel):
     actor_id: str | None = None
     source_card_id: str | None = None
     choice_facts: dict[str, DecisionChoiceFacts] = Field(default_factory=dict)
+    combat: CombatDecisionFacts | None = None
 
 
 class InputRequest(BaseModel):

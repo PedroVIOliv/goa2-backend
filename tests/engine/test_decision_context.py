@@ -101,3 +101,31 @@ def test_spell_request_labels_survive_without_requiring_spellbook_visibility():
         "choice_facts": {},
     }
     assert request.to_dict()["options"] == [{"id": spell.id, "text": spell.name}]
+
+
+@pytest.mark.parametrize("nested_source", [False, True])
+def test_attack_facts_describe_performed_card_and_remain_recipient_scoped(nested_source):
+    from goa2.engine.steps.combat import AttackSequenceStep
+    from goa2.server.visibility import input_request_for_viewer
+
+    state = _state()
+    attacker = state.get_hero("hero_arien")
+    attacker.current_turn_card = hero_card("Arien", "noble_blade")
+    attacker.current_turn_card.is_facedown = False
+    if nested_source:
+        attacker.hand = [hero_card("Arien", "deluge")]
+        attacker.hand[0].is_facedown = False
+        state.execution_context.update(performing_card_id="deluge", performing_card_owner_id=attacker.id)
+    state.get_hero("hero_wasp").hand = [hero_card("Arien", "deluge")]
+    state.execution_context["target"] = "hero_wasp"
+    push_steps(state, [AttackSequenceStep(damage=4, target_id_key="target")])
+    request = process_stack(state).input_request
+    payload = input_request_for_viewer(request, state, "hero_wasp")
+    facts = payload["decision_context"]
+    assert facts["source_card_id"] == ("deluge" if nested_source else "noble_blade")
+    assert facts["combat"] == {
+        "attacker_id": "hero_arien", "is_basic": not nested_source, "is_ranged": False,
+        "defense_stat": "DEFENSE", "friendly_minions": {}, "enemy_minions": {},
+    }
+    assert input_request_for_viewer(request, state, "hero_arien") is None
+    assert input_request_for_viewer(request, state, None) is None

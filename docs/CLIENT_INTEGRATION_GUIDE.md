@@ -2332,3 +2332,19 @@ either `{"destination": {q,r,s}}` or `{"swap_with": "<hero id>"}`. Both normal
 replay and shared-replay baking apply that decision through the same engine
 function. Pending/declined requests do not enter the replay. Automatic setup
 placement is unchanged for historical replays.
+
+
+### Optional combat facts on defense decisions
+
+`decision_context.combat` optionally identifies `attacker_id`, `is_basic`,
+`is_ranged`, `defense_stat` (`DEFENSE` or `INITIATIVE`), and contributing
+`friendly_minions` / `enemy_minions` maps keyed by minion type. Map values are
+counts of contributors, not battle values. Their sums differ by the existing net
+`minion_modifier`; friendly ranged minions do not contribute. Illusions contribute
+as MELEE only when the engine's existing equivalence rule applies.
+`decision_context.source_card_id` names the performed attack card, which can differ
+from the current turn card. The normal card-visibility filter applies to that ID.
+These facts share the defense request's responder scope; other players and
+spectators do not receive the request. All existing fields and submissions remain
+unchanged. Older saves may omit these facts; clients must retain legacy fallbacks
+without inventing Basic/Ranged flags or a positive/negative split from a net value.

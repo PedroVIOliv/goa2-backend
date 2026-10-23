@@ -202,6 +202,8 @@ class AttackSequenceStep(GameStep):
         from goa2.engine import rules
 
         context["attack_is_basic"] = rules.attack_is_basic(state, base_actor_id)
+        source_card = state.get_performing_card(base_actor_id) if base_actor_id else None
+        context["attack_source_card_id"] = source_card.id if source_card else None
         logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )

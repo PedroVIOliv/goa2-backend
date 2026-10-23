@@ -342,21 +342,26 @@ def _matching_unit_ids(state: GameState, aura: StatAura) -> set[str]:
     return matched
 
 
-def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:
+def minion_defense_contributions(state: GameState, target_unit_id: UnitID) -> dict[str, dict[str, int]]:
     """
-    Calculates the cumulative defense modifier provided by nearby minions.
+    Counts friendly and enemy minion defense contributions by minion type.
     Uses Hex.ring for optimized spatial lookups.
     Respects topology constraints (reality splits).
     """
+    contributions: dict[str, dict[str, int]] = {"friendly": {}, "enemy": {}}
+
+    def add(side, kind):
+        counts = contributions[side]
+        counts[kind] = counts.get(kind, 0) + 1
+
     target_loc = state.unit_locations.get(target_unit_id)
     if not target_loc:
-        return 0
+        return contributions
 
     target_unit = state.get_unit(target_unit_id)
     if not target_unit:
-        return 0
+        return contributions
 
-    total_mod = 0
     target_team = target_unit.team
 
     def get_unit_at(hex_coord):
@@ -390,14 +395,14 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
             if illusion_team is not None:
                 # Counts as a melee minion: +1 for its own team's units,
                 # -1 against the other team.
-                total_mod += 1 if illusion_team == target_team else -1
+                add("friendly" if illusion_team == target_team else "enemy", "MELEE")
             continue
 
         if unit.team == target_team:
             if unit.type in (MinionType.MELEE, MinionType.HEAVY):
-                total_mod += 1
+                add("friendly", unit.type.value)
         else:
-            total_mod -= 1
+            add("enemy", unit.type.value)
 
     # --- RANGE 2 (Ring 2) ---
     for hex_coord in get_connected_ring(target_loc, 2, state):
@@ -406,9 +411,15 @@ def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) 
             continue
 
         if unit.team != target_team and unit.type == MinionType.RANGED:
-            total_mod -= 1
+            add("enemy", unit.type.value)
 
-    return total_mod
+    return contributions
+
+
+def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:
+    contributions = minion_defense_contributions(state, target_unit_id)
+    return sum(contributions["friendly"].values()) - sum(contributions["enemy"].values())
+
 
 
 # -----------------------------------------------------------------------------
