@@ -342,7 +342,9 @@ def _matching_unit_ids(state: GameState, aura: StatAura) -> set[str]:
     return matched
 
 
-def minion_defense_contributions(state: GameState, target_unit_id: UnitID) -> dict[str, dict[str, int]]:
+def minion_defense_contributions(
+    state: GameState, target_unit_id: UnitID
+) -> dict[str, dict[str, int]]:
     """
     Counts friendly and enemy minion defense contributions by minion type.
     Uses Hex.ring for optimized spatial lookups.
@@ -419,7 +421,6 @@ def minion_defense_contributions(state: GameState, target_unit_id: UnitID) -> di
 def calculate_minion_defense_modifier(state: GameState, target_unit_id: UnitID) -> int:
     contributions = minion_defense_contributions(state, target_unit_id)
     return sum(contributions["friendly"].values()) - sum(contributions["enemy"].values())
-
 
 
 # -----------------------------------------------------------------------------

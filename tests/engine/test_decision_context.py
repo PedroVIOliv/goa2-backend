@@ -115,7 +115,9 @@ def test_attack_facts_describe_performed_card_and_remain_recipient_scoped(nested
     if nested_source:
         attacker.hand = [hero_card("Arien", "deluge")]
         attacker.hand[0].is_facedown = False
-        state.execution_context.update(performing_card_id="deluge", performing_card_owner_id=attacker.id)
+        state.execution_context.update(
+            performing_card_id="deluge", performing_card_owner_id=attacker.id
+        )
     state.get_hero("hero_wasp").hand = [hero_card("Arien", "deluge")]
     state.execution_context["target"] = "hero_wasp"
     push_steps(state, [AttackSequenceStep(damage=4, target_id_key="target")])
@@ -124,8 +126,12 @@ def test_attack_facts_describe_performed_card_and_remain_recipient_scoped(nested
     facts = payload["decision_context"]
     assert facts["source_card_id"] == ("deluge" if nested_source else "noble_blade")
     assert facts["combat"] == {
-        "attacker_id": "hero_arien", "is_basic": not nested_source, "is_ranged": False,
-        "defense_stat": "DEFENSE", "friendly_minions": {}, "enemy_minions": {},
+        "attacker_id": "hero_arien",
+        "is_basic": not nested_source,
+        "is_ranged": False,
+        "defense_stat": "DEFENSE",
+        "friendly_minions": {},
+        "enemy_minions": {},
     }
     assert input_request_for_viewer(request, state, "hero_arien") is None
     assert input_request_for_viewer(request, state, None) is None

@@ -161,6 +161,7 @@ class DecisionChoiceFacts(BaseModel):
 
 class CombatDecisionFacts(BaseModel):
     """Facts about the current attack, scoped with its defense request."""
+
     attacker_id: str | None = None
     is_basic: bool | None = None
     is_ranged: bool | None = None
