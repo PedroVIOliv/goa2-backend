@@ -9,11 +9,12 @@ not team affiliation (allies see enemies' faceup cards too).
 from __future__ import annotations
 
 import time
+from itertools import groupby
 from typing import Any
 
 from goa2.domain.models.base import Turret
 from goa2.domain.models.card import Card
-from goa2.domain.models.enums import CardState, GamePhase, StatType
+from goa2.domain.models.enums import CardState, GamePhase, StatType, TeamColor
 from goa2.domain.models.spell import SpellCard
 from goa2.domain.models.unit import Hero, HeroPiece, Minion
 from goa2.domain.state import GameState
@@ -179,9 +180,25 @@ def _build_unresolved_cards_view(
     # team favored among equal initiatives.
     from goa2.engine.phases import initiative_is_reversed
 
+    # Each cross-team tie flips the coin after its winner's turn, so later ties
+    # go to the other team. The acting hero still holds its tie's pending flip.
     sign = 1 if initiative_is_reversed(state) else -1
-    tie_breaker = state.tie_breaker_team
-    entries.sort(key=lambda e: (sign * e["initiative"], 0 if e["team"] == tie_breaker else 1))
+    entries.sort(key=lambda e: (sign * e["initiative"], 0 if e["hero_id"] == acting_id else 1))
+    coin = state.tie_breaker_team
+    ordered: list[dict[str, Any]] = []
+    for _, group_iter in groupby(entries, key=lambda e: e["initiative"]):
+        group = list(group_iter)
+        while group:
+            if len({e["team"] for e in group}) > 1:
+                pick = group[0] if group[0]["hero_id"] == acting_id else None
+                if pick is None:
+                    pick = next((e for e in group if e["team"] == coin), group[0])
+                coin = TeamColor.BLUE if coin == TeamColor.RED else TeamColor.RED
+            else:
+                pick = group[0]
+            group.remove(pick)
+            ordered.append(pick)
+    entries = ordered
 
     # Remove internal team field before returning
     for entry in entries:
