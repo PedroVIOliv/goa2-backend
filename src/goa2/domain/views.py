@@ -98,6 +98,7 @@ def build_view(
             next(iter(state.battle_zones.values())) if len(state.battle_zones) == 1 else None
         ),
         "battle_zones": dict(state.battle_zones),
+        "battle_zone_minion_counts": _battle_zone_minion_counts(state),
         "wave_counters": dict(state.wave_counters),
         "cheats_enabled": state.cheats_enabled,
         "tie_breaker_team": state.tie_breaker_team.value,
@@ -129,6 +130,33 @@ def build_view(
         else None
     )
     return view
+
+
+def _battle_zone_minion_counts(state: GameState) -> dict[str, Any]:
+    """Physical pieces in each active zone, independent of battle strength.
+
+    Piece locations, not their respawn lane binding, determine zone membership.
+    Heavy minions count once. Tokens, hero effects and off-board pieces are absent.
+    """
+    counts: dict[str, Any] = {
+        lane: {"zone_id": zone, "counts": {"RED": 0, "BLUE": 0}}
+        for lane, zone in state.battle_zones.items()
+        if zone in state.board.zones
+    }
+    for color, team in state.teams.items():
+        seen: set[str] = set()
+        for minion in team.minions:
+            if str(minion.id) in seen:
+                continue
+            seen.add(str(minion.id))
+            location = state.entity_locations.get(BoardEntityID(str(minion.id)))
+            if location is None:
+                continue
+            zone_id = state.board.get_zone_for_hex(location)
+            for entry in counts.values():
+                if entry["zone_id"] == zone_id:
+                    entry["counts"][color.value] += 1
+    return counts
 
 
 def _build_unresolved_cards_view(

@@ -202,6 +202,8 @@ class AttackSequenceStep(GameStep):
         from goa2.engine import rules
 
         context["attack_is_basic"] = rules.attack_is_basic(state, base_actor_id)
+        source_card = state.get_performing_card(base_actor_id) if base_actor_id else None
+        context["attack_source_card_id"] = source_card.id if source_card else None
         logger.debug(
             f"   [ATTACK SEQ] Set attack_is_ranged={context['attack_is_ranged']}, is_ranged={self.is_ranged}, range_val={effective_range}"
         )
@@ -886,6 +888,7 @@ class CheckMinionProtectionStep(GameStep):
                 input_request=create_input_request(
                     request_type=InputRequestType.SELECT_CARD,
                     prompt=f"Discard a card to protect {self.minion_id}?",
+                    decision_context={"purpose": "discard", "actor_id": str(protector.id)},
                     options=options,
                     player_id=protector.id,
                     can_skip=True,

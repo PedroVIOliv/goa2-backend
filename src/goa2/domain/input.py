@@ -12,7 +12,7 @@ Phase 1 of Client-Readiness Roadmap:
 """
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -151,6 +151,36 @@ def selection_value(option: InputOption) -> Any:
     return option.id
 
 
+class DecisionChoiceFacts(BaseModel):
+    """Engine semantics only; no labels, private lookups, or duplicate totals."""
+
+    action_role: Literal["primary", "secondary", "replacement"] | None = None
+    defense_stat: Literal["DEFENSE", "INITIATIVE"] | None = None
+    defense_kind: Literal["primary", "secondary"] | None = None
+
+
+class CombatDecisionFacts(BaseModel):
+    """Facts about the current attack, scoped with its defense request."""
+
+    attacker_id: str | None = None
+    is_basic: bool | None = None
+    is_ranged: bool | None = None
+    defense_stat: Literal["DEFENSE", "INITIATIVE"] = "DEFENSE"
+    friendly_minions: dict[str, int] = Field(default_factory=dict)
+    enemy_minions: dict[str, int] = Field(default_factory=dict)
+
+
+class DecisionContext(BaseModel):
+    purpose: (
+        Literal["action", "defense", "discard", "cast_spell", "rune_selection", "rune_inscription"]
+        | None
+    ) = None
+    actor_id: str | None = None
+    source_card_id: str | None = None
+    choice_facts: dict[str, DecisionChoiceFacts] = Field(default_factory=dict)
+    combat: CombatDecisionFacts | None = None
+
+
 class InputRequest(BaseModel):
     """
     Unified input request sent to clients.
@@ -176,6 +206,7 @@ class InputRequest(BaseModel):
 
     # Legacy/additional context (for backwards compatibility during transition)
     context: dict[str, Any] = Field(default_factory=dict)
+    decision_context: DecisionContext | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -315,6 +346,11 @@ class InputRequest(BaseModel):
             if key not in result:
                 result[key] = value
 
+        if self.decision_context is not None:
+            result["decision_context"] = self.decision_context.model_dump(
+                mode="json", exclude_none=True
+            )
+
         return result
 
 
@@ -367,6 +403,7 @@ def create_input_request(
     prompt: str = "",
     options: list[Any] | None = None,
     can_skip: bool = False,
+    decision_context: DecisionContext | dict[str, Any] | None = None,
     **context: Any,
 ) -> InputRequest:
     """
@@ -398,4 +435,9 @@ def create_input_request(
         options=converted_options,
         can_skip=can_skip,
         context=context,
+        decision_context=(
+            DecisionContext.model_validate(decision_context)
+            if isinstance(decision_context, dict)
+            else decision_context
+        ),
     )
