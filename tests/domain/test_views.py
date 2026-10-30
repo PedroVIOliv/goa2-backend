@@ -920,6 +920,41 @@ class TestUnresolvedCardsView:
         assert cards[0]["hero_id"] == "hero_a"
         assert cards[1]["hero_id"] == "hero_b"
 
+    def _two_cross_team_ties(self, sample_state):
+        """hero_a/hero_c (RED) and hero_b/hero_d (BLUE) tie at 12 and at 10."""
+        for hero_id, team in (("hero_c", TeamColor.RED), ("hero_d", TeamColor.BLUE)):
+            sample_state.teams[team].heroes.append(
+                Hero(id=HeroID(hero_id), name=hero_id, team=team, level=1, deck=[])
+            )
+        for hero_id, init in (("hero_a", 12), ("hero_b", 12), ("hero_c", 10), ("hero_d", 10)):
+            hero = sample_state.get_hero(HeroID(hero_id))
+            hero.current_turn_card = self._make_card(f"c_{hero_id}", hero_id, initiative=init)
+        sample_state.phase = GamePhase.RESOLUTION
+        sample_state.tie_breaker_team = TeamColor.RED
+
+    def test_each_cross_team_tie_flips_the_coin_for_the_next(self, sample_state):
+        """RED wins the tie at 12, the coin flips, so BLUE wins the tie at 10."""
+        self._two_cross_team_ties(sample_state)
+        sample_state.unresolved_hero_ids = [
+            HeroID(h) for h in ("hero_a", "hero_b", "hero_c", "hero_d")
+        ]
+
+        cards = build_view(sample_state, for_hero_id=HeroID("hero_a"))["unresolved_cards"]
+
+        assert [c["hero_id"] for c in cards] == ["hero_a", "hero_b", "hero_d", "hero_c"]
+
+    def test_acting_tie_winner_counts_its_pending_flip(self, sample_state):
+        """The coin flips only after the tie winner's turn, so while hero_a acts
+        the coin still reads RED but BLUE wins the next tie."""
+        self._two_cross_team_ties(sample_state)
+        sample_state.current_actor_id = HeroID("hero_a")
+        sample_state.resolution_owner_id = HeroID("hero_a")
+        sample_state.unresolved_hero_ids = [HeroID(h) for h in ("hero_b", "hero_c", "hero_d")]
+
+        cards = build_view(sample_state, for_hero_id=HeroID("hero_a"))["unresolved_cards"]
+
+        assert [c["hero_id"] for c in cards] == ["hero_a", "hero_b", "hero_d", "hero_c"]
+
     def test_includes_current_actor(self, sample_state):
         """Current actor's card appears in the list."""
         hero_a = sample_state.get_hero(HeroID("hero_a"))
