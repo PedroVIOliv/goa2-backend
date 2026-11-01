@@ -28,6 +28,7 @@ from goa2.domain.models import (
 )
 from goa2.domain.models.effect import EffectType
 from goa2.domain.models.marker import MarkerType
+from goa2.domain.rules_version import TOKENS_BLOCK_HERO_RESPAWN
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.effect_manager import EffectManager
@@ -1025,9 +1026,11 @@ class RespawnHeroStep(GameStep):
             if sp.is_hero_spawn and sp.team == hero.team:
                 team_spawn_hexes.append(sp.location)
                 blocked = state.validator.is_obstacle_for_actor(state, sp.location, self.hero_id)
-                # A token never blocks a marked respawn space: the hero
-                # respawns onto it and clears the token.
-                if blocked and _token_on_hex(state, sp.location) is not None:
+                if (
+                    blocked
+                    and state.rules_version < TOKENS_BLOCK_HERO_RESPAWN
+                    and _token_on_hex(state, sp.location) is not None
+                ):
                     blocked = False
                 if not blocked:
                     valid_hexes.append(sp.location)

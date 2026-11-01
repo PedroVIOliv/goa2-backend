@@ -13,6 +13,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.models.spawn import SpawnPoint, SpawnType
 from goa2.domain.models.token import Token, TokenType
+from goa2.domain.rules_version import TOKENS_BLOCK_HERO_RESPAWN
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID
 from goa2.engine.handler import process_stack, push_steps
@@ -201,10 +202,38 @@ def _place_token(state, hex_pos, token_id="token_1"):
     return token
 
 
-def test_token_does_not_block_marked_respawn_space():
-    """Audit §3.8: a token does not block a marked respawn space."""
+def test_token_blocks_marked_respawn_space():
     spawn_hex = Hex(q=0, r=0, s=0)
     state, _hero = _make_respawn_state(spawn_hex)
+    state.rules_version = TOKENS_BLOCK_HERO_RESPAWN
+    _place_token(state, spawn_hex)
+
+    step = RespawnHeroStep(hero_id="Hero")
+    result = step.resolve(state, {})
+
+    assert result.requires_input is True
+    assert spawn_hex.model_dump() not in result.input_request["valid_hexes"]
+    assert result.input_request["valid_hexes"], "falls back to the nearest empty space"
+
+
+def test_respawn_onto_a_token_hex_is_rejected():
+    spawn_hex = Hex(q=0, r=0, s=0)
+    state, _hero = _make_respawn_state(spawn_hex)
+    state.rules_version = TOKENS_BLOCK_HERO_RESPAWN
+    _place_token(state, spawn_hex)
+
+    step = RespawnHeroStep(hero_id="Hero", pending_input={"selection": spawn_hex.model_dump()})
+    result = step.resolve(state, {})
+
+    assert result.requires_input is True
+    assert state.get_position("Hero") is None
+    assert state.entity_locations.get(BoardEntityID("token_1")) == spawn_hex
+
+
+def test_token_does_not_block_respawn_before_tokens_block_hero_respawn():
+    spawn_hex = Hex(q=0, r=0, s=0)
+    state, _hero = _make_respawn_state(spawn_hex)
+    state.rules_version = TOKENS_BLOCK_HERO_RESPAWN - 1
     _place_token(state, spawn_hex)
 
     step = RespawnHeroStep(hero_id="Hero")
@@ -214,10 +243,10 @@ def test_token_does_not_block_marked_respawn_space():
     assert spawn_hex.model_dump() in result.input_request["valid_hexes"]
 
 
-def test_respawning_onto_a_token_clears_the_token():
-    """Audit §3.8: the respawning hero clears the token it lands on."""
+def test_respawning_onto_a_token_clears_it_before_tokens_block_hero_respawn():
     spawn_hex = Hex(q=0, r=0, s=0)
     state, _hero = _make_respawn_state(spawn_hex)
+    state.rules_version = TOKENS_BLOCK_HERO_RESPAWN - 1
     _place_token(state, spawn_hex)
 
     step = RespawnHeroStep(hero_id="Hero", pending_input={"selection": spawn_hex.model_dump()})
