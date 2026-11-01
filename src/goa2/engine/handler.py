@@ -109,10 +109,11 @@ def _clear_after_abort(state: GameState):
         # Stopped at another hero's nested action, whose RestoreActionContextStep
         # unwinds its own level of the context stack when it resolves.
         return
-    from goa2.engine.steps.phases import restore_action_context
+    from goa2.engine.steps.phases import REPEATED_ACTION_KEY, restore_action_context
 
     while state.execution_context.get("action_context_stack"):
         restore_action_context(state.execution_context)
+    state.execution_context.pop(REPEATED_ACTION_KEY, None)
 
 
 def _clear_to_pending_combat(state: GameState) -> bool:

@@ -137,6 +137,15 @@ class HeroPieceFilter(FilterCondition):
         return not (self.exclude_acting and str(state.acting_piece_id) == candidate)
 
 
+class CanRepeatFilter(FilterCondition):
+    """Candidate is not under a repeat-prevention effect (judged per piece)."""
+
+    type: FilterType = FilterType.CAN_REPEAT
+
+    def apply(self, candidate: Any, state: GameState, context: dict) -> bool:
+        return state.validator.can_repeat_action(state, str(candidate), context).allowed
+
+
 class TokenTypeFilter(FilterCondition):
     type: FilterType = FilterType.TOKEN_TYPE
     token_type: TokenType | None = None  # None matches any token

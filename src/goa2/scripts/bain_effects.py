@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from goa2.domain.models.effect import DurationType, EffectScope, EffectType, Shape
 from goa2.domain.models.enums import CardContainerType, PassiveTrigger, TargetType
 from goa2.domain.models.marker import MarkerType
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_cards import CardsInContainerFilter
 from goa2.engine.filters_geometry import (
@@ -28,6 +29,7 @@ from goa2.engine.steps import (
     GainCoinsStep,
     GameStep,
     GuessCardColorStep,
+    MayRepeatOnceStep,
     MoveSequenceStep,
     MoveUnitStep,
     PlaceMarkerStep,
@@ -36,6 +38,7 @@ from goa2.engine.steps import (
     RevealAndResolveGuessStep,
     SelectStep,
     SetContextFlagStep,
+    ValidateRepeatStep,
 )
 
 if TYPE_CHECKING:
@@ -524,7 +527,11 @@ class AnotherOneEffect(CardEffect):
                 duration=DurationType.THIS_TURN,
                 scope=EffectScope(shape=Shape.POINT),
                 is_active=True,
-                finishing_steps=_build_retrieve_steps(stats),
+                finishing_steps=(
+                    [MayRepeatOnceStep(ask=False, steps_template=_build_retrieve_steps(stats))]
+                    if state.rules_version >= SHARED_ACTION_LIFECYCLE
+                    else _build_retrieve_steps(stats)
+                ),
             ),
         ]
 
@@ -658,7 +665,25 @@ class WereNotDoneYetEffect(CardEffect):
         # Remove the default GainCoinsStep (last step, amount=0 is useless)
         steps.pop()
 
-        # On wrong guess: choose repeat or coins
+        # On wrong guess: choose repeat or coins (only coins if repeating is prevented)
+        choice_gate = "guess_wrong"
+        if state.rules_version >= SHARED_ACTION_LIFECYCLE:
+            choice_gate = "wndy_can_repeat"
+            steps.extend(
+                [
+                    ValidateRepeatStep(and_with_key="guess_wrong", output_key=choice_gate),
+                    CheckContextConditionStep(
+                        input_key=choice_gate,
+                        operator="==",
+                        threshold=0,
+                        output_key="wndy_coins_only",
+                        active_if_key="guess_wrong",
+                    ),
+                    GainCoinsStep(
+                        hero_key="guess_actor", amount=2, active_if_key="wndy_coins_only"
+                    ),
+                ]
+            )
         steps.extend(
             [
                 SelectStep(
@@ -668,7 +693,7 @@ class WereNotDoneYetEffect(CardEffect):
                     number_options=[1, 2],
                     number_labels={1: "Repeat the Guess", 2: "Gain 2 Coins"},
                     is_mandatory=True,
-                    active_if_key="guess_wrong",
+                    active_if_key=choice_gate,
                 ),
                 CheckContextConditionStep(
                     input_key="wndy_choice",

@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from goa2.domain.models import CardContainerType, CardState, TargetType
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.engine.effects import CardEffect, register_effect
 from goa2.engine.filters import (
+    CanRepeatFilter,
     CountMatchFilter,
     ExcludeIdentityFilter,
     FilterCondition,
@@ -63,6 +65,15 @@ def _another_piece_filters(
         HeroPieceFilter(exclude_acting=True),
         *(extra_filters or []),
     ]
+
+
+def _repeating_piece_filters(
+    state: GameState, extra_filters: list[FilterCondition]
+) -> list[FilterCondition]:
+    filters = _another_piece_filters(extra_filters)
+    if state.rules_version >= SHARED_ACTION_LIFECYCLE:
+        filters.append(CanRepeatFilter())
+    return filters
 
 
 def _move_another_piece_steps(
@@ -211,13 +222,14 @@ def _swap_minion_steps(
                 prompt="Select another one of you to repeat the swap",
                 output_key=repeater_key,
                 is_mandatory=False,
-                filters=_another_piece_filters(
+                filters=_repeating_piece_filters(
+                    state,
                     [
                         _piece_with_minion_target_filter(
                             range_val=stats.range,
                             exclude_keys=[minion_key],
                         )
-                    ]
+                    ],
                 ),
             ),
             SetActingPieceStep(
@@ -280,6 +292,7 @@ def _other_pieces_in_radius_steps(
 
 
 def _twin_strike_repeat_steps(
+    state: GameState,
     hero: Hero,
     stats: CardStats,
 ) -> list[GameStep]:
@@ -292,7 +305,8 @@ def _twin_strike_repeat_steps(
             prompt="Select another one of you to repeat Stunt Doubles",
             output_key=repeater_key,
             is_mandatory=False,
-            filters=_another_piece_filters(
+            filters=_repeating_piece_filters(
+                state,
                 [
                     CountMatchFilter(
                         min_count=1,
@@ -309,7 +323,7 @@ def _twin_strike_repeat_steps(
                             ImmunityFilter(),
                         ],
                     )
-                ]
+                ],
             ),
         ),
         SetActingPieceStep(
@@ -478,7 +492,7 @@ class StuntDoublesEffect(CardEffect):
             ),
         ]
         if _has_twin_strike(hero):
-            steps.extend(_twin_strike_repeat_steps(hero, stats))
+            steps.extend(_twin_strike_repeat_steps(state, hero, stats))
         return steps
 
 

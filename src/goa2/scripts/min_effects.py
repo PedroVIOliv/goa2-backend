@@ -17,6 +17,7 @@ from goa2.domain.models.enums import (
     TargetType,
     TokenType,
 )
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.engine.effects import (
     CardEffect,
     CardEffectRegistry,
@@ -835,6 +836,18 @@ class FlurryOfBlowsEffect(CardEffect):
             is_optional=True,
             prompt="Flurry of Blows: Repeat the attack on a different target?",
         )
+
+    def should_offer_passive(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> bool:
+        if state.rules_version < SHARED_ACTION_LIFECYCLE:
+            return True
+        return state.validator.can_repeat_action(state, str(hero.id), context).allowed
 
     def get_passive_steps(
         self,

@@ -26,8 +26,13 @@ ACTION_CONTEXT_KEYS = (
     "token_type_override",
     "skip_markers",
     "substitution_actor_id",
+    "repeated_action",
 )
 ACTION_CONTEXT_STACK_KEY = "action_context_stack"
+# Set while the passives after a repeat run, including actions they start: a
+# repeated action cannot be repeated, which is what keeps repeat-triggered passives
+# (Bullet Time re-performing Bounce) from chaining forever.
+REPEATED_ACTION_KEY = "repeated_action"
 
 
 def push_action_context(

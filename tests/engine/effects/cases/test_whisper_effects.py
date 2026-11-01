@@ -13,9 +13,9 @@ import pytest
 
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputRequestType
-from goa2.domain.models import ActionType, SpawnType
+from goa2.domain.models import ActionType, SpawnType, StatType
 from goa2.domain.models.effect import AffectsFilter, DurationType, EffectScope, EffectType, Shape
-from goa2.domain.rules_version import EMPTY_MEANS_NOT_OBSTACLE
+from goa2.domain.rules_version import EMPTY_MEANS_NOT_OBSTACLE, SHARED_ACTION_LIFECYCLE
 from goa2.engine.effect_manager import EffectManager
 from goa2.engine.handler import process_stack
 
@@ -40,12 +40,12 @@ def _apply_movement_prevention(state, origin_id: str = "hero_whisper") -> None:
     ).resolve(state, {})
 
 
-def _swift_justice_state():
+def _swift_justice_state(board_length: int = 6):
     """Whisper with Swift Justice; enemy hero at range 2 with an empty discard
     and a defense card (Terrify: DEFENSE 7 / MOVEMENT 3) in hand."""
     state = (
         EffectScenarioBuilder()
-        .with_hexes([(q, 0, -q) for q in range(6)])
+        .with_hexes([(q, 0, -q) for q in range(board_length)])
         .red_hero(
             "hero_whisper",
             at=(0, 0, 0),
@@ -89,6 +89,37 @@ def test_swift_justice_forces_defender_movement_after_defense() -> None:
     assert state.execution_context["current_card_id"] == "swift_justice"
     assert state.get_performing_card("hero_whisper").id == "swift_justice"
     assert "action_context_stack" not in state.execution_context
+
+
+@pytest.mark.effect_flow
+def test_swift_justice_forced_movement_counts_defender_movement_items() -> None:
+    state = _swift_justice_state(board_length=7)
+    state.rules_version = SHARED_ACTION_LIFECYCLE
+    state.get_hero("hero_defender").items[StatType.MOVEMENT] = 1
+
+    run = run_card(state, "hero_whisper")
+    _attack_and_defend(run)
+
+    run.expect_input(InputRequestType.SELECT_HEX)
+    assert run.latest_request is not None
+    assert [o.metadata["hex"] for o in run.latest_request.options] == [{"q": 6, "r": 0, "s": -6}]
+    run.choose(Hex(q=6, r=0, s=-6)).finish()
+
+    assert state.entity_locations["hero_defender"] == Hex(q=6, r=0, s=-6)
+
+
+@pytest.mark.effect_flow
+def test_swift_justice_forced_movement_ignores_items_before_rules_version() -> None:
+    state = _swift_justice_state(board_length=7)
+    state.rules_version = SHARED_ACTION_LIFECYCLE - 1
+    state.get_hero("hero_defender").items[StatType.MOVEMENT] = 1
+
+    run = run_card(state, "hero_whisper")
+    _attack_and_defend(run)
+
+    run.expect_input(InputRequestType.SELECT_HEX)
+    assert run.latest_request is not None
+    assert [o.metadata["hex"] for o in run.latest_request.options] == [{"q": 5, "r": 0, "s": -5}]
 
 
 @pytest.mark.effect_flow

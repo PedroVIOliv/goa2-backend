@@ -24,6 +24,7 @@ from goa2.domain.models import (
     TokenType,
 )
 from goa2.domain.models.effect import EffectType
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine import rules
@@ -1786,6 +1787,17 @@ class ResolveDisplacementStep(GameStep):
         )
 
 
+def move_restrictions(steps: list[GameStep]) -> dict[str, bool]:
+    """Restrictions on the movement in ``steps``; a repeat of the action keeps them."""
+    return {
+        field: True
+        for step in steps
+        if isinstance(step, MoveSequenceStep)
+        for field in ("force_straight_line", "force_full_distance")
+        if getattr(step, field)
+    }
+
+
 class ForceDefenseCardMovementStep(GameStep):
     """
     After an attack, forces the defender to perform the movement action
@@ -1856,7 +1868,11 @@ class ForceDefenseCardMovementStep(GameStep):
             card_owner_id=str(hero.id),
         )
 
-        if has_primary_movement:
+        if state.rules_version >= SHARED_ACTION_LIFECYCLE:
+            movement_steps = self._build_action_with_lifecycle(
+                state, context, str(defender_id), hero, card, has_primary_movement
+            )
+        elif has_primary_movement:
             # Case 3: Primary movement — call card effect's build_steps
             movement_steps = self._build_primary_movement_steps(state, hero, card)
         else:
@@ -1890,6 +1906,51 @@ class ForceDefenseCardMovementStep(GameStep):
         ]
 
         return StepResult(is_finished=True, new_steps=new_steps)
+
+    def _build_action_with_lifecycle(
+        self,
+        state: GameState,
+        context: dict[str, Any],
+        defender_id: str,
+        hero: Hero,
+        card: Card,
+        is_primary: bool,
+    ) -> list[GameStep]:
+        from goa2.engine.stats import compute_card_stats, get_computed_stat
+        from goa2.engine.steps.cards import build_card_action_lifecycle, build_card_action_steps
+        from goa2.engine.steps.pieces import ChooseActingPieceStep
+
+        if is_primary:
+            val = compute_card_stats(state, UnitID(defender_id), card).primary_value
+        else:
+            val = get_computed_stat(
+                state,
+                UnitID(defender_id),
+                StatType.MOVEMENT,
+                card.current_secondary_actions[ActionType.MOVEMENT],
+            )
+        action_steps = build_card_action_steps(
+            state, context, defender_id, hero, card, ActionType.MOVEMENT, val, is_primary
+        )
+        for step in action_steps:
+            if isinstance(step, MoveSequenceStep):
+                if not is_primary:
+                    step.destination_key = "sj_forced_dest"
+                step.force_straight_line = True
+                step.force_full_distance = True
+                step.is_mandatory = True
+        lifecycle = build_card_action_lifecycle(
+            state,
+            defender_id,
+            card,
+            ActionType.MOVEMENT,
+            val,
+            is_primary,
+            action_steps,
+            after_resolve_card=False,
+        )
+        # The attacked unit is the one forced to move; it is never re-chosen.
+        return [s for s in lifecycle if not isinstance(s, ChooseActingPieceStep)]
 
     def _build_primary_movement_steps(
         self,

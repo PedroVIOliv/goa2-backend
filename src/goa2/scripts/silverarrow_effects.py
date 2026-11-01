@@ -11,6 +11,7 @@ from goa2.domain.models import (
     TargetType,
 )
 from goa2.domain.models.effect import AffectsFilter, EffectScope, Shape
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_composite import (
     CountMatchFilter,
@@ -41,6 +42,7 @@ from goa2.engine.steps import (
     ForceDiscardStep,
     GainCoinsStep,
     GameStep,
+    MayRepeatOnceStep,
     MoveUnitStep,
     RecordHexStep,
     RetrieveCardStep,
@@ -155,7 +157,7 @@ class RainOfArrowsEffect(CardEffect):
     ) -> list[GameStep]:
         r = stats.range or 0
         dmg = stats.primary_value
-        return [
+        steps: list[GameStep] = [
             # 1. First attack — any unit at max range.
             AttackSequenceStep(
                 damage=dmg,
@@ -218,6 +220,18 @@ class RainOfArrowsEffect(CardEffect):
                 target_id_key="rain_victim_3",
                 active_if_key="rain_victim_3",
             ),
+        ]
+        if state.rules_version < SHARED_ACTION_LIFECYCLE:
+            return steps
+        first, hero_shot, minion_shot = steps[:3], steps[3:5], steps[5:]
+        for step in (hero_shot[0], minion_shot[0]):
+            step.active_if_key = None
+        return [
+            *first,
+            MayRepeatOnceStep(
+                ask=False, active_if_key="rain_first_was_hero", steps_template=hero_shot
+            ),
+            MayRepeatOnceStep(ask=False, active_if_key="rain_victim_2", steps_template=minion_shot),
         ]
 
 
