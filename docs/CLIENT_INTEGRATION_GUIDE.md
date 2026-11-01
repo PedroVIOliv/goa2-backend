@@ -1276,7 +1276,9 @@ Active area effects on the board:
   "stat_value": 1,
   "split_axis": null,
   "split_value": 0,
-  "named_color": null
+  "named_color": null,
+  "barrier_radius": 0,
+  "barrier_origin_id": null
 }
 ```
 
@@ -1297,6 +1299,8 @@ Active area effects on the board:
 | `split_axis` | string/null | For `topology_split` / `topology_isolation` (NebKher's reality splits): `"q"`, `"r"`, or `"s"` — the cube coordinate defining the split line. `null` for all other effects |
 | `split_value` | int | The value of that coordinate: the line is every hex where `hex[split_axis] === split_value`, fixed at cast time. Draw the lasting split visual there |
 | `named_color` | string/null | Card color publicly announced when the effect was created (e.g. NebKher's Imbue Doubt family: `"BLUE"`, `"GOLD"`, `"GREEN"`, `"RED"`, `"SILVER"`). Public information — display it to all players while the effect is pending. `null` when no color was named |
+| `barrier_radius` | int | For `static_barrier` (Wasp's Static Barrier): the radius of the barrier, measured from `barrier_origin_id`'s **current** position (it follows her). `0` for all other effects |
+| `barrier_origin_id` | string/null | The board unit the barrier radius is centered on. `null` for all other effects |
 
 **Token-bound effects:** When `source_card_id` is `null` and `scope.origin_id` points to a token, the effect's lifecycle is tied to the token — it persists as long as the token is on the board and is automatically removed when the token is removed.
 
