@@ -432,6 +432,7 @@ def _as_separate_action(
     from goa2.domain.models import ActionType
     from goa2.engine.stats import compute_card_stats
     from goa2.engine.steps.cards import action_checks_after, action_checks_before
+    from goa2.engine.steps.movement import move_restrictions
     from goa2.engine.steps.phases import REPEATED_ACTION_KEY
 
     raw_type = context.get("current_action_type")
@@ -453,7 +454,15 @@ def _as_separate_action(
         *before,
         *steps,
         SetContextFlagStep(key=REPEATED_ACTION_KEY, value=True),
-        *action_checks_after(state, actor_id, card, act_type, val, is_primary),
+        *action_checks_after(
+            state,
+            actor_id,
+            card,
+            act_type,
+            val,
+            is_primary,
+            move_restrictions=move_restrictions(steps),
+        ),
         SetContextFlagStep(key=REPEATED_ACTION_KEY, value=None),
     ]
 

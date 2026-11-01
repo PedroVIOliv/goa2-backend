@@ -2244,11 +2244,10 @@ def build_card_action_lifecycle(
     action_steps: list[GameStep],
     *,
     after_resolve_card: bool = True,
-    extra_basic_flags: dict[str, Any] | None = None,
 ) -> list[GameStep]:
     from goa2.domain.models.enums import PassiveTrigger
     from goa2.engine.steps.effects import CheckPassiveAbilitiesStep
-    from goa2.engine.steps.movement import ResolvePreActionMovementStep
+    from goa2.engine.steps.movement import ResolvePreActionMovementStep, move_restrictions
     from goa2.engine.steps.pieces import ChooseActingPieceStep
 
     steps: list[GameStep] = [
@@ -2271,7 +2270,7 @@ def build_card_action_lifecycle(
             act_type,
             val,
             is_primary,
-            extra_basic_flags=extra_basic_flags,
+            move_restrictions=move_restrictions(action_steps),
         )
     )
     if after_resolve_card:
@@ -2307,7 +2306,7 @@ def action_checks_after(
     val: int,
     is_primary: bool,
     *,
-    extra_basic_flags: dict[str, Any] | None = None,
+    move_restrictions: dict[str, bool] | None = None,
 ) -> list[GameStep]:
     """Passive checks (and the context they read) that close an action on ``card``."""
     from goa2.domain.models.enums import PassiveTrigger
@@ -2365,8 +2364,9 @@ def action_checks_after(
                 )
             )
         steps.append(SetContextFlagStep(key="basic_action_card_id", value=card.id))
-        for key, value in (extra_basic_flags or {}).items():
-            steps.append(SetContextFlagStep(key=key, value=value))
+        steps.append(
+            SetContextFlagStep(key="basic_action_move_restrictions", value=move_restrictions or {})
+        )
         steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_BASIC_ACTION.value))
     if is_primary:
         steps.append(CheckPassiveAbilitiesStep(trigger=PassiveTrigger.AFTER_PRIMARY_ACTION.value))

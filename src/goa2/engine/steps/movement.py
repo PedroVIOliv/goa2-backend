@@ -1787,9 +1787,15 @@ class ResolveDisplacementStep(GameStep):
         )
 
 
-# Set while a forced straight-line, full-distance move is the latest basic action,
-# so a repeat of it (Cloak and Daggers) keeps those restrictions.
-FORCED_LINE_KEY = "basic_action_forced_line"
+def move_restrictions(steps: list[GameStep]) -> dict[str, bool]:
+    """Restrictions on the movement in ``steps``; a repeat of the action keeps them."""
+    return {
+        field: True
+        for step in steps
+        if isinstance(step, MoveSequenceStep)
+        for field in ("force_straight_line", "force_full_distance")
+        if getattr(step, field)
+    }
 
 
 class ForceDefenseCardMovementStep(GameStep):
@@ -1808,7 +1814,7 @@ class ForceDefenseCardMovementStep(GameStep):
     defender_key: str = "victim_id"
 
     def resolve(self, state: GameState, context: dict[str, Any]) -> StepResult:
-        from goa2.engine.steps.utility import SetActorStep, SetContextFlagStep
+        from goa2.engine.steps.utility import SetActorStep
 
         if self.should_skip(context):
             return StepResult(is_finished=True)
@@ -1897,7 +1903,6 @@ class ForceDefenseCardMovementStep(GameStep):
                 actor_key="sj_saved_actor",
                 save_key="sj_saved_actor_unused",
             ),
-            SetContextFlagStep(key=FORCED_LINE_KEY, value=False),
         ]
 
         return StepResult(is_finished=True, new_steps=new_steps)
@@ -1943,7 +1948,6 @@ class ForceDefenseCardMovementStep(GameStep):
             is_primary,
             action_steps,
             after_resolve_card=False,
-            extra_basic_flags={FORCED_LINE_KEY: True},
         )
         # The attacked unit is the one forced to move; it is never re-chosen.
         return [s for s in lifecycle if not isinstance(s, ChooseActingPieceStep)]

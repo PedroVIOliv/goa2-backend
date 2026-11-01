@@ -46,7 +46,6 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     StealCoinsStep,
 )
-from goa2.engine.steps.movement import FORCED_LINE_KEY
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card, Hero
@@ -1087,7 +1086,6 @@ class CloakAndDaggersEffect(CardEffect):
                 ),
             ]
         elif action_type == ActionType.MOVEMENT.value:
-            forced_line = bool(context.get(FORCED_LINE_KEY))
             return [
                 CheckLanePushStep(),
                 MoveSequenceStep(
@@ -1098,8 +1096,7 @@ class CloakAndDaggersEffect(CardEffect):
                         if state.rules_version >= SHARED_ACTION_LIFECYCLE
                         else "target_hex"
                     ),
-                    force_straight_line=forced_line,
-                    force_full_distance=forced_line,
+                    **context.get("basic_action_move_restrictions", {}),
                 ),
             ]
         elif action_type == ActionType.SKILL.value:
