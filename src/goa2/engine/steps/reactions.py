@@ -221,10 +221,11 @@ class ReactionWindowStep(GameStep):
                 )
 
         # Compute combat info for the input request
-        from goa2.engine.stats import calculate_minion_defense_modifier
+        from goa2.engine.stats import minion_defense_contributions
 
         attack_value = context.get("attack_damage")
-        minion_modifier = calculate_minion_defense_modifier(state, target_id)
+        minions = minion_defense_contributions(state, target_id)
+        minion_modifier = sum(minions["friendly"].values()) - sum(minions["enemy"].values())
         context["minion_defense_modifier"] = minion_modifier
         defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
 
@@ -236,6 +237,11 @@ class ReactionWindowStep(GameStep):
                 f"(minion mod: {minion_modifier:+d})"
             )
 
+        source_card_id = context.get("attack_source_card_id")
+        if "attack_source_card_id" not in context:
+            # Older saved reaction windows predate the captured attack-source fact.
+            source_card = state.get_performing_card(context.get("attacker_id"))
+            source_card_id = source_card.id if source_card else None
         return StepResult(
             requires_input=True,
             input_request=create_input_request(
@@ -246,6 +252,32 @@ class ReactionWindowStep(GameStep):
                 attack_value=attack_value,
                 minion_modifier=minion_modifier,
                 defense_needed=defense_needed,
+                decision_context={
+                    "purpose": "defense",
+                    "source_card_id": source_card_id,
+                    "combat": {
+                        "attacker_id": context.get("attacker_id"),
+                        "is_basic": context.get("attack_is_basic"),
+                        "is_ranged": context.get("attack_is_ranged"),
+                        "defense_stat": block_stat.value,
+                        "friendly_minions": minions["friendly"],
+                        "enemy_minions": minions["enemy"],
+                    },
+                    "actor_id": str(target_hero.id),
+                    "choice_facts": {
+                        card.id: {
+                            "defense_stat": block_stat.value,
+                            "defense_kind": (
+                                "primary"
+                                if not block_primary
+                                and card.current_primary_action
+                                in (ActionType.DEFENSE, ActionType.DEFENSE_SKILL)
+                                else "secondary"
+                            ),
+                        }
+                        for card in valid_defense_cards
+                    },
+                },
             ),
         )
 

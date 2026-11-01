@@ -44,7 +44,24 @@ def input_request_for_viewer(
         return None
 
     payload = request.to_dict()
+    # Additional facts cross exactly the same privacy boundary as the offer.
+    # No simultaneous request currently issues decision facts; omit any restored
+    # or future aggregate context until it has an explicit per-player projection.
+    facts = payload.pop("decision_context", None)
     if request.player_id != "simultaneous":
+        if isinstance(facts, dict):
+            allowed = {option.id for option in request.options}
+            facts["choice_facts"] = {
+                key: value for key, value in facts.get("choice_facts", {}).items() if key in allowed
+            }
+            source_id = facts.get("source_card_id")
+            if (
+                source_id
+                and source_id not in allowed
+                and _card_visible_to(state, source_id, for_hero_id) is not True
+            ):
+                facts.pop("source_card_id", None)
+            payload["decision_context"] = facts
         return payload
 
     players = payload.get("players")

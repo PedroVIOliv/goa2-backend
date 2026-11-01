@@ -62,3 +62,35 @@ def test_input_request_ids_are_unique() -> None:
     )
 
     assert first.id != second.id
+
+
+def test_decision_context_is_additive_typed_and_survives_save_load() -> None:
+    from goa2.domain.input import InputRequest
+
+    request = create_input_request(
+        InputRequestType.SELECT_NUMBER,
+        "hero_arien",
+        options=[0, 2],
+    )
+    legacy = request.to_dict()
+    assert "decision_context" not in legacy
+    enriched = request.model_copy(update={"decision_context": None})
+    from goa2.domain.input import DecisionContext
+
+    enriched.decision_context = DecisionContext(purpose="action", actor_id="hero_arien")
+    payload = enriched.to_dict()
+    assert payload.pop("decision_context") == {
+        "purpose": "action",
+        "actor_id": "hero_arien",
+        "choice_facts": {},
+    }
+    assert payload == legacy
+    assert (
+        InputRequest.model_validate_json(enriched.model_dump_json()).to_dict() == enriched.to_dict()
+    )
+    assert (
+        InputRequest.model_validate_json(
+            request.model_dump_json(exclude={"decision_context"})
+        ).to_dict()
+        == legacy
+    )

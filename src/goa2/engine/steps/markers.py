@@ -1131,6 +1131,7 @@ class PlaceRunesStep(GameStep):
                 request_type=InputRequestType.SELECT_OPTION,
                 player_id=player_id,
                 prompt=f"Place a rune below turn slot {slot}",
+                decision_context={"purpose": "rune_inscription", "actor_id": str(self.hero_id)},
                 options=[InputOption(id=rune.value, text=rune.value.title()) for rune in remaining],
             ),
         )

@@ -1028,6 +1028,7 @@ override decisions.
 | `unresolved_cards` | object[] | Cards in resolution order (highest initiative first). Each entry: `{hero_id, initiative, card}`. Only populated during RESOLUTION phase; empty array otherwise. Ties broken by `tie_breaker_team`. Recalculated dynamically — order may change between actions due to modifiers. |
 | `active_zone_id` | string/null | Legacy single-lane field: the current Battle Zone when the game has exactly one lane, `null` otherwise. Prefer `battle_zones`. |
 | `battle_zones` | object | Current Battle Zone per lane (`lane_id -> zone_id`). Single-lane maps have one entry (`"lane_1"`). |
+| `battle_zone_minion_counts` | object | Additive physical minion counts per active lane: `{ "lane_1": { "zone_id": "Mid", "counts": { "RED": 2, "BLUE": 3 } } }`. Heavy minions count once; off-board pieces, tokens/illusions and hero bonuses do not count. Combat modifiers/exclusions do not change these counts. Piece location determines membership, not its respawn lane binding. Missing/unknown zones are omitted. Older servers omit the entire field. |
 | `wave_counters` | object | Remaining Wave counters per lane (`lane_id -> int`). |
 | `cheats_enabled` | boolean | Whether cheats are enabled for this game |
 | `tie_breaker_team` | string | Team that currently wins ties (`"RED"` or `"BLUE"`). In a game created from a draft, this starts as the draft's `first_team` — the coin flip that decided who bans first is the same coin. Games created directly via `POST /games` flip it from the seed. |
@@ -1437,6 +1438,51 @@ Two consequences worth designing around:
 The `request_id` correlates this prompt with its response. Echo it unchanged in
 every REST or WebSocket input response. The `type` field determines what kind
 of input is needed and what options fields are present.
+
+### Optional decision semantics
+
+New requests can carry an additive `decision_context`. Existing option fields,
+labels, computed values, response payloads and request correlation are unchanged.
+Older backends and saved requests may omit it; clients must keep their legacy
+handling as a fallback. These facts describe an offer, not a new submission format.
+
+```json
+{
+  "purpose": "action",
+  "actor_id": "hero_arien",
+  "source_card_id": "deluge",
+  "choice_facts": { "MOVEMENT": { "action_role": "primary" } }
+}
+```
+
+All context fields are optional. `purpose` is `action`, `defense`, `discard`,
+`cast_spell`, `rune_selection` or `rune_inscription` where the issuing step knows
+the purpose. `actor_id` identifies the acting/choosing hero, which can differ
+from the authorized responder under action control. `source_card_id` is provided
+only when the source is known and permitted for the recipient. Never use it to
+reconstruct a hidden card from a catalog.
+
+`choice_facts` is keyed by offered option ID. Facts may include `action_role`
+(`primary`, `secondary`, `replacement`), `defense_stat` (`DEFENSE`, `INITIATIVE`),
+and `defense_kind` (`primary`, `secondary`). Primary defense is effect-driven;
+it is not a guarantee that an attack will be blocked. Read existing option
+`value`/`defense_value` and request `defense_needed` rather than recomputing them.
+Missing facts mean unknown, not a different default rule. Context does not enable
+batch selection; existing capability fields and accepted submissions still apply.
+
+REST and WebSocket apply the same responder-scoping boundary. Facts for options
+outside the offer and hidden source identities are removed. Aggregate simultaneous
+requests omit this context until a per-player projection is explicitly supported;
+their existing scoped `players` data is unchanged.
+
+For minion HUDs, render each `battle_zone_minion_counts` lane separately. An explicit
+zero is valid. An older-server fallback may use public minion positions and tile
+zone membership; missing membership is unavailable, not a whole-board total or zero.
+This field is derived for views and is not persisted in game state.
+
+See the [existing frontend compatibility record](SHARED_DECISION_FACTS_COMPATIBILITY.md)
+for the unchanged default frontend revision, control/candidate browser checks,
+accepted legacy submissions and verification limits.
 
 ### Common input request types
 
@@ -2286,3 +2332,19 @@ either `{"destination": {q,r,s}}` or `{"swap_with": "<hero id>"}`. Both normal
 replay and shared-replay baking apply that decision through the same engine
 function. Pending/declined requests do not enter the replay. Automatic setup
 placement is unchanged for historical replays.
+
+
+### Optional combat facts on defense decisions
+
+`decision_context.combat` optionally identifies `attacker_id`, `is_basic`,
+`is_ranged`, `defense_stat` (`DEFENSE` or `INITIATIVE`), and contributing
+`friendly_minions` / `enemy_minions` maps keyed by minion type. Map values are
+counts of contributors, not battle values. Their sums differ by the existing net
+`minion_modifier`; friendly ranged minions do not contribute. Illusions contribute
+as MELEE only when the engine's existing equivalence rule applies.
+`decision_context.source_card_id` names the performed attack card, which can differ
+from the current turn card. The normal card-visibility filter applies to that ID.
+These facts share the defense request's responder scope; other players and
+spectators do not receive the request. All existing fields and submissions remain
+unchanged. Older saves may omit these facts; clients must retain legacy fallbacks
+without inventing Basic/Ranged flags or a positive/negative split from a net value.
