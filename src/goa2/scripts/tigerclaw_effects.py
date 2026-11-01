@@ -12,6 +12,7 @@ from goa2.domain.models.effect import (
 )
 from goa2.domain.models.enums import CardContainerType, PassiveTrigger
 from goa2.domain.models.marker import MarkerType
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.engine.effects import CardEffect, PassiveConfig, register_effect
 from goa2.engine.filters_geometry import SpaceBehindEmptyFilter
 from goa2.engine.filters_hex import (
@@ -45,6 +46,7 @@ from goa2.engine.steps import (
     SetContextFlagStep,
     StealCoinsStep,
 )
+from goa2.engine.steps.movement import FORCED_LINE_KEY
 
 if TYPE_CHECKING:
     from goa2.domain.models import Card, Hero
@@ -1016,6 +1018,18 @@ class CloakAndDaggersEffect(CardEffect):
             prompt="Cloak and Daggers: Repeat the basic action?",
         )
 
+    def should_offer_passive(
+        self,
+        state: GameState,
+        hero: Hero,
+        card: Card,
+        trigger: PassiveTrigger,
+        context: dict[str, Any],
+    ) -> bool:
+        if state.rules_version < SHARED_ACTION_LIFECYCLE:
+            return True
+        return state.validator.can_repeat_action(state, str(hero.id), context).allowed
+
     def get_passive_steps(
         self,
         state: GameState,
@@ -1073,11 +1087,19 @@ class CloakAndDaggersEffect(CardEffect):
                 ),
             ]
         elif action_type == ActionType.MOVEMENT.value:
+            forced_line = bool(context.get(FORCED_LINE_KEY))
             return [
                 CheckLanePushStep(),
                 MoveSequenceStep(
                     unit_id=hero.id,
                     range_val=action_value,
+                    destination_key=(
+                        "cd_repeat_dest"
+                        if state.rules_version >= SHARED_ACTION_LIFECYCLE
+                        else "target_hex"
+                    ),
+                    force_straight_line=forced_line,
+                    force_full_distance=forced_line,
                 ),
             ]
         elif action_type == ActionType.SKILL.value:

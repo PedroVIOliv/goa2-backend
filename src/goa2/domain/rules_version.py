@@ -14,4 +14,6 @@ THIS_TURN_OUTLASTS_END_OF_TURN = 7  # "this turn" effects apply during end-of-tu
 SIGILS_BIRD_SINGLE_TARGET_PROMPT = 8  # Rune Sigils' bird offers adjacent units and minions together
 ROLLING_STONE_SKIPS_DENIED_SPACES = 9  # Rolling Stone's budget skips spaces that count as obstacles
 
-CURRENT_RULES_VERSION = ROLLING_STONE_SKIPS_DENIED_SPACES
+SHARED_ACTION_LIFECYCLE = 10  # forced moves and hand-built repeats are full actions
+
+CURRENT_RULES_VERSION = SHARED_ACTION_LIFECYCLE

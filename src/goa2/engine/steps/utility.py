@@ -11,6 +11,7 @@ from pydantic import Field
 from goa2.domain.hex import Hex
 from goa2.domain.input import InputOption, InputRequestType, create_input_request
 from goa2.domain.models import StepType, TargetType
+from goa2.domain.rules_version import SHARED_ACTION_LIFECYCLE
 from goa2.domain.state import GameState
 from goa2.domain.types import BoardEntityID, HeroID, UnitID
 from goa2.engine.filters_base import FilterCondition
@@ -349,6 +350,9 @@ class MayRepeatNTimesStep(GameStep):
     steps_template: list[GameStep] = Field(default_factory=list)
     max_repeats: int = 1
     prompt: str = "Repeat action?"
+    # False for text that repeats without a choice, or whose template's own
+    # optional selection already is the "may".
+    ask: bool = True
 
     # Internal state, preserved when pushed back to stack
     repeats_done: int = 0
@@ -378,6 +382,9 @@ class MayRepeatNTimesStep(GameStep):
             logger.debug(f"   [REPEAT] Blocked by validation: {res.reason}")
             return StepResult(is_finished=True)
 
+        if not self.ask:
+            self.pending_input = {"selection": "YES"}
+
         # 2. Input Handling
         if self.pending_input:
             selection = self.pending_input.get("selection")
@@ -387,8 +394,9 @@ class MayRepeatNTimesStep(GameStep):
                 logger.debug(
                     f"   [REPEAT] Confirmed ({self.repeats_done}/{self.max_repeats}). Spawning steps."
                 )
-                # Deepcopy template steps
                 new_steps = [copy.deepcopy(s) for s in self.steps_template]
+                if state.rules_version >= SHARED_ACTION_LIFECYCLE:
+                    new_steps = _as_separate_action(state, new_steps, context)
 
                 # Push ourselves back onto the stack to handle potential subsequent repeats
                 # BUT only if we haven't reached the max yet. Reset the action-boundary
@@ -415,6 +423,39 @@ class MayRepeatNTimesStep(GameStep):
                 ],
             ),
         )
+
+
+def _as_separate_action(
+    state: GameState, steps: list[GameStep], context: dict[str, Any]
+) -> list[GameStep]:
+    """Each repeat is its own action, so action passives fire around it (rulebook "Repeat")."""
+    from goa2.domain.models import ActionType
+    from goa2.engine.stats import compute_card_stats
+    from goa2.engine.steps.cards import action_checks_after, action_checks_before
+    from goa2.engine.steps.phases import REPEATED_ACTION_KEY
+
+    raw_type = context.get("current_action_type")
+    act_type = ActionType(raw_type) if raw_type else None
+    before = action_checks_before(act_type)
+    actor_id = str(state.current_actor_id)
+    hero = state.get_hero(HeroID(actor_id))
+    card_id = context.get("current_card_id")
+    cards = [hero.current_turn_card, *hero.played_cards, *hero.discard_pile] if hero else []
+    card = next((c for c in cards if c is not None and c.id == card_id), None)
+    if act_type is None or card is None:
+        return [*before, *steps]
+
+    is_primary = card.current_primary_action == act_type or (
+        card.current_primary_action == ActionType.DEFENSE_SKILL and act_type == ActionType.SKILL
+    )
+    val = compute_card_stats(state, UnitID(actor_id), card).primary_value if is_primary else 0
+    return [
+        *before,
+        *steps,
+        SetContextFlagStep(key=REPEATED_ACTION_KEY, value=True),
+        *action_checks_after(state, actor_id, card, act_type, val, is_primary),
+        SetContextFlagStep(key=REPEATED_ACTION_KEY, value=None),
+    ]
 
 
 class MayRepeatOnceStep(MayRepeatNTimesStep):

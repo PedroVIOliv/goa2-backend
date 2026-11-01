@@ -185,8 +185,12 @@ class ActionValidationMixin:
     ) -> ValidationResult:
         """
         Can actor repeat an action?
-        Checks: PREVENT_ACTION_REPEAT effects.
+        Checks: PREVENT_ACTION_REPEAT effects, and that the action is not itself a repeat.
         """
+        from goa2.engine.steps.phases import REPEATED_ACTION_KEY
+
+        if context and context.get(REPEATED_ACTION_KEY):
+            return ValidationResult.deny(reason="A repeated action cannot be repeated")
 
         # First repeat-prevention effect (if any) blocking the entity at
         # check_hex. Uses check_id so a multi-piece hero can be evaluated
