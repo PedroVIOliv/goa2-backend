@@ -1,5 +1,7 @@
 """Map identifiers must never escape the server-owned map directory."""
 
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
 
@@ -10,7 +12,10 @@ from goa2.server.routes_games import _map_path as game_map_path
 
 
 def test_valid_map_name_resolves():
-    assert resolve_map_path("forgotten_island").endswith("/maps/forgotten_island.json")
+    assert Path(resolve_map_path("forgotten_island")).parts[-2:] == (
+        "maps",
+        "forgotten_island.json",
+    )
 
 
 @pytest.mark.parametrize("map_name", ["../heroes/arien", "/tmp/external-map"])
