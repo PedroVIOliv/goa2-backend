@@ -1065,7 +1065,7 @@ class RemoveMarkerStep(GameStep):
 
 class PlaceRunesStep(GameStep):
     """Snorri's Inscribe the Runes: place one rune below each of the 4 turn
-    slots via up to 3 sequential SELECT_OPTION prompts (the 4th and last
+    slots via ordered batches or sequential SELECT_OPTION prompts (the last
     rune is auto-placed, since there is only one left to choose from).
 
     Overwrites ``hero.rune_slots`` entirely once all 4 runes are placed
@@ -1088,12 +1088,8 @@ class PlaceRunesStep(GameStep):
         if self.pending_input:
             selection = self.pending_input.get("selection")
             self.pending_input = None
-            try:
-                chosen = RuneType(str(selection))
-            except ValueError:
-                chosen = None
-            if chosen is not None and chosen not in self.placed.values():
-                self.placed[len(self.placed) + 1] = chosen
+            for rune in self._validated_runes(selection):
+                self.placed[len(self.placed) + 1] = rune
 
         remaining = [rune for rune in RuneType if rune not in self.placed.values()]
         if len(remaining) == 1:
@@ -1132,5 +1128,28 @@ class PlaceRunesStep(GameStep):
                 player_id=player_id,
                 prompt=f"Place a rune below turn slot {slot}",
                 options=[InputOption(id=rune.value, text=rune.value.title()) for rune in remaining],
+                supports_batch=True,
+                next_slot=slot,
+                max_selections=len(remaining),
+                selection_counts=sorted({1, len(remaining) - 1, len(remaining)}),
             ),
         )
+
+    def validate_input(self, state: GameState, selection: Any) -> None:
+        if not self._validated_runes(selection):
+            raise ValueError("Choose one remaining rune or complete the remaining rune slots")
+
+    def _validated_runes(self, selection: Any) -> list[RuneType]:
+        values = selection if isinstance(selection, list) else [selection]
+        remaining = len(RuneType) - len(self.placed)
+        # Check size before parsing: a client cannot make us iterate an
+        # arbitrarily large batch. Leaving one rune completes automatically.
+        if not values or len(values) not in {1, remaining - 1, remaining}:
+            return []
+        try:
+            chosen = [RuneType(value) for value in values]
+        except (ValueError, TypeError):
+            return []
+        if len(set(chosen)) != len(chosen) or set(chosen).intersection(self.placed.values()):
+            return []
+        return chosen

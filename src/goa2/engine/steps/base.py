@@ -93,6 +93,13 @@ class GameStep(BaseModel):
             self.__dict__[name] = isolate_steps(self.__dict__.get(name))
         return self
 
+    def validate_input(self, state: GameState, selection: Any) -> None:
+        """Optionally reject a selection before consuming the pending request.
+
+        Overrides must not mutate state. Raising ValueError leaves the step and
+        request ID intact, including simultaneous requests shared by players.
+        """
+
     def should_skip(self, context: dict[str, Any]) -> bool:
         """Checks if the step should be skipped based on active_if_key or skip_if_key."""
         if self.active_if_key:

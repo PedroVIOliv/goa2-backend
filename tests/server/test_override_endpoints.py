@@ -140,12 +140,22 @@ def test_history_marks_superseded_segments(client, game_data):
     assert hist["total"] == len(hist["decisions"])
 
 
-def test_history_masks_opponent_upgrade_choice(client, game_data):
+@pytest.mark.parametrize(
+    "selection, masked_label",
+    [
+        ({"hero_id": "hero_arien", "card_id": "arien_secret"}, "hero_arien upgraded a card"),
+        (
+            {"hero_id": "hero_arien", "card_ids": ["arien_secret", "another_secret"]},
+            "hero_arien upgraded cards",
+        ),
+    ],
+)
+def test_history_masks_opponent_upgrade_choice(client, game_data, selection, masked_label):
     gid = game_data["game_id"]
     from goa2.server.replay import create_replay_recorder
 
     rec = create_replay_recorder(gid)
-    rec.record_input("hero_arien", {"hero_id": "hero_arien", "card_id": "arien_secret"}, 2, 1)
+    rec.record_input("hero_arien", selection, 2, 1)
 
     def upgrade_label(token):
         hist = client.get(f"/games/{gid}/overrides/history", headers=_auth(token)).json()
@@ -154,5 +164,5 @@ def test_history_masks_opponent_upgrade_choice(client, game_data):
     for token in (_token_for(game_data, "hero_wasp"), game_data["spectator_token"]):
         label = upgrade_label(token)
         assert "arien_secret" not in label
-        assert label == "hero_arien upgraded a card"
+        assert label == masked_label
     assert "arien_secret" in upgrade_label(_token_for(game_data, "hero_arien"))
