@@ -834,7 +834,10 @@ class ResolveTieBreakerStep(GameStep):
                     input_request=create_input_request(
                         request_type=InputRequestType.CHOOSE_ACTOR,
                         player_id=f"team:{target_team.value}",
-                        prompt=f"Team {target_team.name}, choose who acts first between {candidates}.",
+                        prompt=(
+                            f"Team {target_team.name}, choose who acts first: "
+                            f"{' or '.join(state.display_name(c) for c in candidates)}."
+                        ),
                         options=candidates,
                         team=target_team,
                     ),

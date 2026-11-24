@@ -228,10 +228,10 @@ class ReactionWindowStep(GameStep):
         context["minion_defense_modifier"] = minion_modifier
         defense_needed = (attack_value - minion_modifier) if attack_value is not None else None
 
-        prompt = f"Player {owner_id}, select a Defense card."
+        prompt = f"{state.display_name(owner_id)}, select a Defense card."
         if attack_value is not None:
             prompt = (
-                f"Player {owner_id}, select a Defense card. "
+                f"{state.display_name(owner_id)}, select a Defense card. "
                 f"Attack: {attack_value}, Defense needed: {defense_needed} "
                 f"(minion mod: {minion_modifier:+d})"
             )

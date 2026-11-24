@@ -527,6 +527,11 @@ class GameState(BaseModel):
         # 2. Check Units
         return self.get_unit(UnitID(str(entity_id)))
 
+    def display_name(self, entity_id: str) -> str:
+        """Player-facing name for prompts ("Wasp", "RED HEAVY Minion"); the raw id if unknown."""
+        entity = self.get_entity(BoardEntityID(str(entity_id)))
+        return getattr(entity, "name", None) or str(entity_id)
+
     def get_unit(self, unit_id: UnitID) -> Unit | None:
         """
         Finds a Unit (Hero, Minion, or HeroPiece) by ID.
