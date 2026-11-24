@@ -886,7 +886,7 @@ class CheckMinionProtectionStep(GameStep):
                 requires_input=True,
                 input_request=create_input_request(
                     request_type=InputRequestType.SELECT_CARD,
-                    prompt=f"Discard a card to protect {self.minion_id}?",
+                    prompt=f"Discard a card to protect {state.display_name(self.minion_id)}?",
                     options=options,
                     player_id=protector.id,
                     can_skip=True,
@@ -1057,7 +1057,7 @@ class RespawnHeroStep(GameStep):
                 input_request=create_input_request(
                     request_type=InputRequestType.CHOOSE_RESPAWN_HEX,
                     player_id=self.hero_id,
-                    prompt=f"Select spawn location for {self.hero_id}",
+                    prompt=f"Select spawn location for {state.display_name(self.hero_id)}",
                     options=valid_hexes,
                     valid_hexes=valid_hexes,  # Pass raw Hex objects
                 ),
@@ -1113,7 +1113,7 @@ class RespawnHeroStep(GameStep):
             input_request=create_input_request(
                 request_type=InputRequestType.CHOOSE_RESPAWN,
                 player_id=self.hero_id,
-                prompt=f"Hero {self.hero_id} is defeated. Respawn at an empty spawn point?",
+                prompt=f"{state.display_name(self.hero_id)} is defeated. Respawn at an empty spawn point?",
                 options=["RESPAWN", "PASS"],
                 valid_hexes=valid_hexes,  # Pass raw Hex objects
             ),
@@ -1473,7 +1473,7 @@ class RespawnMinionAtHexStep(GameStep):
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
                 player_id=(str(state.current_actor_id) if state.current_actor_id else "system"),
-                prompt=f"Select space to respawn {target_minion.id}.",
+                prompt=f"Select space to respawn {target_minion.name}.",
                 options=valid_hexes,
             ),
         )
@@ -2135,7 +2135,7 @@ class ReturnMinionToZoneStep(GameStep):
             input_request=create_input_request(
                 request_type=InputRequestType.SELECT_HEX,
                 player_id=f"team:{team.value}",
-                prompt=f"Team {team.value}, choose destination for {minion_id} to return to Battle Zone.",
+                prompt=f"Team {team.value}, choose destination for {state.display_name(minion_id)} to return to Battle Zone.",
                 options=candidates,
             ),
         )

@@ -465,7 +465,7 @@ class ForceDiscardStep(GameStep):
                 allowed_ids.extend(card.id for card in shield_cards)
             select = SelectStep(
                 target_type=TargetType.CARD,
-                prompt=f"{resolved_victim}, select a card to discard.",
+                prompt=f"{state.display_name(resolved_victim)}, select a card to discard.",
                 output_key="card_to_discard",
                 card_containers=[CardContainerType.HAND, CardContainerType.PLAYED],
                 restrict_played_to_shields=True,
@@ -477,7 +477,7 @@ class ForceDiscardStep(GameStep):
         else:
             select = SelectStep(
                 target_type=TargetType.CARD,
-                prompt=f"{resolved_victim}, select a card to discard.",
+                prompt=f"{state.display_name(resolved_victim)}, select a card to discard.",
                 output_key="card_to_discard",
                 card_container=CardContainerType.HAND,
                 card_is_basic=self.card_is_basic,
@@ -539,7 +539,7 @@ class ForceDiscardByColorStep(GameStep):
             new_steps=[
                 SelectStep(
                     target_type=TargetType.CARD,
-                    prompt=f"{victim_id}, select a {color.value} card to discard.",
+                    prompt=f"{state.display_name(victim_id)}, select a {color.value} card to discard.",
                     output_key=self.output_key,
                     card_container=CardContainerType.HAND,
                     context_hero_id_key=self.victim_key,
@@ -626,7 +626,7 @@ class ForceDiscardOrDefeatStep(GameStep):
             new_steps=[
                 SelectStep(
                     target_type=TargetType.CARD,
-                    prompt=f"{victim_id}, select a card to discard (or be Defeated).",
+                    prompt=f"{state.display_name(victim_id)}, select a card to discard (or be Defeated).",
                     output_key="card_to_discard",
                     card_container=CardContainerType.HAND,
                     context_hero_id_key=self.victim_key,  # Look at victim's hand

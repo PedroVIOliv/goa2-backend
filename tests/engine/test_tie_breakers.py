@@ -82,6 +82,8 @@ def test_complex_tie_resolution_flow(complex_tie_state):
     req = process_stack(complex_tie_state).input_request
     assert req["type"] == "CHOOSE_ACTOR"
     assert req["team"] == TeamColor.RED
+    # Hero names, not a raw list of ids like "['A', 'D']".
+    assert req["prompt"] == "Team RED, choose who acts first: Alpha or Delta."
 
     # Simulate Red choosing A
     complex_tie_state.execution_stack[-1].pending_input = {"selection": "A"}
